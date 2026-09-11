@@ -6095,7 +6095,8 @@ FIXEDFORM_FUZZ_INCLUDES := \
 
 build/schema_test_fixedform_fuzz: build/tables-generated/.stamp test/tables/fixedform_fuzz.cpp
 	@mkdir -p build
-	@$(FUZZ_CXX) -fsanitize=fuzzer -x c++ /dev/null -o build/.fuzzprobe 2>/dev/null || { \
+	@printf '#include <stddef.h>\n#include <stdint.h>\nextern "C" int LLVMFuzzerTestOneInput( const uint8_t * d, size_t n ) { (void) d; (void) n; return 0; }\n' \
+	    | $(FUZZ_CXX) -fsanitize=fuzzer -x c++ - -o build/.fuzzprobe 2>/dev/null || { \
 		echo "fixedform fuzz: $(FUZZ_CXX) has no libFuzzer (-fsanitize=fuzzer does not link)."; \
 		echo "fixedform fuzz: Apple clang never ships it — set FUZZ_CXX to an LLVM clang++, or build on Space."; \
 		exit 1; }
