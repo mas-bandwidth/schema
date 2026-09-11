@@ -811,7 +811,7 @@ func TestALockFromTheRenderingJustBeforeThisOneSalvages(t *testing.T) {
 	// the same file one rendering back: its body without the lineage this
 	// rendering added
 	var body []string
-	for _, line := range strings.Split(string(current[len(head):]), "\n") {
+	for line := range strings.SplitSeq(string(current[len(head):]), "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			body = append(body, line)
 		}

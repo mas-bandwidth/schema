@@ -18,6 +18,7 @@ package lockfile
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 )
 
@@ -242,12 +243,7 @@ func idRule(lk, lv *Table, want, got Entry) string {
 
 // hasValue reports whether a list carries this value anywhere.
 func (v *ValueList) hasValue(s string) bool {
-	for _, got := range v.Values {
-		if got == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(v.Values, s)
 }
 
 // moveWord is the word a reorder takes per declaration: a flags mask's bits

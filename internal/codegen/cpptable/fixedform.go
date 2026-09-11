@@ -853,7 +853,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// above the extent, so the comparison is always false and the
 			// emitter drops it rather than hand a warning-as-error build a
 			// tautology. No semantics move — the elided check never clamped.
-			if ordinalFillsStorage(int64(r.Max), r.StorageBits) {
+			if ordinalFillsStorage(r.Max, r.StorageBits) {
 				return
 			}
 			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
