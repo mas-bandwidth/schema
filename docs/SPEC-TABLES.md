@@ -3602,10 +3602,14 @@ business.
   header pays it whether or not the form maps its body today: **the fixed form
   does not need the alignment and pads anyway**, so that the bytes do not move a
   second time the day the cook and the block form join the registry under this
-  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO AND READ BY NOBODY.**
-  They exist to put the hash at `8` and the body at `16`; a later form that
-  wants to say more takes a NEW FORM BYTE and never one of these, which is the
-  same rule that keeps a version byte out of the layout (§3.4).
+  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO, AND A READER REFUSES
+  A NONZERO ONE, `malformed`.** They are REFUSED and not ignored because that is
+  what keeps them SPENDABLE: a byte every reader ignores is a byte already spent,
+  since the day a form wants to say something there is the day the old readers
+  have been accepting the other meaning all along. They exist to put the hash at
+  `8` and the body at `16`; a later form that wants to say more takes a NEW FORM
+  BYTE and never one of these, which is the same rule that keeps a version byte
+  out of the layout (§3.4).
 
   **TODAY THE FIXED FORM IS THE ONE ARM THAT WRITES THIS HEADER.** The message
   form's framing is still its own two parts, the form byte and a body count
