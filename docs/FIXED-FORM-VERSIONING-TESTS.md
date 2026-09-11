@@ -49,6 +49,9 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the width |
 | `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the range |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
+| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and `clamped == 0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_newer` |
+| `cfloat_res_coarsen` | `float32 \| min = -1, max = 1, resolution = 0.01` | — | `resolution = 0.1`: "resolution coarsened (0.01 -> 0.1)" | — | — |
+| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, `clamped == 0` — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the width |
 | `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the width |
 | `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the element width |
@@ -83,7 +86,7 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-33 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
+36 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
 tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
@@ -95,6 +98,21 @@ writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5
 a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
 wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
 a value the old writer could not have written. Named `<row>_hostile_case()`.
+
+**The compressed-float rows take the same hostile pass, and it clamps to the WRITER's range and COUNTS.**
+`hostile_cfloat_range_widen.bin` is `old_cfloat_range_widen.bin` with `aim` set to a float OUTSIDE the old
+writer's `[-1, 1]` but inside the new reader's `[-2, 2]`: the new reader clamps it to the OLD writer's bound
+the plan carries — never its own wider one, never the forged value — and `clamped == 1` exactly, every other
+counter `0`. The resolution takes no hostile row of its own: a value off the old grid is still a float32 the
+reader lands, and the law's refusal for a moved step is the LOCK's and the HASH's, not a counter's.
+
+**"A min that moves outward changes what the stored value MEANS" is form 1's concern, not this wire's.** In
+the variable form a compressed float rides as a QUANTIZED INDEX — the integer `round((v - min) / res)` — so
+moving `min` or `res` reads every stored index as a different number and nothing can be refused after the
+fact. In the FIXED form the field rides as the float32 itself (SPEC §3.4: "it rides as the float, not as a
+quantized index"), so min, max and resolution are DEFINITIONS in the digest: the stored bytes mean the same
+float whatever the bounds say, which is exactly why the range may WIDEN and the resolution may REFINE here
+and may not there.
 
 ## The divergence rows: §5.8's 4, 9, 11, 12
 

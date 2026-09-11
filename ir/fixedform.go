@@ -596,6 +596,12 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //
 //	'R'  integer, float or fixed-point range: min then max, each i64 LE
 //	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'Q'  a COMPRESSED FLOAT's RESOLUTION, beside the 'R' its min and max went
+//	     into: the IEEE-754 bits of the float64 step, u64 LE. It is a
+//	     DEFINITION and never wire — in the fixed form a compressed float
+//	     rides as the float32 itself (SPEC-TABLES §3.4) — so the hash must
+//	     move when it moves, or a reader cannot refuse a peer that COARSENED
+//	     it (bill §2: the range widens, the resolution refines, else refuse)
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
 //	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
@@ -636,6 +642,13 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 		*b = append(*b, 'R')
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMax))
+		// THE RESOLUTION IS A DEFINITION, SO IT IS IN THE DIGEST. A
+		// compressed float rides as the float in the fixed form, so the step
+		// is nowhere in the layout bytes: without this row `| min = 0, max =
+		// 1, resolution = 0.01` and `resolution = 0.1` hash identically and a
+		// finer reader could not refuse a coarser peer by hash.
+		*b = append(*b, 'Q')
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.Resolution))
 	}
 	switch f.Type.Kind {
 	case TBits:

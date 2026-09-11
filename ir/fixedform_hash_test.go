@@ -64,10 +64,10 @@ func TestTableFixedLayoutHashRangeMovesTheHash(t *testing.T) {
 func TestTableFixedDefinitionsDigestFloatRangeIsR(t *testing.T) {
 	layout := []byte{0x01, 0x02, 0x03, 0x04}
 	a := &Struct{Name: "F", Fields: []*Field{
-		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0, FMax: 10},
+		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0, FMax: 10, Resolution: 0.01},
 	}}
 	b := &Struct{Name: "F", Fields: []*Field{
-		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0, FMax: 20},
+		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0, FMax: 20, Resolution: 0.01},
 	}}
 	da := TableFixedDefinitionsDigest(a)
 	db := TableFixedDefinitionsDigest(b)
@@ -82,8 +82,34 @@ func TestTableFixedDefinitionsDigestFloatRangeIsR(t *testing.T) {
 	}
 	want := append([]byte{'R'}, float64LE(0)...)
 	want = append(want, float64LE(10)...)
+	want = append(want, 'Q')
+	want = append(want, float64LE(0.01)...)
 	if !bytes.Equal(da, want) {
-		t.Fatalf("float range bytes: got %x, want %x (IEEE-754 bits, i64 LE)", da, want)
+		t.Fatalf("float range bytes: got %x, want %x ('R' min max, then 'Q' resolution, IEEE-754 bits LE)", da, want)
+	}
+}
+
+// THE RESOLUTION IS IN THE DIGEST, ALONE. A compressed float rides as the
+// float32 in the fixed form, so the step is nowhere in the layout bytes: if it
+// did not move the hash, a finer reader could not refuse a coarsened peer by
+// hash, which is the whole mechanism (bill §2, §13).
+func TestTableFixedDefinitionsDigestResolutionMovesTheHash(t *testing.T) {
+	layout := []byte{0x01, 0x02, 0x03, 0x04}
+	field := func(res float64) *Struct {
+		return &Struct{Name: "F", Fields: []*Field{
+			{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0, FMax: 1, Resolution: res},
+		}}
+	}
+	fine, coarse := field(0.01), field(0.1)
+	if bytes.Equal(TableFixedDefinitionsDigest(fine), TableFixedDefinitionsDigest(coarse)) {
+		t.Fatal("two resolutions over the same bounds must not share a digest")
+	}
+	if TableFixedLayoutHash(layout, fine) == TableFixedLayoutHash(layout, coarse) {
+		t.Fatal("a moved resolution must move the wire hash; otherwise a coarsened peer cannot be refused")
+	}
+	d := TableFixedDefinitionsDigest(fine)
+	if n := bytes.Count(d, []byte{'Q'}); n != 1 {
+		t.Fatalf("one compressed float emits one 'Q', got %d in %x", n, d)
 	}
 }
 
