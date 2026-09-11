@@ -1204,18 +1204,6 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
 }
 
-// TableFixedAnyEmitted answers whether the unit has ANY table this form is
-// emitted for — the question [WideTableKinds] asks a backend, answered for a
-// port whose form-3 coverage is the reference's.
-func TableFixedAnyEmitted(u *Unit) bool {
-	for _, st := range TableFixedRoots(u) {
-		if TableFixedEmitted(u, st) {
-			return true
-		}
-	}
-	return false
-}
-
 // TableFixedHasWriteBound answers whether any fixed table of the unit has a
 // number the WRITE side bounds: a text field's used length, or a counted
 // array's live count. Those are the only two write-side checks this form has,
