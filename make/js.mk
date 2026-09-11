@@ -471,6 +471,33 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
+# nobody has seen fail may be comparing a file with itself"). Swap the ONE NAME a
+# file OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes — the two
+# answers §5.2 keeps distinct, "ship the reader" and "upgrade the client" — and
+# §5.7's OLD-REFUSES-NEW column must go red for every row.
+# The sabotage rides through `go test -overlay`, the same instrument the byte
+# gate's controls use on the emitter.
+.PHONY: tables-js-versioning-negative-control
+tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
+	@rm -rf build/js-versioning-sabotage && mkdir -p build/js-versioning-sabotage
+	@sed 's|TableFixedRefusal.LayoutNewer, hashLo|TableFixedRefusal.LayoutUnsupported, hashLo|' \
+		internal/codegen/jstable/fixedmodule.go > build/js-versioning-sabotage/fixedmodule.go.txt
+	@grep -q 'TableFixedRefusal.LayoutNewer' build/js-versioning-sabotage/fixedmodule.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
+			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
+			> build/js-versioning-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
+		cat build/js-versioning-sabotage/log; exit 1; \
+	fi
+	@grep -q "owes layout_newer" build/js-versioning-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/js-versioning-sabotage/log; exit 1; }
+	@echo 'tables JS versioning negative control: the wrong name on a file outside the lineage reds every OLD-REFUSES-NEW row'
+
 # ITS NEGATIVE CONTROL: move one byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.
@@ -632,6 +659,8 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fixed-optional-negative-control
 	$(MAKE) tables-js-union-arm-text-negative-control
 	$(MAKE) tables-js-fixed-slack-negative-control
+	$(MAKE) tables-js-versioning
+	$(MAKE) tables-js-versioning-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
