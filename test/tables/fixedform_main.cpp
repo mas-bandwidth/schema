@@ -1730,7 +1730,10 @@ static void manifest_case( const char * corpus_dir )
 
             // a value under an ABSENT optional is not a value: the wire carries
             // the template's zeros there, not the store the dump made
-            if ( path.size() > 8 && path.compare( path.size() - 8, 8, "_present" ) == 0 && text == "0" )
+            // `false` as well as `0`: the check has to bite on a line written
+            // before the 1/0 rule too, or the two classes hide each other
+            if ( path.size() > 8 && path.compare( path.size() - 8, 8, "_present" ) == 0 &&
+                 ( text == "0" || text == "false" ) )
             {
                 const std::string head = path.substr( 0, path.size() - 8 );
                 for ( size_t j = 0; j < vals.size(); ++j )
