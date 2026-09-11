@@ -197,6 +197,27 @@ namespace Tabledemo
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1248), (int)value.Count);
         }
 
+        // ArchiveConfig's read-side bounds (§4.6).
+        public static void ArchiveConfigFixedClampBody(ArchiveConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            RootConfigFixedClampBody(value.Root, ref clamped);
+            if (value.Count < 0) { value.Count = 0; clamped++; }
+            else if (value.Count > 100) { value.Count = 100; clamped++; }
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void ArchiveConfigFixedClamp(ArchiveConfig value, TableReport report)
+        {
+            int clamped = 0;
+            ArchiveConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- ArchiveConfig, the fixed form ----
 
         public const long ArchiveConfigFixedBodyBytes = 1252;
@@ -1241,6 +1262,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new ArchiveConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ArchiveConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, ArchiveConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                ArchiveConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

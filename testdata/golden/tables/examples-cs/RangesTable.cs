@@ -914,6 +914,88 @@ namespace Tabledemo
             BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(24), (ulong)value.B48);
         }
 
+        // RangedSigned's read-side bounds (§4.6).
+        public static void RangedSignedFixedClampBody(RangedSigned value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.I8Low > 126) { value.I8Low = 126; clamped++; }
+            if (value.I8High < -127) { value.I8High = -127; clamped++; }
+            if (value.I8Inside < -127) { value.I8Inside = -127; clamped++; }
+            else if (value.I8Inside > 126) { value.I8Inside = 126; clamped++; }
+            if (value.I16Low > 32766) { value.I16Low = 32766; clamped++; }
+            if (value.I16High < -32767) { value.I16High = -32767; clamped++; }
+            if (value.I16Inside < -32767) { value.I16Inside = -32767; clamped++; }
+            else if (value.I16Inside > 32766) { value.I16Inside = 32766; clamped++; }
+            if (value.I32Low > 2147483646) { value.I32Low = 2147483646; clamped++; }
+            if (value.I32High < -2147483647) { value.I32High = -2147483647; clamped++; }
+            if (value.I32Inside < -2147483647) { value.I32Inside = -2147483647; clamped++; }
+            else if (value.I32Inside > 2147483646) { value.I32Inside = 2147483646; clamped++; }
+            if (value.I64Low > 9223372036854775806L) { value.I64Low = 9223372036854775806L; clamped++; }
+            if (value.I64High < -9223372036854775807L) { value.I64High = -9223372036854775807L; clamped++; }
+            if (value.I64Inside < -9223372036854775807L) { value.I64Inside = -9223372036854775807L; clamped++; }
+            else if (value.I64Inside > 9223372036854775806L) { value.I64Inside = 9223372036854775806L; clamped++; }
+            if (value.Edges != null)
+            {
+                for (int i = 0; i < value.EdgesCount && i < value.Edges.Length; ++i)
+                {
+                }
+            }
+        }
+
+        // RangedUnsigned's read-side bounds (§4.6).
+        public static void RangedUnsignedFixedClampBody(RangedUnsigned value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.U8Low > 254) { value.U8Low = 254; clamped++; }
+            if (value.U8High < 1) { value.U8High = 1; clamped++; }
+            if (value.U8Inside < 1) { value.U8Inside = 1; clamped++; }
+            else if (value.U8Inside > 254) { value.U8Inside = 254; clamped++; }
+            if (value.U16Low > 65534) { value.U16Low = 65534; clamped++; }
+            if (value.U16High < 1) { value.U16High = 1; clamped++; }
+            if (value.U16Inside < 1) { value.U16Inside = 1; clamped++; }
+            else if (value.U16Inside > 65534) { value.U16Inside = 65534; clamped++; }
+            if (value.U32Low > 4294967294) { value.U32Low = 4294967294; clamped++; }
+            if (value.U32High < 1) { value.U32High = 1; clamped++; }
+            if (value.U32Inside < 1) { value.U32Inside = 1; clamped++; }
+            else if (value.U32Inside > 4294967294) { value.U32Inside = 4294967294; clamped++; }
+            if (value.U64Low > 18446744073709551614ul) { value.U64Low = 18446744073709551614ul; clamped++; }
+            if (value.U64High < 1ul) { value.U64High = 1ul; clamped++; }
+            if (value.U64Inside < 1ul) { value.U64Inside = 1ul; clamped++; }
+            else if (value.U64Inside > 18446744073709551614ul) { value.U64Inside = 18446744073709551614ul; clamped++; }
+            if (value.Counts != null)
+            {
+                for (int i = 0; i < value.CountsCount && i < value.Counts.Length; ++i)
+                {
+                }
+            }
+        }
+
+        // RangedWidths's read-side bounds (§4.6).
+        public static void RangedWidthsFixedClampBody(RangedWidths value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.B8 > 255) { value.B8 = 255; clamped++; }
+            // bits(16) width clamp
+            if (value.B16 > 65535) { value.B16 = 65535; clamped++; }
+            // bits(12) width clamp
+            if (value.B12 > 4095) { value.B12 = 4095; clamped++; }
+            // bits(48) width clamp
+            if (value.B48 > 281474976710655ul) { value.B48 = 281474976710655ul; clamped++; }
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void RangedSignedFixedClamp(RangedSigned value, TableReport report)
+        {
+            int clamped = 0;
+            RangedSignedFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- RangedSigned, the fixed form ----
 
         public const long RangedSignedFixedBodyBytes = 72;
@@ -1211,6 +1293,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedSigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                RangedSignedFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1242,6 +1325,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, RangedSignedFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void RangedUnsignedFixedClamp(RangedUnsigned value, TableReport report)
+        {
+            int clamped = 0;
+            RangedUnsignedFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- RangedUnsigned, the fixed form ----
@@ -1541,6 +1636,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                RangedUnsignedFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1572,6 +1668,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, RangedUnsignedFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void RangedWidthsFixedClamp(RangedWidths value, TableReport report)
+        {
+            int clamped = 0;
+            RangedWidthsFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- RangedWidths, the fixed form ----
@@ -1809,6 +1917,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedWidths(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                RangedWidthsFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

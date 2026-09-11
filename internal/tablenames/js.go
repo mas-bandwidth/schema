@@ -117,6 +117,7 @@ func init() {
 		// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3).
 		Name{Name: "TableFixedKeeping", What: "which half of §5.2's two-pass split the compile is keeping — the pool is tested BEFORE it spends"},
 		Name{Name: "TableFixedRemapRoom", What: "the remap scratch grown to the WRITER'S variant count: the table is never capped at 255 (§5.2, not §5.8 row 14)"},
+		Name{Name: "TableFixedQuietCensus", What: "THE ONE DEAD REPORT: the census is once per field per peer, so the repeats of an array element or a keyed slot walk their pairs into a report nobody reads (§5.4, §5.8 row 11, §5.9 #43)"},
 		Name{Name: "TableFixedKnownLayout", What: "one known layout of a lineage entry: its hash in two lanes, its bytes, their length and its record size (§5.2, §5.9 #19)"},
 		Name{Name: "TableFixedDecodeLayout", What: "a known layout's base64 constant decoded once at module load — the bill §11 bundle cost of a lineage that grows forever"},
 		Name{Name: "TableFixedSelect", What: "§5.3 step 5: the FIRST lineage index whose wire hash is the file's, or -1 — the only thing a file is matched on"},
