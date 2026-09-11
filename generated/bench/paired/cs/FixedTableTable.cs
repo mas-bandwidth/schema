@@ -186,6 +186,25 @@ namespace Bench
             BenchMixedFixedWriteBody(b, value.Value);
         }
 
+        // FixedTable's read-side bounds (§4.6).
+        public static void FixedTableFixedClampBody(FixedTable value, ref int clamped)
+        {
+            if (value == null) return;
+            BenchMixedFixedClampBody(value.Value, ref clamped);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void FixedTableFixedClamp(FixedTable value, TableReport report)
+        {
+            int clamped = 0;
+            FixedTableFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- FixedTable, the fixed form ----
 
         public const long FixedTableFixedBodyBytes = 1236;
@@ -1237,6 +1256,11 @@ namespace Bench
                 if (values[k] == null) { values[k] = new FixedTable(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
                 TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != FixedTableFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
+                FixedTableFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
