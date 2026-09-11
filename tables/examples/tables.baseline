@@ -118,12 +118,12 @@ table RangedUnsigned
     field counts id=0xc341febe5aae51e5 kind=14 elem=9 array=bounded bound=4 min=0 max=18446744073709551615
 
 table RangedWidths
-    field b8 id=0x08a60c07b54d8dc7 kind=6
-    field b16 id=0xff95701912ad97be kind=7
-    field b32 id=0xff9c5c1912b39470 kind=8
-    field b64 id=0xff92701912ab61e7 kind=9
-    field b12 id=0xff95741912ad9e8a kind=7
-    field b48 id=0xff8b681912a535a1 kind=9
+    field b8 id=0x08a60c07b54d8dc7 kind=6 bits=8
+    field b16 id=0xff95701912ad97be kind=7 bits=16
+    field b32 id=0xff9c5c1912b39470 kind=8 bits=32
+    field b64 id=0xff92701912ab61e7 kind=9 bits=64
+    field b12 id=0xff95741912ad9e8a kind=7 bits=12
+    field b48 id=0xff8b681912a535a1 kind=9 bits=48
 
 table RootConfig
     field version_note id=0x8a67c9728746d394 kind=12 size=16
@@ -153,7 +153,7 @@ table WeaponConfig
     field damage id=0x7f6308be8ab37fc0 kind=10 default=21.0
     field speed id=0x1733055702acb1d2 kind=10 default=500.0 was=velocity
     field penetration id=0x4f31c5309e13e932 kind=4 min=0 max=10 default=1
-    field channel id=0xa5013e9ad5caeda4 kind=6
+    field channel id=0xa5013e9ad5caeda4 kind=6 bits=6
     field homing id=0xad6587bc602e3f59 kind=1
     field effect id=0x36c1c83b51f24394 kind=15 union=Effect
 
@@ -228,3 +228,6 @@ union Effect
 
 ### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-11 (UTC) — the baseline records bits(N)'s N at the end of the line, the one fact the monotone law of the fixed form needs and the kind cannot carry (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6)
+- no compatibility-affecting edits; the wire absorbs the rest

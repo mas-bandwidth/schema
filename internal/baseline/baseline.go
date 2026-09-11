@@ -102,6 +102,17 @@ type Table struct {
 	// DOES NOT CARRY beyond `name=`: [Render] fills it on the live projection
 	// alone, where the chain refusal reads it (§18.2).
 	Was string
+
+	// Fixed is the DECLARED fixed class (`fixed table`, docs/SPEC-TABLES.md
+	// §2.2), and it is a fact of the LIVE projection alone: [Render] fills it,
+	// the file does not carry it, and nothing parses it. The monotone law of
+	// docs/FIXED-FORM-BILL-READS-BACKWARD.md §6 is gated on it, and the gate
+	// reads the LIVE side on purpose — a table that has just become fixed
+	// comes under the law at that commit, and one that is not fixed keeps the
+	// §18 verdicts it always had. So the committed file needs no new fact for
+	// it: asking the old file whether a table used to be fixed would only
+	// weaken the law on every baseline written before the keyword.
+	Fixed bool
 }
 
 // A Field is one field of a closure member: its declared name, its EFFECTIVE
@@ -211,7 +222,12 @@ func Render(u *ir.Unit) *Unit {
 		// spelling, and a `was` rename moves that while moving no byte — so
 		// the entry is keyed by the holder's wire id and the field's, and a
 		// rename moves nothing in this file.
-		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName}
+		// A GENERATED MAP ENTRY is never `fixed` for the law's purposes even
+		// when its own body could be: nothing declares one, the checker answers
+		// the class from the body (§2.8), and the map that reaches it makes its
+		// HOLDER variable — so an entry is not a fixed table anyone deployed,
+		// and the monotone law has no business with its key's capacity.
+		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName, Fixed: st.FixedDeclared && st.MapEntryOf == ""}
 		if st.MapEntryOf != "" {
 			t.Declared = t.Name
 		}
@@ -424,6 +440,27 @@ func renderField(f *ir.Field) Field {
 	}
 	if f.WasName != "" {
 		add("was", f.WasName)
+	}
+	// `bits(N)`'s N, AT THE END OF THE LINE, and the one fact this rendering
+	// adds (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6, docs/SPEC-TABLES.md
+	// §18.1). A `bits(N)` field rides under the KIND its storage width gives
+	// it — bits(12) and bits(10) are both kind 7 — so N was nowhere in this
+	// file, and the bill's law over it ("bits(N) shrunk refused") had no fact
+	// to stand on: narrowing one is a value the old writer could produce and
+	// the new reader cannot hold, with no token to see it by.
+	//
+	// It is written LAST so a baseline committed before it still parses
+	// byte-identically: the token set on a line is unordered to the parser,
+	// and a file that lacks this one states no N, which is no fact and judged
+	// on nothing. That is also why it moves no RENDERING VERSION: §18.1's bump
+	// rule exists because an added JUDGED token would greet an untouched
+	// schema with a diagnostic per field through the added-token branch of
+	// diffTokens, and this token has no row in [DefaultTokenPolicy] at all —
+	// it is read by the monotone law alone, which treats an absent fact as
+	// silence. A committed baseline regenerated once carries it and the law
+	// holds from there.
+	if f.Type.Kind == ir.TBits {
+		add("bits", strconv.Itoa(f.Type.Width))
 	}
 	return out
 }
