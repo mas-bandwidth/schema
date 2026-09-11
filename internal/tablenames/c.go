@@ -517,6 +517,7 @@ func init() {
 		Name{Name: "table_fixed_compile_entry", What: "the fixed form's plan compiler"},
 		Name{Name: "table_fixed_compiler_init", What: "the fixed form's plan compiler"},
 		Name{Name: "table_fixed_copy_run", What: "the fixed form's run copy"},
+		Name{Name: "table_fixed_room", What: "the fixed form's run copy: the bytes left in the reader's record at an offset, the run's bound said where gcc can see it"},
 		Name{Name: "table_fixed_entry_at", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_entry_zero", What: "the fixed form: a zeroed plan entry, since C has no member initializer"},
 		Name{Name: "table_fixed_get32", What: "the fixed form's little-endian loads"},
