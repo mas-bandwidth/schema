@@ -5884,11 +5884,16 @@ build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tab
 	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/scalars \
 	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o $@
 
+# THE ORACLE BYTES ARE A PREREQUISITE OF THE REFERENCE'S OWN TEST (schema#876,
+# card 15): the dump writes build/fixedform-corpus and this binary READS fu1.bin
+# and fu2.bin back, so the file every port diffs against is held to the same
+# values this test states. A corpus the writer produces and no reader checks is
+# a golden nobody has read.
 tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
                   build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan \
                   build/fixedform-corpus/.stamp
-	./build/schema_test_fixedform
-	./build/schema_test_fixedform_asan
+	./build/schema_test_fixedform build/fixedform-corpus
+	./build/schema_test_fixedform_asan build/fixedform-corpus
 	./build/schema_test_fixedform_runcopy
 	./build/schema_test_fixedform_runcopy_asan
 
@@ -5970,6 +5975,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-gen
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
