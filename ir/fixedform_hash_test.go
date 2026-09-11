@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -193,7 +192,7 @@ func irTypeHasLimitField(rt reflect.Type) bool {
 
 func digestSourceEmitsL(t *testing.T) bool {
 	t.Helper()
-	src, err := os.ReadFile(filepath.Join("fixedform.go"))
+	src, err := os.ReadFile("fixedform.go")
 	if err != nil {
 		t.Fatal(err)
 	}
