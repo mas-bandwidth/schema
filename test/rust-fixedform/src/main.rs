@@ -88,6 +88,15 @@ fn the_write(dir: &str) {
         fx_root_fixed_load, fx_root_fixed_save, fx_root_fixed_measure
     );
     check(n == 2, "fx1.bin: two records");
+    // A DECLARED DEFAULT IS THE VALUE, NOT JUST ITS LENGTH. The round trip
+    // above cannot see this: a value READ from the file already has the
+    // record's bytes. C++ writes `char label[8 + 1] = "fx"`; a fresh
+    // FxRootRow used to claim two used bytes of NULs from zeroed Default.
+    let fresh = tblfx1::FxRootRow::default();
+    check(
+        fresh.label_length == 2 && fresh.label[..2] == *b"fx",
+        "fx1: a fresh FxRootRow carries label \"fx\", not two NULs of length 2",
+    );
     round_trip!(
         dir, "fx2.bin", tblfx2, FxRootRow, 8,
         fx_root_fixed_load, fx_root_fixed_save, fx_root_fixed_measure

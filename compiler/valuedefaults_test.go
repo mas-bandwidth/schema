@@ -249,6 +249,14 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 					t.Errorf("dart fixed-form storage lacks %q", want)
 				}
 			}
+		case "rust":
+			// constructed Row::default(), not length-only zeroed: C++ writes
+			// `char label[8 + 1] = "fx"` and `uint8_t tag[4] = { 0x61, 0x62 }`
+			for _, want := range []string{`copy_from_slice(b"fx")`, "label_length = 2", `copy_from_slice(b"ab")`, "tag_length = 2"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("rust fixed-form storage lacks %q", want)
+				}
+			}
 		}
 	}
 }
