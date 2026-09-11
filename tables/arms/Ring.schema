@@ -5,7 +5,7 @@ package armdemo
 // element sits, so two elements naming one node number it once and a node
 // reached from no other field is still this root's to number, place and cook.
 
-table Node { v int32 }
+fixed table Node { v int32 }
 
 union Slot
 {

@@ -28,7 +28,7 @@ union Reply
     pong Pong
 }
 
-table Log
+fixed table Log
 {
     history [..4]Reply
     undo    [2]Reply

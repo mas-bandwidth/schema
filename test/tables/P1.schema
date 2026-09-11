@@ -6,13 +6,13 @@
 // reinterpretation — which is the whole reason kind 17 is spent.
 package tblp1
 
-table Link
+fixed table Link
 {
     value int32 = 0 | min = 0, max = 1000
     tag   string(8)
 }
 
-table Chain
+fixed table Chain
 {
     name string(16)
     link Link

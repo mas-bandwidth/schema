@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "BenchTable.h"
 
 #ifndef BENCHTABLE_SCHEMA_TABLE_PRIMITIVES
@@ -3697,13 +3713,7 @@ struct TableMixed {
     float ping = 0.0f;
     uint32_t crc_hint = 0;
     bool has_extra = false;
-
-    // has_extra — guarded fields stay off the wire when the guard says so;
-    // a read's prefilled defaults stand in for the untaken side
     int32_t extra = 0;
-
-    // !has_extra — guarded fields stay off the wire when the guard says so;
-    // a read's prefilled defaults stand in for the untaken side
     int32_t idle_ticks = 0;
 };
 
@@ -5869,14 +5879,8 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 62, 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
     if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
     if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref_at( 63, 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
-    if ( value.has_extra )
-    {
-        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
-    }
-    if ( !value.has_extra )
-    {
-        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
-    }
+    if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
+    if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     return bytes;
 }
 
@@ -6128,21 +6132,15 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         w.header( ids.ref_at( 63, 0xc08292176cfd8672ull ), 1 ); // has_extra
         w.put8( value.has_extra ? 1 : 0 );
     }
-    if ( value.has_extra )
+    if ( value.extra != 0 )
     {
-        if ( value.extra != 0 )
-        {
-            w.header( ids.ref_at( 76, 0xfd29ee12a979cb69ull ), 4 ); // extra
-            w.put32( uint32_t( value.extra ) );
-        }
+        w.header( ids.ref_at( 76, 0xfd29ee12a979cb69ull ), 4 ); // extra
+        w.put32( uint32_t( value.extra ) );
     }
-    if ( !value.has_extra )
+    if ( value.idle_ticks != 0 )
     {
-        if ( value.idle_ticks != 0 )
-        {
-            w.header( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
-            w.put32( uint32_t( value.idle_ticks ) );
-        }
+        w.header( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+        w.put32( uint32_t( value.idle_ticks ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -7289,21 +7287,15 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         bits += kTableMessageRefBitsHere;
         bits += 1;
     }
-    if ( value.has_extra )
+    if ( value.extra != 0 )
     {
-        if ( value.extra != 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 8;
-        }
+        bits += kTableMessageRefBitsHere;
+        bits += 8;
     }
-    if ( !value.has_extra )
+    if ( value.idle_ticks != 0 )
     {
-        if ( value.idle_ticks != 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 4;
-        }
+        bits += kTableMessageRefBitsHere;
+        bits += 4;
     }
     bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
     (void) at;
@@ -7490,21 +7482,15 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         w.put( 46, kTableMessageRefBitsHere );
         w.put( value.has_extra ? 1 : 0, 1 );
     }
-    if ( value.has_extra )
+    if ( value.extra != 0 )
     {
-        if ( value.extra != 0 )
-        {
-            w.put( 47, kTableMessageRefBitsHere );
-            w.put( (uint64_t) ( value.extra ), 8 );
-        }
+        w.put( 47, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.extra ), 8 );
     }
-    if ( !value.has_extra )
+    if ( value.idle_ticks != 0 )
     {
-        if ( value.idle_ticks != 0 )
-        {
-            w.put( 48, kTableMessageRefBitsHere );
-            w.put( (uint64_t) ( value.idle_ticks ), 4 );
-        }
+        w.put( 48, kTableMessageRefBitsHere );
+        w.put( (uint64_t) ( value.idle_ticks ), 4 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -10102,6 +10088,55 @@ static_assert( (uint32_t) __builtin_offsetof( TableEntity, firing ) == 57, "Tabl
 static_assert( sizeof( TableStat ) == 8, "TableStat: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( TableStat, stat_id ) == 0, "TableStat.stat_id: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( TableStat, delta ) == 4, "TableStat.delta: the fixed form's plan lands here" );
+static_assert( sizeof( TableHitEvent ) == 16, "TableHitEvent: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( TableHitEvent, target_id ) == 0, "TableHitEvent.target_id: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableHitEvent, damage ) == 4, "TableHitEvent.damage: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableHitEvent, hit_kind ) == 8, "TableHitEvent.hit_kind: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableHitEvent, crit ) == 12, "TableHitEvent.crit: the fixed form's plan lands here" );
+static_assert( sizeof( TableChatEvent ) == 8, "TableChatEvent: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( TableChatEvent, channel ) == 0, "TableChatEvent.channel: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableChatEvent, speaker ) == 4, "TableChatEvent.speaker: the fixed form's plan lands here" );
+static_assert( sizeof( TablePickupEvent ) == 8, "TablePickupEvent: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( TablePickupEvent, item_id ) == 0, "TablePickupEvent.item_id: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TablePickupEvent, amount ) == 4, "TablePickupEvent.amount: the fixed form's plan lands here" );
+static_assert( sizeof( TableMixed ) == 1352, "TableMixed: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, protocol_magic ) == 0, "TableMixed.protocol_magic: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, sequence ) == 4, "TableMixed.sequence: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, ack_sequence ) == 8, "TableMixed.ack_sequence: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, ack_bits ) == 12, "TableMixed.ack_bits: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, session_id ) == 16, "TableMixed.session_id: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, client_id ) == 24, "TableMixed.client_id: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, nonce ) == 32, "TableMixed.nonce: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, world_time ) == 40, "TableMixed.world_time: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, frame_tick ) == 48, "TableMixed.frame_tick: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, server_time ) == 56, "TableMixed.server_time: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, entities ) == 64, "TableMixed.entities: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, entities_count ) == 576, "TableMixed.entities_count: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, stats ) == 580, "TableMixed.stats: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, stats_count ) == 1220, "TableMixed.stats_count: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, game_event ) == 1224, "TableMixed.game_event: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, loadout ) == 1244, "TableMixed.loadout: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, player_name ) == 1248, "TableMixed.player_name: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, player_name_length ) == 1264, "TableMixed.player_name_length: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, payload ) == 1268, "TableMixed.payload: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, payload_length ) == 1284, "TableMixed.payload_length: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, aim_x ) == 1288, "TableMixed.aim_x: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, aim_y ) == 1292, "TableMixed.aim_y: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, aim_z ) == 1296, "TableMixed.aim_z: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, recoil ) == 1300, "TableMixed.recoil: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, drift ) == 1304, "TableMixed.drift: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, wide_key ) == 1312, "TableMixed.wide_key: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, flux ) == 1320, "TableMixed.flux: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, ping ) == 1328, "TableMixed.ping: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, crc_hint ) == 1332, "TableMixed.crc_hint: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, has_extra ) == 1336, "TableMixed.has_extra: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, extra ) == 1340, "TableMixed.extra: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( TableMixed, idle_ticks ) == 1344, "TableMixed.idle_ticks: the fixed form's plan lands here" );
+static_assert( sizeof( TableEvent ) == 20, "TableEvent: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( TableEvent, type ) == 0, "TableEvent: the tag leads the union storage" );
+static_assert( (uint32_t) __builtin_offsetof( TableEvent, hit ) == 4, "TableEvent.hit: every arm is overlaid here" );
+static_assert( (uint32_t) __builtin_offsetof( TableEvent, chat ) == 4, "TableEvent.chat: every arm is overlaid here" );
+static_assert( (uint32_t) __builtin_offsetof( TableEvent, pickup ) == 4, "TableEvent.pickup: every arm is overlaid here" );
 
 // TableEntity's stores. The prefill — the hash, then zeros — is memcpy'd first,
 // which is also what zero-fills every byte of declared slack.
@@ -10131,6 +10166,106 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.stat_id );
     TableFixedPut32( b + 4, (uint32_t) value.delta );
+}
+
+// TableHitEvent's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void TableHitEventFixedWriteBody( uint8_t * b, const TableHitEvent & value )
+{
+    (void) b; (void) value;
+    TableFixedPut32( b + 0, (uint32_t) value.target_id );
+    TableFixedPut32( b + 4, (uint32_t) value.damage );
+    TableFixedPut32( b + 8, (uint32_t) value.hit_kind );
+    TableFixedPut8( b + 12, value.crit ? 1 : 0 );
+}
+
+// TableChatEvent's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void TableChatEventFixedWriteBody( uint8_t * b, const TableChatEvent & value )
+{
+    (void) b; (void) value;
+    TableFixedPut32( b + 0, (uint32_t) value.channel );
+    TableFixedPut32( b + 4, (uint32_t) value.speaker );
+}
+
+// TablePickupEvent's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void TablePickupEventFixedWriteBody( uint8_t * b, const TablePickupEvent & value )
+{
+    (void) b; (void) value;
+    TableFixedPut32( b + 0, (uint32_t) value.item_id );
+    TableFixedPut32( b + 4, (uint32_t) value.amount );
+}
+
+// TableMixed's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
+{
+    (void) b; (void) value;
+    TableFixedPut16( b + 0, (uint16_t) value.protocol_magic );
+    TableFixedPut32( b + 2, (uint32_t) value.sequence );
+    TableFixedPut32( b + 6, (uint32_t) value.ack_sequence );
+    TableFixedPut32( b + 10, (uint32_t) value.ack_bits );
+    TableFixedPut64( b + 14, (uint64_t) value.session_id );
+    TableFixedPut32( b + 22, (uint32_t) value.client_id );
+    TableFixedPut64( b + 26, (uint64_t) value.nonce );
+    TableFixedPut64( b + 34, (uint64_t) value.world_time );
+    TableFixedPut64( b + 42, (uint64_t) value.frame_tick );
+    TableFixedPutF32( b + 50, value.server_time );
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    TableFixedPut32( b + 54, (uint32_t) value.entities_count );
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        TableEntityFixedWriteBody( b + 58 + i * 51 + 0, value.entities[i] );
+    }
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // the declared count is the bound (§3.4)
+    TableFixedPut32( b + 466, (uint32_t) value.stats_count );
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        TableStatFixedWriteBody( b + 470 + i * 8 + 0, value.stats[i] );
+    }
+    TableFixedPut8( b + 1110, (uint8_t) value.game_event.type );
+    switch ( value.game_event.type )
+    {
+        case TableEventType::Hit:
+        {
+            TableHitEventFixedWriteBody( b + 1111, value.game_event.hit );
+            break;
+        }
+        case TableEventType::Chat:
+        {
+            TableChatEventFixedWriteBody( b + 1111, value.game_event.chat );
+            break;
+        }
+        case TableEventType::Pickup:
+        {
+            TablePickupEventFixedWriteBody( b + 1111, value.game_event.pickup );
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
+    {
+        TableFixedPut8( b + 1124 + i * 1 + 0, (uint8_t) value.loadout[i] );
+    }
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
+    TableFixedPut32( b + 1128, (uint32_t) value.player_name_length );
+    memcpy( b + 1132, value.player_name, (size_t) ( value.player_name_length ) );
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
+    TableFixedPut32( b + 1147, (uint32_t) value.payload_length );
+    memcpy( b + 1151, value.payload, (size_t) ( value.payload_length ) );
+    TableFixedPutF32( b + 1167, value.aim_x );
+    TableFixedPutF32( b + 1171, value.aim_y );
+    TableFixedPutF32( b + 1175, value.aim_z );
+    TableFixedPutF32( b + 1179, value.recoil );
+    TableFixedPutF64( b + 1183, value.drift );
+    TableFixedPut64( b + 1191, (uint64_t) value.wide_key );
+    TableFixedPut64( b + 1199, (uint64_t) value.flux );
+    TableFixedPutF32( b + 1207, value.ping );
+    TableFixedPut32( b + 1211, (uint32_t) value.crc_hint );
+    TableFixedPut8( b + 1215, value.has_extra ? 1 : 0 );
+    TableFixedPut32( b + 1216, (uint32_t) value.extra );
+    TableFixedPut32( b + 1220, (uint32_t) value.idle_ticks );
 }
 
 // TableEntity's read-side bounds.
@@ -10172,6 +10307,112 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32
     value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
     clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
     value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
+}
+
+// TableHitEvent's read-side bounds.
+inline void TableHitEventFixedClampBody( TableHitEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.target_id > 4095ull );
+    value.target_id = ( value.target_id > 4095ull ) ? 4095ull : value.target_id;
+    clamped += (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    value.damage = ( value.damage < 0 ) ? 0 : ( ( value.damage > 4095 ) ? 4095 : value.damage );
+    clamped += (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    value.hit_kind = ( value.hit_kind < 0 ) ? 0 : ( ( value.hit_kind > 7 ) ? 7 : value.hit_kind );
+}
+
+// TableChatEvent's read-side bounds.
+inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    value.channel = ( value.channel < 0 ) ? 0 : ( ( value.channel > 3 ) ? 3 : value.channel );
+    // bits(12) width clamp
+    clamped += ( value.speaker > 4095ull );
+    value.speaker = ( value.speaker > 4095ull ) ? 4095ull : value.speaker;
+}
+
+// TablePickupEvent's read-side bounds.
+inline void TablePickupEventFixedClampBody( TablePickupEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(10) width clamp
+    clamped += ( value.item_id > 1023ull );
+    value.item_id = ( value.item_id > 1023ull ) ? 1023ull : value.item_id;
+    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 255 ) ? 255 : value.amount );
+}
+
+// TableMixed's read-side bounds.
+inline void TableMixedFixedClampBody( TableMixed & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(16) width clamp
+    clamped += ( value.sequence > 65535ull );
+    value.sequence = ( value.sequence > 65535ull ) ? 65535ull : value.sequence;
+    clamped += (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    value.ack_sequence = ( value.ack_sequence < 0 ) ? 0 : ( ( value.ack_sequence > 65535 ) ? 65535 : value.ack_sequence );
+    clamped += (int) ( value.nonce < 1ull ) | (int) ( value.nonce > 9223372036854775807ull );
+    value.nonce = ( value.nonce < 1ull ) ? 1ull : ( ( value.nonce > 9223372036854775807ull ) ? 9223372036854775807ull : value.nonce );
+    clamped += (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    value.world_time = ( value.world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value.world_time > 1000000000000ll ) ? 1000000000000ll : value.world_time );
+    // bits(48) width clamp
+    clamped += ( value.frame_tick > 281474976710655ull );
+    value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
+    clamped += (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
+    value.server_time = ( value.server_time < 0.0f ) ? 0.0f : ( ( value.server_time > 65535.0f ) ? 65535.0f : value.server_time );
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        TableEntityFixedClampBody( value.entities[i], clamped, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        TableStatFixedClampBody( value.stats[i], clamped, damaged );
+    }
+    if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = TableEventType::None; clamped++; }
+    switch ( value.game_event.type )
+    {
+        case TableEventType::Hit:
+        {
+            TableHitEventFixedClampBody( value.game_event.hit, clamped, damaged );
+            break;
+        }
+        case TableEventType::Chat:
+        {
+            TableChatEventFixedClampBody( value.game_event.chat, clamped, damaged );
+            break;
+        }
+        case TableEventType::Pickup:
+        {
+            TablePickupEventFixedClampBody( value.game_event.pickup, clamped, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) )
+    {
+        memset( value.player_name, 0, sizeof( value.player_name ) );
+        value.player_name_length = 0;
+        damaged++;
+    }
+    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    clamped += (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
+    value.flux = ( value.flux < -1000000000000000000ll ) ? -1000000000000000000ll : ( ( value.flux > 1000000000000000000ll ) ? 1000000000000000000ll : value.flux );
+    clamped += (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
+    value.ping = ( value.ping < 0.0f ) ? 0.0f : ( ( value.ping > 250.0f ) ? 250.0f : value.ping );
+    // bits(24) width clamp
+    clamped += ( value.crc_hint > 16777215ull );
+    value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;
+    clamped += (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    value.extra = ( value.extra < 0 ) ? 0 : ( ( value.extra > 255 ) ? 255 : value.extra );
+    clamped += (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    value.idle_ticks = ( value.idle_ticks < 0 ) ? 0 : ( ( value.idle_ticks > 15 ) ? 15 : value.idle_ticks );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -10689,6 +10930,437 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
         // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
         // storage it just wrote: the same pass for either plan (§3.4).
         TableStatFixedClamp( values[k], report );
+        at += record_bytes;
+    }
+    return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TableMixedFixedClamp( TableMixed & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    TableMixedFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
+}
+
+// ---- TableMixed, the fixed form ----
+
+// MeasureBody IS A CONSTEXPR on this form: the body is the same size for
+// every value the type can hold (docs/SPEC-TABLES.md §3.4).
+constexpr int64_t TableMixedFixedBodyBytes = 1224;
+constexpr int64_t TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes; // the hash and the body
+constexpr uint64_t TableMixedFixedHash = 0x9d8e221733c1f4edull; // fnv1a64 over the layout's bytes
+
+// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t TableMixedFixedLayout[] = {
+    0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
+    0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+    0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7,
+    0xb7, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98,
+    0x7b, 0x6d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71,
+    0x4c, 0xa9, 0x73, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfc, 0x54, 0xbe,
+    0x51, 0x6b, 0xee, 0x3e, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x01, 0x6d,
+    0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0x69,
+    0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+    0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x9c, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00,
+    0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c,
+    0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed,
+    0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+    0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20,
+    0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0c, 0xcf, 0x66, 0x27,
+    0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x84, 0xda,
+    0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x8a,
+    0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf1,
+    0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8,
+    0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
+    0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe,
+    0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa7, 0x3d, 0x24, 0xd1,
+    0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x31, 0x90,
+    0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x99,
+    0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x84, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0x0e, 0x00, 0x00, 0x00, 0x03,
+    0x00, 0x00, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x0d, 0x00, 0x00, 0x00,
+    0x04, 0x00, 0x00, 0x00, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+    0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+    0xa5, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
+    0xf1, 0xfb, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0xb7, 0xec, 0x86, 0x1c,
+    0xa4, 0xa3, 0x9f, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x56, 0xbd, 0x4f, 0x86,
+    0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+    0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0xb5,
+    0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+    0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b,
+    0xd6, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0,
+    0x30, 0xbf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27,
+    0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
+    0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
+    0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
+    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr int64_t TableMixedFixedLayoutBytes = (int64_t) sizeof( TableMixedFixedLayout );
+
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
+constexpr TableFixedDst TableMixedFixedDst[] = {
+    { 0, 0, 0, 0, 0 }, // TableMixed
+    { (uint32_t) __builtin_offsetof( TableMixed, protocol_magic ), 0, 0, 0, 0 }, // protocol_magic
+    { (uint32_t) __builtin_offsetof( TableMixed, sequence ), 0, 0, 0, 0 }, // sequence
+    { (uint32_t) __builtin_offsetof( TableMixed, ack_sequence ), 0, 0, 0, 0 }, // ack_sequence
+    { (uint32_t) __builtin_offsetof( TableMixed, ack_bits ), 0, 0, 0, 0 }, // ack_bits
+    { (uint32_t) __builtin_offsetof( TableMixed, session_id ), 0, 0, 0, 0 }, // session_id
+    { (uint32_t) __builtin_offsetof( TableMixed, client_id ), 0, 0, 0, 0 }, // client_id
+    { (uint32_t) __builtin_offsetof( TableMixed, nonce ), 0, 0, 0, 0 }, // nonce
+    { (uint32_t) __builtin_offsetof( TableMixed, world_time ), 0, 0, 0, 0 }, // world_time
+    { (uint32_t) __builtin_offsetof( TableMixed, frame_tick ), 0, 0, 0, 0 }, // frame_tick
+    { (uint32_t) __builtin_offsetof( TableMixed, server_time ), 0, 0, 0, 0 }, // server_time
+    { (uint32_t) __builtin_offsetof( TableMixed, entities ), (uint32_t) sizeof( TableEntity ), (uint32_t) __builtin_offsetof( TableMixed, entities_count ), 1, 0 }, // entities
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TableEntity, entity_id ), 0, 0, 0, 0 }, // entity_id
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_x ), 0, 0, 0, 0 }, // pos_x
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_y ), 0, 0, 0, 0 }, // pos_y
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_z ), 0, 0, 0, 0 }, // pos_z
+    { (uint32_t) __builtin_offsetof( TableEntity, yaw ), 0, 0, 0, 0 }, // yaw
+    { (uint32_t) __builtin_offsetof( TableEntity, pitch ), 0, 0, 0, 0 }, // pitch
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_x ), 0, 0, 0, 0 }, // vel_x
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_y ), 0, 0, 0, 0 }, // vel_y
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_z ), 0, 0, 0, 0 }, // vel_z
+    { (uint32_t) __builtin_offsetof( TableEntity, health ), 0, 0, 0, 0 }, // health
+    { (uint32_t) __builtin_offsetof( TableEntity, weapon ), 0, 0, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0 }, // Fists
+    { 0, 0, 0, 0, 0 }, // Pistol
+    { 0, 0, 0, 0, 0 }, // Shotgun
+    { 0, 0, 0, 0, 0 }, // Rifle
+    { 0, 0, 0, 0, 0 }, // Sniper
+    { 0, 0, 0, 0, 0 }, // Smg
+    { 0, 0, 0, 0, 0 }, // Rocket
+    { 0, 0, 0, 0, 0 }, // Grenade
+    { 0, 0, 0, 0, 0 }, // Plasma
+    { 0, 0, 0, 0, 0 }, // Railgun
+    { 0, 0, 0, 0, 0 }, // Flamer
+    { 0, 0, 0, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0 }, // Turret
+    { 0, 0, 0, 0, 0 }, // Drone
+    { 0, 0, 0, 0, 0 }, // Repair
+    { (uint32_t) __builtin_offsetof( TableEntity, damage ), 0, 0, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TableEntity, moving ), 0, 0, 0, 0 }, // moving
+    { (uint32_t) __builtin_offsetof( TableEntity, firing ), 0, 0, 0, 0 }, // firing
+    { (uint32_t) __builtin_offsetof( TableMixed, stats ), (uint32_t) sizeof( TableStat ), (uint32_t) __builtin_offsetof( TableMixed, stats_count ), 1, 0 }, // stats
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TableStat, stat_id ), 0, 0, 0, 0 }, // stat_id
+    { (uint32_t) __builtin_offsetof( TableStat, delta ), 0, 0, 0, 0 }, // delta
+    { (uint32_t) __builtin_offsetof( TableMixed, game_event ), 0, (uint32_t) __builtin_offsetof( TableMixed, game_event ) + (uint32_t) __builtin_offsetof( TableEvent, type ), 0, 0 }, // game_event
+    { (uint32_t) __builtin_offsetof( TableEvent, hit ), 0, 0, 0, 0 }, // hit
+    { (uint32_t) __builtin_offsetof( TableHitEvent, target_id ), 0, 0, 0, 0 }, // target_id
+    { (uint32_t) __builtin_offsetof( TableHitEvent, damage ), 0, 0, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TableHitEvent, hit_kind ), 0, 0, 0, 0 }, // hit_kind
+    { (uint32_t) __builtin_offsetof( TableHitEvent, crit ), 0, 0, 0, 0 }, // crit
+    { (uint32_t) __builtin_offsetof( TableEvent, chat ), 0, 0, 0, 0 }, // chat
+    { (uint32_t) __builtin_offsetof( TableChatEvent, channel ), 0, 0, 0, 0 }, // channel
+    { (uint32_t) __builtin_offsetof( TableChatEvent, speaker ), 0, 0, 0, 0 }, // speaker
+    { (uint32_t) __builtin_offsetof( TableEvent, pickup ), 0, 0, 0, 0 }, // pickup
+    { (uint32_t) __builtin_offsetof( TablePickupEvent, item_id ), 0, 0, 0, 0 }, // item_id
+    { (uint32_t) __builtin_offsetof( TablePickupEvent, amount ), 0, 0, 0, 0 }, // amount
+    { (uint32_t) __builtin_offsetof( TableMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0 }, // loadout
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TableMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( TableMixed, player_name ), 0, 1 }, // player_name
+    { (uint32_t) __builtin_offsetof( TableMixed, payload ), 1, (uint32_t) __builtin_offsetof( TableMixed, payload_length ), 1, 3 }, // payload
+    { 0, 0, 0, 0, 0 }, // u8
+    { (uint32_t) __builtin_offsetof( TableMixed, aim_x ), 0, 0, 0, 0 }, // aim_x
+    { (uint32_t) __builtin_offsetof( TableMixed, aim_y ), 0, 0, 0, 0 }, // aim_y
+    { (uint32_t) __builtin_offsetof( TableMixed, aim_z ), 0, 0, 0, 0 }, // aim_z
+    { (uint32_t) __builtin_offsetof( TableMixed, recoil ), 0, 0, 0, 0 }, // recoil
+    { (uint32_t) __builtin_offsetof( TableMixed, drift ), 0, 0, 0, 0 }, // drift
+    { (uint32_t) __builtin_offsetof( TableMixed, wide_key ), 0, 0, 0, 0 }, // wide_key
+    { (uint32_t) __builtin_offsetof( TableMixed, flux ), 0, 0, 0, 0 }, // flux
+    { (uint32_t) __builtin_offsetof( TableMixed, ping ), 0, 0, 0, 0 }, // ping
+    { (uint32_t) __builtin_offsetof( TableMixed, crc_hint ), 0, 0, 0, 0 }, // crc_hint
+    { (uint32_t) __builtin_offsetof( TableMixed, has_extra ), 0, 0, 0, 0 }, // has_extra
+    { (uint32_t) __builtin_offsetof( TableMixed, extra ), 0, 0, 0, 0 }, // extra
+    { (uint32_t) __builtin_offsetof( TableMixed, idle_ticks ), 0, 0, 0, 0 }, // idle_ticks
+};
+
+// THE IDENTITY PLAN, coalesced out of 149 leaves by the schema compiler —
+// the one walk every backend lays down (ir/fixedform.go), so no two ports
+// can disagree about what the coalescer did; the asserts above tie every
+// destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
+// then the arms: the entries that are nearly all of a plan never test a
+// guard at all.
+constexpr TableFixedEntry TableMixedFixedPlan[] = {
+    { 0u, 0u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // protocol_magic
+    { 2u, 4u, 24u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // sequence
+    { 26u, 32u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // nonce
+    { 54u, 576u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // entities count
+    { 58u, 64u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 99u, 112u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 109u, 128u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 150u, 176u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 160u, 192u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 201u, 240u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 211u, 256u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 252u, 304u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 262u, 320u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 303u, 368u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 313u, 384u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 354u, 432u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 364u, 448u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 405u, 496u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 415u, 512u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // entity_id
+    { 456u, 560u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
+    { 466u, 1220u, 80u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // stats count
+    { 470u, 580u, 640u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // stats, whole
+    { 1110u, 1224u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // game_event tag
+    { 1124u, 1244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // loadout, whole
+    { 1128u, 1264u, 15u, 1248u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // player_name
+    { 1147u, 1284u, 16u, 1268u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // payload
+    { 1167u, 1288u, 49u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // aim_x
+    { 1216u, 1340u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // extra
+    { 1111u, 1228u, 13u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // target_id
+    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // channel
+    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1 }, // item_id
+};
+constexpr int32_t TableMixedFixedPlanCount = 31;
+constexpr int32_t TableMixedFixedPlanGuarded = 28;
+
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill TableMixedFixedCover[] = {
+    { 0u, 2u },
+    { 4u, 24u },
+    { 32u, 28u },
+    { 64u, 41u },
+    { 112u, 10u },
+    { 128u, 41u },
+    { 176u, 10u },
+    { 192u, 41u },
+    { 240u, 10u },
+    { 256u, 41u },
+    { 304u, 10u },
+    { 320u, 41u },
+    { 368u, 10u },
+    { 384u, 41u },
+    { 432u, 10u },
+    { 448u, 41u },
+    { 496u, 10u },
+    { 512u, 41u },
+    { 560u, 10u },
+    { 576u, 649u },
+    { 1228u, 13u },
+    { 1244u, 93u },
+    { 1340u, 8u },
+};
+constexpr int32_t TableMixedFixedCoverCount = 23;
+
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
+constexpr int64_t TableMixedFixedMeasure( int64_t count )
+{
+    return kTableFixedHeaderBytes + 4 + TableMixedFixedLayoutBytes + count * TableMixedFixedRecordBytes;
+}
+
+inline int64_t TableMixedFixedSave( const TableMixed * values, int64_t count, uint8_t * buffer, int64_t capacity )
+{
+    const int64_t need = TableMixedFixedMeasure( count );
+    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
+    buffer[0] = kTableFixedForm;
+    TableFixedPut64( buffer + kTableFixedHashAt, TableMixedFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) TableMixedFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, TableMixedFixedLayout, (size_t) TableMixedFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + TableMixedFixedLayoutBytes;
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        TableFixedPut64( at, TableMixedFixedHash );
+        memset( at + 8, 0, (size_t) TableMixedFixedBodyBytes ); // the prefill's zeros
+        TableMixedFixedWriteBody( at + 8, values[k] );
+        at += TableMixedFixedRecordBytes;
+    }
+    return need;
+}
+
+// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
+inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    const TableFixedEntry * entries = TableMixedFixedPlan;
+    int32_t entry_count = TableMixedFixedPlanCount;
+    int32_t entry_guarded = TableMixedFixedPlanGuarded;
+    int64_t record_bytes = TableMixedFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
+    if ( hash != TableMixedFixedHash )
+    {
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, TableMixedFixedLayout, (int32_t) TableMixedFixedLayoutBytes, TableMixedFixedDst,
+                                                   TableMixedFixedCover, TableMixedFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
+    }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    const int64_t n = rest / record_bytes;
+    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    TableMixed defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        TableMixedReset( defaults );
+    }
+    for ( int64_t k = 0; k < n; ++k )
+    {
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TableMixedFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
@@ -11449,8 +12121,8 @@ inline const TableTypeInfo * TableMixedTableType()
         { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( TableMixed::ping ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 250.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( TableMixed::crc_hint ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.6777215e+07, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, false, false, false, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( TableMixed::has_extra ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( TableMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "has_extra", TableDocNone, 0, NULL },
-        { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( TableMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!has_extra", TableDocNone, 0, NULL },
+        { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( TableMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( TableMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "TableMixed", (uint32_t) sizeof( TableMixed ), 28, fields, +[]( void * p ) { TableMixedReset( *(TableMixed *) p ); }, TableDocNone, 0, NULL };
     return &info;

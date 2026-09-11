@@ -6,7 +6,7 @@
 
 package blockhome
 
-table PartRow
+fixed table PartRow
 {
     armor ArmorConfig
     // a `type` holding two bounded arrays, nested by value in a ROW: both stay
@@ -16,7 +16,7 @@ table PartRow
     slot    uint8
 }
 
-table PartFrame
+fixed table PartFrame
 {
     version uint64
     parts   [..MaxParts]PartRow

@@ -13,7 +13,7 @@ const MaxLayers = 4
 
 // value-only: no pointer anywhere in its by-value closure, so it derives
 // FIXED-SIZE and gets a plain struct plus Measure/Save/Load — nothing else
-table Meta
+fixed table Meta
 {
     build int32 = 1 | min = 0, max = 1000
     tag   string(8)
@@ -21,7 +21,7 @@ table Meta
 
 // value-only too, but POINTED AT: it gains the allocation and resolution
 // entries a pointer target needs, and still no builder of its own
-table Settings
+fixed table Settings
 {
     quality int32 = 2  | min = 0, max = 4
     label   string(16)

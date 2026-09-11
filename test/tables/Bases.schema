@@ -10,7 +10,7 @@
 // its declared default is not written.
 package basesdemo
 
-table Bases
+fixed table Bases
 {
     high_a uint64 = 9223372036854775809 | min = 9223372036854775808, max = 9223372036854775809
     high_b uint64 = 9223372036854775808 | min = 9223372036854775808, max = 9223372036854775809

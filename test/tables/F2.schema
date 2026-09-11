@@ -6,7 +6,7 @@
 // the pin at testdata/wire/tables/floats_nan.bin is what says so.
 package tblf2
 
-table Floats
+fixed table Floats
 {
     signalling float64
     payload    float64

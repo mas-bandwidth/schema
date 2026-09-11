@@ -23,7 +23,7 @@ func TestAllocatorOwnershipAndStandaloneWriters(t *testing.T) {
 	}
 
 	runGenerated(t, `package probe
- table Child { n int32 }
+ fixed table Child { n int32 }
  table Root { head *Child
  alias *Child
  data []uint16

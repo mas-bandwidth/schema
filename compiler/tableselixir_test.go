@@ -218,7 +218,7 @@ func TestElixirRefusesFileModuleCollision(t *testing.T) {
 // The corpus is CamelCase throughout, which is exactly why nothing saw it.
 func TestElixirModuleNamesAreAliases(t *testing.T) {
 	u := unitFromNamedSource(t, "my_frame", packetSrc+`
-table Holder
+fixed table Holder
 {
     x int32
     p Point

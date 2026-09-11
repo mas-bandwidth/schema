@@ -78,7 +78,7 @@ flags TableDamage
 // The per-entity update — MixedEntity's mirror, 14 fields, same kinds and
 // same bounds. Arrayed 8 deep, it carries the bulk of the message here as
 // it does there.
-table TableEntity
+fixed table TableEntity
 {
     entity_id bits(12)
     pos_x     int32       | min = -16383, max = 16383
@@ -99,7 +99,7 @@ table TableEntity
 // The integer mass element — MixedStat's mirror. Arrayed 80 deep, it is the
 // weighting law made mechanical, and on this wire it is also the clearest
 // view of the per-field id+kind overhead: two fields, six bytes of framing.
-table TableStat
+fixed table TableStat
 {
     stat_id bits(8)
     delta   int32   | min = -512, max = 511
@@ -135,8 +135,10 @@ union TableEvent
     pickup TablePickupEvent
 }
 
-// The message. Field for field, BenchMixed with the four substitutions above.
-table TableMixed
+// The message. Field for field, BenchMixed with the four substitutions above,
+// and a FIXED TABLE for the same reason BenchMixed is a fixed table's body:
+// the lookback conditional is gone from both (see the tail of this body).
+fixed table TableMixed
 {
     // ---- header ----
     protocol_magic uint16
@@ -186,15 +188,19 @@ table TableMixed
     ping     float32  | min = 0, max = 250, resolution = 0.01
     crc_hint bits(24)
 
-    // The branch gate: STRUCTURE, pinned true, so `extra` rides and
-    // `idle_ticks` never does — the same pin the type corpus holds.
-    has_extra bool
-    if has_extra
-    {
-        extra int32 | min = 0, max = 255
-    }
-    else
-    {
-        idle_ticks int32 | min = 0, max = 15
-    }
+    // THE LOOKBACK CONDITIONAL IS GONE FROM THIS SHAPE, and its three fields
+    // stay as PLAIN FIELDS carrying the same logical data — the same edit
+    // bench/corpus/Bench.schema made to BenchMixed, for the same reason. A
+    // guarded branch is the one thing a `fixed table` cannot carry: its whole
+    // purpose is to make the body vary in size, and *"that is a disqualifying
+    // thing for a fixed table. not supported. only variable."* — the project
+    // owner. Guard coverage lives on tables/examples/Guarded.schema's
+    // `Patrol`, which is a plain `table` and read as one by its driver.
+    //
+    // has_extra stays STRUCTURE (§2.7), pinned true and off its default so
+    // §3's writer never elides it; both `extra` and `idle_ticks` ride now,
+    // where the untaken arm used to cost nothing.
+    has_extra  bool
+    extra      int32 | min = 0, max = 255
+    idle_ticks int32 | min = 0, max = 15
 }

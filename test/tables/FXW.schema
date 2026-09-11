@@ -20,12 +20,12 @@ package tblfxw
 
 // A nested type the root reaches, so the wide flavour is proved at a NESTED
 // offset too and not only at the body's head.
-table FxCaption
+fixed table FxCaption
 {
     text wstring(4)
 }
 
-table FxWide
+fixed table FxWide
 {
     caption wstring(8)
     label   string(8)

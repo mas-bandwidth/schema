@@ -92,7 +92,7 @@ union Effect
     pong | was = "ping"
 }
 
-table Cfg
+fixed table Cfg
 {
     grade  Grade
     effect Effect

@@ -9,7 +9,7 @@ const refAtSchema = `package probe
 type Child {
  x uint32 = 0
 }
-table Root {
+fixed table Root {
  n uint32
  children [..4]Child
  payload bytes(20000)
@@ -51,7 +51,7 @@ func TestRefAtShape(t *testing.T) {
 const refAtSharedIdSchema = `package probe
 enum Tag { alpha, beta }
 type Leaf { alpha int32 }
-table Root {
+fixed table Root {
  t Tag
  banks [Tag]Leaf
  n int32

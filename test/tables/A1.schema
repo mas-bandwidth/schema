@@ -21,7 +21,7 @@ union Value
     f
 }
 
-table Root
+fixed table Root
 {
     id    uint32
     value Value
