@@ -332,7 +332,7 @@ table `T` in `new` and every definition `D` in `T`'s closure (§5.4), with `D0` 
 where it existed:
 
 ```
-BASELINE(old, new):
+BASELINE(old, new):                      -- at a merge commit, run once per parent lock (bill §11.3)
   for T in new.fixed_tables:
     if T not in old:                    continue            -- a new table is a new lineage
     if old[T] is not fixed:             REFUSE "T: fixed added" -- a different form, not a version
@@ -345,7 +345,8 @@ BASELINE(old, new):
 WIDENS(a, b):                            -- b may replace a
   kind(a) == kind(b)                     or FAIL "kind changed"       -- includes string/wstring/bytes, [N]/[..N]/[Enum]
   match kind:
-    table, type:   fields(a) is a PREFIX of fields(b) by (name, position); every a-field WIDENS into its b-field;
+    table, type:   fields(a) is a SUBSET of fields(b) by NAME and a SUBSEQUENCE of it by position (append-only per
+                   branch, any interleaving after a merge; bill §11.3); every a-field WIDENS into its b-field;
                    a deprecated field keeps its place          or FAIL "field removed | inserted | reordered | modified"
     enum:          variants(a) prefix of variants(b) by name   or FAIL "variant removed | inserted | reordered | renamed"
     union:         arms(a) prefix of arms(b) by name; each payload WIDENS   or FAIL "arm ..."
@@ -396,7 +397,7 @@ in the lock, refused by name at build.
 LOAD(R, file):                                     -- R the reader's static data for T
   h := file.layout_hash
   if h not in R.known:
-    if h in lock.lineage(T) below floor:  REFUSE layout_unsupported
+    if h in R.retired:                    REFUSE layout_unsupported   -- COMPILE emits the retired hashes (bill §11.4)
     else:                                 REFUSE layout_newer      -- an older reader given a newer file
   if file.layout_bytes != R.known[h]:     REFUSE layout_malformed  -- a lie about a known version
   if file.record_bytes != size(R.known[h]) or rest % record_bytes != 0: REFUSE layout_malformed

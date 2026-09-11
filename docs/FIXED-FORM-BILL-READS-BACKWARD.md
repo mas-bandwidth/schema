@@ -257,3 +257,54 @@ refuse forward as form 3 does, form 1's header carries the writer's closure hash
 comparison at the top of the file, before any record. §4's tolerance was form 1's selling point and it is
 the same footgun under a friendlier name. This is its own bill: it changes every leg's form-1 reader, the
 wire header, and the packet form's model, and must not ride in on the fixed table's ruling.
+
+## 11. The operator's cold read, and the rulings it forced (2026-09-11 02:35Z)
+
+A cold reader on Fable read the three documents as the person who deploys this over two years. Nine
+findings changed contract sentences. Glenn was asleep; under his "run this to completion without me" each
+ruling below is a default, recorded on #898, and his to reverse.
+
+1. **A fixed table flows in one direction.** Writers ship after readers, and a reader never rolls back past
+   a writer that has shipped: a backend that must go down goes forward instead. (The reader's sentence,
+   adopted whole.) There is no migration mechanism, because writing a newer file as an older layout is the
+   forward read this bill removed. A table that flows the other way (a backend writing files clients read)
+   is its own table with the roles reversed: for it, the clients are the readers and ship first.
+2. **Readers first means readers at one hundred percent.** During a rolling reader deploy a new writer's
+   file meets old reader instances and refuses; the refusal is safe to retry against another instance and
+   carries no state, but the rule is that writers ship only after the last reader instance has.
+3. **The lineage is a set, not a line, and the merge is judged against both parents.** Two branches append
+   different fields; the merged lock's lineage is the UNION of both parents' lineages; the merged schema
+   must widen EACH parent under §2 by NAME (§8a.1), and each parent's list must be a subsequence of the
+   merged list (append-only per branch, any interleaving). §5.1's "prefix by (name, position)" is
+   corrected to that. `schema lock` at a merge commit takes both parents' locks as `old`.
+4. **The floor is the set of retired entries, not an index.** `schema lock --retire Table@<hash>` marks a
+   lineage entry retired (a permitted non-append edit, recorded with a reason); COMPILE emits the retired
+   hashes beside the supported ones (8 bytes each) so LOAD can say `layout_unsupported` rather than
+   `layout_newer`; a retired entry stays in the lineage forever. A layout that never shipped is retired the
+   same way. The two names point the operator in opposite directions (ship the reader, or upgrade the
+   client) and both stay.
+5. **A table is retired, never removed, until nothing live speaks it.** `schema lock --retire Table` marks
+   the whole table retired; its lineage stays; the schema may then drop the declaration, and §5.1's
+   "fixed removed" refusal applies only to an unretired table. "Remove it" in §8a.3 means remove the
+   declaration, keep the lineage.
+6. **What earns a lineage entry.** A change of layout hash AT COMMIT, judged by the check that runs there;
+   local iterations before a commit collapse to one entry. A warning names a lineage past thirty-two
+   entries per table; the remedies are the floor and the new table.
+7. **The lock must hold what COMPILE reads.** Today `internal/lockfile` holds one layout per table as a
+   text projection, no lineage, no floor, no layout bytes, and a hash that is `TableWireId` over its own
+   text rather than the wire's `TableFixedLayoutHash`. Step 2 of #898 gives the lock a lineage section per
+   fixed table: one entry per layout with the WIRE hash and the layout bytes, a retired mark and a reason;
+   the wire hash keys `R.known`. Defaults, deprecation marks and the closure stay where they are.
+8. **A rendering-version bump salvages, never deletes.** The lock's "delete it and write it again" remedy
+   would wipe the lineage fleet-wide. Once the lock holds history it adopts the baseline's salvage model
+   (SPEC §18.4): the new renderer reads the old lineage and rewrites it, entry for entry, bytes unchanged.
+9. **Files older than the first lock do not exist by rule.** A fixed table's layout is locked before its
+   first file ships; the first lineage entry is the first layout. A file whose hash matches nothing is
+   `layout_newer`, and the doc says why that is the right name even for a save game: the writer is one the
+   reader has never locked.
+
+The cost the reader measured: about `4 + 17E` bytes of layout plus roughly 25 bytes per plan op per
+supported version per table per leg; at five hundred entries and thirty versions, a quarter of a megabyte
+of layout bytes per table per leg in generated source. Java's 64 KB static-initializer limit and JS/Dart
+bundle size bite first; the legs carry layout bytes as a resource or a string constant where the language
+needs it. Bounded by §11.6 and the floor.
