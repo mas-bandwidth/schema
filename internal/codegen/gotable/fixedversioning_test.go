@@ -40,6 +40,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -539,6 +541,7 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 			t.Fatal(err)
 		}
 	}
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := exec.Command("go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

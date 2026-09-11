@@ -5658,6 +5658,17 @@ namespace Bench
                             uint my_tag = TagBytes(mine, mi);
                             byte saved_argw = c.ArgW;
                             c.ArgW = (their_tag >= 1u && their_tag <= 8u) ? (byte)their_tag : (byte)1;
+                            // FIRST, UNGUARDED: a const 0 of my_tag bytes into the
+                            // reader's tag (§5.2 EMIT kind 15). It is None, and it
+                            // STANDS WHEN NO ARM MATCHES: without it a tag naming no arm
+                            // this reader holds leaves the PREVIOUS record's arm in the
+                            // slot, because the arms' consts are guarded and every
+                            // guarded entry's destination counts as landed, so the
+                            // prefill does not cover the tag either. The row carries its
+                            // OWN guard and ordinal — unguarded at top level, guarded
+                            // under an outer arm — which is one rule and not two
+                            // (§5.9 #13).
+                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -6090,10 +6101,16 @@ namespace Bench
                             }
                             case Ordinal:
                             {
-                                uint raw = 0;
+                                // A 64-BIT TEMPORARY AND AN EIGHT-BYTE CASE (§5.8 row 7,
+                                // §4.5): an ordinal width of 8 is admissible, and read
+                                // through a 32-bit temporary with no case for it the raw
+                                // value stayed 0 — a silent None where the writer named a
+                                // variant.
+                                ulong raw = 0;
                                 if (p.Size == 1) raw = src[(int)p.Src];
                                 else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                                 else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                                else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
                                 uint v = 0;
                                 if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                                 {
@@ -6103,6 +6120,16 @@ namespace Bench
                                     {
                                         v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                     }
+                                    // A FORGED ORDINAL — one past the WRITER's own variant
+                                    // count — lands 0 and COUNTS HERE, which is NOT where
+                                    // §5.4 and §5.9 #27 put it. The move is OWED and it is
+                                    // not a one-line move: a bounds pass over STORAGE cannot
+                                    // tell this None from an enum or a union the writer left
+                                    // unset, so the count would simply VANISH on the compiled
+                                    // path. Either the op lands the RAW ordinal and the pass
+                                    // clamps it, or §5.4 names this one exception. Glenn's
+                                    // call; until then the number stays where this leg's own
+                                    // green fixture asserts it.
                                     if (raw > count && report != null) { report.Clamped++; }
                                 }
                                 if (slots[(int)p.Dst].SetRaw != null)
@@ -7669,6 +7696,143 @@ namespace Bench
             b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1228), (int)value.Extra);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
+        }
+
+        // MixedEntity's read-side bounds (§4.6).
+        public static void MixedEntityFixedClampBody(MixedEntity value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.EntityId > 4095) { value.EntityId = 4095; clamped++; }
+            if (value.PosX < -16383) { value.PosX = -16383; clamped++; }
+            else if (value.PosX > 16383) { value.PosX = 16383; clamped++; }
+            if (value.PosY < -16383) { value.PosY = -16383; clamped++; }
+            else if (value.PosY > 16383) { value.PosY = 16383; clamped++; }
+            if (value.PosZ < -16383) { value.PosZ = -16383; clamped++; }
+            else if (value.PosZ > 16383) { value.PosZ = 16383; clamped++; }
+            // bits(9) width clamp
+            if (value.Yaw > 511) { value.Yaw = 511; clamped++; }
+            // bits(9) width clamp
+            if (value.Pitch > 511) { value.Pitch = 511; clamped++; }
+            if (value.VelX < -2048) { value.VelX = -2048; clamped++; }
+            else if (value.VelX > 2047) { value.VelX = 2047; clamped++; }
+            if (value.VelY < -2048) { value.VelY = -2048; clamped++; }
+            else if (value.VelY > 2047) { value.VelY = 2047; clamped++; }
+            if (value.VelZ < -2048) { value.VelZ = -2048; clamped++; }
+            else if (value.VelZ > 2047) { value.VelZ = 2047; clamped++; }
+            if (value.Health < 0) { value.Health = 0; clamped++; }
+            else if (value.Health > 1000) { value.Health = 1000; clamped++; }
+            if ((ulong)value.Weapon > 15) { value.Weapon = (MixedWeapon)0; clamped++; }
+        }
+
+        // MixedStat's read-side bounds (§4.6).
+        public static void MixedStatFixedClampBody(MixedStat value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.StatId > 255) { value.StatId = 255; clamped++; }
+            if (value.Delta < -512) { value.Delta = -512; clamped++; }
+            else if (value.Delta > 511) { value.Delta = 511; clamped++; }
+        }
+
+        // MixedHitEvent's read-side bounds (§4.6).
+        public static void MixedHitEventFixedClampBody(MixedHitEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.TargetId > 4095) { value.TargetId = 4095; clamped++; }
+            if (value.Damage < 0) { value.Damage = 0; clamped++; }
+            else if (value.Damage > 4095) { value.Damage = 4095; clamped++; }
+            if (value.HitKind < 0) { value.HitKind = 0; clamped++; }
+            else if (value.HitKind > 7) { value.HitKind = 7; clamped++; }
+        }
+
+        // MixedChatEvent's read-side bounds (§4.6).
+        public static void MixedChatEventFixedClampBody(MixedChatEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Channel < 0) { value.Channel = 0; clamped++; }
+            else if (value.Channel > 3) { value.Channel = 3; clamped++; }
+            // bits(12) width clamp
+            if (value.Speaker > 4095) { value.Speaker = 4095; clamped++; }
+        }
+
+        // MixedPickupEvent's read-side bounds (§4.6).
+        public static void MixedPickupEventFixedClampBody(MixedPickupEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(10) width clamp
+            if (value.ItemId > 1023) { value.ItemId = 1023; clamped++; }
+            if (value.Amount < 0) { value.Amount = 0; clamped++; }
+            else if (value.Amount > 255) { value.Amount = 255; clamped++; }
+        }
+
+        // BenchMixed's read-side bounds (§4.6).
+        public static void BenchMixedFixedClampBody(BenchMixed value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(16) width clamp
+            if (value.Sequence > 65535) { value.Sequence = 65535; clamped++; }
+            if (value.AckSequence < 0) { value.AckSequence = 0; clamped++; }
+            else if (value.AckSequence > 65535) { value.AckSequence = 65535; clamped++; }
+            if (value.WorldTime < -1000000000000L) { value.WorldTime = -1000000000000L; clamped++; }
+            else if (value.WorldTime > 1000000000000L) { value.WorldTime = 1000000000000L; clamped++; }
+            // bits(48) width clamp
+            if (value.FrameTick > 281474976710655ul) { value.FrameTick = 281474976710655ul; clamped++; }
+            if (value.ServerTime < 0) { value.ServerTime = 0; clamped++; }
+            else if (value.ServerTime > 16776960) { value.ServerTime = 16776960; clamped++; }
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    MixedEntityFixedClampBody(value.Entities[i], ref clamped);
+                }
+            }
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    MixedStatFixedClampBody(value.Stats[i], ref clamped);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) { value.GameEvent.Type = (MixedEventType)0; clamped++; }
+                switch (value.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                    {
+                        MixedHitEventFixedClampBody(value.GameEvent.Hit, ref clamped);
+                        break;
+                    }
+                    case MixedEventType.Chat:
+                    {
+                        MixedChatEventFixedClampBody(value.GameEvent.Chat, ref clamped);
+                        break;
+                    }
+                    case MixedEventType.Pickup:
+                    {
+                        MixedPickupEventFixedClampBody(value.GameEvent.Pickup, ref clamped);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            if (value.AimX < -1.0f) { value.AimX = -1.0f; clamped++; }
+            else if (value.AimX > 1.0f) { value.AimX = 1.0f; clamped++; }
+            if (value.AimY < -1.0f) { value.AimY = -1.0f; clamped++; }
+            else if (value.AimY > 1.0f) { value.AimY = 1.0f; clamped++; }
+            if (value.AimZ < -1.0f) { value.AimZ = -1.0f; clamped++; }
+            else if (value.AimZ > 1.0f) { value.AimZ = 1.0f; clamped++; }
+            if (value.Flux < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)); clamped++; }
+            else if (value.Flux > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { value.Flux = unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul)); clamped++; }
+            if (value.Ping > 64000) { value.Ping = 64000; clamped++; }
+            // bits(24) width clamp
+            if (value.CrcHint > 16777215) { value.CrcHint = 16777215; clamped++; }
+            if (value.Extra < 0) { value.Extra = 0; clamped++; }
+            else if (value.Extra > 255) { value.Extra = 255; clamped++; }
+            if (value.IdleTicks < 0) { value.IdleTicks = 0; clamped++; }
+            else if (value.IdleTicks > 15) { value.IdleTicks = 15; clamped++; }
         }
     }
 
