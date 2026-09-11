@@ -289,6 +289,70 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
 	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/javatable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
+# PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
+# leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
+# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
+# file's hash alone (§5.3).
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
+# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
+# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
+# regression rides into a green CI, since the go-test job runs nothing but
+# `go test ./...`. So the target BUILDS THE ORACLE FIRST (the reference's own
+# dump) and then sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a
+# FAILURE: under this name a missing corpus can never pass silently. It is the
+# Java twin of `tables-go-versioning` (make/go.mk) and it is hung off the same
+# job, for the same reason.
+.PHONY: tables-java-versioning
+tables-java-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
+# `make tables-java-versioning` could have been asserting nothing and reporting
+# green, which is the failure the Go and Rust legs' own controls are for.
+#
+# WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
+# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
+# that name is the entire answer — it is what tells an operator to ship a newer
+# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
+# name for a file with no layout at all. Every counter still reads refused, so
+# only a suite that checks the NAME can see it, and this control requires the
+# suite to go red and to say which name it wanted.
+#
+# IT REPLACES THE RETIRED `plan_too_large` CONTROL. That one watched the
+# grow-and-retry cap in lineagePlans, which is gone: the plan is sized from the
+# lock's own entry counts by a stated formula (§5.9 #21), so there is no cap to
+# red any more, and the control moved here with its case.
+JAVA_VERSIONING_SABOTAGE := build/java-versioning-sabotage
+.PHONY: tables-java-versioning-negative-control
+tables-java-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf $(JAVA_VERSIONING_SABOTAGE) && mkdir -p $(JAVA_VERSIONING_SABOTAGE)
+	go run ./tools/sabotage -name fixed-form-java-refusal-name \
+		-out $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext internal/codegen/javatable/fixedform.go
+	@grep -q SABOTAGED $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
+			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
+			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
+		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
+		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
+	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
+	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one
@@ -455,6 +519,13 @@ tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) tables-java-fixedform-negative-control
 	$(MAKE) tables-java-fixedform-arm-negative-control
+	# THE VERSIONING GATE'S OWN CONTROL, beside the byte gate's. It was written
+	# and registered in make/negative-controls.json and then hung off NO recipe,
+	# so nothing but the negative-controls matrix ever ran it and `make` itself
+	# could not. It sits HERE and not in `test-java` because it rebuilds the
+	# compiler over a sabotaged emitter and runs both columns of every §5.7 row
+	# behind it — the expensive half, which is what this target is for (above).
+	$(MAKE) tables-java-versioning-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
