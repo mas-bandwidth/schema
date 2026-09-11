@@ -77,6 +77,17 @@ a bound or size that shrinks, a variant or arm removed (deprecate instead), a ra
 float that narrows, a kind that changes. A schema that breaks the law fails at commit, so no reader ever
 meets a pair that is neither older nor newer.
 
+## 6a. Versions: the hash is the version, the lock holds the law
+
+There is no version number to increment. A fixed table's layout hash is derived from its content, so any
+change to a definition that inputs into it changes the hash by itself, and "older or equal" is decided
+structurally at plan time (§2), never by comparing numbers. What `schema.lock` needs is the SHAPE: one entry
+per fixed table carrying its layout hash and the layout itself, so that `tables.baseline` can hold §6's
+monotone law against the last locked layout at commit time. The hash says which version a file is; the lock
+says the versions only ever grew. A human-readable number beside it for release notes is allowed and nothing
+on the wire reads it. (Glenn: "So you DEPLOY the backend with the new schema, and it reads old and new. But
+nobody guarantees old ever reads new.")
+
 ## 7. The deployment rule
 
 Readers first, always. A writer ships only after every reader that will meet its files has. Getting the
