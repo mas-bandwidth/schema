@@ -1029,13 +1029,14 @@ fn the_bench_corpus(dir: &str) {
         "bench_fixed: this build's LAYOUT IS the corpus's, byte for byte",
     );
     check(
-        // RE-PINNED AGAIN by #916 (the definitions digest now reaches a
-        // float field's range, so every fixed layout's hash moved). The value
-        // is not chosen here: it is the one the corpus carries at byte 8 of
-        // bench_fixed.bin, and every other leg pins the same number —
-        // generated/bench/paired/{go,c,cpp,cs},
+        // RE-PINNED AGAIN by #956 (the definitions digest now carries a
+        // compressed float's resolution as f64 bits, tag 'Q', so every fixed
+        // layout with one moved; #916 moved it for the range before that).
+        // The value is not chosen here: it is the one the corpus carries at
+        // byte 8 of bench_fixed.bin, and every other leg pins the same number
+        // — generated/bench/paired/{go,c,cpp,cs,java},
         // internal/codegen/{js,dart,elixir}table/fixedform_test.go.
-        benchfixed::FIXED_TABLE_FIXED_HASH == 0x6237_c1dc_195f_9ec9,
+        benchfixed::FIXED_TABLE_FIXED_HASH == 0x5f13_2092_7e9a_d910,
         "bench_fixed: the pinned block hash",
     );
 

@@ -394,6 +394,10 @@ WIDENS(a, b):                            -- b may replace a
     [Enum]T:       Enum WIDENS (its own rule); element WIDENS
     int, float:    width(a) <= width(b), same ladder, same signedness   or FAIL "narrowed | ladder | signedness"
     ranged:        range(b) ⊇ range(a), or b unranged               or FAIL "range narrowed | added"
+    compressed float:  it RIDES AS THE FLOAT (SPEC §3.4), so min/max/resolution are DEFINITIONS, never wire:
+                   range(b) ⊇ range(a) by the `ranged` row above, and resolution(b) <= resolution(a) — FINER
+                   or equal, because a writer quantized to ITS step and those values sit on a grid a finer
+                   reader lands exactly                            or FAIL "resolution coarsened (0.01 -> 0.1)"
     bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"
     fixed(I,F):    I(a) <= I(b) and F(a) == F(b)                     or FAIL "F changed"
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
@@ -546,6 +550,7 @@ once — and append, per field:
 | the fact | the bytes |
 |---|---|
 | an integer, float or fixed-point RANGE | `'R'`, then min and max, each as an i64 LE |
+| a COMPRESSED FLOAT's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, beside the `'R'` its min and max went into. It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -556,11 +561,12 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
-`'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point), `'Q'`
+for every compressed float's resolution, and `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
 unions share one `seen` map keyed by bare name.**
 
-**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
+that range is a compressed float's, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
@@ -1070,7 +1076,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |

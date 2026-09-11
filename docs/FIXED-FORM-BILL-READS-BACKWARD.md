@@ -42,7 +42,7 @@ The table's own law, additions and deprecation only, extends to every definition
 | an optional | `T` where the reader has `?T` (landed present) | `?T` where the reader has `T` |
 | a nested table or type by value | the table's own law, recursively: fields added at the end, deprecated in place (Glenn) | a field modified, removed, or inserted elsewhere |
 | `flags` | bits a prefix of the reader's: new flags added, old flags never removed (Glenn) | a moved or missing bit |
-| a compressed float | any quantization (it rides as the float) | never |
+| a compressed float | it rides as the float, so its min/max/resolution are DEFINITIONS: a range moved OUTWARD, and a resolution moved FINER (an old writer quantized to the coarser step, and a finer reader lands those values exactly) | a range moved inward, and a resolution COARSENED — the old file's values sit on a grid this reader cannot hold |
 | the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
 
 | a range or constraint | absent on the writer where the reader has none, or inside the reader's | ADDED where none was (old values would clamp); a constraint added to a text field |
@@ -359,7 +359,13 @@ A second Fable reader read as the implementer who is blamed for a wrong read; a 
     hostile list is corrected). `unknown` counts for a deprecated writer field that the reader lacks
     entirely: none, by ruling 3, so the counter is removed from PLAN. `bits(N)` refuses with text. The
     headroom sentence at ALG §1.1 (`>= key.children`) goes with C11. `ufixed` is in the spec's table. A
-    compressed float's quantization never refuses. §6's law is judged on evaluated uses, stated. The bill's
+    compressed float's quantization refuses IN ONE DIRECTION (2026-09-11, Glenn asked whether a compressed
+    float can be consistent in a fixed table): it rides as the float32 itself (SPEC §3.4), so its min, max
+    and resolution are DEFINITIONS in the digest and never wire — the RANGE may only WIDEN like any ranged
+    scalar's, the RESOLUTION may only get FINER, and anything else refuses. A writer quantizes to its own
+    step before storing, so an older file's values sit on a COARSER grid that a finer reader lands exactly,
+    while a coarser reader would have to requantize them; the digest carries the resolution (§13's `'Q'`)
+    so the hash moves when it does and a coarsened peer is refused by hash, not by hope. §6's law is judged on evaluated uses, stated. The bill's
     line saying the baseline "can hold" the law is deleted; the lock holds it (§6).
 
 The implementer's verdict was "not ready to build from"; with §11 and §12 applied it is the bill a stranger
@@ -374,8 +380,12 @@ clamped; the same holds for a `flags` bit count (#906), `bits(N)`, `fixed(I,F)`'
 limit. §6a's sentence "any change to a definition changes the hash by itself" was false for those rows.
 
 **Ruling (default).** The layout hash a file carries is the hash of the LAYOUT BYTES together with a
-DEFINITIONS DIGEST: every fact of §2 that is not wire shape (each range, each flags bit count, each `bits(N)`,
-each `fixed` I and F, each reader-side limit, in closure order). The digest is computed by the compiler from
+DEFINITIONS DIGEST: every fact of §2 that is not wire shape (each range, **each compressed float's
+RESOLUTION**, each flags bit count, each `bits(N)`, each `fixed` I and F, each reader-side limit, in closure
+order). The resolution is there for the same reason the bounds are: a compressed float rides as the float32
+in this form, so its step is nowhere in the layout bytes, and without it `resolution = 0.01` and `= 0.1`
+hash identically and a finer reader cannot refuse a coarsened peer. Its row is `'Q'`, beside the `'R'` its
+min and max went into (ALGORITHM §5.2's digest table). The digest is computed by the compiler from
 the schema, recorded in the lock's lineage entry beside the layout bytes, and never rides the wire: the
 hash binds it. A stranger with a known hash and different layout bytes is caught by the byte comparison; a
 stranger with a known hash and the same layout bytes reads under the plan the reader compiled for that
