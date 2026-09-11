@@ -8283,7 +8283,7 @@ static SCHEMA_UNUSED const TableFixedFill keyed_config_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_cover_count = 22;
 
-/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim — RETIRED: the 0.x client that wrote this layout is gone; proved end to end on rowan/retire-real, docs/SPEC-TABLES.md §21.7 */
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim — RETIRED: the 0.x client is gone (SPEC-TABLES 21.7) */
 static SCHEMA_UNUSED const uint8_t keyed_config_fixed_known_0[] = {
     0x24, 0x00, 0x00, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6, 0x0d, 0xea, 0x00, 0x00,
     0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x48, 0x00,
