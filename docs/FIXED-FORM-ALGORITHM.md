@@ -338,6 +338,13 @@ clamp on every clean read. A type that bounds nothing emits no pass at all.
 
 - **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
   VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
+- **A BOUNDED FLOAT'S LOW TEST IS `!(v >= min)`, NEVER `v < min`.** IEEE makes every ordered comparison against
+  a NaN false, so a NaN in a `float32 | min, max` — or in a COMPRESSED float, which rides here as the float it
+  is — fails `v < min` and `v > max` both, and the integer shape would let it land WHOLE and count NOTHING.
+  **A NaN LANDS `min` AND COUNTS ONE, exactly as `-inf` does**, quiet and signalling alike; the bits are not
+  inspected, only the comparison. And `-0.0` against a `min` of `+0.0` compares EQUAL, so it is in range and
+  lands AS WRITTEN with its sign bit, counting nothing. A leg whose `clamp`/`min`/`max` intrinsic PROPAGATES a
+  NaN (Rust's `f32::clamp`) may not use it here.
 - **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
   nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
@@ -885,7 +892,7 @@ when every value lands.
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
-| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
+| the bounds pass | `clamped` | once per field: a ranged scalar off its end, **a NaN in a bounded float, which lands `min` and counts ONE as `-inf` does (§4.6) while `-0.0` against a `min` of `+0.0` is in range and counts nothing**, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
 

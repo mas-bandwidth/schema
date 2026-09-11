@@ -924,9 +924,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+		g.fixedClampFloat(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
+		g.fixedClampFloat(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -961,6 +961,23 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
 	g.pf("%sclamped += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
 	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
+}
+
+// fixedClampFloat is the BOUNDED FLOAT's clamp, and it is not the integer one:
+// IEEE says every ordered comparison against a NaN is false, so `v < lo` and
+// `v > hi` are BOTH false for a NaN and the integer shape would let it land
+// whole, counting nothing — a value outside the declared range reaching the
+// consumer, which is the one thing this pass exists to stop (docs/SPEC-TABLES.md
+// §3.4).
+//
+// THE LOW TEST IS NEGATED INSTEAD: `!( v >= lo )` is true for a NaN and for
+// every value below the minimum, and false for everything in range, so a NaN
+// lands `min` and counts ONE, exactly as -inf does. Nothing else moves — in
+// particular -0.0 against a min of +0.0 is `-0.0 >= 0.0`, which is true, so it
+// is IN RANGE and lands as written with its sign bit and counts nothing.
+func (g *tableGen) fixedClampFloat(expr, lo, hi, ind string) {
+	g.pf("%sclamped += (int) ( !( %s >= %s ) ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+	g.pf("%s%s = ( !( %s >= %s ) ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
 }
 
 // fixedClampEnd is the one-ended twin: an end the storage's own width already

@@ -927,13 +927,21 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 	}
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
+	// A BOUNDED FLOAT'S LOW TEST IS NEGATED (docs/SPEC-TABLES.md §3.4). IEEE
+	// says every ordered comparison against a NaN is false, so `v < lo` and
+	// `v > hi` are BOTH false and the plain shape would let a NaN land whole,
+	// counting nothing — a value outside the declared range reaching the
+	// consumer. `!(v >= lo)` is true for a NaN and for every value below the
+	// minimum, so a NaN lands `min` and counts ONE, exactly as -inf does.
+	// -0.0 against a min of +0.0 compares EQUAL, so it is in range and lands
+	// as written, sign bit and all, counting nothing.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
+		g.pf("%sif !(%s >= %s) { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
 			ind, expr, lo, expr, lo, expr, hi, expr, hi)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
-		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
+		g.pf("%sif !(%s >= %s) { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
 			ind, expr, lo, expr, lo, expr, hi, expr, hi)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))

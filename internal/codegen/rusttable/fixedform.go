@@ -1515,7 +1515,7 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		if f.Type.Kind == ir.TFloat32 {
 			suffix = "_f32"
 		}
-		g.emitFixedClampSelect(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, true, true, ind, "")
+		g.emitFixedClampFloat(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, ind)
 		return
 	}
 	if low, high := fixedClampEnds(f); low || high {
@@ -1527,6 +1527,24 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		g.emitFixedClampSelect(lhs, "", fmt.Sprintf("%d", maxv), false, true, ind,
 			fmt.Sprintf(" // bits(%d)'s own width", f.Type.Width))
 	}
+}
+
+// emitFixedClampFloat is the BOUNDED FLOAT's clamp, and it is not the integer
+// one. IEEE says every ordered comparison against a NaN is false, so `v < lo`
+// and `v > hi` are BOTH false for a NaN — and `f32::clamp` PROPAGATES a NaN
+// rather than pinning it — so the integer shape would let a NaN land whole and
+// count nothing, a value outside the declared range reaching the consumer
+// (docs/SPEC-TABLES.md §3.4).
+//
+// THE LOW TEST IS NEGATED INSTEAD: `!(v >= lo)` is true for a NaN and for every
+// value below the minimum, so a NaN lands `min` and counts ONE, exactly as
+// -inf does. -0.0 against a min of +0.0 compares EQUAL, so it stays in range
+// and lands as written with its sign bit, counting nothing. The count is still
+// a non-short-circuiting `|` of the two ends, which are mutually exclusive.
+func (g *gen) emitFixedClampFloat(lhs, lo, hi, ind string) {
+	g.pf("%s*clamped += ((!(%s >= %s)) | (%s > %s)) as i32;\n", ind, lhs, lo, lhs, hi)
+	g.pf("%s%s = if !(%s >= %s) { %s } else if %s > %s { %s } else { %s };\n",
+		ind, lhs, lhs, lo, lo, lhs, hi, hi, lhs)
 }
 
 // emitFixedClampSelect is ONE bounded value, and it is a SELECT AND AN ADD
