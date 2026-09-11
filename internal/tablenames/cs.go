@@ -93,5 +93,8 @@ func init() {
 		Name{Name: "TableFixedSlot", What: "typed destination slot for fixed-table plan execution"},
 		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the slots a plan does not land"},
 		Name{Name: "TableFixedWire", What: "the fixed-table wire walk nested in Schema"},
+		// THE LINEAGE, as static data (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #19).
+		Name{Name: "TableFixedKnownLayout", What: "the fixed form: one locked layout of a lineage entry, its hash, its bytes and its record size (§5.2)"},
+		Name{Name: "TableFixedLineagePlan", What: "the fixed form: one precompiled plan per lineage entry (§5.2)"},
 	)
 }
