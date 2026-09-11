@@ -449,6 +449,28 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE JAVASCRIPT LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/jstable/fixedversioning_test.go reads the C++ reference's byte
+# oracle out of build/fixedform-corpus — old_<row>.bin, new_<row>.bin and the
+# floor, hash and lineage-merge files — generates ONE PROBE MODULE PER ROW PER
+# COLUMN (§5.9 #18) and runs each with $(NODE), this leg's own toolchain. Each row
+# owes two columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers layout_newer before any record, on the file's hash alone
+# (§5.3).
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for a
+# bare `go test ./...` on a tree that never built the oracle — and is exactly how a
+# §5 regression would ride into CI green. Under this target the corpus is built
+# first and SCHEMA_REQUIRE_CORPUS=1 makes the skip a FAILURE.
+.PHONY: tables-js-versioning
+tables-js-versioning: build/fixedform-corpus/.stamp
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning
+	@echo 'tables JS versioning: every row of §5.7 over the reference own bytes, both columns'
+
+test-js: tables-js-versioning
+
 # ITS NEGATIVE CONTROL: move one byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.

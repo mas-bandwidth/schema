@@ -230,6 +230,13 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
 
+      # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
+      # gates). The probes are generated modules run with $(NODE) — dist/ is not
+      # in this job, so NODE=node uses the runner's own — and the corpus is the
+      # one the step above already built.
+      - name: the fixed form's versioning suite on the JavaScript leg
+        run: make tables-js-versioning NODE=node
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line
