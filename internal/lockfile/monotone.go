@@ -124,6 +124,17 @@ func shapeWord(shape string) string {
 
 // kindRule classifies a kind change on the scalar ladders: widen reports true,
 // and everything else comes back as the rule phrase that names it.
+//
+// WHY `fixed`'s I NEEDS NO COMPARISON OF ITS OWN, although the lock records it
+// (`ibits=`) and docs/FIXED-FORM-ALGORITHM.md §5.1 states the law as
+// "I(a) <= I(b) and F(a) == F(b)": SPEC §4.6 makes I + F EQUAL a storage width
+// (internal/check/check.go), so the kind pins I + F, and a declaration that
+// holds F and narrows I has narrowed the KIND — which is the branch below,
+// naming I in the sentence. A declaration that narrows I inside one storage
+// width has widened F, which is a moved SCALE and takes [rangeRule]'s "F
+// changed". There is no third move, and a hand-edited `ibits=` does not reach
+// here: the layout hash the lock records covers the entry line, `ibits=` with
+// it. Checked against both docs 2026-09-11.
 func kindRule(want, got Entry) (rule string, widened bool) {
 	wf, wb := ladder(want.Kind)
 	gf, gb := ladder(got.Kind)
@@ -154,7 +165,7 @@ func elemRule(want, got Entry) (rule string, widened bool) {
 	case wf != ladderNone && wf == gf && gb > wb:
 		return "", true
 	case wf != ladderNone && wf == gf && (wf == ladderFixed || wf == ladderUFixed):
-		return fmt.Sprintf("element I narrowed (%s -> %s)", kindName(want.ElemKind), kindName(got.ElemKind)), false
+		return fmt.Sprintf("element I narrowed (%d -> %d)", want.IBits, got.IBits), false
 	case wf != ladderNone && wf == gf:
 		return fmt.Sprintf("element narrowed (%s -> %s)", kindName(want.ElemKind), kindName(got.ElemKind)), false
 	default:
