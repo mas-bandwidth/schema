@@ -47,7 +47,10 @@ type fixedGen struct {
 	unit *ir.Unit
 	ns   string
 	file *ir.File
-	body strings.Builder
+	// lineage is the lock's entries per fixed table, OLDEST FIRST, the current
+	// layout last (§5.2); nil for a unit that was never locked.
+	lineage map[string][]FixedLineageEntry
+	body    strings.Builder
 	// owner is the snake name of the declaration whose body is being emitted:
 	// what a ranged leaf's bounds attribute is named after.
 	owner string
@@ -83,7 +86,7 @@ const FixedModuleSuffix = "Fixed"
 // generateFixed emits the unit's fixed-form surface: the shared runtime, and
 // one <Base>Fixed module per file that declares a fixed root or a type one
 // reaches.
-func generateFixed(u *ir.Unit, ns string) (map[string][]byte, error) {
+func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	roots := fixedRoots(u)
 	if len(roots) == 0 {
 		return nil, nil
@@ -92,7 +95,7 @@ func generateFixed(u *ir.Unit, ns string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	out[FixedRuntimeModule+".ex"] = fixedRuntimeModule(u, ns)
 	for _, f := range u.Files {
-		g := &fixedGen{unit: u, ns: ns, file: f}
+		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
 		if body := g.module(roots, closure); body != nil {
 			out[f.Base+FixedModuleSuffix+".ex"] = body
 		}

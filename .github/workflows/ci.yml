@@ -111,7 +111,10 @@ jobs:
   # so a job without them would report green over a check that never ran.
   go-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 15 and not 10: this job now carries the Rust, Dart AND Elixir versioning
+    # suites beside the Go tests, each generating and running a probe per row
+    # per column.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -264,6 +267,22 @@ jobs:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
         run: make tables-dart-versioning DART=dart
+
+      # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
+      # Elixir, one per row per column, run with the leg's own toolchain: the
+      # runner's Elixir and OTP are handed in as PLAIN PATHS, because the
+      # harness spawns the binary itself rather than going through a shell
+      # launcher. The corpus it reads is the one the Rust step above already
+      # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
+      # Elixir a failure rather than a silent skip.
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+      - name: the Elixir leg reads backward over every versioning row
+        run: |
+          make tables-elixir-versioning \
+            ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
