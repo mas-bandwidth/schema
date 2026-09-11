@@ -44,6 +44,7 @@ func init() {
 		Name{Name: "TableFixedPlan", What: "the caller's plan storage: the entries, the canonical body image and the remap pool"},
 		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
 		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body"},
+		Name{Name: "TableFixedFillRun", What: "the fixed form: copy the prefill's ranges from the default image"},
 		Name{Name: "TableFixedCompiler", What: "the plan compiler, run once per peer and never once per record"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 	)
