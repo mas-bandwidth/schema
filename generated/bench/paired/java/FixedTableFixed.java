@@ -158,7 +158,7 @@ public final class FixedTableFixed {
      *  against these entries, and the layout it carries is COMPARED with the
      *  bytes the lock recorded, never walked. */
     public static final TableFixed.KnownLayout[] known = {
-        new TableFixed.KnownLayout(0x98d3af4e8ceacd29L, layout, layout.length, 1244),
+        new TableFixed.KnownLayout(0x6237c1dc195f9ec9L, layout, layout.length, 1244),
     };
 
     /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a

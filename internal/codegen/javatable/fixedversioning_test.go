@@ -387,10 +387,10 @@ type probeRun struct {
 func parseProbe(t *testing.T, out string) probeRun {
 	t.Helper()
 	r := probeRun{fresh: map[string]string{}, value: map[string]string{}}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		switch {
 		case strings.HasPrefix(line, "REPORT "):
-			for _, tok := range strings.Fields(strings.TrimPrefix(line, "REPORT ")) {
+			for tok := range strings.FieldsSeq(strings.TrimPrefix(line, "REPORT ")) {
 				k, v, ok := strings.Cut(tok, "=")
 				if !ok {
 					continue
@@ -550,7 +550,6 @@ func runProbe(t *testing.T, classes, class, file string) probeRun {
 func TestFixedVersioningRows(t *testing.T) {
 	corpus := corpusDir(t)
 	for _, row := range versioningRows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			oldFile := filepath.Join(corpus, "old_"+row.name+".bin")

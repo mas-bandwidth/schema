@@ -314,6 +314,45 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
+# `make tables-java-versioning` could have been asserting nothing and reporting
+# green, which is the failure the Go and Rust legs' own controls are for.
+#
+# WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
+# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
+# that name is the entire answer — it is what tells an operator to ship a newer
+# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
+# name for a file with no layout at all. Every counter still reads refused, so
+# only a suite that checks the NAME can see it, and this control requires the
+# suite to go red and to say which name it wanted.
+#
+# IT REPLACES THE RETIRED `plan_too_large` CONTROL. That one watched the
+# grow-and-retry cap in lineagePlans, which is gone: the plan is sized from the
+# lock's own entry counts by a stated formula (§5.9 #21), so there is no cap to
+# red any more, and the control moved here with its case.
+JAVA_VERSIONING_SABOTAGE := build/java-versioning-sabotage
+.PHONY: tables-java-versioning-negative-control
+tables-java-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf $(JAVA_VERSIONING_SABOTAGE) && mkdir -p $(JAVA_VERSIONING_SABOTAGE)
+	go run ./tools/sabotage -name fixed-form-java-refusal-name \
+		-out $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext internal/codegen/javatable/fixedform.go
+	@grep -q SABOTAGED $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
+			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
+			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
+		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
+		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
+	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
+	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one

@@ -1190,21 +1190,38 @@ public final class TableFixed {
                 continue;
             }
             // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
-            // #21): this leg grows and retries, and the cap it gives up at is the
-            // one a file selecting the entry is refused by, BY NAME.
-            for (int room = 256; ; room *= 4) {
-                final Entry[] p = plan(room);
-                final short[] table = new short[Math.max(1024, room * 2)];
-                final Report census = new Report();
-                final int made = compile(theirs, me, dest, p, table, census);
-                if (made >= 0) {
-                    out[i] = new Plan(p, made, table, census.unknown, census.kindMismatch, Reason.none);
-                    break;
-                }
-                if (room >= (1 << 18)) {
-                    out[i] = new Plan(null, 0, null, 0, 0, Reason.planTooLarge);
-                    break;
-                }
+            // #21), and this leg STATES THE FORMULA rather than growing into a
+            // cap. Every entry a compile writes is either one of MY entries
+            // taking a value or one of THEIRS being stepped over, and coalescing
+            // only ever shortens the run, so
+            //
+            //     room = me.count + theirs.count + 1
+            //
+            // bounds the plan for this pair, and the remap lane keeps the two
+            // shorts per entry and the floor the old loop used. BOTH COUNTS ARE
+            // THE LOCK'S OWN, read out of the layout bytes the lock recorded, so
+            // the size is a generate-time number and not a search.
+            //
+            // IT IS SIZED THIS WAY BECAUSE THIS RUNS IN A CLASS INITIALIZER. The
+            // grow-and-retry loop reached room 1<<18 before it gave up, which is
+            // an Entry[262144] plus a short[524288] allocated while <clinit> is
+            // on the stack, and an OutOfMemoryError there is not a caught error:
+            // it leaves the JVM with an ExceptionInInitializerError and POISONS
+            // the class for the life of the loader, so every later read of a
+            // perfectly good file fails too. A stated bound cannot do that.
+            //
+            // A compile that still does not fit would be THE FORMULA being
+            // wrong, not a layout being large, and it is refused BY NAME exactly
+            // as the cap was: nothing is decoded and no counter moves.
+            final int room = me.count + theirs.count + 1;
+            final Entry[] p = plan(room);
+            final short[] table = new short[Math.max(1024, room * 2)];
+            final Report census = new Report();
+            final int made = compile(theirs, me, dest, p, table, census);
+            if (made >= 0) {
+                out[i] = new Plan(p, made, table, census.unknown, census.kindMismatch, Reason.none);
+            } else {
+                out[i] = new Plan(null, 0, null, 0, 0, Reason.planTooLarge);
             }
         }
         return out;
