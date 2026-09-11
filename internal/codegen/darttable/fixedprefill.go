@@ -88,8 +88,25 @@ func fixedPrefillElement(out []byte, at int64, f *ir.Field) {
 			fixedPrefillInto(out, at, r)
 			return
 		case *ir.Union:
-			// a union with no arm taken reads as EMPTY: the tag is None, which
-			// is zero, and the arm slack behind it stays zero
+			// A UNION IS RESET ARM BY ARM, AT EACH ARM'S OWN OVERLAY STORAGE,
+			// and only then the tag to None (§5.2's prefill, §5.9 #38). An arm
+			// is not the member it looks like: a whole-value assignment over an
+			// overlay resets one arm's worth of bytes and calls the union
+			// reset, which leaves an APPENDED field inside another arm holding
+			// whatever the image held last — and the image is reused record to
+			// record. The arms run in DECLARED ORDER over the one overlay, so a
+			// later arm's defaults stand where they reach; the tag is zero,
+			// which is None.
+			tag := fixedUnionTagBytes(r)
+			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm has no bytes to reset
+				}
+				fixedPrefillElement(out, at+tag, v.F)
+			}
+			for i := int64(0); i < tag; i++ {
+				out[at+i] = 0
+			}
 			return
 		case *ir.Enum:
 			if f.HasDefault && f.DefVariant != "" {

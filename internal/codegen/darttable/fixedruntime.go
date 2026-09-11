@@ -68,11 +68,11 @@ abstract final class TableFixedOp {
   static const int textBytes = 3;
 }
 
-/// A PLAN ENTRY is eight int32 lanes of one flat Int32List. A flat list of a
+/// A PLAN ENTRY is nine int32 lanes of one flat Int32List. A flat list of a
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 8;
+  static const int lanes = 9;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -81,6 +81,10 @@ abstract final class TableFixedLane {
   static const int guard = 5;
   static const int arg = 6;
   static const int meta = 7;
+  // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8, and the guard is
+  // compared at ALL of them. It is its own lane because meta already carries a
+  // widen's width and sign and a text entry's flavour (§5.2, THE GUARD'S WIDTH).
+  static const int argW = 8;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -680,6 +684,12 @@ final class TableFixedPlan {
   final Int32List remap;
   int remapUsed = 0;
 
+  /// THE CURRENT UNION'S TAG WIDTH, stamped onto every entry the walk pushes
+  /// beneath it (§5.2, THE GUARD'S WIDTH). One outside a union, and the union
+  /// case saves it, sets its own and restores it, so a nested union's arms carry
+  /// their OWN tag's width.
+  int argw = 1;
+
   /// an enum's remap, built here and then laid down; a scratch of the plan and
   /// never of the loop
   final Int32List remapScratch = Int32List(256);
@@ -881,6 +891,27 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
   return out;
 }
 
+/// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose LOW
+/// BYTE happens to be 1 is not arm 1: it is an ordinal this build has no arm
+/// for, and reading only the first byte let a foreign tag of 0x0101 run arm 1's
+/// entries over a stranger's record (§5.2, THE GUARD'S WIDTH; §7 fix 12).
+/// ArgW is clamped to 1..8 at both ends and ZERO READS AS ONE, because one is
+/// the width a tag had when this lane did not exist, so a plan laid down before
+/// it still reads.
+int tableFixedTagAt(Uint8List source, int at, int argw) {
+  var w = argw;
+  if (w <= 0) {
+    w = 1;
+  } else if (w > 8) {
+    w = 8;
+  }
+  var v = 0;
+  for (var i = 0; i < w; i++) {
+    v |= source[at + i] << (8 * i);
+  }
+  return v;
+}
+
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
 /// Which plan it is handed is the only thing that differs between reading this
 /// build's own record and reading anybody else's — the owner's ruling, which
@@ -907,9 +938,11 @@ void tableFixedRun(
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];
-    // an entry belonging to an ARM runs only under its own tag
+    // an entry belonging to an ARM runs only under its own tag, compared at
+    // ArgW bytes and never as a prefix
     if (guard != tableFixedNoGuard &&
-        source[at + guard] != plan[b + TableFixedLane.arg]) {
+        tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argW]) !=
+            plan[b + TableFixedLane.arg]) {
       continue;
     }
     final s = at + plan[b + TableFixedLane.src];
@@ -955,13 +988,23 @@ void tableFixedRun(
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
+        // AND THE ORDINAL IS UNSIGNED. A Dart int is 64-bit SIGNED, so an
+        // eight-byte ordinal with the high bit set — 0x8000000000000000 — comes
+        // out of this loop NEGATIVE, and a signed 'raw <= table[0]' then passes
+        // it straight into the remap as a NEGATIVE INDEX: a RangeError thrown
+        // out of the read loop at hostile bytes, which is the one thing the
+        // forgery oracle refuses (§5.4, §5.9 #8). Any raw the WRITER could not
+        // have written — past its variant count, the negative case included —
+        // is None AND COUNTED, on this plan exactly as on the identity one.
         var raw = 0;
         for (var k = 0; k < size; k++) {
           raw |= source[s + k] << (8 * k);
         }
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
-        if (raw != 0 && raw <= remap[remapAt]) {
+        if (raw < 0 || raw > remap[remapAt]) {
+          report.clamped++;
+        } else if (raw != 0) {
           landed = remap[remapAt + raw];
         }
         final ordinalWidth = plan[b + TableFixedLane.meta] & 0xff;
@@ -1098,6 +1141,8 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.guard] = guard;
     e[b + TableFixedLane.arg] = arg;
     e[b + TableFixedLane.meta] = meta;
+    // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
+    e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
     plan.count++;
   }
 
@@ -1314,6 +1359,9 @@ abstract final class TableFixedCompiler {
       case 15: // a union: the tag, remapped, then each arm matched by id
         final theirTag = theirs.tagBytes(ti);
         final myTag = mine.tagBytes(mi);
+        // THE GUARD IS THE WRITER'S TAG AND IS COMPARED AT ITS WIDTH (§5.2).
+        final savedArgw = plan.argw;
+        plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
         final theirArms = theirs.children(ti);
         final myArms = mine.children(mi);
         var myArm = mi + 1;
@@ -1350,6 +1398,7 @@ abstract final class TableFixedCompiler {
           }
           myArm += mine.subtree(myArm);
         }
+        plan.argw = savedArgw;
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
         // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts 'widened'
@@ -1455,6 +1504,7 @@ abstract final class TableFixedCompiler {
             e[b + TableFixedLane.op] == TableFixedOp.copy &&
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
+            e[p + TableFixedLane.argW] == e[b + TableFixedLane.argW] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1585,6 +1635,7 @@ abstract final class TableFixedCompiler {
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.fillCount = 0;
+    plan.argw = 1;
     matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report);
     if (plan.overflow) {
       return -1;
