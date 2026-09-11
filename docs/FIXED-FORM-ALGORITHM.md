@@ -60,6 +60,29 @@ empty digest leaves the hash the layout's alone. It is a wire identity, never a 
 kind set is `1..30`, `32`, `33`, `35`** — `31` (§3's framing escape) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
 
+**THE KIND CODES, the whole closed set.** A port needs the NUMBERS and not only the set's shape, and they are
+wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/buildversion.go:56`,
+`ir/fixedform.go:40`; the ladder rungs at the reference: fixedruntime.go:84-95).
+
+| code | kind | code | kind |
+|---|---|---|---|
+| `1` | bool | `18` | i128 |
+| `2` `3` `4` `5` | i8, i16, i32, i64 | `19` | u128 |
+| `6` `7` `8` `9` | u8, u16, u32, u64 | `20`–`24` | `fixed(I,F)` SIGNED, at 8/16/32/64/128 storage bits |
+| `10` `11` | f32, f64 | `25`–`29` | `ufixed(I,F)` UNSIGNED, the same five widths |
+| `12` | string(N) | `30` | enum |
+| `13` | table | `31` | §3's framing escape — **NOT in the closed set** |
+| `14` | array — and `bytes(N)`, as an array of `6` | `32` | a variant, or a payload-free arm: size `0`, no children |
+| `15` | union | `33` | wstring(N) |
+| `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |
+| `17` | a `*T` pointer index | `35` | the OPTIONAL wrapper — a LAYOUT kind, the one §3.4 adds to §3's set |
+
+`0` is the reserved value no declaration spells. `17`, `18`, `19` and both fixed-point runs ARE in the closed
+set and a stranger may send them; a pointer inside a fixed table's own closure is a compile refusal (§5.5), so
+`17` reaches a reader only from a peer, where it is a kind mismatch against whatever the reader names there.
+**The widening ladder runs INSIDE a family and upward only** — `2..5`, `6..9`, `20..24`, `25..29`, and
+`10 -> 11` — so `6 -> 4` (u8 into i32) is a kind that MOVED and is reported, not a widen.
+
 ### 1.1 The seven rules, before a single record byte
 
 | # | rule | refusal |
@@ -488,6 +511,33 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
+**THAT TABLE IS THE CONTRACT, and the reference does not implement it yet.** Bill §13 says EVERY range —
+a float range and a fixed-point one included — and every reader-side limit, tag `'L'`. The reference at this
+head emits `'R'` for `HasIntRange` ALONE and emits no `'L'` anywhere (`ir/fixedform.go:610-652`), which is
+§5.8 row 10. **That row is an INTEROP BREAK and not a missed refusal.** Every other row of §5.8 is a reader
+being too kind; this one moves THE NUMBER — a leg that implements this table computes a different digest, so
+a different hash, for any table carrying a float range or a limit, and its files and the reference's do not
+match each other at all. **So the reference owes it BEFORE ANY LEG PORTS**: landing it moves every such hash
+once more and re-pins the corpus, and a lineage entry pinned under the old digest is a hash no later build
+can produce.
+
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
+for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
+for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
+none, one, two or three of those, in that order and never another.
+
+**Flags are NOT deduped by name in the reference, and the contract says they must be.** The `seen` set guards
+STRUCTS only (`ir/fixedform.go:600-604`), so one flags type named by three fields writes its `'F'`, its bit
+count and its whole `'f'`/`fnv1a64(name)` run THREE times, where a struct named by three fields writes once.
+**The ruling is the contract's own words — each NAMED type emitted ONCE** — so a flags type is emitted once
+too, and §5.8 row 10 carries that fix beside the missing tags. **And a flags type's WIRE BIT COUNT falls back
+to `len(Variants)` when it is `0`** (636-640): a `flags` declared with no explicit width spends one bit per
+flag, and the digest records the count either way.
+
+**`EMIT` switches on a KIND CODE**, and §1's kind-code table is the whole numbering — the fixed-point rungs
+`20..24` and `25..29` included. A port that invents its own numbering for the same set emits different layout
+bytes and a different hash, and nothing else it does can recover.
+
 ```
 PLAN(x, y):                                        -- x the WRITER's layout bytes FROM THE LOCK, y the reader's own
   parse x and y under §1.1; either failing is a bug in the lock, not a wire event: REFUSE layout_malformed
@@ -543,10 +593,107 @@ EMIT(te, their_at, me, my_at, guard, arg):
     30 enum:     if te.size < me.size: emit `widen`, unsigned                      -- a grown ordinal width (bill §12.7)
                  else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
                        variant j, or 0 when the reader has no such name
-    12 / 33 text: emit `text`, span := min(me.size, te.size) - 4, flavour from the READER's field
+    12 / 33 text: emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
+                  aux := the BUFFER, flavour from the READER's field (1 utf8, 2 wide, 3 bytes)
     every other leaf: te.size == me.size -> `copy` ; te.size < me.size and me.size <= 8 -> `widen` ;
                       otherwise COUNT kind_mismatch
 ```
+
+**THE AUX LANE.** Every plan entry names TWO destinations: `dst`, the field's own storage offset, and `aux`,
+its COMPANION — and which of the two an op writes is contract, never an implementation choice. The compiler
+hands both down beside the reader's layout entry (`Dst` and `Aux` on `TableFixedDstSpec`,
+`ir/fixedform.go:385-402`), and the compile step derives the pair at its top as `my_at + d.dst` and
+`my_at + d.aux` — the parent's storage base plus the row's own offsets (the reference: fixedruntime.go:973).
+
+| the READER's kind | `dst` | `aux` | which the op writes |
+|---|---|---|---|
+| `35` optional | the payload's own storage; the wrapper row adds none | the PRESENT byte | `T` into `?T` lands `present`, an unguarded constant `1`, at `aux` (971-980); `?T` into `?T` lands the writer's flag with a one-byte `copy` at `aux` (1008) |
+| a COUNTED array `[..N]T` | the element run | the live COUNT word | `count` writes its four bytes at `aux` (1024) |
+| `bytes(N)` | the BUFFER | the LENGTH word | the same `count` op, at `aux` — `bytes(N)` is an ARRAY row (fix 10) |
+| `12` / `33` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 281-295) |
+| `15` union | the union's own storage | the TAG — **`dst` PLUS the tag's offset inside that storage**, the `AuxExtendsDst` row | both `const`s write at `aux`: the unguarded `None` (1074) and each arm's ordinal (1090) |
+| `13` table, `14` uncounted, `16` keyed | the field's storage | unused, `0` | nothing; these recurse |
+| every LEAF | the field's storage | unused, `0` | `copy`, `widen`, `widenf`, `ordinal` write at `dst` |
+
+**Text and `bytes(N)` are the two rows the other way round**, and that is fix 10: text is length-at-`dst`,
+buffer-at-`aux`; `bytes(N)` is buffer-at-`dst`, length-at-`aux`. A port that lands `bytes(N)` under the text
+convention hands a compiled plan a count destination that is the buffer's first four bytes and an element
+destination that is the length field — and the IDENTITY plan reads neither column, so only the compiled path
+ever sees it.
+
+**How a port DERIVES `aux`**: from its OWN storage, the same way it derives `dst` — the `offsetof` of the
+companion member, `_present` / `_count` / `_length` / the union's `type` — and the build-time assertion §7
+names covers both lanes, not just `dst`. It is never derived from the wire: a companion is storage the wire
+does not carry.
+
+**THE TEXT OP, in full** (the reference: fixedruntime.go:281-295). `span` is BYTES and the clamp is UNITS, and
+they are not the same number:
+
+```
+TEXT(p):
+  unit := 2 when the flavour is WIDE, else 1                  -- wstring(N) rides as UTF-16 code units
+  cap  := p.span / unit                                       -- the CAP is in UNITS, the SPAN is in BYTES
+  v    := LE(4, src + p.src) read as SIGNED
+  if v < 0:    v := 0   ; COUNT clamped
+  if v > cap:  v := cap ; COUNT clamped
+  PUT(4, dst + p.dst, v)                                      -- the length lands at DST
+  COPY(dst + p.aux, src + p.src + 4, p.span)                  -- THE WHOLE SPAN, never v * unit
+  if the flavour is not BYTES:                                -- terminate AT THE USED LENGTH
+      ZERO(dst + p.aux + v * unit, unit)
+```
+
+Three facts, and a port gets them wrong one at a time. **The cap is `span / unit`**: a `wstring(64)` whose span
+is 128 bytes clamps at 64, and a port that clamps at 128 lets a length past the buffer through. **The copy is
+the WHOLE SPAN and not the used length**: the writer wrote `length` units onto a ZEROED template and stopped
+(fix 1), so the bytes behind the length are the writer's zeros, and copying them is how read-then-save-back
+comes out byte-identical (§7 item 1). A port that copies `v * unit` passes every value check and fails the
+dump identity — and **on a POISONED destination it fails louder**, because the `0x5A` behind the terminator
+survives into the buffer and the saved file carries it back out. **The terminator is a STORE of ONE UNIT at
+the used length**, which the storage has room for because text storage is one unit longer than the bound. So
+the bytes a text entry LANDS are `[aux, aux + span + unit)` for a text flavour and `[aux, aux + span)` for
+`bytes` (the reference: fixedruntime.go:436-437) — which is what the prefill's cover subtracts. The reader's
+own span past `min(me.size, te.size) - 4` gets NO entry at all: a reader whose bound GREW takes the writer's
+units and the PREFILL answers the rest.
+
+**A WIDEN'S SIGN IS THE LADDER'S, and the SAME-KIND widen has none.** There are two ways to reach `widen` and
+they extend differently. Across the LADDER — `te.kind != me.kind` and `TableFixedWidens` holds — the source
+SIGN-extends when the WRITER's kind is signed, `i8..i64` or a signed `fixed(I,F)`, and zero-extends otherwise
+(the reference: fixedruntime.go:993, over 92-95). Within ONE kind — `te.kind == me.kind`, `te.size < me.size`,
+`me.size <= 8` — the source ZERO-extends: the entry's sign is left at zero (1152-1159), and so is the grown
+enum ordinal's (1115). That is right today, because the only same-kind rows admitting two widths are `6`/`7`
+carrying a `bits(N)` at its declared storage width and kind `30`, all unsigned. But a port that infers "extend
+by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, and it diverges the first day
+a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
+and enum widen, ZERO.** Both count `widened`, once per entry per record.
+
+**THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
+
+**`argw` is the guard's width in BYTES, clamped to `1..8` at both ends, and `0` reads as `1`.** At compile a
+union stamps `their_tag` onto every entry beneath it, taking `1` for anything outside `1..8` (the reference:
+fixedruntime.go:1063); the push re-stamps the current union's width and reads a zero as one (856-857); and at
+run time the tag load clamps again — `0` to `1`, anything past `8` to `8` (171). **Zero means one** because
+one is the width a tag had when this lane did not exist, so a plan laid down before it still reads. The guard
+is tested at its FULL width and never at its first byte: one byte fires arm `1` on a foreign tag of `0x0101`,
+an ordinal no arm of this build names (§7, fix 12). And the guard's own reach, `guard + argw`, is bounded by
+the writer's record like every other offset (858-862).
+
+**The remap table carries its own LENGTH in slot `0`.** `TableFixedLayTable` writes `n` at `table[0]` and the
+`n` values at `table[1 .. n]` (the reference: fixedruntime.go:880-885); the entry's `aux` is the table's BYTE
+OFFSET from the plan's base; and the `ordinal` op reads
+`v := (raw != 0 and raw <= table[0]) ? table[raw] : 0` (305-310) — so slot `0` is the length, and an ordinal
+of `0` is `None` BY CONSTRUCTION and never an index. Entry `j` is the reader's position of the WRITER's
+variant `j`, or `0` when the reader has no such name. **The reference CAPS the table at 255 entries**,
+`n := min(te.children, 255)` (1119-1120): a writer's enum past 255 variants silently loses the 256th on, each
+remapping to `None` as though the reader did not name it. That is a divergence and not this page's rule —
+§5.8 row 14 — and this page says the table is **as long as the WRITER's variant count**, with a length word as
+wide as it needs to be.
+
+**The TWO-PASS SPLIT gates the POOL, not only the entries.** The walk runs twice, unguarded first, and each
+pass drops the entries that are not its half (849). A kind that ALLOCATES from the plan's pool BEFORE it
+pushes — the enum, whose remap table `TableFixedLayTable` lays — must test the half FIRST, or the discarded
+pass still spends the pool and a plan that fits comes back `plan_too_large`. The reference tests it at the top
+of the enum case, before it builds the map (1113). The pool is the caller's own plan storage: remap tables and
+prefill ranges grow DOWNWARD from the top while entries grow up, and the two meeting is `plan_too_large`.
 
 **Every entry is bounded by the WRITER'S OWN declared record size**, `x.root.size`: `src + size`, plus `4`
 for a text entry's length word, and `guard + the guard's width` too. One entry past it refuses the plan
@@ -593,7 +740,9 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
   8  plan, split, fills := R.plans[i] ; record_bytes := k.record_bytes
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
-     if rest mod record_bytes != 0:                     report.malformed := true ; return -1
+     if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; return -1
+                                                        -- 8 is the per-record hash; a body of nothing behind
+                                                        -- it would make `n` the file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
  11  per record, at `at`:
        if LE(8, at) != h:                               REFUSE no_layout        -- BEFORE any byte is landed
@@ -619,6 +768,7 @@ compared. **The seven §1.1 malformations under a KNOWN hash all come back as on
 | a known hash, different layout length or bytes | `layout_malformed` | the name |
 | the plan does not fit the caller's capacity | `plan_too_large` | the name |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
+| a record size of `8` or less — the per-record hash and no body behind it | — | `malformed`, and `-1` |
 | a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
 | more records than the caller's capacity | `batch_too_large` | the name |
 | a record hash that is not the file's | `no_layout` | the name |
@@ -626,6 +776,20 @@ compared. **The seven §1.1 malformations under a KNOWN hash all come back as on
 
 **REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
 prefill included. `malformed` is the residue and not a bucket a named rule falls into.
+
+**THE REPORT IS TWO ANSWERS, AND EVERY FIXTURE ASSERTS THEM JOINTLY** (`test/tables/versioning_lists.cpp:178`,
+the three lines `refuses_newer` shares with every OLD-REFUSES-NEW column). `refused` plus `reason` is one
+answer; `malformed` is the other; they are NEVER both set, and the counters are a third thing again.
+
+| the outcome | `refused` | `reason` | `malformed` | returns | the counters |
+|---|---|---|---|---|---|
+| a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
+| a MALFORMED read — under 20 bytes, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
+| a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
+
+So a port that sets `malformed` BESIDE a reason fails the joint assertion even though it refused correctly,
+and a port that refuses with no reason fails it too. That is exactly what §5.8 row 8 is: ill-formed text
+zeroes the field and sets `malformed`, where the ruling is a refusal by name.
 
 ### 5.4 The counters, per op and per condition
 
@@ -638,8 +802,8 @@ when every value lands.
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width** |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
-| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant |
-| `copy`, `const`, `present`, `ordinal` | none | a remap to `None` is the bounds pass's to count, not the op's |
+| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
+| `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
 
 A `bool` or a present byte that is not `0` or `1` is normalised to the language's own true and **counts
@@ -690,7 +854,9 @@ the version.** The floor owes three: a file AT the floor reads, a file ONE BELOW
 
 **The properties gate carries the pairs too.** `test/tables/fixedform_properties.cpp` runs its save / load /
 compare properties over every fixture — `P1` among them — and then ONE PAIR RUN per lineage pair: `FX1`/`FX2`,
-`P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, `Scalars`/`Scalars2`. That is §5.7's two columns inside the
+`P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, **`UT1`/`UT2`** (the guard and flavour lanes, which §7 item 6
+already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `ir.TableFixedFixtureLineage`
+(`ir/fixedform.go:685-693`) is the list, the one place to read it. That is §5.7's two columns inside the
 gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the older file through
 its lineage and returns one record. REVERSE: the older reader given the newer file refuses, and the refusal is
 `layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not bent** — a reader that
@@ -710,6 +876,25 @@ so the slot the appended key opens reads `7` and not `0`. Its NEW-READS-OLD dest
 a zeroed destination the row passes whether the prefill ran or not, and this is the row whose whole subject is
 that it ran. OLD-REFUSES-NEW reads the same way from the other side — the destination holds `7`, the fresh
 value's own default, because REFUSE wrote nothing.
+
+**Three notes a porter needs before reading the fixtures as an oracle.**
+
+**`union_arm_payload_widen` IS NOT A WIDEN**, and its name misleads. The row appends a field `y` INSIDE arm
+`alpha`; nothing grows a width, so it is an APPEND and it counts `widened == 0` and `unknown == 0` like every
+other one — `reads_clean( "union_arm_payload_widen", r, 0, 0 )`, `test/tables/versioning_lists.cpp:611`. A
+port reading the name and looking for a `widen` entry in the plan is looking for one that is not there.
+
+**NO FIXTURE EXERCISES A NONZERO `unknown`.** Every `reads_clean` call in both files passes `0` for it, so
+§5.4's "once per peer, never per record" — and §5.8 row 11's divergence, which counts once per ELEMENT of an
+array of tables — is asserted by NO row today. Proving it needs a row whose OLD schema carries a field the new
+one dropped, over an array of tables, and that row does not exist: **owed**, and a leg that ports the fixtures
+as they stand inherits row 11 untested.
+
+**A STALE COMMENT at `test/tables/versioning_numbers.cpp:1001`** (the block's own preamble, 998-1002), over the seven broken-layout cases under a
+known hash, says "Today every one of them comes back with its §1.1 name instead". That is the reader §5.3
+retired: a §1.1 malformation under a KNOWN hash is ONE name, `layout_malformed`, and the block's own
+assertions now check exactly that (`r.reason == layout_malformed`, line 1046). The cases are right; the
+comment describes a reader that no longer exists. **Noted for Johnny**, with the C++ green phase.
 
 **The C leg's port list, from the twin.** `tools/fixedtwin` holds the C and C++ fixed-form runtimes to one
 canonical text and fails on ANY difference, so a row C++ has and C does not would break the gate. Those rows
@@ -744,10 +929,11 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it | every range and every limit (bill §13), or the widening cannot be refused |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
+| 14 | the enum remap table is CAPPED AT 255 entries, `n := min( te.children, 255 )`, and its length word is a `uint16_t` | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
 
 **What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is
 `internal/lockfile/monotone.go`, the lock holds a lineage with a retired mark and a reason per entry, and
@@ -857,5 +1043,10 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
 width as `1, 2 or 4`, where the compiler and the reader both admit `8`, derived from the enum's top wire value.
-**(b)** §3.4 says a compiled plan is "cached by hash"; the reference recompiles on every load with a
-non-matching hash. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
+**(b)** §3.4 says a compiled plan is "cached by hash", and the reference DOES cache it — `TableFixedPlanCache`,
+the CALLER's own storage, sixty-four slots keyed by the file's hash
+(`internal/codegen/cpptable/fixedruntime.go:1252-1281`, looked up and filled at
+`internal/codegen/cpptable/fixedform.go:524-545`), so a second load under the same hash compiles nothing. The
+line that stood here, saying the reference recompiles on every load with a non-matching hash, was FALSE and is
+withdrawn. What remains is not a cache miss but §5.8 row 3: **nothing should compile at run time at all**, and
+then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
