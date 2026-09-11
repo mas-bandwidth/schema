@@ -21,7 +21,7 @@ import (
 func TestBytesNDstRowIsAnArray(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Probe
+fixed table Probe
 {
     label string(8)
     blob  bytes(6)
@@ -70,7 +70,7 @@ table Probe
 func TestFixedLoadPrefillsHolesOnly(t *testing.T) {
 	files, err := Generate(unitFrom(t, `package probe
 
-table ByRoot
+fixed table ByRoot
 {
     blob bytes(6)
     marks [..4]int32
@@ -98,7 +98,7 @@ table ByRoot
 func TestWriteAndScatterWalkLiveCount(t *testing.T) {
 	files, err := Generate(unitFrom(t, `package probe
 
-table ByRoot
+fixed table ByRoot
 {
     blob bytes(6)
     marks [..4]int32
@@ -122,7 +122,7 @@ func TestIdentityCompiledBytesN(t *testing.T) {
 	javac, java := javaTools(t)
 	files, err := Generate(unitFrom(t, `package probe
 
-table ByRoot
+fixed table ByRoot
 {
     blob bytes(6)
     marks [..4]int32
@@ -328,7 +328,7 @@ enum Grade
     Gold
 }
 
-table LiveRoot
+fixed table LiveRoot
 {
     grades [1..4]Grade
 }
@@ -369,7 +369,7 @@ table LiveRoot
 func TestFixedGuardComparedAtArgW(t *testing.T) {
 	files := generate(t, `package probe
 
-table Root { n int32 }
+fixed table Root { n int32 }
 `)
 	src := string(files["TableFixed.java"])
 	if src == "" {
@@ -410,7 +410,7 @@ func TestFixedGuardComparedAtArgWRun(t *testing.T) {
 	javac, java := javaTools(t)
 	files := generate(t, `package probe
 
-table Root { n int32 }
+fixed table Root { n int32 }
 `)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")
