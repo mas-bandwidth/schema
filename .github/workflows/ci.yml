@@ -230,6 +230,29 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
 
+      # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
+      # one because the harness is a Go test: internal/codegen/rusttable's
+      # fixedversioning_test.go generates one cargo workspace of probe crates and
+      # runs `cargo test` over it once, so the thing that must be installed is Go
+      # plus cargo, and the corpus the step above already knows how to build. The
+      # ubuntu runner image carries a stable cargo on PATH; $(RUSTUP_BIN) in
+      # make/rust.mk is a homebrew keg that does not exist here, and prepending a
+      # directory that is not there costs nothing and resolves the image's cargo.
+      #
+      # THE ../serialize.rs CHECKOUT IS THIS STEP'S OWN. Every probe crate depends
+      # on `serialize-official` by path, and the job's checkout block above clones
+      # the C, C++, C# and Go runtimes only — so the clone lives here, beside the
+      # one target that needs it, under the same pinned tag the rest of this file
+      # uses. Without it the suite fails by name on the missing sibling rather
+      # than skipping, which is the behaviour this whole gate is for.
+      - name: the fixed form's versioning suite on the Rust leg
+        run: |
+          if [ ! -d ../serialize.rs ]; then
+            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
+          fi
+          make tables-rust-versioning
+
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
       # gates). The probes are generated modules run with $(NODE) — dist/ is not
       # in this job, so NODE=node uses the runner's own — and the corpus is the

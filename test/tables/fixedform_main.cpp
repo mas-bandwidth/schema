@@ -46,6 +46,10 @@
 #include "UT2Table.h"
 #include "FU1Table.h"
 #include "FU2Table.h"
+#include "FH1Table.h"
+#include "FH2Table.h"
+#include "FE1Table.h"
+#include "FE2Table.h"
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
@@ -921,6 +925,147 @@ static void text_under_arm_case()
 
 // ---------------------------------------------------------------------------
 
+// OWED 7: an arm inside an arm answers to the OUTER tag (#876 card 13).
+// Inner is an arm of Outer. A compiled read of FH1 through FH2 must land the
+// inner arm, and a foreign outer arm must not be decoded as this inner union.
+static void owed7_nested_union_outer_tag_case()
+{
+    check( tblfh1::NestRootFixedHash != tblfh2::NestRootFixedHash,
+           "owed 7: FH2 extra changed the layout hash" );
+
+    tblfh1::NestRoot v[2];
+    tblfh1::NestRootReset( v[0] );
+    v[0].pick.type = tblfh1::OuterType::Wrap;
+    v[0].pick.wrap.inner.type = tblfh1::InnerType::Leaf;
+    v[0].pick.wrap.inner.leaf.n = 42;
+    v[0].tail = 7;
+
+    tblfh1::NestRootReset( v[1] );
+    v[1].pick.type = tblfh1::OuterType::Other;
+    v[1].pick.other.m = 99;
+    v[1].tail = 8;
+
+    std::vector<uint8_t> w( (size_t) tblfh1::NestRootFixedMeasure( 2 ) );
+    check( tblfh1::NestRootFixedSave( v, 2, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 7: FH1 save" );
+
+    {
+        tblfh2::NestRoot back[2];
+        tblfh2::TableReport r;
+        std::vector<tblfh2::TableFixedEntry> plan( 1024 );
+        check( tblfh2::NestRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "owed 7: the compiled read takes both records" );
+        check( back[0].pick.type == tblfh2::OuterType::Wrap,
+               "owed 7: compiled, the WRAP arm of the outer union" );
+        {
+            char what[256];
+            std::snprintf( what, sizeof( what ),
+                           "owed 7: compiled, the inner union answers to the OUTER tag (inner.type=%d, want Leaf=%d)",
+                           (int) back[0].pick.wrap.inner.type, (int) tblfh2::InnerType::Leaf );
+            check( back[0].pick.wrap.inner.type == tblfh2::InnerType::Leaf, what );
+        }
+        check( back[0].pick.wrap.inner.leaf.n == 42, "owed 7: compiled, the inner leaf lands" );
+        check( back[0].tail == 7 && back[0].extra == 11, "owed 7: compiled, tail and extra" );
+        check( back[1].pick.type == tblfh2::OuterType::Other,
+               "owed 7: a foreign outer arm is not decoded as this inner union" );
+        check( back[1].pick.other.m == 99 && back[1].tail == 8 && back[1].extra == 11,
+               "owed 7: compiled, the other arm and tail land" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "owed 7: a clean read moves no counter" );
+    }
+}
+
+// OWED 8: a width-8 ordinal is read whole through a 64-bit temporary. A
+// uint32_t temp truncated a 64-bit ordinal whose low four bytes were zero.
+static void owed8_width8_ordinal_read_whole_case()
+{
+    alignas( tblfu1::TableFixedEntry ) uint8_t blob[512];
+    std::memset( blob, 0, sizeof( blob ) );
+    tblfu1::TableFixedEntry * plan = reinterpret_cast<tblfu1::TableFixedEntry *>( blob );
+    const uint32_t map_at = 256;
+    uint16_t * map = reinterpret_cast<uint16_t *>( blob + map_at );
+    map[0] = 1;
+    map[1] = 1;
+    plan[0].op = tblfu1::kTableFixedOrdinal;
+    plan[0].src = 0;
+    plan[0].dst = 0;
+    plan[0].size = 8;
+    plan[0].dstsize = 8;
+    plan[0].aux = map_at;
+    plan[0].guard = tblfu1::kTableFixedNoGuard;
+    plan[0].argw = 1;
+
+    uint8_t src[8] = { 0, 0, 0, 0, 1, 0, 0, 0 }; // 2^32, needs all eight bytes
+    uint8_t dst[8];
+    std::memset( dst, 0xAB, sizeof( dst ) );
+    tblfu1::TableReport r;
+    tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
+    uint64_t landed = 0;
+    std::memcpy( &landed, dst, 8 );
+    check( landed == 0, "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant" );
+    check( r.clamped >= 1, "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing" );
+}
+
+// OWED 10: a record whose hash names nothing writes nothing to the caller's
+// storage. Poison it first; REFUSE is total.
+static void owed10_no_layout_writes_nothing_case()
+{
+    tblfu1::FuRoot v;
+    tblfu1::FuRootReset( v );
+    v.tail = 11;
+    v.pick.type = tblfu1::PickType::Plain;
+    v.pick.plain.n = 303;
+    std::vector<uint8_t> w( (size_t) tblfu1::FuRootFixedMeasure( 1 ) );
+    check( tblfu1::FuRootFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 10: FU1 save" );
+    const size_t rec = (size_t) tblfu1::kTableFixedHeaderBytes + 4
+        + (size_t) tblfu1::FuRootFixedLayoutBytes;
+    tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
+
+    tblfu2::FuRoot back;
+    std::memset( &back, 0xAB, sizeof( back ) );
+    const tblfu2::FuRoot poison = back;
+    tblfu2::TableReport r;
+    std::vector<tblfu2::TableFixedEntry> plan( 1024 );
+    const int64_t n = tblfu2::FuRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
+                                               plan.data(), 1024, NULL, &r );
+    check( n < 0 && r.refused && r.reason == tblfu2::no_layout,
+           "owed 10: a record hash naming nothing is no_layout" );
+    check( std::memcmp( &back, &poison, sizeof( back ) ) == 0,
+           "owed 10: REFUSE writes nothing; the caller's storage is still poison" );
+}
+
+// OWED 13: a forged ordinal past the writer's variant count COUNT clamped on
+// the COMPILED plan. FE2 reads FE1; Grade's top on the writer is Gold = 3.
+static void owed13_compiled_ordinal_counts_clamped_case()
+{
+    tblfe1::FeRoot v;
+    tblfe1::FeRootReset( v );
+    v.grade = tblfe1::Grade::Gold;
+    v.tail = 7;
+    std::vector<uint8_t> w( (size_t) tblfe1::FeRootFixedMeasure( 1 ) );
+    check( tblfe1::FeRootFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 13: FE1 save" );
+    const size_t rec = (size_t) tblfe1::kTableFixedHeaderBytes + 4
+        + (size_t) tblfe1::FeRootFixedLayoutBytes;
+    w[rec + 8] = 4; // past Gold, which FE1 has no name for
+    {
+        tblfe2::FeRoot back;
+        tblfe2::FeRootReset( back );
+        tblfe2::TableReport r;
+        std::vector<tblfe2::TableFixedEntry> plan( 1024 );
+        const int64_t n = tblfe2::FeRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
+                                                   plan.data(), 1024, NULL, &r );
+        check( n == 1, "owed 13: the forged file reads on the compiled plan" );
+        check( back.grade == tblfe2::Grade::None,
+               "owed 13: ordinal 4 lands None against the WRITER's 3 variants" );
+        check( r.clamped >= 1, "owed 13: COUNT clamped on the compiled plan" );
+        check( back.tail == 7, "owed 13: the scalar after the enum stands" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 // THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
 // record is a positional image and the one read loop moves bytes: it asks
 // nothing about what they mean. Two things a declaration bounds are therefore
@@ -1323,6 +1468,20 @@ static void guard_width_case()
     std::memset( &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+
+    // 6: arg IS FULL WIDTH (bill §12.7). A two-byte tag of 256 is arm 256,
+    // and a byte lane would wrap it to 0, so the entry would never run.
+    src[0] = 0x00; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
+    plan[1].arg = 256; plan[1].argw = 2;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "ARG LANE: tag 256 at width 2 takes arm 256" );
+    src[1] = 0x00;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0, "ARG LANE: tag 0 does not take arm 256" );
 }
 
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
@@ -1394,6 +1553,10 @@ int main()
     slack_case();
     union_text_case();
     text_under_arm_case();
+    owed7_nested_union_outer_tag_case();
+    owed8_width8_ordinal_read_whole_case();
+    owed10_no_layout_writes_nothing_case();
+    owed13_compiled_ordinal_counts_clamped_case();
     bytes_row_case();
     bounds_case();
     absent_optional_case();
