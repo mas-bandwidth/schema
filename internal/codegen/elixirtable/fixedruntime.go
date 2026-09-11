@@ -256,10 +256,6 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
 
   @doc """
-  Set ` + "`" + `malformed` + "`" + ` when the projection's damage flag rode true, and the same
-  report back when it did not — so a clean read allocates no new map.
-  """
-  @doc """
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
   unknown and kind_mismatch were fixed when the plan was built — §5.4 says once
@@ -278,6 +274,10 @@ const fixedRuntimeBody = `  @moduledoc """
     }
   end
 
+  @doc """
+  Set ` + "`" + `malformed` + "`" + ` when the projection's damage flag rode true, and the same
+  report back when it did not — so a clean read allocates no new map.
+  """
   def damaged(report, false), do: report
   def damaged(report, true), do: %{report | malformed: true}
 
