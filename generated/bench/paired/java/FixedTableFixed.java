@@ -54,7 +54,7 @@ public final class FixedTableFixed {
 
     /** fnv1a64 over the layout's bytes exactly as written, and the eight
      *  bytes every record carries. A WIRE IDENTITY and not a security claim. */
-    public static final long hash = 0x32f1c4a302a224ebL;
+    public static final long hash = 0x6237c1dc195f9ec9L;
 
     /** THE LAYOUT (form 1 called this the vocabulary block): 75 entries, a
      *  PRE-ORDER walk of this type's closure in declared order — a u32 entry
@@ -259,7 +259,12 @@ public final class FixedTableFixed {
         TableFixed.Entry[] entries = Identity.plan;
         int made = Identity.plan.length;
         long recordSize = recordBytes;
-        if (head.hash != hash) {
+        if (head.hash == hash) {
+            if (head.layoutLength != layout.length) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
+            for (int i = 0; i < layout.length; i++) {
+                if (data[head.layoutAt + i] != layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
+            }
+        } else {
             final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);
             if (theirs == null) { return -1; }
             final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);

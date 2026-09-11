@@ -14,16 +14,19 @@
 // RECORD and not in the header — a record is its hash and then its values.
 // This is the reference's header (cpptable) and the committed corpus's.
 //
-// Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
-// 2026-09-09), never a slow read — and the word that matters is DECLARED.
-// The refusal is keyed on the `fixed table` KEYWORD ([ir.Struct.FixedDeclared],
-// #823), not on the shape: a table the compiler merely derived into the fixed
-// mode asked for nothing and keeps the form-1 Load it never lost, even though
-// this backend also emits form 3 for it. FixedLoad itself is the form-3 reader
-// either way, and it answers by the form REGISTRY (§3): previous_form for 1,
+// TWO ENTRY POINTS, ONE FORM EACH, AND EACH REFUSES THE OTHER'S BYTE (§15):
+// <T>Load is the VARIABLE form's entry point and READS form 1; <T>FixedLoad is
+// the form-3 reader and names a form-1 file `previous_form`. The `fixed table`
+// KEYWORD ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT for what a
+// WRITER emits — a bounded body a plain `table` declares is the variable wire
+// and gets no form-3 surface at all, nothing is derived in either direction
+// (§2.2, [ir.TableFixedRoots]) — and it does NOT move the refusal into <T>Load.
+// The shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a
+// DECLARED fixed root and the C++ reference reads it there through <T>Load, so
+// a Go <T>Load that refused would be the one leg disagreeing with the byte
+// authority. FixedLoad answers by the form REGISTRY (§3): previous_form for 1,
 // message_form_as_file for 2, newer_form for every byte §3 has not assigned.
-// The C++ reference still accepts form 1 by the form byte; this port does not
-// copy that for a declared fixed table.
+// The single entry point that would answer both by DISPATCH is §15's follow-on.
 package gotable
 
 import (
@@ -297,15 +300,6 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
-func fixedLayoutHash(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
-}
-
 func (g *tableGen) isVarTable(name string) bool {
 	return ir.VariableTables(g.unit)[name]
 }
@@ -319,17 +313,6 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
-}
-
-// refusesForm1 is the OTHER question, and Glenn 2026-09-09 is that they are
-// two: a form-1 file handed to <T>Load is a named refusal when the AUTHOR
-// DECLARED the table fixed, never merely because the compiler could lay it
-// out fixed. hasFixedForm above is shape; this is the keyword. Nothing sets
-// [ir.Struct.FixedDeclared] until #823's `fixed table` lands, so today every
-// table in this tree keeps its form-1 Load and the shared wire oracle reads
-// what it always read.
-func (g *tableGen) refusesForm1(st *ir.Struct) bool {
-	return g.hasFixedForm(st) && st.FixedDeclared
 }
 
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
@@ -677,7 +660,7 @@ func (g *tableGen) emitFixedPutInt(ind, dest string, width int64, expr string) {
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	w := g.fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
-	hash := fixedLayoutHash(layout)
+	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
 	leaves := g.fixedLeafCount(st)
 
@@ -697,6 +680,30 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("}\n\n")
 
 	g.pf("var %sFixedPlan = tableFixedBuildPlan(%sFixedLeaves, %d)\n\n", st.Name, st.Name, leaves)
+
+	// THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). It is the
+	// build's data and never the wire's: a file is matched on its hash against
+	// these entries, and the layout it carries is COMPARED with the bytes the
+	// lock recorded, never walked. The floor is 1 + the highest retired index.
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
+	g.pf("var %sFixedKnown = []TableFixedKnown{\n", st.Name)
+	for _, e := range entries {
+		g.pf("\t{\n\t\tHash:   0x%016x,\n", e.Wire)
+		if e.Retired {
+			g.pf("\t\t// RETIRED: %s\n", e.Reason)
+		}
+		g.pf("\t\tRecord: %d,\n\t\tLayout: []byte{\n", e.Record)
+		g.emitByteArray(e.Layout)
+		g.pf("\t\t},\n\t},\n")
+	}
+	g.pf("}\n\n")
+	g.pf("// The floor: below it a layout this build once served is retired, and\n")
+	g.pf("// the answer is layout_unsupported rather than layout_newer (§5.2).\n")
+	g.pf("const %sFixedFloor = %d\n\n", st.Name, floor)
+	g.pf("// One plan per lineage entry, laid down from THE LOCK's bytes: nothing\n")
+	g.pf("// compiles on the load path (§5.8 row 3).\n")
+	g.pf("var %sFixedLineagePlans = tableFixedLineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash)\n\n",
+		st.Name, st.Name, st.Name, st.Name, st.Name)
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
@@ -736,25 +743,43 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	// STEP 3: the layout's length, and the bytes behind it.
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
-	g.pf("\thash := tableFixedHashOf(layout)\n")
-	g.pf("\tif tableFixedGet64(data[TableFixedHashAt:]) != hash {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
-	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
-	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
+	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from the
+	// wire: the definitions digest is not on the wire, so the hash cannot be
+	// re-derived from a file at all (§5.3).
+	g.pf("\thash := tableFixedGet64(data[TableFixedHashAt:])\n")
+	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
+	// layout_newer — ship the reader; below the floor is layout_unsupported —
+	// upgrade the client. Both report THE FILE'S hash and nothing else.
+	g.pf("\tpick := tableFixedSelect(%sFixedKnown, hash)\n", st.Name)
+	g.pf("\tif pick < 0 {\n\t\treturn tableFixedRefuseHash(report, \"layout_newer\", hash)\n\t}\n")
+	g.pf("\tif pick < %sFixedFloor {\n\t\treturn tableFixedRefuseHash(report, \"layout_unsupported\", hash)\n\t}\n", st.Name)
+	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
+	// is one name — a lie about a known version — and the seven §1.1 rules do
+	// not run at read time at all: no stranger's layout is ever walked.
+	g.pf("\tknown := &%sFixedKnown[pick]\n", st.Name)
+	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
+	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n\t}\n")
+	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
-	g.pf("\trecordBytes := int64(%sFixedRecordBytes)\n", st.Name)
-	g.pf("\tidentity := hash == %sFixedHash\n", st.Name)
-	g.pf("\tif !identity {\n")
-	g.pf("\t\tparsed, ok := tableFixedParseLayout(layout)\n")
-	g.pf("\t\tif !ok {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n")
-	g.pf("\t\tmade := tableFixedCompile(parsed, %sFixedLayout, %sFixedDst, plan, report)\n", st.Name, st.Name)
-	g.pf("\t\tif made < 0 {\n\t\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t\t}\n")
-	g.pf("\t\tentries = plan\n\t\tentryCount = made\n")
-	g.pf("\t\trecordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)\n")
+	g.pf("\trecordBytes := known.Record\n")
+	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
+	g.pf("\tif hash != %sFixedHash {\n", st.Name)
+	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
+	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
+	g.pf("\t\tif int(lane.Count) > len(plan) {\n\t\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t\t}\n")
+	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
+	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
+	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
+	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
 	g.pf("\t}\n")
+	// STEP 9 and STEP 10.
+	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
+	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
@@ -769,13 +794,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
 	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
 	g.pf("\t}\n")
+	// STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
+	// refusal has written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
+	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
 	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
 	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -783,7 +810,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("\t\t%sFixedClamp(&values[k], report)\n", st.Name)
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")
-	g.pf("\t}\n\treturn n\n}\n\n")
+	g.pf("\t}\n")
+	g.pf("\treport.Unknown += censusUnknown\n")
+	g.pf("\treport.KindMismatch += censusKind\n")
+	g.pf("\treturn n\n}\n\n")
 }
 
 /* ---- the read-side bounds --------------------------------------------------
@@ -933,26 +963,6 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 			g.pf("%sif %s > %d { %s = %d; (*clamped)++ }\n", ind, expr, maxv, expr, maxv)
 		}
 	}
-}
-
-// emitFixedForm1Load is the form-1 file reader for a DECLARED fixed table
-// (#823's keyword, [ir.Struct.FixedDeclared]) — see [tableGen.refusesForm1].
-// Form 1 is previous_form; the slow tableOpen walk never runs. Other bytes
-// keep the form-1 Load's existing refusal names. The C++ reference still
-// accepts form 1 on this type (cpptable/fixedform.go:19); Glenn says refuse.
-func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
-	n := st.Name
-	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
-	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
-	g.pf("\t%sReset(value)\n", n)
-	g.pf("\tif len(data) > 0 && data[0] == 1 {\n")
-	g.pf("\t\ttableFixedRefuse(report, \"previous_form\")\n")
-	g.pf("\t\treturn false\n")
-	g.pf("\t}\n")
-	g.pf("\t_, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
-	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
-	g.pf("\tif verdict == TableOpenDamaged { report.Malformed = true }\n")
-	g.pf("\treturn false\n}\n\n")
 }
 
 func (g *tableGen) emitByteArray(b []byte) {

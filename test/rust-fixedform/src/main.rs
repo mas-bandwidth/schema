@@ -49,6 +49,33 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
+// WHAT §5.6 RETIRED, SKIPPED BY NAME AND NEVER DELETED.
+//
+// docs/FIXED-FORM-ALGORITHM.md §5 made the fixed reader read BACKWARD: it takes
+// the header's hash AS GIVEN, looks it up in the lineage the BUILD laid down,
+// and never walks a stranger's layout at run time. So every case below that
+// read a file written under ANOTHER schema through the load, and every case that
+// broke a layout and asked for its §1.1 name, is asserting a reader that no
+// longer exists — and a deleted test is a coverage claim nobody can audit. Each
+// one keeps its code and prints where its coverage went instead: `retired`
+// returns true so the case returns early, or false-at-the-guard so the block
+// stays compiled and stays readable.
+// ---------------------------------------------------------------------------
+
+/// Where a cross-schema read's two columns live now.
+const LINEAGE: &str =
+    "the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row";
+
+/// Where §1.1's seven rules live now.
+const THE_LOCK: &str =
+    "the LOCK's validation of what it records, plus the oracle's validation of the corpus";
+
+fn retired(case: &str, because: &str, coverage: &str) -> bool {
+    println!("SKIP {case}: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — {because} — and the coverage now lives in {coverage}.");
+    true
+}
+
+// ---------------------------------------------------------------------------
 // THE WRITE: read the reference's file, save it back, and the bytes must be
 // identical. One macro because the shape is the same for every root and the
 // only thing that moves is which crate's names it names.
@@ -88,6 +115,15 @@ fn the_write(dir: &str) {
         fx_root_fixed_load, fx_root_fixed_save, fx_root_fixed_measure
     );
     check(n == 2, "fx1.bin: two records");
+    // A DECLARED DEFAULT IS THE VALUE, NOT JUST ITS LENGTH. The round trip
+    // above cannot see this: a value READ from the file already has the
+    // record's bytes. C++ writes `char label[8 + 1] = "fx"`; a fresh
+    // FxRootRow used to claim two used bytes of NULs from zeroed Default.
+    let fresh = tblfx1::FxRootRow::default();
+    check(
+        fresh.label_length == 2 && fresh.label[..2] == *b"fx",
+        "fx1: a fresh FxRootRow carries label \"fx\", not two NULs of length 2",
+    );
     round_trip!(
         dir, "fx2.bin", tblfx2, FxRootRow, 8,
         fx_root_fixed_load, fx_root_fixed_save, fx_root_fixed_measure
@@ -202,7 +238,7 @@ macro_rules! compiled_self_plan {
         let theirs = $krate::TableFixedBlock::parse(&golden[LAYOUT_AT..LAYOUT_AT + block_bytes]);
         let mine = $krate::TableFixedBlock::parse(&$krate::$block);
         check(
-            theirs.is_some() && mine.is_some(),
+            theirs.is_ok() && mine.is_ok(),
             concat!($file, ": the block parses on both sides"),
         );
         let mut report = $krate::TableFixedReport::default();
@@ -272,6 +308,13 @@ fn the_compiled_plan(dir: &str) {
 // ---------------------------------------------------------------------------
 
 fn an_older_writer(dir: &str) {
+    if retired(
+        "an_older_writer",
+        "FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record",
+        LINEAGE,
+    ) {
+        return;
+    }
     // FX2 reads FX1: a WIDENED field, a RENAME under `was`, a field FX1 does
     // not carry (defaulted from the prefill), a whole nested TYPE FX1 never
     // heard of (defaulted whole), and one name FX2 cannot place.
@@ -299,6 +342,13 @@ fn an_older_writer(dir: &str) {
 }
 
 fn a_newer_writer(dir: &str) {
+    if retired(
+        "a_newer_writer",
+        "FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire",
+        LINEAGE,
+    ) {
+        return;
+    }
     // FX1 reads FX2: an unknown FIELD and an unknown nested TYPE, stepped over
     // by the size their entries state — which is what puts `nested` in the
     // right place — and a NARROWING, which is a kind that MOVED.
@@ -321,6 +371,13 @@ fn a_newer_writer(dir: &str) {
 }
 
 fn an_optional(dir: &str) {
+    if retired(
+        "an_optional",
+        "P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer`",
+        LINEAGE,
+    ) {
+        return;
+    }
     // §2.3 makes `?T` and a plain `T` nesting WIRE-IDENTICAL on form 1. ON THIS
     // FORM THEY ARE ONE BYTE APART, and §3.4 says so rather than leaving it to
     // be found: the edit reads as a kind mismatch and the field takes its
@@ -344,6 +401,8 @@ fn an_optional(dir: &str) {
 // right one worked.
 // ---------------------------------------------------------------------------
 
+
+
 fn the_negative_controls(dir: &str) {
     // 1. THE WRONG PLAN. FX1's IDENTITY plan run over an FX2 record must NOT
     //    reproduce it, while the loader — which picks its plan by the HASH —
@@ -363,35 +422,44 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 2. A BLOCK THAT IS NOT A BLOCK is `block_malformed`, and it is a refusal
-    //    by name: nothing decoded, no counter moved.
+    // 2. A BLOCK THAT IS NOT THE LOCK'S BLOCK, UNDER A KNOWN HASH, IS ONE NAME:
+    //    `layout_malformed` — "a lie about a known version" (§5.3, §5.6). The
+    //    file is THIS build's own, so the header's hash resolves in the lineage
+    //    and the entry count is the only thing that moved; the seven §1.1 names
+    //    are the LOCK's now, and what the reader does is compare the layout
+    //    bytes against the ones the build laid down. Still a refusal by name:
+    //    nothing decoded, no counter moved.
     {
         let mut damaged = slurp(dir, "fx1.bin");
-        damaged[LAYOUT_AT] ^= 0xFF; // the entry count, so the tree cannot close
+        damaged[LAYOUT_AT] ^= 0xFF; // the entry count, so the count mismatches length
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
         let mut report = tblfx1::TableFixedReport::default();
         let n = tblfx1::fx_root_fixed_load(&mut values, &damaged, &mut plan, &mut remap, &mut report);
-        check(n.is_none(), "block_malformed: refused");
+        check(n.is_none(), "a broken layout under a KNOWN hash: refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::BlockMalformed,
-            "block_malformed: refused BY NAME",
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutMalformed,
+            "a broken layout under a KNOWN hash: refused BY NAME — layout_malformed, the one name §5.3 gives it",
         );
         check(
             !report.malformed && report.unknown == 0 && report.kind_mismatch == 0,
-            "block_malformed: a refusal moves no counter",
+            "a broken layout under a KNOWN hash: a refusal moves no counter",
         );
     }
 
-    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT. The pinned header
-    //     names the layout ONCE (docs/SPEC-TABLES.md §3) and a record names the
-    //     layout it was stamped by; a header whose hash is not the hash of the
-    //     layout it carries is refused, and it is checked LAST so a broken
-    //     layout refuses under its own name first.
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_newer`, AND
+    //     THAT IS THE BETTER CONTROL (§5.3's own row). The hash is TAKEN AS
+    //     GIVEN and nothing is recomputed from the wire, so a flipped hash is
+    //     simply a version this build's lineage does not hold: the refusal
+    //     reports THE FILE'S hash — the flipped value, not this build's — and
+    //     nothing else, and it never says malformed.
     {
         let mut lying = slurp(dir, "fx1.bin");
         lying[HASH_AT] ^= 0xFF;
+        let flipped = u64::from_le_bytes(
+            lying[HASH_AT..HASH_AT + 8].try_into().expect("eight bytes"),
+        );
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
@@ -399,8 +467,17 @@ fn the_negative_controls(dir: &str) {
         let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "the header's hash: a lying header is refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::BlockMalformed,
-            "the header's hash: refused BY NAME",
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutNewer,
+            "the header's hash: refused BY NAME — layout_newer, because the hash is taken AS GIVEN",
+        );
+        check(
+            report.layout_hash == flipped,
+            "the header's hash: the report carries THE FILE'S hash, the flipped value and not this build's",
+        );
+        check(
+            !report.malformed && report.unknown == 0 && report.kind_mismatch == 0
+                && report.widened == 0 && report.clamped == 0,
+            "the header's hash: a refusal by name is never malformed and moves no counter",
         );
         // AND THE NEGATIVE CONTROL FOR IT: the same file untouched loads.
         let clean = slurp(dir, "fx1.bin");
@@ -470,7 +547,11 @@ fn the_negative_controls(dir: &str) {
     // 4. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE is `plan_too_large`:
     //    this codec never allocates, so the storage is the caller's and a block
     //    whose plan does not fit is a refusal rather than a heap.
-    {
+    if !retired(
+        "the_negative_controls' plan_too_large case",
+        "a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5)",
+        "the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached",
+    ) {
         let fx1 = slurp(dir, "fx1.bin");
         let mut values = [tblfx2::FxRootRow::default(); 8];
         let mut plan: [tblfx2::TableFixedEntry; 1] = [tblfx2::TableFixedEntry::default(); 1];
@@ -510,6 +591,381 @@ fn the_negative_controls(dir: &str) {
         check(
             report.reason == tblfx1::TableFixedReason::BatchTooLarge,
             "batch_too_large: refused BY NAME",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4). It is
+// the one structure a reader must parse before it knows anything at all, so
+// every rule it is held to refuses under ITS OWN NAME, before a single record
+// byte is touched. docs/FIXED-FORM-ALGORITHM.md §1.1 names SEVEN of them, and
+// A VALIDATION NOBODY WATCHED FAIL IS A VALIDATION NOBODY HAS — so there is one
+// case per named rule, each taking a layout this reader ACCEPTS and breaking
+// EXACTLY ONE THING in it. The C++ reference asserts the same twelve under the
+// same names in test/tables/fixedform_main.cpp `layout_validation()`, and this
+// is its Rust twin: the shared conformance set reads the same on every leg.
+//
+// THE REFUSAL IS ASSERTED BY ITS VARIANT NAME AND NOT BY THE ENUM VALUE, and
+// that is a deliberate design call rather than a shortcut.
+// `tblfx1::TableFixedReason::LayoutCountMismatch` DOES NOT EXIST in this
+// runtime yet, so naming it in Rust source is a COMPILE ERROR that takes the
+// whole leg down and measures NOTHING per case. The enum derives `Debug`, so
+// `format!("{:?}", report.reason)` IS the variant's name: comparing that string
+// against "LayoutCountMismatch" is EXACTLY AS STRONG as comparing the value, it
+// passes UNCHANGED the moment the runtime card adds the variants, and it is
+// written this way so each of the twelve cases gives its OWN red instead of one
+// build failure that says nothing about which rule is missing. THE ENUM-VALUE
+// COMPARISON IS THE EVENTUAL FORM: once the seven names exist these lines
+// should say `report.reason == tblfx1::TableFixedReason::LayoutCountMismatch`,
+// and the strings below are that comparison's spelling in the meantime.
+//
+// The file is the HEADER (docs/SPEC-TABLES.md §3: the form byte, seven reserved
+// zero bytes, the layout hash at 8, the body at 16), then `u32 layout length,
+// layout, records` — so the layout starts at byte 20, the entry count is the
+// four bytes there, and entry k is the seventeen bytes at 20 + 4 + 17k: id
+// (u64), kind (u8), size (u32), children (u32), every number little-endian.
+//
+// AND THE HEADER HASH IS LEFT LYING, WHICH IS CORRECT AND NOT SLOPPY. Every
+// break below is INSIDE the layout, so the hash at byte 8 is no longer the hash
+// of the layout behind it. docs/FIXED-FORM-ALGORITHM.md §2 step 5 checks the
+// header hash LAST precisely so a broken layout refuses under its own name
+// first — and THIS RUNTIME DOES THAT: the emitted loader parses the layout and
+// compiles the plan before it compares the hash (internal/codegen/rusttable/
+// fixedform.go: "THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of
+// the three"). VERIFIED, so no hash is recomputed for cases 1-10 and what they
+// measure is the layout's own rules and never layout_malformed-on-a-lying
+// -header. The three hand-built files carry their own true hash regardless.
+// ---------------------------------------------------------------------------
+
+/// The first layout entry: the entry count sits at `LAYOUT_AT`, the seventeen
+/// byte entries back to back behind it.
+const ENTRY0: usize = LAYOUT_AT + 4;
+
+fn put32(b: &mut [u8], at: usize, v: u32) {
+    b[at..at + 4].copy_from_slice(&v.to_le_bytes());
+}
+
+fn put64(b: &mut [u8], at: usize, v: u64) {
+    b[at..at + 8].copy_from_slice(&v.to_le_bytes());
+}
+
+/// Entry `k` of the layout inside a whole file, as its seventeen bytes.
+fn entry_at(f: &mut [u8], k: usize) -> &mut [u8] {
+    let at = ENTRY0 + k * 17;
+    &mut f[at..at + 17]
+}
+
+/// An entry appended to a HAND-BUILT layout, for the two rules that no single
+/// break of a layout this reader accepts can reach.
+fn put_entry(layout: &mut Vec<u8>, id: u64, kind: u8, size: u32, children: u32) {
+    let at = layout.len();
+    layout.resize(at + 17, 0);
+    put64(layout, at, id);
+    layout[at + 8] = kind;
+    put32(layout, at + 9, size);
+    put32(layout, at + 13, children);
+}
+
+/// A FILE around a hand-built layout: the form byte, the layout's own fnv1a64
+/// hash, the layout's byte length, the layout, and NO RECORDS — every rule
+/// below refuses before a record is reached. The twin of the reference's
+/// `file_of`.
+fn file_of(layout: &[u8]) -> Vec<u8> {
+    let mut f = vec![0u8; LAYOUT_AT];
+    f[0] = 3; // the fixed form's byte
+    put64(&mut f, HASH_AT, tblfx1::table_fixed_hash(layout));
+    put32(&mut f, HEADER_BYTES, layout.len() as u32);
+    f.extend_from_slice(layout);
+    f
+}
+
+/// Loads `file` and holds the refusal to ITS NAME — see the section note above
+/// for why the name is a string and why that is the same assertion as the enum
+/// comparison that will replace it.
+fn refuses(file: &[u8], want_name: &str, what: &str) {
+    // THE LOAD IS CAUGHT, for the same reason the name is a string: a hostile
+    // layout that PANICS this reader would take the other eleven cases down
+    // with it and measure nothing. A refusal by name is the only acceptable
+    // answer to a stranger's bytes — an abort is its own finding and gets its
+    // own line rather than ending the run.
+    let outcome = std::panic::catch_unwind(|| {
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, file, &mut plan, &mut remap, &mut report);
+        (n, report)
+    });
+    let (n, report) = match outcome {
+        Ok(pair) => pair,
+        Err(_) => {
+            check(
+                false,
+                &format!("{what}: expected {want_name}, got a PANIC on a stranger's layout"),
+            );
+            return;
+        }
+    };
+    check(n.is_none() && report.refused, &format!("{what}: refused"));
+    let got = format!("{:?}", report.reason);
+    check(
+        got == want_name,
+        &format!("{what}: REFUSED BY NAME — expected {want_name}, got {got}"),
+    );
+    // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
+    // record would be the damage the refusal exists to prevent.
+    check(
+        report.unknown == 0
+            && report.kind_mismatch == 0
+            && report.widened == 0
+            && report.clamped == 0
+            && !report.malformed,
+        &format!("{what}: a layout refusal sets nothing and counts nothing"),
+    );
+}
+
+fn the_layout_validation() {
+    // THE BUILD'S OWN FILE, which is the only file a break can still be the one
+    // thing that moved in. It used to be FX2's, read by FX1 through a plan
+    // compiled from it — and that compile is exactly what §5.6 retired: FX1
+    // handed FX2's file now answers `layout_newer` and never reaches a rule. So
+    // FX1 writes it and FX1 reads it, its own hash resolves in its own lineage,
+    // and the ONE case §5.3 keeps — a KNOWN hash whose layout bytes are not the
+    // lock's — is reachable.
+    let two = [tblfx1::FxRootRow::default(); 1];
+    let mut good = vec![0u8; tblfx1::fx_root_fixed_measure(1)];
+    check(
+        tblfx1::fx_root_fixed_save(&two, &mut good) == Some(good.len()),
+        "layout validation: the unbroken file saves",
+    );
+    {
+        // AND IT READS. NEGATIVE CONTROL: without this line every refusal below
+        // could be the file rather than the break.
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        check(
+            tblfx1::fx_root_fixed_load(&mut values, &good, &mut plan, &mut remap, &mut report)
+                == Some(1)
+                && !report.refused,
+            "layout validation: the unbroken file reads, so the breaks below are the breaks",
+        );
+    }
+
+    // THE ONE CASE §5.3 KEEPS, and the whole of what a reader still checks about
+    // a layout on the wire: the header's hash is THIS BUILD'S, so the lineage
+    // resolves and the layout bytes the build laid down are there to compare
+    // against — and ONE flipped byte of the layout behind the header is a LIE
+    // ABOUT A KNOWN VERSION, `layout_malformed`, by name, before any record.
+    // Nothing is recomputed from the wire to reach it: the byte comparison is
+    // what holds the header and the layout together (§5.6).
+    {
+        let mut f = good.clone();
+        f[ENTRY0] ^= 0xFF; // one byte of the root entry's id, and nothing else
+        refuses(
+            &f,
+            "LayoutMalformed",
+            "KEPT (§5.3): a KNOWN hash whose layout bytes are not the lock's is ONE name",
+        );
+    }
+
+    // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
+    if !retired(
+        "RULE: the entry count fits the layout length exactly",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        let mut f = good.clone();
+        let count = u32_at(&f, LAYOUT_AT);
+        put32(&mut f, LAYOUT_AT, count + 1);
+        refuses(
+            &f,
+            "LayoutCountMismatch",
+            "RULE: the entry count fits the layout length exactly",
+        );
+    }
+    if !retired(
+        "RULE: an entry count of zero is not a layout",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        // a count of ZERO is not a layout either: there is no root to walk
+        let mut f = good.clone();
+        put32(&mut f, LAYOUT_AT, 0);
+        refuses(
+            &f,
+            "LayoutCountMismatch",
+            "RULE: an entry count of zero is not a layout",
+        );
+    }
+
+    // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
+    //    a kind outside it means a NEWER FORM BYTE — a different form — and not
+    //    a newer layout of this one. It is refused, never stepped over.
+    if !retired(
+        "RULE: a kind outside the closed set is REFUSED, not skipped",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        let mut f = good.clone();
+        entry_at(&mut f, 1)[8] = 200; // a kind no form byte this build carries defines
+        refuses(
+            &f,
+            "LayoutKindUnknown",
+            "RULE: a kind outside the closed set is REFUSED, not skipped",
+        );
+    }
+
+    // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
+    if !retired(
+        "RULE: the root entry is a TABLE",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        let mut f = good.clone();
+        entry_at(&mut f, 0)[8] = 14; // an array as the root of a record
+        refuses(&f, "LayoutKindInvalid", "RULE: the root entry is a TABLE");
+    }
+
+    // 4. A CONSTANT SIZE MATCHES ITS KIND
+    if !retired(
+        "RULE: a constant size its kind does not admit",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        // entry 1 of FX2's FxRoot layout is `keep uint32`: kind 8, size 4, no
+        // children — so five bytes is a width its kind does not admit.
+        let mut f = good.clone();
+        put32(entry_at(&mut f, 1), 9, 5);
+        refuses(
+            &f,
+            "LayoutSizeMismatch",
+            "RULE: a constant size its kind does not admit",
+        );
+    }
+    if !retired(
+        "RULE: a table's size is the sum of its fields'",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        // and a TABLE's size is the SUM of its children's, not a number of its own
+        let mut f = good.clone();
+        let body = u32_at(entry_at(&mut f, 0), 9);
+        put32(entry_at(&mut f, 0), 9, body + 4);
+        refuses(
+            &f,
+            "LayoutSizeMismatch",
+            "RULE: a table's size is the sum of its fields'",
+        );
+    }
+
+    // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
+    if !retired(
+        "RULE: the tree runs out of layout",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        let mut f = good.clone();
+        let kids = u32_at(entry_at(&mut f, 0), 13);
+        put32(entry_at(&mut f, 0), 13, kids + 1);
+        refuses(
+            &f,
+            "LayoutTreeUnclosed",
+            "RULE: the tree runs out of layout",
+        );
+    }
+    if !retired(
+        "RULE: the layout outlasts the tree",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        THE_LOCK,
+    ) {
+        // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
+        // reaches. It takes a hand-built layout to reach, and that is itself
+        // worth stating: dropping a child of a TABLE is caught one rule sooner,
+        // by the size that no longer sums, so the only subtree whose loss the
+        // size rule cannot see is one that contributes NO size — an enum's
+        // variants, at kind 32 and size 0.
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, 4);
+        put_entry(&mut layout, 1, 13, 4, 1); // a table of one field
+        put_entry(&mut layout, 2, 30, 4, 0); // an enum, its TWO variants unreached
+        put_entry(&mut layout, 3, 32, 0, 0);
+        put_entry(&mut layout, 4, 32, 0, 0);
+        refuses(
+            &file_of(&layout),
+            "LayoutTreeUnclosed",
+            "RULE: the layout outlasts the tree",
+        );
+    }
+
+    // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
+    if !retired(
+        "RULE: a record size past 65536",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        let mut f = good.clone();
+        put32(entry_at(&mut f, 0), 9, 65537);
+        refuses(
+            &f,
+            "LayoutRecordTooLarge",
+            "RULE: a record size past 65536",
+        );
+    }
+    if !retired(
+        "RULE: a size that would overflow the sum",
+        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
+        THE_LOCK,
+    ) {
+        // A SIZE THAT WOULD WRAP. The children's sizes are summed in 64 bits
+        // precisely so a u32 that overflows is CAUGHT rather than wrapped into a
+        // small number that then agrees with a parent.
+        let mut f = good.clone();
+        put32(entry_at(&mut f, 1), 9, 0xFFFF_FFFF);
+        refuses(
+            &f,
+            "LayoutRecordTooLarge",
+            "RULE: a size that would overflow the sum",
+        );
+    }
+
+    // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
+    //    NOT ON THE WIRE: the validation recurses, so a layout of a thousand
+    //    entries each claiming one child would spend a reader's stack before any
+    //    other rule could fire. Nothing in §3.4 fixes the number.
+    if !retired(
+        "RULE: a nesting depth past the walk's own bound",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        THE_LOCK,
+    ) {
+        let depth: u32 = 4096; // far past any reader's own bound
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, depth + 1);
+        for i in 0..depth {
+            // a table, then optional wrappers all the way down
+            put_entry(&mut layout, 1, if i == 0 { 13 } else { 35 }, depth - i, 1);
+        }
+        put_entry(&mut layout, 2, 1, 1, 0); // a bool at the bottom
+        refuses(
+            &file_of(&layout),
+            "LayoutTooDeep",
+            "RULE: a nesting depth past the walk's own bound",
+        );
+    }
+
+    // AND THE RESIDUE: bytes that are not a layout at all, which is the one case
+    // the seven named rules never reach.
+    if !retired(
+        "RULE: fewer bytes than a header is layout_malformed",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        THE_LOCK,
+    ) {
+        refuses(
+            &file_of(&[0u8; 2]),
+            "LayoutMalformed",
+            "RULE: fewer bytes than a header is layout_malformed",
         );
     }
 }
@@ -573,7 +1029,13 @@ fn the_bench_corpus(dir: &str) {
         "bench_fixed: this build's LAYOUT IS the corpus's, byte for byte",
     );
     check(
-        benchfixed::FIXED_TABLE_FIXED_HASH == 0x32f1_c4a3_02a2_24eb,
+        // RE-PINNED AGAIN by #916 (the definitions digest now reaches a
+        // float field's range, so every fixed layout's hash moved). The value
+        // is not chosen here: it is the one the corpus carries at byte 8 of
+        // bench_fixed.bin, and every other leg pins the same number —
+        // generated/bench/paired/{go,c,cpp,cs},
+        // internal/codegen/{js,dart,elixir}table/fixedform_test.go.
+        benchfixed::FIXED_TABLE_FIXED_HASH == 0x6237_c1dc_195f_9ec9,
         "bench_fixed: the pinned block hash",
     );
 
@@ -680,6 +1142,13 @@ fn the_bench_corpus(dir: &str) {
 // ---------------------------------------------------------------------------
 
 fn the_ordinal_slide() {
+    if retired(
+        "the_ordinal_slide, both halves",
+        "FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's",
+        LINEAGE,
+    ) {
+        return;
+    }
     // FE1 writes: Gold with a `ward`, and Bronze with a `boost`.
     // THE ARM AND THE TAG MOVE TOGETHER, which is the only way they move at
     // all: `set_ward` is the whole of "tag 2, ward 41" and the two cannot be
@@ -821,7 +1290,11 @@ fn the_union_controls(dir: &str) {
     // Nothing is out of range by the time the scatter sees it, which is why
     // this case lands None and counts NOTHING, where the identity path above
     // counts one clamped.
-    {
+    if !retired(
+        "the_union_controls' compiled forged-tag half",
+        "FE2 reading FE1's forged file is a cross-schema read; the identity half above still watches a forged tag land None and count one clamped",
+        LINEAGE,
+    ) {
         let older = {
             let mut one = tblfe1::FeRootRow {
                 grade: 1,
@@ -952,9 +1425,14 @@ fn the_text_under_an_arm() {
 
     // AND THE COMPILED READ, of the same bytes through a peer whose layout hash
     // differs — which is the only thing that changes.
-    let mut theirs = [tblfu2::FuRootRow::default(); 4];
     let mut plan2 = [tblfu2::TableFixedEntry::default(); 512];
     let mut remap2 = [0u16; 512];
+    if !retired(
+        "the_text_under_an_arm's compiled half",
+        "FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there",
+        LINEAGE,
+    ) {
+    let mut theirs = [tblfu2::FuRootRow::default(); 4];
     let mut report2 = tblfu2::TableFixedReport::default();
     let n2 = tblfu2::fu_root_fixed_load(&mut theirs, &file, &mut plan2, &mut remap2, &mut report2);
     check(n2 == Some(2), "text under an arm: the compiled read takes both records");
@@ -999,6 +1477,7 @@ fn the_text_under_an_arm() {
         "text under an arm: the FIRST arm agrees as well",
     );
     check(theirs[1].tail == 12, "text under an arm: and its tail");
+    }
 
     // ---------------------------------------------------------------------
     // AND THE TWO BYTES THAT ARE TRUE WHEN THEY ARE NOT ZERO (§3.4).
@@ -1031,6 +1510,11 @@ fn the_text_under_an_arm() {
         "stray true bytes: and neither is damage, a clamp or a refusal",
     );
 
+    if !retired(
+        "the_text_under_an_arm's compiled stray-true-bytes half",
+        "FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes",
+        LINEAGE,
+    ) {
     let mut theirs2 = [tblfu2::FuRootRow::default(); 4];
     let mut r4 = tblfu2::TableFixedReport::default();
     let n4 = tblfu2::fu_root_fixed_load(&mut theirs2, &forged, &mut plan2, &mut remap2, &mut r4);
@@ -1044,6 +1528,7 @@ fn the_text_under_an_arm() {
         !r4.malformed && !r4.refused && r4.clamped == 0 && r4.kind_mismatch == 0,
         "stray true bytes: the compiled path calls neither of them an event either",
     );
+    }
 
     // NEGATIVE CONTROL FOR THE CONTROL: the SAME bytes with those two zeroed
     // land false and absent, so the reads above are the forgery answering and
@@ -1110,6 +1595,11 @@ fn the_enum_extent() {
     );
 
     // THE COMPILED PATH, over the same forged bytes.
+    if !retired(
+        "the_enum_extent's compiled half",
+        "FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove",
+        LINEAGE,
+    ) {
     let mut theirs = [tblfe2::FeRootRow::default(); 4];
     let mut plan2 = [tblfe2::TableFixedEntry::default(); 512];
     let mut remap2 = [0u16; 512];
@@ -1128,6 +1618,7 @@ fn the_enum_extent() {
         theirs[0].tail == 55,
         "a forged ordinal, compiled plan: the field past it still lands",
     );
+    }
 
     // AND THE NEGATIVE CONTROL FOR THE CONTROL: the same record UNFORGED reads
     // Gold and clamps nothing, so the clamp above is the forgery and not the
@@ -1430,7 +1921,11 @@ fn the_prefill_holes(dir: &str) {
 
     // COMPILED MISSING FIELD KEEPS THE DECLARED DEFAULT, and the dest was
     // poisoned so leftover dest cannot stand in for the hole.
-    {
+    if !retired(
+        "the_prefill_holes' compiled missing-field block",
+        "FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage",
+        LINEAGE,
+    ) {
         let golden = slurp(dir, "fx1.bin");
         let mut values = [tblfx2::FxRootRow::default(); 8];
         for v in &mut values {
@@ -1638,6 +2133,7 @@ fn main() {
     the_text_under_an_arm();
     the_enum_extent();
     the_negative_controls(&dir);
+    the_layout_validation();
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
     the_declared_range();

@@ -602,14 +602,21 @@ namespace Wide
         };
 
         public static readonly TableFixedSlot<Stamp>[] StampFixedSlots = new TableFixedSlot<Stamp>[] {
-            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.LabelLength = (int)v),
-            new TableFixedSlot<Stamp>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); }),
-            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.Seq = unchecked((uint)v)),
+            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.LabelLength = (int)v, reset: (t) => { t.LabelLength = 0; }),
+            new TableFixedSlot<Stamp>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
+            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.Seq = unchecked((uint)v), reset: (t) => { t.Seq = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] StampFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 3u),
         };
 
         public static readonly TableFixedPlan StampFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
-            new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2),
-            new TableFixedEntry(12u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
+            new TableFixedEntry(12u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
         public static long StampFixedMeasure(long count)
@@ -678,13 +685,23 @@ namespace Wide
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = StampFixedPlan;
             long record_bytes = StampFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != StampFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == StampFixedHash)
+            {
+                if (layout_bytes != (uint)StampFixedLayout.Length || !layout.SequenceEqual(StampFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -700,11 +717,13 @@ namespace Wide
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = StampFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, StampFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -717,10 +736,12 @@ namespace Wide
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new Stamp(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }

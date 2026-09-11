@@ -215,6 +215,44 @@ jobs:
       - name: go test
         run: go test ./...
 
+      # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
+      # which the step above does NOT run. Its harness reads the C++
+      # reference's byte oracle out of build/fixedform-corpus and SKIPS itself
+      # when that directory is absent — which it always is under a bare
+      # `go test ./...` — so until this step existed the whole of §5 was
+      # unwatched on the diff that changes it, reporting green over a suite
+      # that asserted nothing. `make tables-go-versioning` builds the oracle
+      # with the reference's own dump first (~7 s) and sets
+      # SCHEMA_REQUIRE_CORPUS=1, under which the skip is a failure: a corpus
+      # that failed to build can no longer pass here quietly. About half a
+      # minute, and the ../serialize checkout this job already makes is the
+      # only thing the C++ dump needs.
+      - name: the fixed form's versioning suite reads the reference's bytes
+        run: make tables-go-versioning
+
+      # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
+      # one because the harness is a Go test: internal/codegen/rusttable's
+      # fixedversioning_test.go generates one cargo workspace of probe crates and
+      # runs `cargo test` over it once, so the thing that must be installed is Go
+      # plus cargo, and the corpus the step above already knows how to build. The
+      # ubuntu runner image carries a stable cargo on PATH; $(RUSTUP_BIN) in
+      # make/rust.mk is a homebrew keg that does not exist here, and prepending a
+      # directory that is not there costs nothing and resolves the image's cargo.
+      #
+      # THE ../serialize.rs CHECKOUT IS THIS STEP'S OWN. Every probe crate depends
+      # on `serialize-official` by path, and the job's checkout block above clones
+      # the C, C++, C# and Go runtimes only — so the clone lives here, beside the
+      # one target that needs it, under the same pinned tag the rest of this file
+      # uses. Without it the suite fails by name on the missing sibling rather
+      # than skipping, which is the behaviour this whole gate is for.
+      - name: the fixed form's versioning suite on the Rust leg
+        run: |
+          if [ ! -d ../serialize.rs ]; then
+            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
+          fi
+          make tables-rust-versioning
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line

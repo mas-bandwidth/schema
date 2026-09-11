@@ -62,7 +62,7 @@ defmodule Bench.WrapFixed do
   # value the type can hold (docs/SPEC-TABLES.md §3.4).
   @fixed_table_body_bytes 1236
   @fixed_table_record_bytes 1244
-  @fixed_table_hash 0x32F1C4A302A224EB
+  @fixed_table_hash 0x6237C1DC195F9EC9
 
   # THE LAYOUT: 75 entries, a PRE-ORDER walk of the closure in the writer's
   # declared order — an id, a kind, a constant size and a child count each,
@@ -228,11 +228,11 @@ defmodule Bench.WrapFixed do
   # plan clamps a ranged integer: the generated projection holds the bound after
   # the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
-    hash = R.hash(layout)
+    hash = stated # the header's hash; digest is not on the wire
     copy = Keyword.get(opts, :copy, false)
 
     with {:ok, plan, size, report} <- fixed_table_fixed_plan_for(hash, layout, report, opts),
-         :ok <- fixed_table_fixed_header_names_it(stated, hash),
+         :ok <- fixed_table_fixed_header_names_it(stated, layout),
          {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
@@ -290,11 +290,13 @@ defmodule Bench.WrapFixed do
     end
   end
 
-  # THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three: the
-  # layout's own rules each refuse under their own name first, so a broken
-  # layout is never reported as a lying header (docs/SPEC-TABLES.md §3).
-  defp fixed_table_fixed_header_names_it(stated, hash) when stated == hash, do: :ok
-  defp fixed_table_fixed_header_names_it(_stated, _hash), do: {:error, :layout_malformed}
+  # THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+  # against this build's; digest is not on the wire, so the header hash is
+  # not a hash of the layout bytes alone (docs/SPEC-TABLES.md §3, bill §13).
+  defp fixed_table_fixed_header_names_it(stated, layout) when stated == @fixed_table_hash do
+    if layout == @fixed_table_layout, do: :ok, else: {:error, :layout_malformed}
+  end
+  defp fixed_table_fixed_header_names_it(_stated, _layout), do: :ok
 
   # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
   # the record size from the layout, so the count is arithmetic. BYTES LEFT

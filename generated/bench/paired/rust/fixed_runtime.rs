@@ -88,7 +88,7 @@ pub struct TableFixedEntry {
     pub op: TableFixedOp,
     /// THE GUARD'S TAG and nothing else: the ordinal the tag at `guard` must
     /// hold for this entry to run. It is meaningless on an unguarded entry.
-    pub arg: u32,
+    pub arg: u64,
     /// THE GUARD'S WIDTH IN BYTES, and it is load-bearing: a union tag is one,
     /// two, four or eight bytes wide, and comparing only the FIRST of them
     /// fires arm 1 on a foreign tag of 0x0101 — an ordinal no arm of this
@@ -153,6 +153,60 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
+    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5). The file was written by
+    /// a build AHEAD OF THIS ONE: a fixed table reads BACKWARD and never
+    /// forward, so there is nothing to try and no layout to walk. The report
+    /// carries THE FILE'S HASH AND NOTHING ELSE (bill §12.4) — ship the reader.
+    LayoutNewer,
+    /// A HASH THE LINEAGE HOLDS, BELOW THE FLOOR (§5.3 step 6). The operator
+    /// RETIRED that layout, with the lock's own --retire edit, and the entry
+    /// stays in the lineage forever so this answer can stay distinct from
+    /// LayoutNewer: the hash is reported here too (§5.9 #7) — upgrade the
+    /// client.
+    LayoutUnsupported,
+    /// bytes that are not a layout at all, and — under a KNOWN hash — a LIE
+    /// about a known version: the seven §1.1 malformations all come back as
+    /// this ONE name when the hash resolves (§5.3, bill §12.4)
+    LayoutMalformed,
+    /// 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
+    LayoutCountMismatch,
+    /// 2. EVERY KIND IS IN THE CLOSED SET
+    LayoutKindUnknown,
+    /// 3. A KIND IS USED AS ITS DEFINITION ALLOWS
+    LayoutKindInvalid,
+    /// 4. A CONSTANT SIZE MATCHES ITS KIND
+    LayoutSizeMismatch,
+    /// 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
+    LayoutTreeUnclosed,
+    /// 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
+    LayoutRecordTooLarge,
+    /// 7. NOTHING NESTED PAST THE READER'S WALK BOUND
+    LayoutTooDeep,
+}
+
+impl TableFixedReason {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::NewerForm => "newer_form",
+            Self::PreviousForm => "previous_form",
+            Self::MessageFormAsFile => "message_form_as_file",
+            Self::NoBlock => "no_block",
+            Self::BlockMalformed => "block_malformed",
+            Self::PlanTooLarge => "plan_too_large",
+            Self::BatchTooLarge => "batch_too_large",
+            Self::LayoutNewer => "layout_newer",
+            Self::LayoutUnsupported => "layout_unsupported",
+            Self::LayoutMalformed => "layout_malformed",
+            Self::LayoutCountMismatch => "layout_count_mismatch",
+            Self::LayoutKindUnknown => "layout_kind_unknown",
+            Self::LayoutKindInvalid => "layout_kind_invalid",
+            Self::LayoutSizeMismatch => "layout_size_mismatch",
+            Self::LayoutTreeUnclosed => "layout_tree_unclosed",
+            Self::LayoutRecordTooLarge => "layout_record_too_large",
+            Self::LayoutTooDeep => "layout_too_deep",
+        }
+    }
 }
 
 /// The read report — §4's ledger, and this form's refusals beside it. Silence
@@ -167,16 +221,51 @@ pub struct TableFixedReport {
     pub malformed: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
+    /// THE FILE'S OWN HASH, on the two layout refusals that report it
+    /// (§5.3's condition table, §5.9 #7): `layout_newer` carries it and
+    /// nothing else, and `layout_unsupported` carries it too, because the
+    /// operator choosing between "ship the reader" and "upgrade the client"
+    /// needs the number in both answers.
+    pub layout_hash: u64,
 }
 
 impl TableFixedReport {
     /// A refusal BY NAME: nothing is decoded, no counter moves, and
     /// `malformed` does not fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
+        self.unknown = 0;
+        self.kind_mismatch = 0;
+        self.widened = 0;
+        self.clamped = 0;
+        self.malformed = false;
         self.refused = true;
         self.reason = reason;
+        self.layout_hash = 0;
         None
     }
+
+    /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
+    /// hash is the only thing `layout_newer` carries (bill §12.4) and
+    /// `layout_unsupported` carries it too (§5.9 #7).
+    pub fn refuse_layout<T>(&mut self, reason: TableFixedReason, hash: u64) -> Option<T> {
+        let out = self.refuse(reason);
+        self.layout_hash = hash;
+        out
+    }
+}
+
+/// ONE LOCKED LAYOUT OF ONE FIXED TABLE, as static data the BUILD laid down
+/// (docs/FIXED-FORM-ALGORITHM.md §5.2's `R.known[i]`). A file is matched on
+/// `hash` and on nothing else; `layout` is the bytes the LOCK recorded, which
+/// LOAD compares the file's against and never walks; `record` is the record size
+/// FROM THE LOCK and never from the file; `retired` is the operator's mark, and
+/// the floor is where it cuts.
+#[derive(Clone, Copy, Debug)]
+pub struct TableFixedKnown {
+    pub hash: u64,
+    pub layout: &'static [u8],
+    pub record: usize,
+    pub retired: bool,
 }
 
 /// THE HASH is fnv1a64 over the block's bytes exactly as written (§3.4). It is
@@ -274,11 +363,24 @@ fn widens(from: u8, to: u8) -> bool {
     if (2..=5).contains(&from) && (2..=5).contains(&to) {
         return to > from; // i8 .. i64
     }
+    // THE FIXED-POINT LADDERS, one rung per storage width and INSIDE a family:
+    // 20..24 is a SIGNED fixed(I,F) at 8/16/32/64/128 bits and 25..29 is the
+    // unsigned run (§1's kind codes). A grown I at an equal F is a widen; F
+    // moving is not a version at all and the lock refuses it.
+    if (20..=24).contains(&from) && (20..=24).contains(&to) {
+        return to > from;
+    }
+    if (25..=29).contains(&from) && (25..=29).contains(&to) {
+        return to > from;
+    }
     from == 10 && to == 11 // f32 -> f64
 }
 
 fn signed_kind(kind: u8) -> bool {
-    (2..=5).contains(&kind)
+    // A LADDER WIDEN'S SIGN IS THE WRITER'S KIND: i8..i64 and a SIGNED
+    // fixed-point (20..24) sign-extend, and everything else — the unsigned
+    // integers, the unsigned fixed-point run — extends with zero (§5.2).
+    (2..=5).contains(&kind) || (20..=24).contains(&kind)
 }
 
 // ---- THE ONE READ LOOP ------------------------------------------------------
@@ -310,7 +412,7 @@ pub fn table_fixed_run(
             let g = p.guard as usize;
             let w = p.argw as usize;
             match src.get(g..g + w) {
-                Some(tag) if table_fixed_tag(tag) == p.arg as u64 => {}
+                Some(tag) if table_fixed_tag(tag) == p.arg => {}
                 Some(_) => continue,
                 None => {
                     report.malformed = true;
@@ -505,7 +607,41 @@ pub fn table_fixed_holes(
 // states.
 
 const ENTRY_BYTES: usize = 17;
-const MAX_DEPTH: u32 = 32;
+const MAX_DEPTH: u32 = 64;
+
+fn ordinal_width(n: u32) -> bool {
+    n == 1 || n == 2 || n == 4 || n == 8
+}
+
+fn known_kind(kind: u8) -> bool {
+    (1..=30).contains(&kind) || kind == 32 || kind == 33 || kind == 35
+}
+
+fn leaf_size(kind: u8, size: u32) -> Option<bool> {
+    let ok = match kind {
+        1 => size == 1,
+        2 => size == 1,
+        3 => size == 2,
+        4 => size == 4,
+        5 => size == 8,
+        6 => size == 1 || size == 4,
+        7 => size == 2 || size == 4,
+        8 => size == 4,
+        9 => size == 8,
+        10 => size == 4,
+        11 => size == 8,
+        17 => size == 4,
+        18 | 19 => size == 16,
+        20 | 25 => size == 1,
+        21 | 26 => size == 2,
+        22 | 27 => size == 4,
+        23 | 28 => size == 8,
+        24 | 29 => size == 16,
+        32 => size == 0,
+        _ => return None,
+    };
+    Some(ok)
+}
 
 /// One block entry, read out of the bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -526,20 +662,31 @@ pub struct TableFixedBlock<'a> {
 }
 
 impl<'a> TableFixedBlock<'a> {
-    pub fn parse(bytes: &'a [u8]) -> Option<TableFixedBlock<'a>> {
+    pub fn parse(bytes: &'a [u8]) -> Result<TableFixedBlock<'a>, TableFixedReason> {
         if bytes.len() < 4 {
-            return None;
+            return Err(TableFixedReason::LayoutMalformed);
         }
         let count = get32(bytes, 0) as usize;
-        if count == 0 || count.checked_mul(ENTRY_BYTES)? + 4 != bytes.len() {
-            return None;
+        let entry_bytes_len = match count.checked_mul(ENTRY_BYTES).and_then(|b| b.checked_add(4)) {
+            Some(len) => len,
+            None => return Err(TableFixedReason::LayoutCountMismatch),
+        };
+        if count == 0 || entry_bytes_len != bytes.len() {
+            return Err(TableFixedReason::LayoutCountMismatch);
         }
         let block = TableFixedBlock { bytes, count };
-        // THE TREE HAS TO CLOSE: the root's subtree is the whole block
-        if block.subtree_at(0, 0)? != count {
-            return None;
+        let root = block.entry(0);
+        if root.kind != 13 {
+            return Err(TableFixedReason::LayoutKindInvalid);
         }
-        Some(block)
+        if root.size == 0 || root.size > 65536 {
+            return Err(TableFixedReason::LayoutRecordTooLarge);
+        }
+        let used = block.check_entry(0, 0)?;
+        if used != count {
+            return Err(TableFixedReason::LayoutTreeUnclosed);
+        }
+        Ok(block)
     }
 
     pub fn count(&self) -> usize {
@@ -581,6 +728,142 @@ impl<'a> TableFixedBlock<'a> {
             n += sub;
         }
         Some(n)
+    }
+
+    fn check_entry(&self, i: usize, depth: u32) -> Result<usize, TableFixedReason> {
+        if i >= self.count {
+            return Err(TableFixedReason::LayoutTreeUnclosed);
+        }
+        if depth > MAX_DEPTH {
+            return Err(TableFixedReason::LayoutTooDeep);
+        }
+        let e = self.entry(i);
+        if !known_kind(e.kind) {
+            return Err(TableFixedReason::LayoutKindUnknown);
+        }
+        if e.size > 65536 {
+            return Err(TableFixedReason::LayoutRecordTooLarge);
+        }
+
+        let mut at = i + 1;
+        let mut sum = 0u64;
+        let mut widest = 0u32;
+        let mut first_size = 0u32;
+        let mut second_size = 0u32;
+        let mut first_kind = 0u8;
+        let mut first_children = 0u32;
+        let mut kids_are_variants = true;
+
+        for k in 0..e.children {
+            let child = at;
+            let used = self.check_entry(child, depth + 1)?;
+            let ce = self.entry(child);
+            if k == 0 {
+                first_size = ce.size;
+                first_kind = ce.kind;
+                first_children = ce.children;
+            }
+            if k == 1 {
+                second_size = ce.size;
+            }
+            if ce.kind != 32 {
+                kids_are_variants = false;
+            }
+            sum = sum.saturating_add(ce.size as u64);
+            if ce.size > widest {
+                widest = ce.size;
+            }
+            if sum > 65536 {
+                return Err(TableFixedReason::LayoutRecordTooLarge);
+            }
+            at += used;
+        }
+
+        if let Some(ok) = leaf_size(e.kind, e.size) {
+            if !ok {
+                return Err(TableFixedReason::LayoutSizeMismatch);
+            }
+            if e.children != 0 {
+                return Err(TableFixedReason::LayoutKindInvalid);
+            }
+            return Ok(at - i);
+        }
+
+        match e.kind {
+            13 => {
+                if e.size as u64 != sum {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            35 => {
+                if e.children != 1 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size as u64 != sum + 1 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            14 => {
+                if e.children != 1 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if first_size == 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                let bare = (e.size % first_size) == 0;
+                let counted = e.size >= 4 && ((e.size - 4) % first_size) == 0;
+                if !bare && !counted {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            16 => {
+                if e.children != 2 || first_kind != 30 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if second_size == 0 || (e.size % second_size) != 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                if (e.size / second_size) < first_children {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            15 => {
+                if e.children == 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size <= widest || !ordinal_width(e.size - widest) {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            30 => {
+                if !ordinal_width(e.size) {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                if e.children != 0 && !kids_are_variants {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+            }
+            12 => {
+                if e.children != 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size < 4 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            33 => {
+                if e.children != 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size < 4 || ((e.size - 4) % 2) != 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            _ => {
+                return Err(TableFixedReason::LayoutKindUnknown);
+            }
+        }
+        Ok(at - i)
     }
 
     /// A union's tag width: what its entry's size has left over the widest arm.
@@ -641,17 +924,34 @@ impl Compiler<'_> {
 
     /// Lays a remap table down and answers where it starts: a count, then that
     /// many landed ordinals.
-    fn lay(&mut self, values: &[u16]) -> u32 {
+    /// RESERVE a remap table of `n` entries and write its LENGTH WORD, returning
+    /// the table's byte offset from the pool's base. The table is filled in
+    /// place afterwards, so its length is the WRITER's variant count and not a
+    /// temporary's capacity (§5.2): a cap would remap a writer's variant past
+    /// the cap to None as though this reader did not name it, which is a silent
+    /// wrong value and not a refusal. A count past what the length word can
+    /// hold is the pool's own overflow, plan_too_large by name.
+    fn reserve(&mut self, n: usize) -> Option<u32> {
         let at = self.remap_used;
-        if at + 1 + values.len() > self.remap.len() {
+        if n > u16::MAX as usize || at + 1 + n > self.remap.len() {
             self.overflow = true;
-            return 0;
+            return None;
         }
-        self.remap[at] = values.len() as u16;
-        self.remap[at + 1..at + 1 + values.len()].copy_from_slice(values);
-        self.remap_used = at + 1 + values.len();
-        at as u32
+        self.remap[at] = n as u16;
+        self.remap[at + 1..at + 1 + n].fill(0);
+        self.remap_used = at + 1 + n;
+        Some(at as u32)
     }
+
+    /// Entry `j` of the table at `at`: the reader's position of the writer's
+    /// variant `j`, or 0 where this reader has no such name.
+    fn place(&mut self, at: u32, j: usize, landed: u16) {
+        let i = at as usize + 1 + j;
+        if i < self.remap.len() {
+            self.remap[i] = landed;
+        }
+    }
+
 }
 
 /// Compiles a plan that reads `theirs`-shaped records into `mine`-shaped images.
@@ -714,7 +1014,7 @@ fn match_children(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u32,
+    arg: u64,
     argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
@@ -740,10 +1040,10 @@ fn match_children(
                 );
                 break;
             }
-            their_off += tc.size;
+            their_off = their_off.saturating_add(tc.size);
             their_child += theirs.subtree(their_child);
         }
-        my_off += mc.size;
+        my_off = my_off.saturating_add(mc.size);
         my_child += mine.subtree(my_child);
     }
     // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown, and skipping it
@@ -778,7 +1078,7 @@ fn compile_entry(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u32,
+    arg: u64,
     argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
@@ -789,6 +1089,35 @@ fn compile_entry(
     }
     let te = theirs.entry(ti);
     let me = mine.entry(mi);
+    // T INTO ?T (§5.2's EMIT, bill §12.8): this reader WRAPPED a value the
+    // writer sent bare. The present byte is not on the wire at all, so it is a
+    // CONSTANT 1 this reader's own image takes — carried under the same guard
+    // and ordinal as the payload, so a present byte under an arm the tag did
+    // not name is not set — and then the payload lands against the wrapper's
+    // own child. (§5.2's EMIT says "under guard/arg" where §5.7's C-leg row
+    // calls the same constant UNGUARDED; the guarded reading is the one that
+    // cannot set a present byte for an arm nobody selected. AT TOP LEVEL THE
+    // TWO READINGS COINCIDE: the guard a root field inherits is the empty one,
+    // which is the unguarded case the bill names, so the readings part only
+    // under a union arm — where the guarded one is right.)
+    if me.kind == 35 && te.kind != 35 {
+        c.push(TableFixedEntry {
+            src: their_at,
+            dst: my_at,
+            size: 1,
+            aux: 1,
+            guard,
+            arg,
+            argw,
+            op: TableFixedOp::Const,
+            ..TableFixedEntry::default()
+        });
+        compile_entry(
+            c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, guard, arg, argw, depth + 1,
+            report,
+        );
+        return;
+    }
     if te.kind != me.kind {
         if widens(te.kind, me.kind) {
             c.push(TableFixedEntry {
@@ -846,10 +1175,16 @@ fn compile_entry(
             let their_n = te.size.saturating_sub(head).checked_div(tel.size).unwrap_or(0);
             let my_n = me.size.saturating_sub(head).checked_div(mel.size).unwrap_or(0);
             if head != 0 {
+                // THE COUNT'S BOUND IS THE WRITER'S, carried by the plan (bill
+                // §12.5, §5.2's EMIT at kind 14): a count forged past what THAT
+                // PEER could have written clamps and counts, and a count the
+                // reader merely grew room for does not. The min is not the
+                // rule — it is the floor under a lock that is not monotone,
+                // which is a build bug and never a wire event.
                 c.push(TableFixedEntry {
                     src: their_at,
                     dst: my_at,
-                    size: my_n,
+                    size: their_n.min(my_n),
                     guard,
                     arg,
                     argw,
@@ -930,7 +1265,7 @@ fn compile_entry(
                             size: my_tag,
                             aux: k as u32 + 1,
                             guard: their_at,
-                            arg: j as u32 + 1,
+                            arg: j as u64 + 1,
                             argw: their_tag as u8,
                             op: TableFixedOp::Const,
                             ..TableFixedEntry::default()
@@ -945,7 +1280,7 @@ fn compile_entry(
                             my_at + my_tag,
                             counted,
                             their_at,
-                            j as u32 + 1,
+                            j as u64 + 1,
                             their_tag as u8,
                             depth + 1,
                             report,
@@ -957,11 +1292,40 @@ fn compile_entry(
                 my_arm += mine.subtree(my_arm);
             }
         }
+        30 if te.size < me.size => {
+            // A GROWN ORDINAL WIDTH IS A WIDEN, and it is UNSIGNED (§5.2's EMIT
+            // at kind 30, bill §12.7): the writer's variant NAMES did not move,
+            // only the width the ordinal rides at, so there is nothing to remap
+            // and the counter this moves is widened (§5.4) and not clamped.
+            // The same-kind widen extends with ZERO — the entry's sign is left
+            // at zero and never inferred from the kind's signedness.
+            c.push(TableFixedEntry {
+                src: their_at,
+                dst: my_at,
+                size: te.size,
+                guard,
+                arg,
+                argw,
+                op: TableFixedOp::Widen,
+                dstsize: me.size as u8,
+                ..TableFixedEntry::default()
+            });
+        }
         30 => {
             // an enum: the ordinal is the block's POSITION, so it remaps by
-            // NAME and a variant inserted in the middle never reinterprets one
-            let mut map = [0u16; 256];
-            let n = (te.children as usize).min(255);
+            // NAME and a variant inserted in the middle never reinterprets one.
+            //
+            // THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), which
+            // is why it is reserved in the pool and filled in place rather than
+            // built in a fixed temporary: a table capped at 255 remaps a
+            // writer's 256th variant and every one after it to None as though
+            // this reader did not name them, and a wrong value nobody is told
+            // about is worse than a refusal. The length word is slot 0, so an
+            // ordinal of 0 is None BY CONSTRUCTION and never an index.
+            let n = te.children as usize;
+            let Some(aux) = c.reserve(n) else {
+                return; // the pool is spent: the plan does not fit, by name
+            };
             for j in 0..n {
                 let vid = theirs.entry(ti + 1 + j).id;
                 let mut landed = 0u16;
@@ -971,9 +1335,8 @@ fn compile_entry(
                         break;
                     }
                 }
-                map[j] = landed;
+                c.place(aux, j, landed);
             }
-            let aux = c.lay(&map[..n]);
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,

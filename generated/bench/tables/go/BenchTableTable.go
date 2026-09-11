@@ -107,6 +107,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
+	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
+	// reports it too — the operator's other answer, a layout this build served
+	// and has retired.
+	LayoutHash uint64
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -1639,6 +1644,16 @@ const (
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
+// THE LAYOUT'S OWN BOUNDS (docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
+// the u32 entry count and nothing else. 65536 is the form's record body bound,
+// which a DECLARED fixed table is held to at compile time and an untrusted
+// peer's layout is held to here, so the two sides agree by construction. The
+// depth is a bound on THIS READER'S WALK and not on the wire: the reference
+// states 64 and every leg states the same number.
+const tableFixedLayoutHeaderBytes int32 = 4
+const tableFixedRecordMaxBytes uint32 = 65536
+const tableFixedMaxDepth int32 = 64
+
 // Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
 // it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
 // shared one lane until reference-fix 12; compiling a string under a union
@@ -1667,10 +1682,91 @@ func tableFixedWidens(from, to uint8) bool {
 	if from >= 2 && from <= 5 && to >= 2 && to <= 5 {
 		return to > from
 	}
+	// THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a fixed(I,F)
+	// into a wider I at equal F is a LADDER widen and not a kind that moved
+	// (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+	if from >= 20 && from <= 24 && to >= 20 && to <= 24 {
+		return to > from
+	}
+	if from >= 25 && from <= 29 && to >= 25 && to <= 29 {
+		return to > from
+	}
 	return from == 10 && to == 11
 }
-func tableFixedSignedKind(kind uint8) bool { return kind >= 2 && kind <= 5 }
-func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
+
+// A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the WRITER's
+// kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
+// otherwise (§5.2).
+func tableFixedSignedKind(kind uint8) bool {
+	return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24)
+}
+
+// THE CLOSED KIND SET (docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing
+// escape and 34 is reserved: none of the three is a kind a declaration spells,
+// so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// leaf to step over — the form byte versions the kinds behind it, so a kind
+// this build does not know names a FORM this reader never saw.
+func tableFixedKindKnown(kind uint8) bool {
+	if kind >= 1 && kind <= 30 {
+		return true
+	}
+	return kind == 32 || kind == 33 || kind == 35
+}
+
+// tableFixedOrdinalWidth is the widths an ordinal — an enum's, a union tag's —
+// is stored at.
+func tableFixedOrdinalWidth(n uint32) bool { return n == 1 || n == 2 || n == 4 || n == 8 }
+
+// tableFixedLeafSize answers whether a kind is a LEAF and, if it is, whether
+// the size it states is one its kind admits (§1.2). Kind and size fix each
+// other on this wire with ONE exception, stated here rather than left to be
+// found: a bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for
+// N <= 32 and eight above — under the unsigned integer kind its BIT COUNT
+// picks, so kinds 6 and 7 admit 4 as well as their own width.
+func tableFixedLeafSize(kind uint8, size uint32) (admitted, leaf bool) {
+	leaf = true
+	switch kind {
+	case 1, 2: // bool, i8
+		return size == 1, leaf
+	case 3: // i16
+		return size == 2, leaf
+	case 4: // i32
+		return size == 4, leaf
+	case 5: // i64
+		return size == 8, leaf
+	case 6: // u8, and bits( 1 .. 8 )
+		return size == 1 || size == 4, leaf
+	case 7: // u16, and bits( 9 .. 16 )
+		return size == 2 || size == 4, leaf
+	case 8: // u32, and bits( 17 .. 32 )
+		return size == 4, leaf
+	case 9: // u64, flags, and bits( 33 .. 64 )
+		return size == 8, leaf
+	case 10: // f32
+		return size == 4, leaf
+	case 11: // f64
+		return size == 8, leaf
+	case 17: // a pointer index, which no fixed table carries
+		return size == 4, leaf
+	case 18, 19: // i128, u128
+		return size == 16, leaf
+	case 20, 25: // fixed8, ufixed8
+		return size == 1, leaf
+	case 21, 26:
+		return size == 2, leaf
+	case 22, 27:
+		return size == 4, leaf
+	case 23, 28:
+		return size == 8, leaf
+	case 24, 29:
+		return size == 16, leaf
+	case 32: // a variant, and an arm that holds nothing
+		return size == 0, leaf
+	}
+	return true, false
+}
 
 // tableFixedRuns is whether an op advances src and dst together one byte at a
 // time, which is the whole of what lets two adjacent entries become one.
@@ -1875,8 +1971,16 @@ type tableFixedLayoutView struct {
 	Count int32
 }
 
+// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout is
+// arithmetic over child counts a STRANGER wrote, so the one place that can hold
+// the whole walk inside the buffer is the one place that touches it. An
+// out-of-range index answers kind 0xFF, which is a kind no declaration has and
+// nothing matches, so the walk that asked for it finds nothing and moves on.
 func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
-	e := b.Bytes[4+int64(i)*int64(tableFixedEntryBytes):]
+	if b.Bytes == nil || i < 0 || i >= b.Count {
+		return tableFixedLayoutEntry{Kind: 0xFF}
+	}
+	e := b.Bytes[int64(tableFixedLayoutHeaderBytes)+int64(i)*int64(tableFixedEntryBytes):]
 	return tableFixedLayoutEntry{
 		Id:       tableFixedGet64(e),
 		Kind:     e[8],
@@ -1885,20 +1989,29 @@ func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
 	}
 }
 
+// tableFixedSubtree is how many entries the subtree rooted at i occupies, so a
+// walk steps over a child it does not want without knowing what is in it.
+//
+// ITERATIVE ON PURPOSE (docs/FIXED-FORM-ALGORITHM.md §1.1). A layout is a
+// stranger's bytes, so a chain of single-child entries is a stack depth the WIRE
+// gets to choose; this walk gives it none. The pending counter is the pre-order
+// walk's own arithmetic: one entry is owed at the start, each entry owes its
+// children, and the subtree ends when nothing is owed.
 func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
 	if i < 0 || i >= b.Count {
 		return 1
 	}
-	e := tableFixedEntryAt(b, i)
-	n := int32(1)
-	at := i + 1
-	for c := uint32(0); c < e.Children; c++ {
-		if at >= b.Count {
+	pending := int64(1)
+	n := int32(0)
+	at := i
+	for pending > 0 && at < b.Count {
+		pending--
+		n++
+		pending += int64(tableFixedEntryAt(b, at).Children)
+		at++
+		if pending > int64(b.Count) {
 			break
 		}
-		sub := tableFixedSubtree(b, at)
-		at += sub
-		n += sub
 	}
 	return n
 }
@@ -1907,7 +2020,7 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 	e := tableFixedEntryAt(b, i)
 	var widest uint32
 	at := i + 1
-	for k := uint32(0); k < e.Children; k++ {
+	for k := uint32(0); k < e.Children && at < b.Count; k++ {
 		a := tableFixedEntryAt(b, at)
 		if a.Size > widest {
 			widest = a.Size
@@ -1917,30 +2030,252 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 	return widest
 }
 
+// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+//
+// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// must parse before it knows anything at all, so every rule below runs BEFORE a
+// single record byte is touched and each refuses under ITS OWN NAME rather than
+// under one word for all of them (docs/FIXED-FORM-ALGORITHM.md §1.1).
+//
+// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle: an
+// entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is always
+// higher than its parent's, the layout is finite, and there is no back reference
+// for a cycle to be made of. The tree-closure rule is what bounds the walk, and
+// the depth rule is what bounds the reader's stack.
+type tableFixedCheck struct {
+	layout tableFixedLayoutView
+	why    string
+}
+
+// Keep the FIRST reason and stop: the order of the rules is load-bearing, so the
+// reason a reader reports is the first one the layout broke.
+func (c *tableFixedCheck) fail(why string) {
+	if c.why == "" {
+		c.why = why
+	}
+}
+
+// tableFixedCheckEntry validates the subtree rooted at i and answers how many
+// entries it occupies, which is the same arithmetic tableFixedSubtree does and
+// is why that walk is safe to run afterwards and only afterwards.
+func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
+	if c.why != "" {
+		return 0
+	}
+	if i < 0 || i >= c.layout.Count {
+		c.fail("layout_tree_unclosed")
+		return 0
+	}
+	if depth > tableFixedMaxDepth {
+		c.fail("layout_too_deep")
+		return 0
+	}
+	e := tableFixedEntryAt(c.layout, i)
+	// THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+	// and is refused whole, never walked and never stepped over.
+	if !tableFixedKindKnown(e.Kind) {
+		c.fail("layout_kind_unknown")
+		return 0
+	}
+	if e.Size > tableFixedRecordMaxBytes {
+		c.fail("layout_record_too_large")
+		return 0
+	}
+
+	// THE CHILDREN FIRST, in the pre-order the layout is written in.
+	at := i + 1
+	var sum uint64
+	var widest, firstSize, secondSize, firstChildren uint32
+	var firstKind uint8
+	kidsAreVariants := true
+	for k := uint32(0); k < e.Children; k++ {
+		child := at
+		used := tableFixedCheckEntry(c, child, depth+1)
+		if c.why != "" {
+			return 0
+		}
+		ce := tableFixedEntryAt(c.layout, child)
+		if k == 0 {
+			firstSize, firstKind, firstChildren = ce.Size, ce.Kind, ce.Children
+		}
+		if k == 1 {
+			secondSize = ce.Size
+		}
+		if ce.Kind != 32 {
+			kidsAreVariants = false
+		}
+		// THE SUM IS 64 BITS precisely so a u32 that overflows is CAUGHT rather
+		// than wrapped into a small number that then agrees with its parent.
+		sum += uint64(ce.Size)
+		if ce.Size > widest {
+			widest = ce.Size
+		}
+		if sum > uint64(tableFixedRecordMaxBytes) {
+			c.fail("layout_record_too_large")
+			return 0
+		}
+		at += used
+	}
+
+	admitted, leaf := tableFixedLeafSize(e.Kind, e.Size)
+	if !admitted {
+		c.fail("layout_size_mismatch")
+		return 0
+	}
+	if leaf {
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		return at - i
+	}
+	switch e.Kind {
+	case 13: // a TABLE: its size is the SUM of its fields'
+		if uint64(e.Size) != sum {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
+		if e.Children != 1 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if uint64(e.Size) != sum+1 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 14: // an ARRAY: a whole number of elements, behind a count or not
+		if e.Children != 1 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if firstSize == 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		bare := e.Size%firstSize == 0
+		counted := e.Size >= 4 && (e.Size-4)%firstSize == 0
+		if !bare && !counted {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
+		if e.Children != 2 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if firstKind != 30 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if secondSize == 0 || e.Size%secondSize != 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		// AT LEAST one slot per variant. Not exactly one: an enum widened by an
+		// explicit max has more slots than it has names, and the layout carries
+		// only the names.
+		if e.Size/secondSize < firstChildren {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
+		if e.Children == 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size <= widest {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		if !tableFixedOrdinalWidth(e.Size - widest) {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
+		if !tableFixedOrdinalWidth(e.Size) {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		if e.Children != 0 && !kidsAreVariants {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+	case 12: // string(N): the length, then N bytes
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size < 4 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size < 4 || (e.Size-4)%2 != 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	default:
+		// Every kind of the closed set is either a leaf above or a case here, so
+		// this is unreachable — and it refuses rather than admits, because a
+		// kind that reached it is a kind the two lists disagree about.
+		c.fail("layout_kind_unknown")
+		return 0
+	}
+	return at - i
+}
+
 func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
 	return tableFixedEntryAt(b, i).Size - tableFixedUnionArmBytes(b, i)
 }
 
-func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, bool) {
+// tableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
+// answers the view and a REASON BY NAME — empty when the layout passed every
+// rule — and the caller reports that reason. A layout that fails any rule SETS
+// NOTHING: no view, no plan, and no counter moved.
+//
+// THE ORDER IS LOAD-BEARING (docs/FIXED-FORM-ALGORITHM.md §1.1): rule 1; the
+// root's kind and size; then the walk — index in range (5), depth (7), kind
+// known (2), own size (6), the children, then the size and shape rules (3, 4);
+// and last that the walk consumed exactly the entries (5).
+func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
-	if len(bytes) < 4 {
-		return out, false
+	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
+	// worth of them — are layout_malformed and not one of the seven.
+	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+		return out, "layout_malformed"
 	}
+	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+4 != int64(len(bytes)) {
-		return out, false
+	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+		return out, "layout_count_mismatch"
 	}
-	out.Bytes = bytes
-	out.Count = int32(count)
-	if tableFixedSubtree(out, 0) != out.Count {
-		return tableFixedLayoutView{}, false
+	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
+	// 2. THE ROOT IS A TABLE, and its size is the record's body
+	root := tableFixedEntryAt(view, 0)
+	if root.Kind != 13 {
+		return out, "layout_kind_invalid"
 	}
-	for i := int32(0); i < out.Count; i++ {
-		if !tableFixedKindKnown(tableFixedEntryAt(out, i).Kind) {
-			return tableFixedLayoutView{}, false
-		}
+	if root.Size == 0 || root.Size > tableFixedRecordMaxBytes {
+		return out, "layout_record_too_large"
 	}
-	return out, true
+	// 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+	//    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
+	c := tableFixedCheck{layout: view}
+	used := tableFixedCheckEntry(&c, 0, 0)
+	if c.why != "" {
+		return out, c.why
+	}
+	// 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+	//    the layout has nothing left over
+	if used != view.Count {
+		return out, "layout_tree_unclosed"
+	}
+	return view, ""
 }
 
 type tableFixedCompiler struct {
@@ -2019,7 +2354,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	d := dst[mi]
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
-	if te.Kind != me.Kind {
+	if te.Kind != me.Kind && !(me.Kind == 35) {
 		if tableFixedWidens(te.Kind, me.Kind) {
 			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg}
 			if te.Kind == 10 {
@@ -2036,6 +2371,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if c.report != nil {
 			c.report.KindMismatch++
 		}
+		return
+	}
+	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
+	// carried bare. The PRESENT byte is an UNGUARDED constant 1 at the
+	// wrapper's aux lane, and the payload is compiled against the writer's own
+	// entry under the same guard and ordinal. It is not a kind that moved.
+	if me.Kind == 35 && te.Kind != 35 {
+		tableFixedPush(c, TableFixedEntry{Dst: auxAt, Size: 1, Aux: 1, Guard: guard, Op: tableFixedConst, Arg: arg})
+		tableFixedCompileEntry(c, theirs, ti, theirAt, mine, mi+1, dst, myAt, guard, arg)
 		return
 	}
 	switch me.Kind {
@@ -2104,6 +2448,14 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			myArm += tableFixedSubtree(mine, myArm)
 		}
 	case 30:
+		// A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened
+		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
+		// table.
+		if te.Size < me.Size {
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
+				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
+			return
+		}
 		var m [256]uint16
 		n := te.Children
 		if n > 255 {
@@ -2153,9 +2505,11 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if len(plan) == 0 {
 		return -1
 	}
-	mine, ok := tableFixedParseLayout(myLayout)
-	if !ok {
-		return -1
+	// THE READER'S OWN LAYOUT, and a failure to parse it owes its OWN name and
+	// not plan_too_large: -2 is that, -1 is the plan storage (reference fix 3).
+	mine, why := tableFixedParseLayout(myLayout)
+	if why != "" {
+		return -2
 	}
 	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report}
 	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
@@ -2250,6 +2604,95 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 		i = j
 	}
 	return holes
+}
+
+// ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ----------
+//
+// A fixed table reads BACKWARD and never forward. A file is matched on the
+// eight bytes of its header's hash against the lineage the BUILD laid down, and
+// the layout it carries is held to a BYTE COMPARISON against the bytes the lock
+// recorded — never walked. A hash the lineage does not hold is layout_newer
+// (ship the reader); a hash it holds below the floor is layout_unsupported
+// (upgrade the client). Those are the operator's two distinct answers.
+
+// TableFixedKnown is one locked layout: the wire hash a file is matched on, the
+// layout bytes verbatim, and the RECORD SIZE taken from the lock and never from
+// the file.
+type TableFixedKnown struct {
+	Hash   uint64
+	Layout []byte
+	Record int64
+}
+
+// tableFixedLineagePlan is one older entry's plan, laid down once from the
+// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
+// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+type tableFixedLineagePlan struct {
+	Entries      []TableFixedEntry
+	Count        int32
+	Unknown      int32
+	KindMismatch int32
+	Why          string
+}
+
+func tableFixedSelect(known []TableFixedKnown, hash uint64) int32 {
+	for i := range known {
+		if known[i].Hash == hash {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// tableFixedRefuseHash is the two refusals that report the FILE'S hash and
+// nothing else (§5.3).
+func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64 {
+	report.LayoutHash = hash
+	return tableFixedRefuse(report, reason)
+}
+
+// tableFixedLineagePlans compiles one plan per lineage entry from THE LOCK'S
+// layout bytes, at package initialization — nothing compiles on the load path,
+// and there is no cache to miss (§5.2, §5.8 row 3). The identity entry keeps a
+// nil plan: the baked one answers it.
+func tableFixedLineagePlans(known []TableFixedKnown, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
+	out := make([]tableFixedLineagePlan, len(known))
+	for i := range known {
+		if known[i].Hash == own {
+			continue
+		}
+		parsed, why := tableFixedParseLayout(known[i].Layout)
+		if why != "" {
+			// A lineage entry that is not a layout is a bug in the LOCK, not a
+			// wire event; the reader still owes a name rather than a panic.
+			out[i].Why = "layout_malformed"
+			continue
+		}
+		for room := 256; ; room *= 4 {
+			plan := make([]TableFixedEntry, room)
+			var census TableReport
+			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
+			if made == -2 {
+				out[i].Why = "layout_malformed"
+				break
+			}
+			if made < 0 {
+				if room >= 1<<18 {
+					out[i].Why = "plan_too_large"
+					break
+				}
+				continue
+			}
+			out[i] = tableFixedLineagePlan{
+				Entries:      plan[:made],
+				Count:        made,
+				Unknown:      census.Unknown,
+				KindMismatch: census.KindMismatch,
+			}
+			break
+		}
+	}
+	return out
 }
 
 func tableFixedRefuse(report *TableReport, reason string) int64 {
@@ -3380,17 +3823,16 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 	}
 }
 
+// TableEntity also carries the FIXED form (form 3): TableEntityFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1, whether or not the table was DECLARED fixed
+// (docs/SPEC-TABLES.md §3.4, §15).
 func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
-	TableEntityReset(value)
-	if len(data) > 0 && data[0] == 1 {
-		tableFixedRefuse(report, "previous_form")
-		return false
-	}
-	_, verdict := tableOpen(data, report)
+	r, verdict := tableOpen(data, report)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
@@ -3399,10 +3841,48 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 			report.Reason = "message form requires an announced vocabulary and a message reader"
 		}
 	}
-	if verdict == TableOpenDamaged {
-		report.Malformed = true
+	if verdict != TableOpenOk {
+		TableEntityReset(value)
+		if verdict == TableOpenDamaged {
+			report.Malformed = true
+		}
+		return false
 	}
-	return false
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
+	if !TableEntityLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableEntityReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
+		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableEntityReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	return true
 }
 
 const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
@@ -4332,17 +4812,16 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 	}
 }
 
+// TableStat also carries the FIXED form (form 3): TableStatFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1, whether or not the table was DECLARED fixed
+// (docs/SPEC-TABLES.md §3.4, §15).
 func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
-	TableStatReset(value)
-	if len(data) > 0 && data[0] == 1 {
-		tableFixedRefuse(report, "previous_form")
-		return false
-	}
-	_, verdict := tableOpen(data, report)
+	r, verdict := tableOpen(data, report)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
@@ -4351,10 +4830,48 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 			report.Reason = "message form requires an announced vocabulary and a message reader"
 		}
 	}
-	if verdict == TableOpenDamaged {
-		report.Malformed = true
+	if verdict != TableOpenOk {
+		TableStatReset(value)
+		if verdict == TableOpenDamaged {
+			report.Malformed = true
+		}
+		return false
 	}
-	return false
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
+	if !TableStatLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableStatReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
+		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableStatReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	return true
 }
 
 const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
@@ -6163,17 +6680,16 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 	}
 }
 
+// TableMixed also carries the FIXED form (form 3): TableMixedFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1, whether or not the table was DECLARED fixed
+// (docs/SPEC-TABLES.md §3.4, §15).
 func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
-	TableMixedReset(value)
-	if len(data) > 0 && data[0] == 1 {
-		tableFixedRefuse(report, "previous_form")
-		return false
-	}
-	_, verdict := tableOpen(data, report)
+	r, verdict := tableOpen(data, report)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
@@ -6182,10 +6698,48 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 			report.Reason = "message form requires an announced vocabulary and a message reader"
 		}
 	}
-	if verdict == TableOpenDamaged {
-		report.Malformed = true
+	if verdict != TableOpenOk {
+		TableMixedReset(value)
+		if verdict == TableOpenDamaged {
+			report.Malformed = true
+		}
+		return false
 	}
-	return false
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
+	if !TableMixedLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableMixedReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
+		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableMixedReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	return true
 }
 
 const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
@@ -10008,7 +10562,7 @@ func TableEntityFixedClamp(value *TableEntity, report *TableReport) {
 
 const TableEntityFixedBodyBytes = 51
 const TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes
-const TableEntityFixedHash = 0x46b300904afc1aa9
+const TableEntityFixedHash = 0x45d64db53ce7ac1f
 
 var TableEntityFixedLayout = []byte{
 	0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
@@ -10081,6 +10635,56 @@ var TableEntityFixedDst = []TableFixedDst{
 
 var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
 
+var TableEntityFixedKnown = []TableFixedKnown{
+	{
+		Hash:   0x45d64db53ce7ac1f,
+		Record: 59,
+		Layout: []byte{
+			0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
+			0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb,
+			0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d,
+			0xb5, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6,
+			0xa9, 0x53, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6,
+			0xe6, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb,
+			0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60,
+			0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9,
+			0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+			0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
+			0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89,
+			0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f,
+			0x8d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d,
+			0xcd, 0xd9, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae,
+			0x16, 0xdc, 0x04, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41,
+			0xc3, 0x3b, 0xe5, 0x35, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde,
+			0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3,
+			0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+			0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_newer (§5.2).
+const TableEntityFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var TableEntityFixedLineagePlans = tableFixedLineagePlans(TableEntityFixedKnown, TableEntityFixedLayout, TableEntityFixedDst, TableEntityFixedHash)
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TableEntityFixedMeasure(count int64) int64 {
@@ -10130,29 +10734,42 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		return tableFixedRefuse(report, "layout_malformed")
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(TableEntityFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, "layout_newer", hash)
+	}
+	if pick < TableEntityFixedFloor {
+		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+	}
+	known := &TableEntityFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
 		return tableFixedRefuse(report, "layout_malformed")
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
+	}
+	entries := TableEntityFixedPlan.Entries
+	entryCount := TableEntityFixedPlan.Count
+	recordBytes := known.Record
+	censusUnknown, censusKind := int32(0), int32(0)
+	if hash != TableEntityFixedHash {
+		lane := &TableEntityFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		if int(lane.Count) > len(plan) {
+			return tableFixedRefuse(report, "plan_too_large")
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// lands only on a read that returns: REFUSE moves no counter.
+		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	entries := TableEntityFixedPlan.Entries
-	entryCount := TableEntityFixedPlan.Count
-	recordBytes := int64(TableEntityFixedRecordBytes)
-	identity := hash == TableEntityFixedHash
-	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
-		}
-		made := tableFixedCompile(parsed, TableEntityFixedLayout, TableEntityFixedDst, plan, report)
-		if made < 0 {
-			return tableFixedRefuse(report, "plan_too_large")
-		}
-		entries = plan
-		entryCount = made
-		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
-	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		return -1
@@ -10170,13 +10787,13 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
+		if tableFixedGet64(at) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-		}
-		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -10184,6 +10801,8 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		TableEntityFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
+	report.Unknown += censusUnknown
+	report.KindMismatch += censusKind
 	return n
 }
 
@@ -10205,7 +10824,7 @@ func TableStatFixedClamp(value *TableStat, report *TableReport) {
 
 const TableStatFixedBodyBytes = 8
 const TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes
-const TableStatFixedHash = 0x7a16907ec6b21ece
+const TableStatFixedHash = 0x1cdc2a66a7601422
 
 var TableStatFixedLayout = []byte{
 	0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
@@ -10221,6 +10840,27 @@ var TableStatFixedDst = []TableFixedDst{
 }
 
 var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
+
+var TableStatFixedKnown = []TableFixedKnown{
+	{
+		Hash:   0x1cdc2a66a7601422,
+		Record: 16,
+		Layout: []byte{
+			0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
+			0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_newer (§5.2).
+const TableStatFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var TableStatFixedLineagePlans = tableFixedLineagePlans(TableStatFixedKnown, TableStatFixedLayout, TableStatFixedDst, TableStatFixedHash)
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -10271,29 +10911,42 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		return tableFixedRefuse(report, "layout_malformed")
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(TableStatFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, "layout_newer", hash)
+	}
+	if pick < TableStatFixedFloor {
+		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+	}
+	known := &TableStatFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
 		return tableFixedRefuse(report, "layout_malformed")
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
+	}
+	entries := TableStatFixedPlan.Entries
+	entryCount := TableStatFixedPlan.Count
+	recordBytes := known.Record
+	censusUnknown, censusKind := int32(0), int32(0)
+	if hash != TableStatFixedHash {
+		lane := &TableStatFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		if int(lane.Count) > len(plan) {
+			return tableFixedRefuse(report, "plan_too_large")
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// lands only on a read that returns: REFUSE moves no counter.
+		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	entries := TableStatFixedPlan.Entries
-	entryCount := TableStatFixedPlan.Count
-	recordBytes := int64(TableStatFixedRecordBytes)
-	identity := hash == TableStatFixedHash
-	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
-		}
-		made := tableFixedCompile(parsed, TableStatFixedLayout, TableStatFixedDst, plan, report)
-		if made < 0 {
-			return tableFixedRefuse(report, "plan_too_large")
-		}
-		entries = plan
-		entryCount = made
-		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
-	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		return -1
@@ -10311,13 +10964,13 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
+		if tableFixedGet64(at) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-		}
-		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -10325,6 +10978,8 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		TableStatFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
+	report.Unknown += censusUnknown
+	report.KindMismatch += censusKind
 	return n
 }
 
@@ -10346,7 +11001,7 @@ func TableMixedFixedClamp(value *TableMixed, report *TableReport) {
 
 const TableMixedFixedBodyBytes = 1224
 const TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes
-const TableMixedFixedHash = 0x9d8e221733c1f4ed
+const TableMixedFixedHash = 0x66b51fa9ec65d701
 
 var TableMixedFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -10511,6 +11166,103 @@ var TableMixedFixedDst = []TableFixedDst{
 
 var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
 
+var TableMixedFixedKnown = []TableFixedKnown{
+	{
+		Hash:   0x66b51fa9ec65d701,
+		Record: 1232,
+		Layout: []byte{
+			0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
+			0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+			0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7,
+			0xb7, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98,
+			0x7b, 0x6d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71,
+			0x4c, 0xa9, 0x73, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfc, 0x54, 0xbe,
+			0x51, 0x6b, 0xee, 0x3e, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x01, 0x6d,
+			0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0x69,
+			0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+			0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x9c, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00,
+			0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c,
+			0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed,
+			0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+			0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20,
+			0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0c, 0xcf, 0x66, 0x27,
+			0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x84, 0xda,
+			0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x8a,
+			0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf1,
+			0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x20, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35,
+			0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8,
+			0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
+			0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe,
+			0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa7, 0x3d, 0x24, 0xd1,
+			0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x31, 0x90,
+			0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x99,
+			0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x84, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+			0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0x0e, 0x00, 0x00, 0x00, 0x03,
+			0x00, 0x00, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x0d, 0x00, 0x00, 0x00,
+			0x04, 0x00, 0x00, 0x00, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+			0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+			0xa5, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
+			0xf1, 0xfb, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0xb7, 0xec, 0x86, 0x1c,
+			0xa4, 0xa3, 0x9f, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x56, 0xbd, 0x4f, 0x86,
+			0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+			0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0xb5,
+			0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b,
+			0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+			0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b,
+			0xd6, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0,
+			0x30, 0xbf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27,
+			0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
+			0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
+			0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
+			0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_newer (§5.2).
+const TableMixedFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var TableMixedFixedLineagePlans = tableFixedLineagePlans(TableMixedFixedKnown, TableMixedFixedLayout, TableMixedFixedDst, TableMixedFixedHash)
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TableMixedFixedMeasure(count int64) int64 {
@@ -10560,29 +11312,42 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		return tableFixedRefuse(report, "layout_malformed")
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(TableMixedFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, "layout_newer", hash)
+	}
+	if pick < TableMixedFixedFloor {
+		return tableFixedRefuseHash(report, "layout_unsupported", hash)
+	}
+	known := &TableMixedFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
 		return tableFixedRefuse(report, "layout_malformed")
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
+	}
+	entries := TableMixedFixedPlan.Entries
+	entryCount := TableMixedFixedPlan.Count
+	recordBytes := known.Record
+	censusUnknown, censusKind := int32(0), int32(0)
+	if hash != TableMixedFixedHash {
+		lane := &TableMixedFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		if int(lane.Count) > len(plan) {
+			return tableFixedRefuse(report, "plan_too_large")
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// lands only on a read that returns: REFUSE moves no counter.
+		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	entries := TableMixedFixedPlan.Entries
-	entryCount := TableMixedFixedPlan.Count
-	recordBytes := int64(TableMixedFixedRecordBytes)
-	identity := hash == TableMixedFixedHash
-	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
-		}
-		made := tableFixedCompile(parsed, TableMixedFixedLayout, TableMixedFixedDst, plan, report)
-		if made < 0 {
-			return tableFixedRefuse(report, "plan_too_large")
-		}
-		entries = plan
-		entryCount = made
-		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
-	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
 		return -1
@@ -10600,13 +11365,13 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
+		if tableFixedGet64(at) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-		}
-		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -10614,6 +11379,8 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		TableMixedFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
+	report.Unknown += censusUnknown
+	report.KindMismatch += censusKind
 	return n
 }
 

@@ -1,0 +1,16 @@
+// VNEW_bits_grow.schema — NEW: bits(12)
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vnew_bits_grow
+
+fixed table BitsGrow
+{
+    lead  uint32 = 1
+    v     bits(12)
+    trail uint32 = 2
+}

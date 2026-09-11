@@ -278,7 +278,7 @@ enum Slot { Alpha, Beta, Gamma }
 
 flags Mark { One, Two }
 
-table Leaf
+fixed table Leaf
 {
     a int32 = 7 | min = 0, max = 1000
     b uint16 = 3
@@ -300,7 +300,7 @@ union Effect
     ward  Ward
 }
 
-table FixedProbe
+fixed table FixedProbe
 {
     small    uint8 = 5
     wide     uint64 = 9

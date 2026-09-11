@@ -225,11 +225,13 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	lk := lockfile.Render(load(t, paths))
 	text := lk.Text()
 
-	if lk.Version != 5 {
-		t.Errorf("the widened rendering is version 5, got %d", lk.Version)
+	if lk.Version != lockfile.Version {
+		t.Errorf("the rendering under test is version %d, got %d", lockfile.Version, lk.Version)
 	}
 	for _, want := range []string{
 		"fixed table Config layout=0x",
+		// the lineage, after the law: the layouts this table has had
+		"lineage wire=0x",
 		// the closure, each in its own block
 		"type Buff layout=0x",
 		"type Debuff layout=0x",
@@ -302,12 +304,16 @@ var closureBreaks = []struct {
 			"defaults to 0.0 in the lock and 0.5 in the declaration"},
 	},
 	{
-		name:      "a widened integer range",
-		fixedFrom: "    tick_rate int32 = 60 | min = 1, max = 240", fixed: "    tick_rate int32 = 60 | min = 1, max = 480",
-		varFrom: "    rate    int32 = 60 | min = 1, max = 240", varTo: "    rate    int32 = 60 | min = 1, max = 480",
+		// A range moved OUTWARD is a widening the monotone law takes
+		// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, and
+		// TestLockRangeWidenAllows): what is refused is a bound moving IN,
+		// because a value an older writer wrote would now clamp.
+		name:      "a narrowed integer range",
+		fixedFrom: "    tick_rate int32 = 60 | min = 1, max = 240", fixed: "    tick_rate int32 = 60 | min = 1, max = 120",
+		varFrom: "    rate    int32 = 60 | min = 1, max = 240", varTo: "    rate    int32 = 60 | min = 1, max = 120",
 		want: []string{"fixed table Config", "entry 1, field tick_rate",
-			"is [1, 240] in the lock and [1, 480] in the declaration",
-			"keeps its range", "deprecate this field and append a new one"},
+			"is [1, 240] in the lock and [1, 120] in the declaration",
+			"range narrowed", "keeps its range", "deprecate this field and append a new one"},
 	},
 	{
 		name:      "a moved resolution",
@@ -325,15 +331,11 @@ var closureBreaks = []struct {
 			"16 fractional bits in the lock", "8 fractional bits in the declaration",
 			"keeps its range"},
 	},
-	{
-		name:      "an optional turned on",
-		fixedFrom: "    boost     Buff\n", fixed: "    boost     ?Buff\n",
-		varFrom: "    keel    Ballast\n", varTo: "    keel    ?Ballast\n",
-		want: []string{"fixed table Config", "entry 6, field boost",
-			"is plain in the lock and optional in the declaration",
-			"presence bool beside its value INSIDE the record",
-			"deprecate this field and append a new one"},
-	},
+	// The `?` ROW MOVED OUT OF THIS TABLE. `T` to `?T` is a WIDENING under the
+	// monotone law (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2: every old value
+	// lands present), and this table's fixture declares the plain side, so the
+	// narrowing cannot be spelled from it. Both directions live in
+	// TestLockOptionalAddRefuses and TestLockOptionalAddAllows.
 	{
 		name:      "an optional turned off",
 		fixedFrom: "    gunner    ?Buff\n", fixed: "    gunner    Buff\n",
@@ -720,32 +722,29 @@ func TestValueListRoundTrips(t *testing.T) {
 }
 
 // TestNestedRecordAppendSlidesTheHolder is the difference between a fixed
-// table's own bottom and a nested record's, and it is not a nicety: a field
-// appended to a `type` a fixed table holds BY VALUE grows the holder's slot,
-// which slides every field after it. So the change the rule allows at the
-// bottom of a table is a BREAK one level in, and the compiler says both halves
-// — the holder's width first, because that is what a reader stands on, and the
-// nested record's own new entry beside it.
+// table's own bottom and a nested record's: a field appended to a `type` a
+// fixed table holds BY VALUE grows the holder's slot, which slides every field
+// after it. Under the monotone law that is a WIDENING of the holder
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2: the nested table's own law,
+// recursively, fields added at the end), so the finding is the nested record's
+// OWN new entry — the holder's width is the nested append's consequence and the
+// block that changed is where a person fixes or accepts it — and `schema lock`
+// writes it.
 func TestNestedRecordAppendSlidesTheHolder(t *testing.T) {
 	after := edit(t, closureBase,
 		"    multiplier float32 = 1.0\n}", "    multiplier float32 = 1.0\n    stacks     uint8\n}")
 	dir, paths, errs := lockedFrom(t, closureBase, after)
-	if len(errs) != 2 {
-		t.Fatalf("want the holder's width and the nested record's entry, got %d: %v", len(errs), errs)
+	if len(errs) != 1 {
+		t.Fatalf("want the nested record's own entry, got %d: %v", len(errs), errs)
 	}
-	first := errs[0].Error()
-	for _, w := range []string{"fixed table Config", "entry 6, field boost",
-		"4 bytes wide in the lock and 8 in the declaration", "walked by offset"} {
-		if !strings.Contains(first, w) {
-			t.Errorf("the holder's refusal must name %q:\n%s", w, first)
+	for _, w := range []string{"type Buff", "field stacks", "write it with `schema lock`"} {
+		if !strings.Contains(errs[0].Error(), w) {
+			t.Errorf("the nested record's finding must name %q:\n%s", w, errs[0])
 		}
 	}
-	if second := errs[1].Error(); !strings.Contains(second, "type Buff") || !strings.Contains(second, "field stacks") {
-		t.Errorf("the nested record's own finding names it:\n%s", second)
-	}
-	// and `schema lock` will not write it away either
-	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote {
-		t.Fatalf("`schema lock` appends, and this is not an append: rewrote=%v err=%v", rewrote, err)
+	// and `schema lock` takes it, because an append one level in is an append
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("`schema lock` writes an append: rewrote=%v err=%v", rewrote, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, lockfile.FileName)); err != nil {
 		t.Fatal(err)
@@ -764,7 +763,7 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"rendering version 1 and this compiler writes version 5",
+		fmt.Sprintf("rendering version 1 and this compiler writes version %d", lockfile.Version),
 		"delete it and write it again with `schema lock`")
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil || rewrote {
@@ -785,13 +784,17 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 	}
 }
 
-// TestALockFromTheRenderingJustBeforeThisOneSaysTheSameThing is the case a
-// person actually meets: not a two-line stub, but a WHOLE well-formed lock
-// this compiler wrote one version ago. The version sits on the first line and
-// is read before any of the body, so a file that parses perfectly still gets
-// the one remedy that works — and `schema lock`, the command that remedy names,
-// must not send the user around a loop by refusing to write it either.
-func TestALockFromTheRenderingJustBeforeThisOneSaysTheSameThing(t *testing.T) {
+// TestALockFromTheRenderingJustBeforeThisOneSalvages is the case a person
+// actually meets, and the bill's §11.8 turned the answer around: "A
+// RENDERING-VERSION BUMP SALVAGES, NEVER DELETES." The old remedy — delete it
+// and write it again — would wipe the LINEAGE fleet-wide the day this file
+// started holding history, so from the lineage's own rendering on, a lock one
+// version back READS: the law it holds is still the law, the single layout it
+// holds becomes the first lineage entry (§11.9), and `schema lock` rewrites it
+// under the current rendering with nothing lost. A lock OLDER than that holds
+// nothing a lineage can be made of, and it still takes the delete-and-rewrite
+// sentence (TestALockFromAnOlderRenderingSaysWhatToDo).
+func TestALockFromTheRenderingJustBeforeThisOneSalvages(t *testing.T) {
 	dir, paths := fixture(t, closureBase)
 	path := filepath.Join(dir, lockfile.FileName)
 	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
@@ -805,36 +808,37 @@ func TestALockFromTheRenderingJustBeforeThisOneSaysTheSameThing(t *testing.T) {
 	if !bytes.HasPrefix(current, []byte(head)) {
 		t.Fatalf("the lock opens with %q:\n%s", head, current)
 	}
-	// the same file, one rendering back: every other line still parses
-	previous := append([]byte(fmt.Sprintf("schema-lock %d\n", lockfile.Version-1)), current[len(head):]...)
+	// the same file one rendering back: its body without the lineage this
+	// rendering added
+	var body []string
+	for line := range strings.SplitSeq(string(current[len(head):]), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
+			body = append(body, line)
+		}
+	}
+	previous := []byte(fmt.Sprintf("schema-lock %d\n", lockfile.Version-1) + strings.Join(body, "\n"))
 	if err := os.WriteFile(path, previous, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	refuses(t, lockfile.Check(load(t, paths), paths),
-		fmt.Sprintf("rendering version %d and this compiler writes version %d", lockfile.Version-1, lockfile.Version),
-		"holds nothing a hand can carry forward",
-		"delete it and write it again with `schema lock`")
-	_, rewrote, err := lockfile.Update(load(t, paths), paths)
-	if err == nil || rewrote {
-		t.Fatalf("`schema lock` does not write over a lock it cannot read: rewrote=%v err=%v", rewrote, err)
+
+	// IT READS: the check is silent, because the law the file holds has not
+	// moved and the lineage is salvage rather than a hole
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("a lock one rendering back salvages (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.8): %v", errs)
 	}
-	if !strings.Contains(err.Error(), "delete it and write it again with `schema lock`") {
-		t.Errorf("the one writer names the same remedy: %v", err)
+	// and `schema lock` writes THIS rendering back, the layout it held standing
+	// as the first lineage entry
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("the salvage is the one writer's: rewrote=%v err=%v", rewrote, err)
 	}
-	if got, _ := os.ReadFile(path); !bytes.Equal(got, previous) {
-		t.Errorf("a refused lock writes nothing:\n--- was ---\n%s\n--- now ---\n%s", previous, got)
-	}
-	// the remedy works, and it writes THIS rendering back
-	if err := os.Remove(path); err != nil {
+	got, err := os.ReadFile(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
-		t.Fatalf("the remedy works: rewrote=%v err=%v", rewrote, err)
-	}
-	if got, _ := os.ReadFile(path); !bytes.Equal(got, current) {
-		t.Errorf("the rewritten lock is this rendering, byte for byte:\n--- want ---\n%s\n--- got ---\n%s", current, got)
+	if !bytes.Equal(got, current) {
+		t.Errorf("the salvage reproduces this rendering exactly:\n--- want ---\n%s\n--- got ---\n%s", current, got)
 	}
 	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
-		t.Errorf("the written lock checks clean: %v", errs)
+		t.Errorf("the salvaged lock checks clean: %v", errs)
 	}
 }

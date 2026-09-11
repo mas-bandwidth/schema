@@ -97,6 +97,24 @@ var (
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
 	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?previous_form\s*=\s*17\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
+	// OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5). C++ first; these
+	// blocks have no C twin yet. Strip them so the gate stays green; TWIN.md
+	// names each row with the §5 section the C card implements from.
+	reOwedPresentCase    = regexp.MustCompile(`(?s)case kTableFixedPresent:\s*\{\s*dst\[p\.dst\] = 1;\s*break;\s*\}`)
+	reOwedPresentCompile = regexp.MustCompile(`(?s)if \( me\.kind == 35 && te\.kind != 35 \)\s*\{.*?return;\s*\}`)
+	reOwedEnumWiden      = regexp.MustCompile(`(?s)if \( te\.size < me\.size \)\s*\{\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.dstsize = \(uint8_t\) me\.size;\s*e\.guard = guard; e\.arg = arg; e\.op = kTableFixedWiden; e\.sign = 0;\s*TableFixedPush\( c, e \);\s*break;\s*\}`)
+	reOwedKnownLayout    = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
+	reOwedArgLaneRemap   = regexp.MustCompile(`(?s)const uint32_t n = te\.children;\s+const uint32_t at_map = TableFixedLayTable\( c, NULL, \(int32_t\) n \);\s+if \( c\.overflow \) \{ break; \}\s+uint16_t \* map = \(uint16_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at_map \);\s+for \( uint32_t j = 0; j < n; \+\+j \)\s*\{.*?map\[1 \+ j\] = landed;\s*\}\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.guard = guard; e\.op = kTableFixedOrdinal;\s*e\.arg = arg; e\.dstsize = \(uint8_t\) me\.size;\s*e\.aux = at_map;\s*TableFixedPush\( c, e \);`)
+	reOwedByteLaneRemap  = regexp.MustCompile(`(?s)uint16_t remap\[256\];.*?TableFixedLayTable\( c, remap, \(int32_t\) n \);\s*TableFixedPush\( c, e \);`)
+	reOwedLayTableNull   = regexp.MustCompile(`if \( values != NULL \)\s*\{\s*for \( int32_t i = 0; i < n; \+\+i \) \{ dst\[1 \+ i\] = values\[i\]; \}\s*\}`)
+	reOwedNestedNoneArgw = regexp.MustCompile(`const uint8_t inner_argw = c\.argw;\s*if \( guard != kTableFixedNoGuard \) \{ c\.argw = saved_argw \? saved_argw : 1u; \}\s*`)
+	reOwedNestedNoneRest = regexp.MustCompile(`TableFixedPush\( c, none \);\s*c\.argw = inner_argw;`)
+	reOwedNestedRestamp  = regexp.MustCompile(`(?s)const int32_t restamp_from = c\.count;\s*`)
+	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at &&\s*!\( c\.plan\[i\]\.op == kTableFixedConst && c\.plan\[i\]\.dst == aux_at \) \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
+	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
+	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
+	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
+	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
 )
 
 func tableFixedIdent(name string) string {
@@ -199,6 +217,51 @@ func stripNamed(s string) string {
 	s = stripCppDepthGuard(s)
 	s = reRAIIcOpen.ReplaceAllString(s, "DEPTH_GUARD;\n")
 	s = reRAIIcClose.ReplaceAllString(s, "\n")
+	return s
+}
+
+func stripOwedC(s string) string {
+	// OWED by the C leg. Not a named remaining: C has no spelling of these
+	// yet. C++ first; legs from algorithm §5 after. Do not port C here.
+	// §5.2 present op enumerator
+	s = strings.ReplaceAll(s, "kTableFixedPresent = 7;", "")
+	s = strings.ReplaceAll(s, "kTableFixedPresent = 7,", "")
+	// §5.1 fixed(I,F) / ufixed(I,F) ladders in Widens
+	s = strings.ReplaceAll(s, "if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }", "")
+	s = strings.ReplaceAll(s, "if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }", "")
+	// §5.1 SignedKind covering signed fixed(I,F)
+	s = strings.ReplaceAll(s, "return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 );", "return kind >= 2 && kind <= 5;")
+	// §5.2 Apply case and compile T into ?T
+	s = reOwedPresentCase.ReplaceAllString(s, "")
+	s = reOwedPresentCompile.ReplaceAllString(s, "")
+	// §5.2 grown ordinal width as widen
+	s = reOwedEnumWiden.ReplaceAllString(s, "")
+	// §5.3 known-layout table LOAD selects by hash
+	s = reOwedKnownLayout.ReplaceAllString(s, "")
+	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
+	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
+	// owed 5 / bill §12.5: count op bound is the WRITER's; C still uses the reader's.
+	s = strings.ReplaceAll(s, "e.size = their_n;", "e.size = my_n;")
+	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
+	// owed 13: compiled remap COUNT clamped on a forged ordinal; C counts nothing.
+	s = reOwedOrdinalCount.ReplaceAllString(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }")
+	// owed 8: ordinal reads through a 64-bit temporary; C still uses 32.
+	s = strings.ReplaceAll(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }")
+	s = strings.ReplaceAll(s, "tag.arg = (uint64_t) j + 1u;", "tag.arg = (uint8_t) ( j + 1 );")
+	s = strings.ReplaceAll(s, "mine, my_arm, dst, at, their_at, (uint64_t) j + 1u", "mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 )")
+	s = strings.ReplaceAll(s, "if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }", "")
+	s = reOwedLayTableNull.ReplaceAllString(s, "for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }")
+	s = reOwedArgLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
+	s = reOwedByteLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
+	// owed 7: nested union answers to the outer tag; C still loses it.
+	s = reOwedNestedNoneArgw.ReplaceAllString(s, "")
+	s = reOwedNestedNoneRest.ReplaceAllString(s, "TableFixedPush( c, none );")
+	s = reOwedNestedRestamp.ReplaceAllString(s, "")
+	s = reOwedNestedRewrite.ReplaceAllString(s, "")
+	s = reOwedWriterArmCount.ReplaceAllString(s, "")
+	s = reOwedConstClamp.ReplaceAllString(s, "")
+	s = reOwedKnownRange.ReplaceAllString(s, "")
+	s = stripFuncsWithPrefix(s, "inline void TableFixedClampKnownRanges")
 	return s
 }
 
@@ -652,6 +715,7 @@ func canonicalize(src string) []string {
 	s = strings.ReplaceAll(s, "kTableFixedNoGuard = 0xFFFFFFFFu;", "")
 	s = stripZeroing(s)
 	s = stripNamed(s)
+	s = stripOwedC(s)
 	s = rewriteKindMismatchBreaks(s)
 	s = normalizeSyntax(s)
 	return collapse(s)

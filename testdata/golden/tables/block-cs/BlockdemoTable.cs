@@ -402,6 +402,11 @@ namespace Blockdemo
 
     // A PLAN ENTRY. Src and Dst are byte offsets or slot indices. Guard is the
     // byte offset of a union tag when the entry belongs to an arm, or NoGuard.
+    // Arg is THE GUARD'S TAG and nothing else. Meta is THE OP'S OWN ARGUMENT —
+    // a text entry's flavour. ArgW is THE GUARD'S WIDTH IN BYTES: a union tag
+    // is one, two, four or eight, and comparing only the FIRST of them fires
+    // arm 1 on a foreign tag of 0x0101. Zero is read as one. Flavour stays in
+    // Meta; they are two lanes because they are two facts.
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct TableFixedEntry
     {
@@ -411,12 +416,13 @@ namespace Blockdemo
         public uint Aux;
         public uint Guard;
         public byte Op;
-        public byte Arg; // Arm ordinal compared by Guard
+        public byte Arg; // Arm ordinal compared by Guard, at ArgW bytes
         public byte DstSize;
         public byte Sign;
         public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
+        public byte ArgW; // THE GUARD'S WIDTH IN BYTES. Zero is read as one.
 
-        public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0)
+        public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1)
         {
             Src = src;
             Dst = dst;
@@ -428,6 +434,7 @@ namespace Blockdemo
             DstSize = dstSize;
             Sign = sign;
             Meta = meta;
+            ArgW = argW;
         }
     }
 
@@ -487,6 +494,22 @@ namespace Blockdemo
 
     public delegate void TableFixedSetBytes<T>(T target, ReadOnlySpan<byte> span, int len);
 
+    // ONE SLOT RANGE THE PLAN DOES NOT LAND. Dst is a slot index, Size is how
+    // many consecutive slots. The identity plan's list is empty: its destinations
+    // ARE the value slots, so there is nothing left to subtract.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedFill
+    {
+        public uint Dst;
+        public uint Size;
+
+        public TableFixedFill(uint dst, uint size)
+        {
+            Dst = dst;
+            Size = size;
+        }
+    }
+
     public readonly struct TableFixedSlot<T>
     {
         public readonly Action<T, ulong> SetRaw;
@@ -495,6 +518,7 @@ namespace Blockdemo
         public readonly TableFixedSetBytes<T> SetBytes;
         public readonly TableFixedSetBytes<T> SetChars;
         public readonly Action<T, ulong, TableReport> SetRawReport;
+        public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
         public TableFixedSlot(
             Action<T, ulong> setRaw = null,
@@ -502,7 +526,8 @@ namespace Blockdemo
             Action<T, UInt128> setWide = null,
             TableFixedSetBytes<T> setBytes = null,
             TableFixedSetBytes<T> setChars = null,
-            Action<T, ulong, TableReport> setRawReport = null)
+            Action<T, ulong, TableReport> setRawReport = null,
+            Action<T> reset = null)
         {
             SetRaw = setRaw;
             SetDouble = setDouble;
@@ -510,6 +535,7 @@ namespace Blockdemo
             SetBytes = setBytes;
             SetChars = setChars;
             SetRawReport = setRawReport;
+            Reset = reset;
         }
     }
     // Schema carries every generated function of the unit — C# has no
@@ -5465,13 +5491,19 @@ namespace Blockdemo
                     public int Pool;
                     public bool Overflow;
                     public TableReport Report;
+                    public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
 
                     public void Push(in TableFixedEntry e)
                     {
+                        TableFixedEntry stamped = e;
+                        if (stamped.Guard != NoGuard)
+                        {
+                            stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
+                        }
                         int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                         int room = Capacity - (Pool + entrySize - 1) / entrySize;
                         if (Count >= room) { Overflow = true; return; }
-                        Plan[Count++] = e;
+                        Plan[Count++] = stamped;
                     }
 
                     public uint LayTable(ReadOnlySpan<ushort> values, int n)
@@ -5636,6 +5668,8 @@ namespace Blockdemo
                         {
                             uint their_tag = TagBytes(theirs, ti);
                             uint my_tag = TagBytes(mine, mi);
+                            byte saved_argw = c.ArgW;
+                            c.ArgW = (their_tag >= 1u && their_tag <= 8u) ? (byte)their_tag : (byte)1;
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -5657,6 +5691,7 @@ namespace Blockdemo
                                 }
                                 my_arm += Subtree(mine, my_arm);
                             }
+                            c.ArgW = saved_argw;
                             break;
                         }
                         case 30: // Enum
@@ -5721,11 +5756,99 @@ namespace Blockdemo
                     {
                         Plan = plan,
                         Capacity = plan.Length,
-                        Report = report
+                        Report = report,
+                        ArgW = 1
                     };
                     MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
                     if (c.Overflow) { return -1; }
                     return c.Count;
+                }
+
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
+                // identity plan's destinations; Fills is that set minus everything
+                // this plan writes. A GUARDED ENTRY COUNTS AS LANDING: it is a union
+                // arm, and an arm's storage is the arm's. Identity's list is empty —
+                // its destinations ARE the cover — and that is the rule's limit case,
+                // not an exception: the record loop runs the list it was handed.
+                public static int Fills(
+                    ReadOnlySpan<TableFixedEntry> plan,
+                    ReadOnlySpan<TableFixedFill> cover,
+                    Span<byte> landed,
+                    Span<TableFixedFill> dest)
+                {
+                    landed.Clear();
+                    for (int i = 0; i < plan.Length; ++i)
+                    {
+                        ref readonly TableFixedEntry p = ref plan[i];
+                        if ((uint)p.Dst < (uint)landed.Length) { landed[(int)p.Dst] = 1; }
+                        if (p.Op == Text && (uint)p.Aux < (uint)landed.Length) { landed[(int)p.Aux] = 1; }
+                    }
+                    int n = 0;
+                    for (int r = 0; r < cover.Length; ++r)
+                    {
+                        uint pos = cover[r].Dst;
+                        uint hi = pos + cover[r].Size;
+                        while (pos < hi)
+                        {
+                            while (pos < hi && (uint)pos < (uint)landed.Length && landed[(int)pos] != 0) { pos++; }
+                            if (pos >= hi) { break; }
+                            uint start = pos;
+                            while (pos < hi && ((uint)pos >= (uint)landed.Length || landed[(int)pos] == 0)) { pos++; }
+                            if (n < dest.Length)
+                            {
+                                dest[n] = new TableFixedFill(start, pos - start);
+                            }
+                            n++;
+                        }
+                    }
+                    return n;
+                }
+
+                public static void FillRun<T>(
+                    ReadOnlySpan<TableFixedFill> fill,
+                    ReadOnlySpan<TableFixedSlot<T>> slots,
+                    T dst)
+                {
+                    for (int i = 0; i < fill.Length; ++i)
+                    {
+                        uint off = fill[i].Dst;
+                        uint n = fill[i].Size;
+                        for (uint s = 0; s < n; ++s)
+                        {
+                            uint idx = off + s;
+                            if (idx < (uint)slots.Length)
+                            {
+                                slots[(int)idx].Reset?.Invoke(dst);
+                            }
+                        }
+                    }
+                }
+
+                // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose
+                // low byte happens to be 1 is not arm 1: it is an ordinal this build
+                // has no arm for, and reading only the first byte let 0x0101 run arm
+                // 1's entries over a stranger's record. ArgW 0 means 1, >8 clamps to
+                // 8. Little-endian, the same widths C#'s packet codec reads a tag at.
+                public static ulong TagAt(ReadOnlySpan<byte> src, uint guard, byte argw)
+                {
+                    int w = argw == 0 ? 1 : (argw > 8 ? 8 : argw);
+                    int at = (int)guard;
+                    switch (w)
+                    {
+                        case 1: return src[at];
+                        case 2: return BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                        case 4: return BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                        case 8: return BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                        default:
+                        {
+                            ulong v = 0;
+                            for (int i = 0; i < w; ++i)
+                            {
+                                v |= ((ulong)src[at + i]) << (8 * i);
+                            }
+                            return v;
+                        }
+                    }
                 }
 
                 public static void Run<T>(
@@ -5739,7 +5862,9 @@ namespace Blockdemo
                     for (int i = 0; i < plan.Length; ++i)
                     {
                         ref readonly TableFixedEntry p = ref plan[i];
-                        if (p.Guard != NoGuard && src[(int)p.Guard] != p.Arg) { continue; }
+                        // an entry belonging to an ARM runs only under its own tag,
+                        // compared at ArgW bytes, never as a prefix
+                        if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
                         switch (p.Op)
                         {
                             case Copy:

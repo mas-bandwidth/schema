@@ -44,7 +44,7 @@ func leafCapUnit(t *testing.T, src string) *ir.Unit {
 // the count and the run. This is the control for the cases below: without it
 // they would be measuring the array bound rather than the fold.
 func TestFlatElementArrayCostsOneLeaf(t *testing.T) {
-	u := leafCapUnit(t, "package probe\n\ntable Flat\n{\n    marks [..8192]int32\n}\n")
+	u := leafCapUnit(t, "package probe\n\nfixed table Flat\n{\n    marks [..8192]int32\n}\n")
 	st := u.Tables["Flat"]
 	if st == nil {
 		t.Fatal("the probe declares Flat")
@@ -63,54 +63,69 @@ func TestFlatElementArrayCostsOneLeaf(t *testing.T) {
 
 // AN ARRAY OF A WALKED ELEMENT SPENDS A LEAF PER ELEMENT, which is what reaches
 // the cap. `Cell` carries a `string(4)`, so this form cannot fold it into a run.
-func TestWalkedElementArrayPastTheCapWarnsAndDropsTheForm(t *testing.T) {
-	src := fmt.Sprintf("package probe\n\ntype Cell\n{\n    label string(4)\n}\n\ntable Wide\n{\n    cells [..%d]Cell\n}\n", ir.TableFixedLeafCap)
-	u := leafCapUnit(t, src)
-	st := u.Tables["Wide"]
-	if st == nil {
-		t.Fatal("the probe declares Wide")
+//
+// THE KEYWORD IS WHAT THE CAP ANSWERS TO (#823, docs/SPEC-TABLES.md §2.2). A
+// DECLARED `fixed table` past the cap is a REFUSAL BY NAME and the unit does not
+// compile — a fixed table never silently falls back to form 1. A plain `table`
+// is the variable wire by declaration and never a fixed root at all, so the cap
+// has nothing to say about it and says nothing.
+func TestWalkedElementArrayPastTheCapIsRefusedByName(t *testing.T) {
+	src := fmt.Sprintf("package probe\n\ntype Cell\n{\n    label string(4)\n}\n\nfixed table Wide\n{\n    cells [..%d]Cell\n}\n", ir.TableFixedLeafCap)
+
+	// DECLARED: the unit does not compile, and the refusal names the table, the
+	// leaf count, the cap and the section.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Probe.schema"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	leaves := ir.TableFixedLeafCount(u, st)
-	if leaves <= ir.TableFixedLeafCap {
-		t.Fatalf("the probe must be past the cap to measure anything; %d leaves", leaves)
+	paths, err := GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
 	}
-	// DERIVED: a warning naming the table and the count, and the unit compiles.
-	warns, errs := ir.TableFixedLeafCapRefusals(u)
-	if len(errs) != 0 || len(warns) != 1 {
-		t.Fatalf("a DERIVED fixed table past the cap warns and compiles: warns=%v errs=%v", warns, errs)
-	}
-	for _, want := range []string{"Wide", fmt.Sprint(leaves), fmt.Sprint(ir.TableFixedLeafCap), "§3.4"} {
-		if !strings.Contains(warns[0], want) {
-			t.Errorf("the warning must carry %q: %s", want, warns[0])
+	var warns []string
+	c := New()
+	c.OnWarn = func(msg string) { warns = append(warns, msg) }
+	if _, err := c.Load(paths); err == nil {
+		t.Fatal("a DECLARED fixed table past the cap must not compile")
+	} else {
+		for _, want := range []string{"Wide", fmt.Sprint(ir.TableFixedLeafCap), "leaves", "§3.4", "DECLARED"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal must carry %q: %s", want, err)
+			}
 		}
 	}
-	if ir.TableFixedEmitted(u, st) {
-		t.Error("and the fixed form is not emitted for it")
+	// A REFUSAL REPLACES THE CAP'S WARNING rather than joining it. The record-size
+	// advisory (§3.4's other bound) is a different sentence about a different
+	// number and is expected here, so only the cap's own warning is read.
+	for _, w := range warns {
+		if strings.Contains(w, "leaf cap") || strings.Contains(w, "leaves") {
+			t.Errorf("the cap warned as well as refused: %s", w)
+		}
 	}
 
-	// DECLARED: a refusal BY NAME, and no warning pretending the form was kept.
-	// The `fixed table` keyword lives on branch `fixed-table-keyword` and is
-	// not merged, so this sets the IR marker the keyword will set — the same
-	// half the record ceiling's own declared case sets.
-	st.FixedDeclared = true
-	warns, errs = ir.TableFixedLeafCapRefusals(u)
-	if len(errs) != 1 {
-		t.Fatalf("a DECLARED fixed table past the cap must not compile: warns=%v errs=%v", warns, errs)
+	// THE SAME SHAPE ON A PLAIN `table` IS THE VARIABLE WIRE BY DECLARATION: no
+	// refusal, no warning, and no fixed form to drop.
+	plain := leafCapUnit(t, strings.Replace(src, "fixed table Wide", "table Wide", 1))
+	pst := plain.Tables["Wide"]
+	if pst == nil {
+		t.Fatal("the plain probe declares Wide")
 	}
-	if len(warns) != 0 {
-		t.Errorf("a refusal replaces the warning rather than joining it: %v", warns)
+	if pst.FixedDeclared {
+		t.Fatal("a plain `table` came out of the IR declared fixed")
 	}
-	for _, want := range []string{"Wide", fmt.Sprint(leaves), fmt.Sprint(ir.TableFixedLeafCap), "§3.4", "DECLARED"} {
-		if !strings.Contains(errs[0].Error(), want) {
-			t.Errorf("the refusal must carry %q: %s", want, errs[0])
-		}
+	pwarns, perrs := ir.TableFixedLeafCapRefusals(plain)
+	if len(pwarns) != 0 || len(perrs) != 0 {
+		t.Fatalf("a plain table is not a fixed root, so the cap says nothing: warns=%v errs=%v", pwarns, perrs)
+	}
+	if ir.TableFixedEmitted(plain, pst) {
+		t.Error("a plain table got the fixed form")
 	}
 }
 
 // AND UNDER THE CAP THE SAME SHAPE IS SILENT: the cap is what fires, not the
 // walked element.
 func TestWalkedElementArrayUnderTheCapIsSilent(t *testing.T) {
-	src := "package probe\n\ntype Cell\n{\n    label string(4)\n}\n\ntable Narrow\n{\n    cells [..16]Cell\n}\n"
+	src := "package probe\n\ntype Cell\n{\n    label string(4)\n}\n\nfixed table Narrow\n{\n    cells [..16]Cell\n}\n"
 	u := leafCapUnit(t, src)
 	warns, errs := ir.TableFixedLeafCapRefusals(u)
 	if len(warns) != 0 || len(errs) != 0 {

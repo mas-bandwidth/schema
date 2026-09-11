@@ -66,8 +66,8 @@ pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32
 /// is a constant and not a walk (docs/SPEC-TABLES.md §3.4).
 pub const FIXED_TABLE_FIXED_BODY_BYTES: usize = 1236;
 pub const FIXED_TABLE_FIXED_RECORD_BYTES: usize = 8 + FIXED_TABLE_FIXED_BODY_BYTES; // the hash and the body
-/// fnv1a64 over the layout's bytes, exactly as written.
-pub const FIXED_TABLE_FIXED_HASH: u64 = 0x32f1c4a302a224eb;
+/// fnv1a64 over the layout and the definitions digest (bill §13).
+pub const FIXED_TABLE_FIXED_HASH: u64 = 0x6237c1dc195f9ec9;
 
 /// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 /// PRE-ORDER walk of the closure in the writer's declared order. Every byte
@@ -263,6 +263,27 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
     sign: 0,
 }];
 
+/// THE LINEAGE: one entry per LOCKED layout, OLDEST FIRST, this build's own
+/// LAST. A file is matched on its header's hash against this array and on
+/// NOTHING ELSE — the hash is taken as given, because the definitions digest
+/// is not on the wire and the number cannot be re-derived from a file (§5.2).
+pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
+    TableFixedKnown {
+        hash: 0x6237c1dc195f9ec9,
+        layout: &FIXED_TABLE_FIXED_BLOCK,
+        record: 1244,
+        retired: false,
+    },
+];
+
+/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
+/// a file is `layout_unsupported` — upgrade the client; outside the lineage
+/// altogether it is `layout_newer` — ship the reader. A retired entry stays
+/// in the lineage forever, which is what keeps the two answers distinct.
+pub const FIXED_TABLE_FIXED_FLOOR: usize = 0;
+/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.
+pub const FIXED_TABLE_FIXED_OWN: usize = 0;
+
 /// A FILE: THE PINNED HEADER (docs/SPEC-TABLES.md §3, one rule for all five
 /// forms) — the form byte, seven RESERVED ZERO bytes, the LAYOUT HASH at 8
 /// and the body at 16 — then the layout behind its u32 length, then the
@@ -337,43 +358,55 @@ pub fn fixed_table_fixed_load(
             .expect("four bytes"),
     ) as usize;
     if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {
-        return report.refuse(TableFixedReason::BlockMalformed);
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
     let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];
-    let hash = table_fixed_hash(block);
-    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];
-
-    // WHICH PLAN, and that is the only thing that differs between reading this
-    // build's own record and reading anybody else's.
-    let mut compiled = 0usize;
-    let mut record_bytes = FIXED_TABLE_FIXED_RECORD_BYTES;
-    let identity = hash == FIXED_TABLE_FIXED_HASH;
-    if !identity {
-        let theirs = match TableFixedBlock::parse(block) {
-            Some(b) => b,
-            None => return report.refuse(TableFixedReason::BlockMalformed),
-        };
-        let mine = match TableFixedBlock::parse(&FIXED_TABLE_FIXED_BLOCK) {
-            Some(b) => b,
-            None => return report.refuse(TableFixedReason::BlockMalformed),
-        };
-        compiled = match table_fixed_compile(&theirs, &mine, &FIXED_TABLE_FIXED_COUNTED, plan, remap, report) {
-            Some(n) => n,
-            None => return report.refuse(TableFixedReason::PlanTooLarge),
-        };
-        record_bytes = 8 + theirs.entry(0).size as usize;
-    }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header (§3).
-    if u64::from_le_bytes(
+    let hash = u64::from_le_bytes(
         data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
             .try_into()
             .expect("eight bytes"),
-    ) != hash
-    {
-        return report.refuse(TableFixedReason::BlockMalformed);
+    ); // the header's hash; digest is not on the wire
+    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];
+
+    // SELECT BY HASH, AND NEVER PARSE A STRANGER (§5.3 steps 5 to 8). A
+    // fixed table reads BACKWARD and never forward: the hash the header
+    // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,
+    // so the number cannot be re-derived from a file — and it is looked up in
+    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead
+    // of this reader, and there is nothing to try.
+    let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
+        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
+        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);
+    };
+    // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
+    // fire: a comparison no value satisfies is not emitted, for the same
+    // reason §5.4 does not emit a clamp that cannot fire. The moment the
+    // operator retires an entry the floor moves and the test is here.
+    let known = &FIXED_TABLE_FIXED_LINEAGE[found];
+    // THE LAYOUT IS HELD TO A BYTE COMPARISON and not to §1.1's seven rules:
+    // under a KNOWN hash a layout that differs is ONE name, a lie about a
+    // known version (§5.3 step 7, bill §12.4).
+    if block != known.layout {
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
+    // THE RECORD SIZE IS THE LOCK'S, never the file's (§5.3 step 8).
+    let record_bytes = known.record;
+    // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the
+    // identity plan is the only plan there is, and every other hash was
+    // already refused by name above.
+    let entries: &[TableFixedEntry] = &FIXED_TABLE_FIXED_PLAN;
+    let table: &[u16] = &[];
+    let census = (0u32, 0u32);
+    // THE CALLER'S PLAN SLICE IS A CAPACITY DECLARATION and is no longer
+    // written through: the plans are the BUILD's (§5.9 #5). The selected
+    // plan's entry count is held to it, and a plan that does not fit is
+    // `plan_too_large` BY NAME — the name is the contract.
+    if entries.len() > plan.len() {
+        return report.refuse(TableFixedReason::PlanTooLarge);
+    }
+    // The REMAP lane is the build's too, laid beside the plan it belongs to;
+    // the caller's slice stays in the signature as the capacity it always was.
+    let _ = remap;
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.malformed = true;
         return None;
@@ -382,7 +415,6 @@ pub fn fixed_table_fixed_load(
     if n > values.len() {
         return report.refuse(TableFixedReason::BatchTooLarge);
     }
-    let entries: &[TableFixedEntry] = if identity { &FIXED_TABLE_FIXED_PLAN } else { &plan[..compiled] };
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
     // `Copy` over the whole body, so the hole list is empty and the loop below
     // is a no-op. A compiled plan that leaves a field out has that field in
@@ -402,7 +434,7 @@ pub fn fixed_table_fixed_load(
             let z = h.size as usize;
             image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
         }
-        table_fixed_run(entries, remap, &record[8..], &mut image, report);
+        table_fixed_run(entries, table, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
         // storage the scatter just wrote: the same pass for either plan,
@@ -420,6 +452,13 @@ pub fn fixed_table_fixed_load(
             }
         }
     }
+    // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
+    // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own
+    // numbers, fixed when the plan was built — once per peer, never per record
+    // (§5.4) — and a refusal that came after would have moved a counter, where
+    // REFUSE IS TOTAL.
+    report.unknown += census.0;
+    report.kind_mismatch += census.1;
     Some(n)
 }
 

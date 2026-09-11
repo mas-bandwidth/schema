@@ -1,0 +1,14 @@
+// VBRA_lineage_merge.schema — branch A appends `from_a`
+//
+// THE BRANCH CASE (docs/FIXED-FORM-BILL-READS-BACKWARD.md §8a.1): a hotfix
+// appends one field while main appends another, each passing its own baseline.
+// After the merge the reader must read BOTH pre-merge writers' files, by the
+// name-subset rule and not by position.
+
+package vbra_lineage_merge
+
+fixed table Merged
+{
+    anchor   int32 = 1
+    from_a int32 = 10
+}

@@ -91,6 +91,7 @@ func init() {
 		Name{Name: "TableFixedRun", What: "execute a fixed-table plan against a target record"},
 		Name{Name: "TableFixedSetBytes", What: "byte setter delegate for fixed-table plan execution"},
 		Name{Name: "TableFixedSlot", What: "typed destination slot for fixed-table plan execution"},
+		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the slots a plan does not land"},
 		Name{Name: "TableFixedWire", What: "the fixed-table wire walk nested in Schema"},
 	)
 }

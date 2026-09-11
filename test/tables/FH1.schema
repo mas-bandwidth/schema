@@ -1,63 +1,47 @@
-// FH1.schema — TWO GAPS OF ISSUE #876 IN ONE SMALL SCHEMA
-// (docs/FIXED-FORM-ALGORITHM.md §4.6, §4.1).
+// FH1.schema — an arm inside an arm answers to the OUTER tag
+// (#876 card 13, owed 7). FU1/FU2 is text under an arm; this is a nested
+// union: Inner sits inside Wrap, Wrap is an arm of Outer, and Inner's own
+// arm selection must survive the outer stamp. A foreign outer arm must not
+// be decoded as this inner union.
 //
-//   C11  an enum with `| max = K` HEADROOM. An ordinal above the last NAMED
-//        variant and within the declared max is IN THE SET and stands: a reader
-//        that derives the ceiling from the last name turns every headroom value
-//        into None and counts a clamp, which is data loss that reads as
-//        legitimate. Past the max it does land None, and counts.
-//
-//   W16  A UNION INSIDE A UNION. A union's guard is stamped over everything its
-//        arm produced, so an arm inside an arm answers to the OUTER tag — and a
-//        record whose outer tag selects the other arm must not run ONE of the
-//        inner arm's entries: the other arm reads back whole, and storage no
-//        entry of that read owns is left exactly as the caller handed it in,
-//        since the identity plan prefills nothing (§4.3). FU1/FU2 are the C
-//        leg's pair and are not this shape.
+// FH2 appends `extra` so a read of FH1's bytes is a COMPILED plan rather
+// than the identity one.
 package tblfh1
-
-enum Tier
-{
-    Bronze
-    Silver
-}
 
 type Leaf
 {
     n int32 = 0
 }
 
-type Other
+type Alt
 {
     k int32 = 0
 }
 
-union Inner
-{
-    leaf  Leaf
-    other Other
-}
-
-type OuterA
-{
-    inner Inner
-    edge  int32 = 0
-}
-
-type OuterB
+type Other
 {
     m int32 = 0
 }
 
-union Outer
+union Inner
 {
-    a OuterA
-    b OuterB
+    leaf Leaf
+    alt  Alt
 }
 
-fixed table FhRoot
+type Wrap
 {
-    tier Tier
-    head int32 = 1
+    inner Inner
+}
+
+union Outer
+{
+    wrap  Wrap
+    other Other
+}
+
+fixed table NestRoot
+{
     pick Outer
+    tail int32 = 7
 }

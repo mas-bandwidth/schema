@@ -28,6 +28,55 @@ static partial class Program
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
         TestFixedHostileBoolCase();
+        TestFixedGuardComparedAtArgW();
+        TestFixedAbsentOptionalCase();
+    }
+
+    sealed class ArgWProbe { public byte V; }
+
+    // THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+    // compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+    // A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+    // TableFixedWire.Run, the same loop identity and compiled both take.
+    static void TestFixedGuardComparedAtArgW()
+    {
+        byte Run(byte argw, uint srcOff, byte[] src)
+        {
+            FX1.TableFixedSlot<ArgWProbe>[] slots = new FX1.TableFixedSlot<ArgWProbe>[]
+            {
+                new FX1.TableFixedSlot<ArgWProbe>(setRaw: (t, v) => t.V = (byte)v)
+            };
+            // COPY of the payload at srcOff, guarded at 0, answering to arm 1
+            FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[]
+            {
+                new FX1.TableFixedEntry(srcOff, 0u, 1u, 0u, 0u, FX1.Schema.TableFixedWire.Copy, 1, 0, 0, 0, argw)
+            };
+            ArgWProbe dst = new ArgWProbe();
+            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty);
+            return dst.V;
+        }
+
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01 }, 0, 2) != 1,
+              "ArgW: TagAt reads a two-byte 0x0101 as 257, not arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x00 }, 0, 2) == 1,
+              "ArgW: TagAt reads a two-byte 0x0001 as arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01 }, 0, 0) == 1,
+              "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01, 0x00, 0x00 }, 0, 4) != 1,
+              "ArgW: TagAt reads a four-byte 0x00000101 as not arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x00, 0x00, 0x00 }, 0, 4) == 1,
+              "ArgW: TagAt reads a four-byte 0x00000001 as arm 1");
+
+        Check(Run(2, 2u, new byte[] { 0x01, 0x01, 0xAA }) == 0,
+              "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
+        Check(Run(2, 2u, new byte[] { 0x01, 0x00, 0xAA }) == 0xAA,
+              "ArgW: a two-byte tag 0x0001 DOES run arm 1");
+        Check(Run(0, 2u, new byte[] { 0x01, 0x01, 0xAA }) == 0xAA,
+              "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+        Check(Run(4, 4u, new byte[] { 0x01, 0x01, 0x00, 0x00, 0xBB }) == 0,
+              "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
+        Check(Run(4, 4u, new byte[] { 0x01, 0x00, 0x00, 0x00, 0xBB }) == 0xBB,
+              "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
     }
 
     static void TestFixedFxCase()
@@ -78,6 +127,22 @@ static partial class Program
             Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "older writer: the blob");
             Check(r.Unknown == 1, "older writer: `gone` is the one field this reader cannot name");
             Check(r.KindMismatch == 0 && !r.Malformed && !r.Refused, "older writer: nothing else fired");
+        }
+
+        // MISSING FIELD ON A DIRTY DEST: the hole list, not a whole TableReset.
+        {
+            FX2.FxRoot dirty = new FX2.FxRoot();
+            dirty.Added = 999;
+            dirty.Extra.X = 77;
+            dirty.Extra.Y = 88;
+            dirty.Keep = 1;
+            FX2.TableReport r = new FX2.TableReport();
+            FX2.TableFixedEntry[] plan = new FX2.TableFixedEntry[1024];
+            long n = FX2.Schema.FxRootFixedLoad(dirty, w1, plan, r);
+            Check(n == 1, "dirty dest: one record");
+            Check(dirty.Added == 11, "dirty dest: missing Added is the hole's default, not the poison");
+            Check(dirty.Extra.X == 0 && dirty.Extra.Y == 0, "dirty dest: missing nested Extra is the hole's default");
+            Check(dirty.Keep == 4242u, "dirty dest: landed Keep overwrites poison");
         }
 
         // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
@@ -786,4 +851,61 @@ static partial class Program
         Check(savedAgain == resaved.Length, "hostile bool: resave");
         Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
     }
+
+    static void TestFixedAbsentOptionalCase()
+    {
+        P3.Chain v = new P3.Chain();
+        P3.Schema.TableReset(v);
+        byte[] absentBytes = Encoding.UTF8.GetBytes("absent");
+        Array.Copy(absentBytes, v.Name, absentBytes.Length);
+        v.NameLength = 6;
+        v.LinkPresent = false;
+        v.Link.Value = 0x5A5A5A;
+        Array.Fill(v.Link.Tag, (byte)0x5A);
+        v.Link.TagLength = 5;
+        Check(v.Link.Tag[0] == 0x5A, "CONTROL: the absent payload really is stained in storage");
+
+        byte[] w = new byte[P3.Schema.ChainFixedMeasure(1)];
+        Check(P3.Schema.ChainFixedSave(v, w) == w.Length, "absent optional: the record saves");
+        int bodyOffset = P3.Schema.TableFixedWire.HeaderBytes + 4 + (int)P3.Schema.ChainFixedLayoutBytes + 8;
+        int bodyBytes = (int)P3.Schema.ChainFixedBodyBytes;
+        Span<byte> body = w.AsSpan(bodyOffset, bodyBytes);
+        Check(body.IndexOf((byte)0x5A) < 0,
+              "ABSENT OPTIONAL: not one byte of the absent payload reached the wire");
+
+        // and the reader reads what the flag says, with the payload at its defaults
+        {
+            P3.Chain back = new P3.Chain();
+            P3.TableReport r = new P3.TableReport();
+            P3.TableFixedEntry[] plan = new P3.TableFixedEntry[1024];
+            Check(P3.Schema.ChainFixedLoad(back, w, plan, r) == 1,
+                  "absent optional: the record reads");
+            Check(!back.LinkPresent, "absent optional: the flag");
+            Check(back.Link.Value == 0 && back.Link.TagLength == 0,
+                  "absent optional: the payload reads as the wire's zeros");
+            Check(r.Clamped == 0 && !r.Malformed && !r.Refused,
+                  "absent optional: a clean read moves no counter");
+        }
+
+        // THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+        // the wire, so the check above is about the flag and not about the writer
+        // never having written a payload.
+        {
+            P3.Chain present = new P3.Chain();
+            P3.Schema.TableReset(present);
+            Array.Copy(absentBytes, present.Name, absentBytes.Length);
+            present.NameLength = 6;
+            present.LinkPresent = true;
+            present.Link.Value = 0x5A5A5A;
+            Array.Fill(present.Link.Tag, (byte)0x5A);
+            present.Link.TagLength = 4;
+            byte[] pw = new byte[P3.Schema.ChainFixedMeasure(1)];
+            Check(P3.Schema.ChainFixedSave(present, pw) == pw.Length,
+                  "absent optional: the present twin saves");
+            Span<byte> pbody = pw.AsSpan(bodyOffset, bodyBytes);
+            Check(pbody.IndexOf((byte)0x5A) >= 0,
+                  "absent optional: the present twin puts the bytes on the wire");
+        }
+    }
 }
+

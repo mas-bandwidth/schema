@@ -27,6 +27,8 @@ package ir
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"sort"
 	"strconv"
 )
@@ -509,6 +511,16 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 				TableFixedDstSpec{Dst: dst, Aux: tableFixedTerm1(f.Type.Name, "type"), AuxExtendsDst: true})
 			for _, v := range r.Variants {
 				armID := TableWireId(v.WireName())
+				if v.F == nil {
+					// A PAYLOAD-FREE ARM HAS AN ENTRY AND NO BYTES (kind 32,
+					// §3): the tag names it and there is nothing to land, the
+					// same shape an enum's variants take in this walk. It is an
+					// entry rather than nothing because the layout is what the
+					// arm list is COMPARED by — an arm appended after a
+					// payload-free one must move the hash.
+					w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindNoPayload, Size: 0, Children: 0, Note: v.Name}, TableFixedDstSpec{})
+					continue
+				}
 				tableFixedWalkElement(w, v.F, armID, v.Name, tableFixedTerm1(f.Type.Name, v.Name))
 			}
 			return
@@ -555,15 +567,142 @@ func appendTableFixedU64(b []byte, v uint64) []byte {
 }
 
 // TableFixedLayoutHash is fnv1a64 over the layout's bytes exactly as written,
-// and it is the eight bytes every record carries and the eight the file header
-// carries once (§3, §3.4).
-func TableFixedLayoutHash(layout []byte) uint64 {
+// then over a DEFINITIONS DIGEST computed from st (bill §13). The digest is
+// every fact of the versioning law that is not wire shape — each range, each
+// flags bit count, each bits(N), each fixed I and F, each reader-side limit,
+// in closure order. It is computed HERE from the schema: there is no digest
+// argument for a leg to omit. It is recorded in the lock's lineage and NEVER
+// rides the wire: the hash binds it. An empty digest (a table that carries
+// none of those facts) leaves the hash equal to the layout bytes alone.
+func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 	h := uint64(0xcbf29ce484222325)
 	for _, b := range layout {
 		h ^= uint64(b)
 		h *= 0x100000001b3
 	}
+	for _, b := range TableFixedDefinitionsDigest(st) {
+		h ^= uint64(b)
+		h *= 0x100000001b3
+	}
 	return h
+}
+
+// TableFixedDefinitionsDigest is the digest [TableFixedLayoutHash] folds in
+// (bill §13): the facts of §2 that are not layout bytes, in closure order.
+// Layout format is unchanged; the hash moves when a range, a flags bit count,
+// a bits(N), a fixed I/F split, or a reader-side limit does.
+//
+// Byte layout, per field, declared order, depth first; each named type once:
+//
+//	'R'  integer, float or fixed-point range: min then max, each i64 LE
+//	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'B'  bits(N): N as u32 LE
+//	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
+//	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
+//	'L'  a reader-side limit: the limit as u64 LE. RESERVED: no table spelling
+//	     of a reader-side limit exists (the compiler flag --fixed-record-limit
+//	     is outside the law, algorithm §6). The row is empty until one does.
+//	     nested table/type: recurse, once per type name
+//	     union: recurse into each arm's payload, in declared order, once per union name
+//
+// Structs, flags and unions share one seen map keyed by bare name.
+func TableFixedDefinitionsDigest(st *Struct) []byte {
+	var b []byte
+	seen := map[string]bool{}
+	tableFixedDigestStruct(st, &b, seen)
+	return b
+}
+
+func tableFixedDigestStruct(st *Struct, b *[]byte, seen map[string]bool) {
+	if st == nil || seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		tableFixedDigestField(f, b, seen)
+	}
+}
+
+func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
+	if f == nil {
+		return
+	}
+	switch {
+	case f.HasIntRange:
+		*b = append(*b, 'R')
+		*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
+		*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+	case f.HasFloatRange:
+		*b = append(*b, 'R')
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMax))
+	}
+	switch f.Type.Kind {
+	case TBits:
+		*b = append(*b, 'B')
+		*b = tableFixedDigestU32(*b, uint32(f.Type.Width))
+	case TFixed:
+		*b = append(*b, 'X')
+		*b = tableFixedDigestU32(*b, uint32(f.Type.IntBits))
+		*b = tableFixedDigestU32(*b, uint32(f.Type.FracBits))
+		if f.Type.Signed {
+			*b = append(*b, 1)
+		} else {
+			*b = append(*b, 0)
+		}
+	}
+	switch r := f.Type.Ref.(type) {
+	case *Flags:
+		if seen[r.Name] {
+			break
+		}
+		seen[r.Name] = true
+		*b = append(*b, 'F')
+		n := r.WireBits
+		if n == 0 {
+			n = len(r.Variants)
+		}
+		*b = tableFixedDigestU32(*b, uint32(n))
+		for _, name := range r.Variants {
+			*b = append(*b, 'f')
+			*b = tableFixedDigestU64(*b, TableWireId(name))
+		}
+	case *Struct:
+		tableFixedDigestStruct(r, b, seen)
+	case *Union:
+		if seen[r.Name] {
+			break
+		}
+		seen[r.Name] = true
+		for i := range r.Variants {
+			tableFixedDigestField(r.Variants[i].F, b, seen)
+		}
+	}
+}
+
+func tableFixedDigestU32(b []byte, v uint32) []byte {
+	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+}
+
+func tableFixedDigestU64(b []byte, v uint64) []byte {
+	for i := range 8 {
+		b = append(b, byte(v>>(8*i)))
+	}
+	return b
+}
+
+func tableFixedDigestI64(b []byte, v int64) []byte {
+	return tableFixedDigestU64(b, uint64(v))
+}
+
+func bigInt64(n *big.Int) int64 {
+	if n == nil {
+		return 0
+	}
+	if n.IsInt64() {
+		return n.Int64()
+	}
+	return 0
 }
 
 // ---------------------------------------------------------------------------

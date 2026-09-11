@@ -44,9 +44,29 @@
 #include "P3Table.h"
 #include "UT1Table.h"
 #include "UT2Table.h"
+#include "FU1Table.h"
+#include "FU2Table.h"
 #include "FH1Table.h"
+#include "FH2Table.h"
+#include "FG1Table.h"
+#include "FE1Table.h"
+#include "FE2Table.h"
+
+// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
+// docs/FIXED-FORM-VERSIONING-TESTS.md). One registration call, below in main,
+// and it answers with its own failure count: its RED cases are printed by name
+// and counted there, and do not fail this target.
+int versioning_numbers_cases();
+// ---- rowan/cpp-versioning-numbers: END ------------------------------------
 
 static int failures = 0;
+
+// ==== BEGIN rowan/cpp-versioning-lists ====
+// the LIST rows' read columns, in their own translation unit; it returns its
+// own failure count and prints its own known-red report
+int versioning_lists_cases();
+// ==== END rowan/cpp-versioning-lists ====
 
 static void check( bool ok, const char * what )
 {
@@ -133,7 +153,8 @@ static void fx_case()
         check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
     }
 
-    // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
+    // 3. FX1 READS FX2 — OLD-REFUSES-NEW. The file's hash is not in FX1's known
+    // set, so LOAD refuses layout_newer before any record (bill §4, §12.4).
     {
         tblfx2::FxRoot two;
         tblfx2::FxRootReset( two );
@@ -149,21 +170,16 @@ static void fx_case()
         check( tblfx2::FxRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "FX2 save" );
 
         tblfx1::FxRoot back;
+        tblfx1::FxRootReset( back );
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
         const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1, "newer writer: one record" );
-        check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
-        check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
-        check( back.gone == 9, "newer writer: a field the writer dropped takes its declared default" );
-        check( back.nested.a == 33 && back.nested.b == 44, "newer writer: the nesting lands past the unknown type" );
-        // `added` is an unknown FIELD; `extra` is an unknown nested TYPE, and
-        // stepping over it by its layout size is what puts `nested` in the
-        // right place above
-        check( r.unknown == 2, "newer writer: two names this reader does not have" );
-        check( r.kind_mismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening" );
-        check( back.narrow == 3, "newer writer: a narrowing leaves the declared default" );
-        check( !r.malformed && !r.refused, "newer writer: no damage and no refusal" );
+        check( n < 0 && r.refused && r.reason == tblfx1::layout_newer,
+               "newer writer: layout_newer before any record" );
+        check( r.layout_hash == tblfx2::FxRootFixedHash,
+               "newer writer: layout_newer carries the file's hash and nothing else" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed,
+               "newer writer: REFUSE is total" );
     }
 }
 
@@ -231,7 +247,8 @@ static void p_case()
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r );
     check( n == 1, "P3 reads P1: one record" );
     check( std::strcmp( back.name, "chain" ) == 0, "P3 reads P1: the plain field lands" );
-    check( r.kind_mismatch == 1, "OPTIONAL vs VALUE is a reported kind on this form, never a silent reread" );
+    check( back.link_present && back.link.value == 500 && r.kind_mismatch == 0,
+           "P3 reads P1: T into ?T lands present, payload exact (§12.8)" );
 }
 
 // ---------------------------------------------------------------------------
@@ -268,8 +285,8 @@ static void negative_control()
     tblfx1::TableReport r2;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfx1::FxRootFixedLoad( &right, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r2 );
-    check( n == 1 && right.nested.a == 33 && right.nested.b == 44,
-           "NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right" );
+    check( n < 0 && r2.refused && r2.reason == tblfx1::layout_newer,
+           "NEGATIVE CONTROL: the loader refuses a newer hash, it does not compile a stranger's layout" );
 
     // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
     // Every rule has its own case in layout_validation() below; this one is
@@ -283,7 +300,7 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r3 );
-        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_count_mismatch, "REFUSED BY NAME: layout_count_mismatch" );
+        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is layout_newer, not a walk name" );
         check( r3.unknown == 0 && r3.kind_mismatch == 0 && !r3.malformed, "REFUSED BY NAME: a refusal moves no counter" );
     }
 
@@ -324,8 +341,8 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r6;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, NULL, &r6 );
-        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_malformed,
-               "REFUSED BY NAME: a header hash that is not the layout's" );
+        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_newer,
+               "REFUSED BY NAME: a header hash this reader has never locked is layout_newer" );
         check( !r6.malformed, "REFUSED BY NAME: never damage" );
     }
 
@@ -336,7 +353,7 @@ static void negative_control()
         tblfx1::TableReport r5;
         tblfx1::TableFixedEntry tiny[1];
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, w2.data(), (int64_t) w2.size(), tiny, 1, NULL, &r5 );
-        check( bad < 0 && r5.refused && r5.reason == tblfx1::plan_too_large, "REFUSED BY NAME: plan_too_large" );
+        check( bad < 0 && r5.refused && r5.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is refused before a plan is compiled" );
     }
 }
 
@@ -401,14 +418,14 @@ static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason w
 
 static void layout_validation()
 {
-    // the layout this reader ACCEPTS, which every case below breaks once
-    tblfx2::FxRoot two;
-    tblfx2::FxRootReset( two );
-    std::vector<uint8_t> good( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
-    check( tblfx2::FxRootFixedSave( &two, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
+    // A KNOWN HASH whose layout BYTES differ is layout_malformed, one name for
+    // all seven §1.1 breaks (bill §12.4). The unbroken file is this reader's OWN.
+    tblfx1::FxRoot own;
+    tblfx1::FxRootReset( own );
+    std::vector<uint8_t> good( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &own, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
            "layout validation: the unbroken file saves" );
     {
-        // and it READS, so every refusal below is the ONE break and not the file
         tblfx1::FxRoot v;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
@@ -421,13 +438,13 @@ static void layout_validation()
         std::vector<uint8_t> f = good;
         const uint32_t count = tblfx1::TableFixedGet32( f.data() + kLayoutAt );
         tblfx1::TableFixedPut32( f.data() + kLayoutAt, count + 1u );
-        refuses( f, tblfx1::layout_count_mismatch, "RULE: the entry count fits the layout length exactly" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the entry count fits the layout length exactly — known hash, layout_malformed" );
     }
     {
         // a count of ZERO is not a layout either: there is no root to walk
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( f.data() + kLayoutAt, 0u );
-        refuses( f, tblfx1::layout_count_mismatch, "RULE: an entry count of zero is not a layout" );
+        refuses( f, tblfx1::layout_malformed, "RULE: an entry count of zero is not a layout — known hash, layout_malformed" );
     }
 
     // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
@@ -436,28 +453,28 @@ static void layout_validation()
     {
         std::vector<uint8_t> f = good;
         entry_at( f, 1 )[8] = 200; // a kind no form byte this build carries defines
-        refuses( f, tblfx1::layout_kind_unknown, "RULE: a kind outside the closed set is REFUSED, not skipped" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a kind outside the closed set — known hash, layout_malformed" );
     }
 
     // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
     {
         std::vector<uint8_t> f = good;
         entry_at( f, 0 )[8] = 14; // an array as the root of a record
-        refuses( f, tblfx1::layout_kind_invalid, "RULE: the root entry is a TABLE" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the root entry is a TABLE — known hash, layout_malformed" );
     }
 
     // 4. A CONSTANT SIZE MATCHES ITS KIND
     {
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 1 ) + 9, 5u ); // a uint32 leaf in five bytes
-        refuses( f, tblfx1::layout_size_mismatch, "RULE: a constant size its kind does not admit" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a constant size its kind does not admit — known hash, layout_malformed" );
     }
     {
         // and a TABLE's size is the SUM of its children's, not a number of its own
         std::vector<uint8_t> f = good;
         const uint32_t body = tblfx1::TableFixedGet32( entry_at( f, 0 ) + 9 );
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 9, body + 4u );
-        refuses( f, tblfx1::layout_size_mismatch, "RULE: a table's size is the sum of its fields'" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a table's size is the sum of its fields' — known hash, layout_malformed" );
     }
 
     // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
@@ -465,7 +482,7 @@ static void layout_validation()
         std::vector<uint8_t> f = good;
         const uint32_t kids = tblfx1::TableFixedGet32( entry_at( f, 0 ) + 13 );
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 13, kids + 1u );
-        refuses( f, tblfx1::layout_tree_unclosed, "RULE: the tree runs out of layout" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the tree runs out of layout — known hash, layout_malformed" );
     }
     {
         // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
@@ -482,14 +499,15 @@ static void layout_validation()
         put_entry( layout, 3u, 32u, 0u, 0u );
         put_entry( layout, 4u, 32u, 0u, 0u );
         std::vector<uint8_t> f = file_of( layout );
-        refuses( f, tblfx1::layout_tree_unclosed, "RULE: the layout outlasts the tree" );
+        tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt, tblfx1::FxRootFixedHash );
+        refuses( f, tblfx1::layout_malformed, "RULE: the layout outlasts the tree — known hash, layout_malformed" );
     }
 
     // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
     {
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 9, 65537u );
-        refuses( f, tblfx1::layout_record_too_large, "RULE: a record size past 65536" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a record size past 65536 — known hash, layout_malformed" );
     }
     {
         // A SIZE THAT WOULD WRAP. The children's sizes are summed in 64 bits
@@ -497,7 +515,7 @@ static void layout_validation()
         // a small number that then agrees with a parent.
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 1 ) + 9, 0xFFFFFFFFu );
-        refuses( f, tblfx1::layout_record_too_large, "RULE: a size that would overflow the sum" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a size that would overflow the sum — known hash, layout_malformed" );
     }
 
     // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
@@ -516,13 +534,17 @@ static void layout_validation()
         }
         put_entry( layout, 2u, 1u, 1u, 0u ); // a bool at the bottom
         std::vector<uint8_t> f = file_of( layout );
-        refuses( f, tblfx1::layout_too_deep, "RULE: a nesting depth past the walk's own bound" );
+        tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt, tblfx1::FxRootFixedHash );
+        refuses( f, tblfx1::layout_malformed, "RULE: a nesting depth past the walk's own bound — known hash, layout_malformed" );
     }
 
     // AND THE RESIDUE: bytes that are not a layout at all, which is the one
     // case the seven named rules never reach.
     {
-        std::vector<uint8_t> f = file_of( std::vector<uint8_t>( 2, 0 ) );
+        // 20 + L overruns the file: a length that is not a layout (algorithm §5.3 / §2).
+        std::vector<uint8_t> f( (size_t) tblfx1::kTableFixedHeaderBytes + 4, 0 );
+        f[0] = 3;
+        tblfx1::TableFixedPut32( f.data() + tblfx1::kTableFixedHeaderBytes, 100u );
         refuses( f, tblfx1::layout_malformed, "RULE: fewer bytes than a header is layout_malformed" );
     }
 }
@@ -841,12 +863,227 @@ static void union_text_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) == 1,
-               "two lanes, back: the record reads" );
-        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
-        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
-               "two lanes, back: the arm's string(8), whole" );
-        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) < 0 &&
+               r.refused && r.reason == tblut1::layout_newer,
+               "two lanes, back: OLD-REFUSES-NEW — layout_newer, the hash and nothing else" );
+        check( r.layout_hash == tblut2::UtRootFixedHash, "two lanes, back: the file's hash" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// TEXT UNDER AN ARM (docs/SPEC-TABLES.md §3.4, §15). UT1/UT2 is two-lanes /
+// a slid ordinal. FU1/FU2 is the same hole on a TRAILING FIELD: FU1's second
+// arm carries a string(8), FU2 appends `extra` so a read of FU1's bytes is a
+// COMPILED plan rather than the identity one. The compiled read has to see
+// "hello". Hash chooses the plan and nothing else; both reads go through
+// FuRootFixedLoad.
+static void text_under_arm_case()
+{
+    check( tblfu1::FuRootFixedHash != tblfu2::FuRootFixedHash,
+           "text under an arm: FU2 extra changed the layout hash" );
+
+    tblfu1::FuRoot v[2];
+    tblfu1::FuRootReset( v[0] );
+    v[0].flag = true;
+    v[0].note = 44;
+    v[0].note_present = true;
+    v[0].pick.type = tblfu1::PickType::Labelled; // the SECOND arm
+    v[0].pick.labelled.lead = 101;
+    std::strcpy( v[0].pick.labelled.label, "hello" );
+    v[0].pick.labelled.label_length = 5;
+    v[0].pick.labelled.trail = 202;
+    v[0].tail = 11;
+
+    tblfu1::FuRootReset( v[1] );
+    v[1].pick.type = tblfu1::PickType::Plain;
+    v[1].pick.plain.n = 303;
+    v[1].tail = 12;
+
+    std::vector<uint8_t> w( (size_t) tblfu1::FuRootFixedMeasure( 2 ) );
+    check( tblfu1::FuRootFixedSave( v, 2, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "FU1 save" );
+
+    {
+        tblfu1::FuRoot back[2];
+        tblfu1::TableReport r;
+        std::vector<tblfu1::TableFixedEntry> plan( 1024 );
+        check( tblfu1::FuRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "text under an arm: the identity read takes both records" );
+        check( back[0].pick.type == tblfu1::PickType::Labelled, "text under an arm: identity, the SECOND arm" );
+        check( back[0].pick.labelled.lead == 101, "text under an arm: identity, the scalar BEFORE the text" );
+        check( back[0].pick.labelled.label_length == 5 && std::strcmp( back[0].pick.labelled.label, "hello" ) == 0,
+               "text under an arm: the IDENTITY read lands the text" );
+        check( back[0].pick.labelled.trail == 202, "text under an arm: identity, the scalar AFTER the text" );
+        check( back[0].flag && back[0].note_present && back[0].note == 44 && back[0].tail == 11,
+               "text under an arm: identity, the rest of the labelled record" );
+        check( back[1].pick.type == tblfu1::PickType::Plain && back[1].pick.plain.n == 303 && back[1].tail == 12,
+               "text under an arm: identity, the FIRST arm as well" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "text under an arm: identity, a clean read moves no counter" );
+    }
+
+    {
+        tblfu2::FuRoot back[2];
+        tblfu2::TableReport r;
+        std::vector<tblfu2::TableFixedEntry> plan( 1024 );
+        check( tblfu2::FuRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "text under an arm: the compiled read takes both records" );
+        check( back[0].pick.type == tblfu2::PickType::Labelled, "text under an arm: compiled, the SECOND arm" );
+        check( back[0].pick.labelled.lead == 101, "text under an arm: compiled, the scalar BEFORE the text" );
+        check( back[0].pick.labelled.label_length == 5 && std::strcmp( back[0].pick.labelled.label, "hello" ) == 0,
+               "text under an arm: the COMPILED read still sees the text" );
+        check( back[0].pick.labelled.trail == 202, "text under an arm: compiled, the scalar AFTER the text" );
+        check( back[0].flag && back[0].note_present && back[0].note == 44 && back[0].tail == 11,
+               "text under an arm: compiled, the rest of the labelled record" );
+        check( back[0].extra == 11,
+               "text under an arm: the field FU1 does not carry took its declared default" );
+        check( back[1].pick.type == tblfu2::PickType::Plain && back[1].pick.plain.n == 303 && back[1].tail == 12,
+               "text under an arm: compiled, the FIRST arm as well" );
+        check( back[1].extra == 11,
+               "text under an arm: compiled, `extra` defaults on the FIRST arm too" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "text under an arm: compiled, a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// OWED 7: an arm inside an arm answers to the OUTER tag (#876 card 13).
+// Inner is an arm of Outer. A compiled read of FH1 through FH2 must land the
+// inner arm, and a foreign outer arm must not be decoded as this inner union.
+static void owed7_nested_union_outer_tag_case()
+{
+    check( tblfh1::NestRootFixedHash != tblfh2::NestRootFixedHash,
+           "owed 7: FH2 extra changed the layout hash" );
+
+    tblfh1::NestRoot v[2];
+    tblfh1::NestRootReset( v[0] );
+    v[0].pick.type = tblfh1::OuterType::Wrap;
+    v[0].pick.wrap.inner.type = tblfh1::InnerType::Leaf;
+    v[0].pick.wrap.inner.leaf.n = 42;
+    v[0].tail = 7;
+
+    tblfh1::NestRootReset( v[1] );
+    v[1].pick.type = tblfh1::OuterType::Other;
+    v[1].pick.other.m = 99;
+    v[1].tail = 8;
+
+    std::vector<uint8_t> w( (size_t) tblfh1::NestRootFixedMeasure( 2 ) );
+    check( tblfh1::NestRootFixedSave( v, 2, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 7: FH1 save" );
+
+    {
+        tblfh2::NestRoot back[2];
+        tblfh2::TableReport r;
+        std::vector<tblfh2::TableFixedEntry> plan( 1024 );
+        check( tblfh2::NestRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "owed 7: the compiled read takes both records" );
+        check( back[0].pick.type == tblfh2::OuterType::Wrap,
+               "owed 7: compiled, the WRAP arm of the outer union" );
+        {
+            char what[256];
+            std::snprintf( what, sizeof( what ),
+                           "owed 7: compiled, the inner union answers to the OUTER tag (inner.type=%d, want Leaf=%d)",
+                           (int) back[0].pick.wrap.inner.type, (int) tblfh2::InnerType::Leaf );
+            check( back[0].pick.wrap.inner.type == tblfh2::InnerType::Leaf, what );
+        }
+        check( back[0].pick.wrap.inner.leaf.n == 42, "owed 7: compiled, the inner leaf lands" );
+        check( back[0].tail == 7 && back[0].extra == 11, "owed 7: compiled, tail and extra" );
+        check( back[1].pick.type == tblfh2::OuterType::Other,
+               "owed 7: a foreign outer arm is not decoded as this inner union" );
+        check( back[1].pick.other.m == 99 && back[1].tail == 8 && back[1].extra == 11,
+               "owed 7: compiled, the other arm and tail land" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "owed 7: a clean read moves no counter" );
+    }
+}
+
+// OWED 8: a width-8 ordinal is read whole through a 64-bit temporary. A
+// uint32_t temp truncated a 64-bit ordinal whose low four bytes were zero.
+static void owed8_width8_ordinal_read_whole_case()
+{
+    alignas( tblfu1::TableFixedEntry ) uint8_t blob[512];
+    std::memset( blob, 0, sizeof( blob ) );
+    tblfu1::TableFixedEntry * plan = reinterpret_cast<tblfu1::TableFixedEntry *>( blob );
+    const uint32_t map_at = 256;
+    uint16_t * map = reinterpret_cast<uint16_t *>( blob + map_at );
+    map[0] = 1;
+    map[1] = 1;
+    plan[0].op = tblfu1::kTableFixedOrdinal;
+    plan[0].src = 0;
+    plan[0].dst = 0;
+    plan[0].size = 8;
+    plan[0].dstsize = 8;
+    plan[0].aux = map_at;
+    plan[0].guard = tblfu1::kTableFixedNoGuard;
+    plan[0].argw = 1;
+
+    uint8_t src[8] = { 0, 0, 0, 0, 1, 0, 0, 0 }; // 2^32, needs all eight bytes
+    uint8_t dst[8];
+    std::memset( dst, 0xAB, sizeof( dst ) );
+    tblfu1::TableReport r;
+    tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
+    uint64_t landed = 0;
+    std::memcpy( &landed, dst, 8 );
+    check( landed == 0, "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant" );
+    check( r.clamped >= 1, "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing" );
+}
+
+// OWED 10: a record whose hash names nothing writes nothing to the caller's
+// storage. Poison it first; REFUSE is total.
+static void owed10_no_layout_writes_nothing_case()
+{
+    tblfu1::FuRoot v;
+    tblfu1::FuRootReset( v );
+    v.tail = 11;
+    v.pick.type = tblfu1::PickType::Plain;
+    v.pick.plain.n = 303;
+    std::vector<uint8_t> w( (size_t) tblfu1::FuRootFixedMeasure( 1 ) );
+    check( tblfu1::FuRootFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 10: FU1 save" );
+    const size_t rec = (size_t) tblfu1::kTableFixedHeaderBytes + 4
+        + (size_t) tblfu1::FuRootFixedLayoutBytes;
+    tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
+
+    tblfu2::FuRoot back;
+    std::memset( &back, 0xAB, sizeof( back ) );
+    const tblfu2::FuRoot poison = back;
+    tblfu2::TableReport r;
+    std::vector<tblfu2::TableFixedEntry> plan( 1024 );
+    const int64_t n = tblfu2::FuRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
+                                               plan.data(), 1024, NULL, &r );
+    check( n < 0 && r.refused && r.reason == tblfu2::no_layout,
+           "owed 10: a record hash naming nothing is no_layout" );
+    check( std::memcmp( &back, &poison, sizeof( back ) ) == 0,
+           "owed 10: REFUSE writes nothing; the caller's storage is still poison" );
+}
+
+// OWED 13: a forged ordinal past the writer's variant count COUNT clamped on
+// the COMPILED plan. FE2 reads FE1; Grade's top on the writer is Gold = 3.
+static void owed13_compiled_ordinal_counts_clamped_case()
+{
+    tblfe1::FeRoot v;
+    tblfe1::FeRootReset( v );
+    v.grade = tblfe1::Grade::Gold;
+    v.tail = 7;
+    std::vector<uint8_t> w( (size_t) tblfe1::FeRootFixedMeasure( 1 ) );
+    check( tblfe1::FeRootFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+           "owed 13: FE1 save" );
+    const size_t rec = (size_t) tblfe1::kTableFixedHeaderBytes + 4
+        + (size_t) tblfe1::FeRootFixedLayoutBytes;
+    w[rec + 8] = 4; // past Gold, which FE1 has no name for
+    {
+        tblfe2::FeRoot back;
+        tblfe2::FeRootReset( back );
+        tblfe2::TableReport r;
+        std::vector<tblfe2::TableFixedEntry> plan( 1024 );
+        const int64_t n = tblfe2::FeRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
+                                                   plan.data(), 1024, NULL, &r );
+        check( n == 1, "owed 13: the forged file reads on the compiled plan" );
+        check( back.grade == tblfe2::Grade::None,
+               "owed 13: ordinal 4 lands None against the WRITER's 3 variants" );
+        check( r.clamped >= 1, "owed 13: COUNT clamped on the compiled plan" );
+        check( back.tail == 7, "owed 13: the scalar after the enum stands" );
     }
 }
 
@@ -1254,6 +1491,20 @@ static void guard_width_case()
     std::memset( &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+
+    // 6: arg IS FULL WIDTH (bill §12.7). A two-byte tag of 256 is arm 256,
+    // and a byte lane would wrap it to 0, so the entry would never run.
+    src[0] = 0x00; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
+    plan[1].arg = 256; plan[1].argw = 2;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "ARG LANE: tag 256 at width 2 takes arm 256" );
+    src[1] = 0x00;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0, "ARG LANE: tag 0 does not take arm 256" );
 }
 
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
@@ -1297,10 +1548,10 @@ static void cache_case()
     tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHashAt, hashB );
     tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
     tblfx2::TableReport r3;
-    check( tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 ) == 1,
-           "cache: a different hash compiles once more" );
-    check( cache.compiles == 2, "cache: the third load compiled once more" );
-    check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
+    const int64_t nB = tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 );
+    check( nB < 0 && r3.refused && r3.reason == tblfx2::layout_newer,
+           "cache: a hash in no lineage is layout_newer, not a second compile" );
+    check( cache.compiles == 1, "cache: a stranger's hash does not compile" );
 
     tblfx2::FxRoot two;
     tblfx2::FxRootReset( two );
@@ -1310,7 +1561,7 @@ static void cache_case()
     tblfx2::TableReport r4;
     check( tblfx2::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &cache, &r4 ) == 1,
            "cache: identity load" );
-    check( cache.compiles == 2, "cache: identity never increments the compile counter" );
+    check( cache.compiles == 1, "cache: identity never increments the compile counter" );
 }
 
 // ---------------------------------------------------------------------------
@@ -1639,9 +1890,10 @@ static void plan_partition_case()
 // one, or a record whose outer tag selects the other arm would run the inner
 // arm's entries over storage that arm does not own. The #864 read found JS's
 // inner union overwriting the outer guard; FU1/FU2 are the C leg's pair and are
-// not this shape, so FH1 is.
+// not this shape. FH1/FH2 on the tip are the compiled pair (owed 7); FG1 is the
+// identity-plan fixture this PR carries.
 //
-// FH1's body: `tier` at 0, `head` at 1, and the outer union at 5 — so 5 is the
+// FG1's body: `tier` at 0, `head` at 1, and the outer union at 5 — so 5 is the
 // OUTER tag's byte and 6 is the INNER's, and the two numbers being one apart is
 // what makes the assertion sharp.
 static void nested_union_case()
@@ -1649,10 +1901,10 @@ static void nested_union_case()
     // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag, and
     //    not one to the inner tag's own byte.
     uint32_t outer_tag_at = 0xFFFFFFFFu;
-    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
-        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
-        if ( e.guard == tblfh1::kTableFixedNoGuard ) { continue; }
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
         if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = e.guard; }
         check( e.guard == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE tag" );
     }
@@ -1663,10 +1915,10 @@ static void nested_union_case()
     bool saw_inner_tag = false;
     uint32_t inner_tag_dst = 0xFFFFFFFFu;
     uint8_t inner_arm_arg = 0;
-    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
-        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
-        if ( e.guard == tblfh1::kTableFixedNoGuard ) { continue; }
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
         if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = e.arg; }
         check( e.guard != e.src || e.src == outer_tag_at,
                "W16: an inner entry is never guarded by the INNER tag's own byte" );
@@ -1679,10 +1931,10 @@ static void nested_union_case()
     // entry that ran under the wrong tag would be READABLE IN THE OTHER ARM'S
     // OWN FIELD, and that field reading back whole is the measurement.
     uint32_t other_arm_dst = 0xFFFFFFFFu;
-    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
-        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
-        if ( e.guard == tblfh1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
         other_arm_dst = e.dst;
     }
     check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
@@ -1704,19 +1956,19 @@ static void nested_union_case()
     //    asserted to SURVIVE, which is the same fact from the other side: a byte
     //    the plan does not own is a byte the read does not touch.
     {
-        tblfh1::FhRoot one;
-        tblfh1::FhRootReset( one );
-        one.tier = tblfh1::Tier::Silver;
+        tblfg1::FhRoot one;
+        tblfg1::FhRootReset( one );
+        one.tier = tblfg1::Tier::Silver;
         one.head = 77;
-        one.pick.type = tblfh1::OuterType::B;
+        one.pick.type = tblfg1::OuterType::B;
         one.pick.b.m = 555;
-        std::vector<uint8_t> w( (size_t) tblfh1::FhRootFixedMeasure( 1 ) );
-        check( tblfh1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the B record saves" );
+        std::vector<uint8_t> w( (size_t) tblfg1::FhRootFixedMeasure( 1 ) );
+        check( tblfg1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the B record saves" );
 
-        tblfh1::FhRoot back;
-        tblfh1::FhRootReset( back );
-        back.pick.type = tblfh1::OuterType::A;
-        back.pick.a.inner.type = tblfh1::InnerType::Other;
+        tblfg1::FhRoot back;
+        tblfg1::FhRootReset( back );
+        back.pick.type = tblfg1::OuterType::A;
+        back.pick.a.inner.type = tblfg1::InnerType::Other;
         back.pick.a.inner.other.k = 0x5A5A5A5A; // the stain, so nothing below is vacuous
         check( back.pick.a.inner.other.k == 0x5A5A5A5A, "CONTROL: the inner arm's storage really is stained" );
         // the stain is read back AS BYTES, through the address taken while that
@@ -1724,14 +1976,14 @@ static void nested_union_case()
         // question here is about the BYTES at that address and not about a
         // member of a union that is no longer selected.
         const uint8_t * const stain_at = (const uint8_t *) (const void *) &back.pick.a.inner.other.k;
-        tblfh1::TableReport r;
-        std::vector<tblfh1::TableFixedEntry> plan( 1024 );
-        check( tblfh1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+        tblfg1::TableReport r;
+        std::vector<tblfg1::TableFixedEntry> plan( 1024 );
+        check( tblfg1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "W16: the B record reads" );
-        check( back.pick.type == tblfh1::OuterType::B, "W16: the outer tag" );
+        check( back.pick.type == tblfg1::OuterType::B, "W16: the outer tag" );
         check( back.pick.b.m == 555,
                "W16: THE B ARM'S OWN FIELD IS WHOLE — no inner entry's bytes landed in the storage it shares with the inner tag" );
-        check( back.tier == tblfh1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
+        check( back.tier == tblfg1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
         uint32_t stain_after = 0;
         std::memcpy( &stain_after, stain_at, sizeof( stain_after ) );
         check( stain_after == 0x5A5A5A5Au,
@@ -1757,25 +2009,25 @@ static void nested_union_case()
     //    not something this fixture can assert. What the case below holds is
     //    that the inner selection ARRIVES.
     {
-        tblfh1::FhRoot one;
-        tblfh1::FhRootReset( one );
-        one.tier = tblfh1::Tier::Bronze;
+        tblfg1::FhRoot one;
+        tblfg1::FhRootReset( one );
+        one.tier = tblfg1::Tier::Bronze;
         one.head = 11;
-        one.pick.type = tblfh1::OuterType::A;
+        one.pick.type = tblfg1::OuterType::A;
         one.pick.a.edge = 22;
-        one.pick.a.inner.type = tblfh1::InnerType::Other;
+        one.pick.a.inner.type = tblfg1::InnerType::Other;
         one.pick.a.inner.other.k = 33;
-        std::vector<uint8_t> w( (size_t) tblfh1::FhRootFixedMeasure( 1 ) );
-        check( tblfh1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the A record saves" );
+        std::vector<uint8_t> w( (size_t) tblfg1::FhRootFixedMeasure( 1 ) );
+        check( tblfg1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the A record saves" );
 
-        tblfh1::FhRoot back;
-        tblfh1::FhRootReset( back );
-        tblfh1::TableReport r;
-        std::vector<tblfh1::TableFixedEntry> plan( 1024 );
-        check( tblfh1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+        tblfg1::FhRoot back;
+        tblfg1::FhRootReset( back );
+        tblfg1::TableReport r;
+        std::vector<tblfg1::TableFixedEntry> plan( 1024 );
+        check( tblfg1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "W16: the A record reads" );
-        check( back.pick.type == tblfh1::OuterType::A, "W16: the outer arm" );
-        check( back.pick.a.inner.type == tblfh1::InnerType::Other && back.pick.a.inner.other.k == 33,
+        check( back.pick.type == tblfg1::OuterType::A, "W16: the outer arm" );
+        check( back.pick.a.inner.type == tblfg1::InnerType::Other && back.pick.a.inner.other.k == 33,
                "W16: THE INNER UNION'S OWN ARM SELECTION SURVIVES THE OUTER STAMP" );
         check( back.pick.a.edge == 22, "W16: and the outer arm's other field" );
         check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
@@ -1795,6 +2047,11 @@ int main()
     negative_control();
     slack_case();
     union_text_case();
+    text_under_arm_case();
+    owed7_nested_union_outer_tag_case();
+    owed8_width8_ordinal_read_whole_case();
+    owed10_no_layout_writes_nothing_case();
+    owed13_compiled_ordinal_counts_clamped_case();
     bytes_row_case();
     bounds_case();
     absent_optional_case();
@@ -1807,6 +2064,16 @@ int main()
     plan_partition_case();
     nested_union_case();
     fuzz_case();
+    // ---- rowan/cpp-versioning-numbers: BEGIN ----
+    failures += versioning_numbers_cases();
+    // ---- rowan/cpp-versioning-numbers: END ----
+    // ==== BEGIN rowan/cpp-versioning-lists ====
+    // THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW, in their own
+    // translation unit (test/tables/versioning_lists.cpp) with their own
+    // known-red list: NEW-READS-OLD and OLD-REFUSES-NEW, one lineage pair per
+    // row (docs/FIXED-FORM-VERSIONING-TESTS.md).
+    failures += versioning_lists_cases();
+    // ==== END rowan/cpp-versioning-lists ====
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     if ( known_red_hits != 0 )
     {

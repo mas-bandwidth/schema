@@ -10,9 +10,10 @@ package darttable
 // In C++ the prefill is `<T>Reset( value )`, a generated walk over a struct.
 // Here the reader's own storage is the canonical body image, so the prefill is
 // what the WRITE side's template already is: A CONSTANT RUN OF BYTES, settled
-// by the compiler, laid down with one setRange. Every declared default is
-// folded into it at generation time, so the read path neither walks nor
-// branches to place one.
+// by the compiler. The load copies that image into EXACTLY THE RANGES THE
+// PLAN DOES NOT LAND — identity's list is empty, so that read writes no byte
+// twice. Every declared default is folded into the constant at generation
+// time, so the read path neither walks nor branches to place one.
 
 import (
 	"math"
