@@ -139,6 +139,27 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+    // ONE RECORD, FOUR SLOTS (§5.9 #33). The OLD writer's [4]fixed(12,4) holds
+    // the RAW SCALED VALUE per slot; the NEW reader's element is [4]fixed(28,4),
+    // whose storage is twice as wide, so every old element must land
+    // SIGN-EXTENDED and exact. The values are the ends of the old element's raw
+    // range and the one a zero-extension gets wrong.
+    let want: [i32; 4] = [-1, -128, 112, 0];
+    for k in 0..4 {
+        assert!(
+            values[0].v[k] == want[k],
+            "slot {k} widened wrong: {} and not {}", values[0].v[k], want[k]
+        );
+    }
+    assert!(
+        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
+        "a neighbour moved: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+    );
+    assert!(
+        report.widened == 4,
+        "a widened [4]fixed element owes EXACTLY 4 widen entries, not {}", report.widened
+    );`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
