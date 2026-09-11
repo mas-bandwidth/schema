@@ -339,7 +339,15 @@ public final class TableFixed {
         /** a compiled plan that does not fit the plan storage the caller declared. */
         planTooLarge,
         /** more records than the values array the caller handed in. */
-        batchTooLarge
+        batchTooLarge,
+        /** A HASH IN NO LINEAGE ENTRY: the writer is NEWER than this reader, and
+         *  the operator's answer is SHIP THE READER. Its report carries the
+         *  file's hash AND NOTHING ELSE (ALG 5.3, bill 12.4). */
+        layoutNewer,
+        /** A HASH THIS BUILD ONCE SERVED AND HAS RETIRED -- below the floor. The
+         *  operator's answer is the other one: UPGRADE THE CLIENT. It reports the
+         *  file's hash too (ALG 5.9 #7). */
+        layoutUnsupported
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -358,15 +366,23 @@ public final class TableFixed {
         public boolean refused;
         /** which refusal, BY NAME. */
         public Reason reason = Reason.none;
+        /** THE FILE'S OWN LAYOUT HASH, and it is LAST on this report by rule
+         *  (ALG 5.9 #15): a new member at the end rather than a field inserted
+         *  among the counters, because a report is a thing callers already hold.
+         *  Zero on every path but the two layout refusals (ALG 5.3, 5.9 #7). */
+        public long layoutHash;
 
         /** clear every counter and the refusal. */
         public void reset() {
             unknown = 0; kindMismatch = 0; widened = 0; clamped = 0;
-            malformed = false; refused = false; reason = Reason.none;
+            malformed = false; refused = false; reason = Reason.none; layoutHash = 0;
         }
 
         /** refuse by name, and set nothing else. */
         public void refuse(Reason why) { refused = true; reason = why; }
+
+        /** the two refusals that report THE FILE'S hash and nothing else (5.3). */
+        public void refuseHash(Reason why, long hash) { layoutHash = hash; refuse(why); }
     }
 
     // ---- THE ONE READ LOOP --------------------------------------------------
@@ -782,10 +798,23 @@ public final class TableFixed {
     private static boolean widens(int from, int to) {
         if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }  // u8 .. u64
         if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }  // i8 .. i64
+        // THE TWO FIXED-POINT RUNS are rungs of this ladder too (ALG 5.1,
+        // 1's kind codes): a fixed(I, F) into a wider I at equal F rides at the
+        // writer's storage width and lands exactly. The SIGNED run is 20..24 and
+        // the unsigned 25..29, and crossing between them is a kind that MOVED.
+        if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
+        if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
         return from == 10 && to == 11;                                          // f32 -> f64
     }
 
-    private static boolean signedKind(int kind) { return kind >= 2 && kind <= 5; }
+    // A LADDER WIDEN'S SIGN IS THE WRITER'S KIND (ALG 5.2): the signed integers
+    // and the SIGNED fixed-point run sign-extend, everything else zero-extends.
+    // The SAME-KIND widen has no sign at all and the grown enum ordinal none
+    // either -- a port that infers "extend by the kind's signedness" has written
+    // a different rule that agrees by accident.
+    private static boolean signedKind(int kind) {
+        return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
+    }
 
     // matchChildren walks a TABLE's children on both sides, by NAME.
     private static void matchChildren(Compiler c, Layout theirs, int ti, int theirAt,
@@ -839,6 +868,16 @@ public final class TableFixed {
                 && c.dest[row + dstCounted] != 0;
         final byte flavour = (c.dest != null && row + dstArg < c.dest.length)
                 ? (byte) c.dest[row + dstArg] : 0;
+        // T INTO ?T (ALG 5.2's EMIT, bill 12.8): the reader wraps what the writer
+        // sent bare. The PRESENT byte is a CONSTANT 1 -- constant in its VALUE and
+        // still carrying the row's own guard and ordinal (5.9 #13), so a present
+        // byte never stands for an arm the tag did not name -- and then the
+        // payload lands under that same guard.
+        if (myKind == 35 && theirKind != 35) {
+            c.push(0, auxAt, 1, 1, guard, opConst, arg, (byte) 0, (byte) 0);
+            compileEntry(c, theirs, ti, theirAt, mine, mi + 1, myAt, guard, arg);
+            return;
+        }
         if (theirKind != myKind) {
             if (widens(theirKind, myKind)) {
                 c.push(theirAt, at, theirSize, 0, guard,
@@ -920,6 +959,15 @@ public final class TableFixed {
                 break;
             }
             case 30: { // an enum: the ordinal is the layout's POSITION, so it remaps
+                // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
+                // widened (ALG 5.2's EMIT kind 30, bill 12.7): an enum that
+                // crossed 255 variants rides one byte on the writer and two here,
+                // and the ordinals themselves did not move -- a prefix by name is
+                // a prefix by position, so there is nothing to remap.
+                if (theirSize < mySize) {
+                    c.push(theirAt, at, theirSize, 0, guard, opWiden, arg, (byte) mySize, (byte) 0);
+                    break;
+                }
                 final long theirVariants = theirs.children(ti);
                 final long myVariants = mine.children(mi);
                 final int n = (int) Math.min(theirVariants, 255L);
@@ -1053,6 +1101,113 @@ public final class TableFixed {
             n++;
         }
         return n;
+    }
+
+    // ---- THE LINEAGE (docs/FIXED-FORM-ALGORITHM.md 5.2, 5.3) ----
+    //
+    // A FILE IS MATCHED ON ITS HASH AGAINST DATA THE BUILD LAID DOWN, and
+    // nothing parses a stranger's layout on any path. What a known hash buys is
+    // the LOCK's own bytes: the file's layout is COMPARED with them, never
+    // walked, and the record size comes from the lock and never from the file.
+
+    /** ONE LOCKED LAYOUT, and its four members are the contract (5.9 #19):
+     *  hash, layout, layoutBytes, recordBytes, the byte length riding BESIDE the
+     *  bytes the way 4.1 names the plan entry's lanes. */
+    public static final class KnownLayout {
+        /** the eight bytes the header and every record carry: the lineage's key. */
+        public final long hash;
+        /** the layout bytes VERBATIM, as the lock recorded them. */
+        public final byte[] layout;
+        /** how many of them, beside the array rather than inside it. */
+        public final int layoutBytes;
+        /** the record's whole size -- the hash and the body -- FROM THE LOCK. */
+        public final int recordBytes;
+
+        public KnownLayout(long hash, byte[] layout, int layoutBytes, int recordBytes) {
+            this.hash = hash;
+            this.layout = layout;
+            this.layoutBytes = layoutBytes;
+            this.recordBytes = recordBytes;
+        }
+    }
+
+    /** ONE LINEAGE ENTRY'S PLAN, built ONCE at class initialization from THE
+     *  LOCK'S BYTES -- which is build time for a language with no constexpr, and
+     *  conforming (5.9 #3): the bytes came from the lock, the walk happens once
+     *  per class, off every load path, and a plan that will not build is a
+     *  refusal this entry CARRIES rather than one a load discovers.
+     *
+     *  unknown and kindMismatch are the COMPILE CENSUS: the plan's own numbers,
+     *  fixed when it was built, landed on the report ONCE after the record loop
+     *  and only on a read that returns (5.9 #6). remap is this plan's OWN ordinal
+     *  table -- a static plan cannot borrow the caller's scratch, because the
+     *  table is part of the plan (5.9 #24). */
+    public static final class Plan {
+        public final Entry[] entries;
+        public final int count;
+        public final short[] remap;
+        public final int unknown;
+        public final int kindMismatch;
+        /** Reason.none, or the name a file selecting this entry is refused by. */
+        public final Reason why;
+
+        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindMismatch, Reason why) {
+            this.entries = entries;
+            this.count = count;
+            this.remap = remap;
+            this.unknown = unknown;
+            this.kindMismatch = kindMismatch;
+            this.why = why;
+        }
+    }
+
+    /** THE FIRST index whose hash is this file's, or -1: 5.3 step 5, and the only
+     *  thing a file is ever matched on. */
+    public static int select(KnownLayout[] known, long hash) {
+        for (int i = 0; i < known.length; i++) {
+            if (known[i].hash == hash) { return i; }
+        }
+        return -1;
+    }
+
+    /** ONE PLAN PER LINEAGE ENTRY, laid down from the lock's layout bytes at
+     *  class initialization. The identity entry keeps a null lane: the baked
+     *  identity plan answers it, and the load path never reads this index.
+     *
+     *  A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT is a bug in the LOCK
+     *  (5.9 #8): where the lineage came from a build that is a build failure, and
+     *  where it was handed in at run time the entry carries layoutMalformed and
+     *  LOAD refuses by that name if a file ever matches its hash. Nothing is
+     *  decoded and no counter moves either way. */
+    public static Plan[] lineagePlans(KnownLayout[] known, byte[] mine, int[] dest, long own) {
+        final Plan[] out = new Plan[known.length];
+        final Layout me = parse(mine, 0, mine.length, new Report());
+        for (int i = 0; i < known.length; i++) {
+            if (known[i].hash == own) { continue; }
+            final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
+            if (theirs == null || me == null) {
+                out[i] = new Plan(null, 0, null, 0, 0, Reason.layoutMalformed);
+                continue;
+            }
+            // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
+            // #21): this leg grows and retries, and the cap it gives up at is the
+            // one a file selecting the entry is refused by, BY NAME.
+            for (int room = 256; ; room *= 4) {
+                final Entry[] p = plan(room);
+                final short[] table = new short[Math.max(1024, room * 2)];
+                final Report census = new Report();
+                final int made = compile(theirs, me, dest, p, table, census);
+                if (made >= 0) {
+                    out[i] = new Plan(p, made, table, census.unknown, census.kindMismatch, Reason.none);
+                    break;
+                }
+                if (room >= (1 << 18)) {
+                    out[i] = new Plan(null, 0, null, 0, 0, Reason.planTooLarge);
+                    break;
+                }
+            }
+        }
+        return out;
     }
 }
 `

@@ -42,7 +42,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -397,16 +396,50 @@ func fileHash(t *testing.T, path string) string {
 }
 
 // javaBuild is one generated build of one schema: its package, its root table
-// and the classes directory its probes run against.
+// and the probe class that reads files with it.
 type javaBuild struct {
 	pkg  string
 	root string
 }
 
-// buildRow generates both sides of a row, writes the probes and compiles
-// everything with this leg's own toolchain. One `javac` per row; the column is
-// still the unit (§5.9 #18).
-func buildRow(t *testing.T, dir, row string, sides map[string]string) (map[string]javaBuild, string) {
+// sideSpec is one generated build a row needs: the schema, the OLDER schemas
+// whose locked entries are handed to it as its LINEAGE (§5.9 #1 — the backend
+// takes the lineage as data through a second entry point, and a test plays the
+// lock in one line), and how many of the oldest of them are marked RETIRED,
+// which is what moves the floor.
+type sideSpec struct {
+	key    string
+	schema string
+	older  []string
+	retire int
+}
+
+// lineageOf is the lock a test plays: every fixed root of every older unit, in
+// order, oldest first, with the first `retire` entries marked retired.
+func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLineageEntry {
+	t.Helper()
+	out := map[string][]FixedLineageEntry{}
+	for i, schema := range older {
+		u := versioningSchemaUnit(t, schema)
+		for _, st := range ir.TableFixedRoots(u) {
+			e, ok := FixedLineageOf(u, st.Name)
+			if !ok {
+				t.Fatalf("no lineage entry for %s in %s", st.Name, schema)
+			}
+			e.Retired = i < retire
+			if e.Retired {
+				e.Reason = "retired by the test's lock"
+			}
+			out[st.Name] = append(out[st.Name], e)
+		}
+	}
+	return out
+}
+
+// buildRow generates every side of a row with its lineage, writes the probes and
+// compiles the lot with this leg's own toolchain. One `javac` per row; the column
+// is still the unit (§5.9 #18).
+func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaBuild, string) {
 	t.Helper()
 	javac, _ := javaTools(t)
 	src := filepath.Join(dir, "src")
@@ -415,28 +448,21 @@ func buildRow(t *testing.T, dir, row string, sides map[string]string) (map[strin
 		t.Fatal(err)
 	}
 	builds := map[string]javaBuild{}
-	var names []string
-	for side, schema := range sides {
-		u := versioningSchemaUnit(t, schema)
-		files, err := Generate(u)
+	for _, side := range sides {
+		u := versioningSchemaUnit(t, side.schema)
+		files, err := GenerateLineage(u, lineageOf(t, side.older, side.retire))
 		if err != nil {
-			t.Fatalf("%s: generate %s: %v", row, schema, err)
+			t.Fatalf("%s: generate %s: %v", row, side.schema, err)
 		}
 		pkg := javaPackageOf(u)
 		if pkg == "" {
-			t.Fatalf("%s: %s declares no package", row, schema)
+			t.Fatalf("%s: %s declares no package", row, side.schema)
 		}
 		root := rootOf(t, u)
 		writeFixedJava(t, src, pkg, files)
-		builds[side] = javaBuild{pkg: pkg, root: root.Name}
-		names = append(names, side)
-	}
-	sort.Strings(names)
-	for _, side := range names {
-		b := builds[side]
-		class := "Probe_" + side
-		poison := side != "refuses"
-		probe := probeSource(class, b.pkg, b.root, poison)
+		builds[side.key] = javaBuild{pkg: pkg, root: root.Name}
+		class := "Probe_" + side.key
+		probe := probeSource(class, pkg, root.Name, side.key != "refuses")
 		if err := os.WriteFile(filepath.Join(src, class+".java"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -485,9 +511,12 @@ func TestFixedVersioningRows(t *testing.T) {
 				}
 			}
 			dir := t.TempDir()
-			builds, classes := buildRow(t, dir, row.name, map[string]string{
-				"reads":   "VNEW_" + row.name + ".schema",
-				"refuses": "VOLD_" + row.name + ".schema",
+			old := "VOLD_" + row.name + ".schema"
+			// THE NEWER BUILD IS HANDED THE OLDER ONE'S LOCKED ENTRY as its
+			// lineage, which is what a real build reads out of the lock.
+			builds, classes := buildRow(t, dir, row.name, []sideSpec{
+				{key: "reads", schema: "VNEW_" + row.name + ".schema", older: []string{old}},
+				{key: "refuses", schema: old},
 			})
 			_ = builds
 
@@ -580,6 +609,29 @@ func assertValuesLand(t *testing.T, oracle, got probeRun) {
 		if !ok {
 			continue
 		}
+		// THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A
+		// DEFAULT. `T` into `?T` lands `present` — a constant 1 — because the
+		// writer sent the value bare and it IS there (bill §12.8, §5.7's
+		// `optional_add` row: "present == 1, value exact"). On this leg the
+		// companion is spelled `<field>Present` beside the field, so a boolean
+		// by that name whose payload the writer carried owes TRUE and not the
+		// fresh value's false.
+		if strings.HasSuffix(k, "Present") && have == "true" {
+			payload := strings.TrimSuffix(k, "Present")
+			if _, carried := oracle.value[payload]; carried {
+				continue
+			}
+			nested := false
+			for name := range oracle.value {
+				if strings.HasPrefix(name, payload+".") {
+					nested = true
+					break
+				}
+			}
+			if nested {
+				continue
+			}
+		}
 		if have != want {
 			t.Errorf("NEW-READS-OLD: the appended %s = %s, want its declared default %s", k, have, want)
 		}
@@ -653,39 +705,75 @@ func assertCounters(t *testing.T, column string, row versioningRow, r probeRun) 
 }
 
 // TestFixedVersioningFloor is §5.7's three floor rows: a file AT the floor
-// reads, a file ONE BELOW refuses `layout_unsupported` (the hash on the report,
-// no counter, nothing decoded), and the floor raised by one makes yesterday's
-// file refuse today.
+// reads, a file ONE BELOW refuses `layout_unsupported` (the file's hash on the
+// report, no counter, nothing decoded), and the floor RAISED BY ONE makes
+// yesterday's file refuse today. Three layouts of one table, the reader always
+// the newest, and the retire count walks the floor up through them.
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := corpusDir(t)
-	files := map[string]string{
-		"old": filepath.Join(corpus, "old_floor.bin"),
-		"mid": filepath.Join(corpus, "mid_floor.bin"),
-		"new": filepath.Join(corpus, "new_floor.bin"),
-	}
-	for _, f := range files {
+	oldFile := filepath.Join(corpus, "old_floor.bin")
+	midFile := filepath.Join(corpus, "mid_floor.bin")
+	newFile := filepath.Join(corpus, "new_floor.bin")
+	for _, f := range []string{oldFile, midFile, newFile} {
 		if _, err := os.Stat(f); err != nil {
 			t.Fatalf("the corpus has no %s: run `make tables-fixedform-corpus`", filepath.Base(f))
 		}
 	}
-	dir := t.TempDir()
-	_, classes := buildRow(t, dir, "floor", map[string]string{
-		"reads": "VNEW_floor.schema",
-	})
-	// The reader built from the newest layout has a lineage of three, and its
-	// floor is 1 + the highest RETIRED index (§5.2). With nothing retired every
-	// one of the three reads; with entry 0 retired the oldest refuses
-	// `layout_unsupported` and the other two read.
-	for name, file := range files {
-		got := runProbe(t, classes, "Probe_reads", file)
-		if got.refused || got.malformed || got.n < 1 {
-			t.Errorf("floor: the %s file does not read on a lineage of three: n=%d refused=%v reason=%s", name, got.n, got.refused, got.reason)
-		}
+	older := []string{"VOLD_floor.schema", "VMID_floor.schema"}
+	build := func(t *testing.T, retire int) string {
+		t.Helper()
+		_, classes := buildRow(t, t.TempDir(), "floor", []sideSpec{
+			{key: "reads", schema: "VNEW_floor.schema", older: older, retire: retire},
+		})
+		return classes
 	}
-	t.Log("floor_below and floor_raise_live want the lineage handed in with entry 0 RETIRED, " +
-		"which needs GenerateLineage on this leg (§5.9 #1): recorded RED")
-	t.Error("floor_below: a file one below the floor must refuse layout_unsupported with the file's hash; " +
-		"this leg has no floor yet")
+
+	t.Run("floor_at", func(t *testing.T) {
+		t.Parallel()
+		// Nothing retired: the floor is 0, the OLDEST file is at it, and all
+		// three of the lineage read.
+		classes := build(t, 0)
+		for _, f := range []string{oldFile, midFile, newFile} {
+			got := runProbe(t, classes, "Probe_reads", f)
+			if got.refused || got.malformed || got.n < 1 {
+				t.Errorf("floor_at: %s must read: n=%d refused=%v reason=%s", filepath.Base(f), got.n, got.refused, got.reason)
+			}
+		}
+	})
+	t.Run("floor_below", func(t *testing.T) {
+		t.Parallel()
+		// Entry 0 retired: the floor is 1, and the file one below it refuses
+		// layout_unsupported with the FILE'S hash, nothing decoded and no
+		// counter moved — while the file AT the raised floor still reads, which
+		// is what makes the floor an index cut rather than a blanket refusal.
+		classes := build(t, 1)
+		got := runProbe(t, classes, "Probe_reads", oldFile)
+		if got.n != -1 || got.reason != "layoutUnsupported" {
+			t.Errorf("floor_below: n=%d reason=%s, want -1 and layoutUnsupported", got.n, got.reason)
+		}
+		if want := fileHash(t, oldFile); got.layoutHash != want {
+			t.Errorf("floor_below: layoutHash=%s, want the file's own hash %s (§5.9 #7)", got.layoutHash, want)
+		}
+		if got.malformed || got.unknown != 0 || got.kindMismatch != 0 || got.widened != 0 || got.clamped != 0 {
+			t.Errorf("floor_below moved a counter or set malformed: %+v; REFUSE is total", got)
+		}
+		if mid := runProbe(t, classes, "Probe_reads", midFile); mid.n < 1 {
+			t.Errorf("floor_below: the file AT the raised floor must still read: %+v", mid)
+		}
+	})
+	t.Run("floor_raise_live", func(t *testing.T) {
+		t.Parallel()
+		// The floor raised by one more: the file that read yesterday refuses
+		// today, by name.
+		classes := build(t, 2)
+		got := runProbe(t, classes, "Probe_reads", midFile)
+		if got.n != -1 || got.reason != "layoutUnsupported" {
+			t.Errorf("floor_raise_live: yesterday's file must refuse: n=%d reason=%s", got.n, got.reason)
+		}
+		if own := runProbe(t, classes, "Probe_reads", newFile); own.n < 1 {
+			t.Errorf("floor_raise_live: the reader's own file must still read: %+v", own)
+		}
+	})
 }
 
 // TestFixedVersioningHash is §5.7's hash rows: an unknown hash is
@@ -698,8 +786,8 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Fatalf("the corpus has no new_field_append.bin: run `make tables-fixedform-corpus`")
 	}
 	dir := t.TempDir()
-	_, classes := buildRow(t, dir, "hash", map[string]string{
-		"reads": "VNEW_field_append.schema",
+	_, classes := buildRow(t, dir, "hash", []sideSpec{
+		{key: "reads", schema: "VNEW_field_append.schema", older: []string{"VOLD_field_append.schema"}},
 	})
 	// hash_identity: the reader's own hash selects the identity plan.
 	got := runProbe(t, classes, "Probe_reads", own)
@@ -754,8 +842,10 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
-	_, classes := buildRow(t, dir, "lineage_merge", map[string]string{
-		"reads": "VNEW_lineage_merge.schema",
+	_, classes := buildRow(t, dir, "lineage_merge", []sideSpec{
+		{key: "reads", schema: "VNEW_lineage_merge.schema", older: []string{
+			"VOLD_lineage_merge.schema", "VBRA_lineage_merge.schema", "VBRB_lineage_merge.schema",
+		}},
 	})
 	for _, f := range files {
 		got := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, f))

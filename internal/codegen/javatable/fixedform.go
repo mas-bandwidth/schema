@@ -501,6 +501,9 @@ func fixedValue(name string) string { return fixedClass(name) + ".Value" }
 type fixedGen struct {
 	unit *ir.Unit
 	b    strings.Builder
+	// lineage is the locked layouts per fixed table, OLDEST FIRST, as the build
+	// handed them in (§5.2). Empty is a build with no lock.
+	lineage map[string][]FixedLineageEntry
 }
 
 func (g *fixedGen) pf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -508,7 +511,7 @@ func (g *fixedGen) pf(format string, args ...any) { fmt.Fprintf(&g.b, format, ar
 // generateFixedFiles emits `<Type>Fixed.java` for every type of every fixed
 // root's closure, and the shared runtime beside them. A unit with no fixed
 // root gets neither: nothing would be in them but a refusal nobody calls.
-func generateFixedFiles(u *ir.Unit) (map[string][]byte, error) {
+func generateFixedFiles(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	roots := fixedRoots(u)
 	if len(roots) == 0 {
 		return map[string][]byte{}, nil
@@ -526,13 +529,13 @@ func generateFixedFiles(u *ir.Unit) (map[string][]byte, error) {
 		"TableFixed.java": javaFile(u, "the FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3", tableFixedRuntime),
 	}
 	for _, un := range fixedUnions(order) {
-		g := &fixedGen{unit: u}
+		g := &fixedGen{unit: u, lineage: lineage}
 		g.emitUnion(un)
 		out[fixedClass(un.Name)+".java"] = javaFile(u,
 			fmt.Sprintf("union %s under the fixed form (docs/SPEC-TABLES.md §3.4)", un.Name), g.b.String())
 	}
 	for _, st := range order {
-		g := &fixedGen{unit: u}
+		g := &fixedGen{unit: u, lineage: lineage}
 		g.emitType(st, isRoot[st.Name])
 		out[fixedClass(st.Name)+".java"] = javaFile(u,
 			fmt.Sprintf("%s under the fixed form (docs/SPEC-TABLES.md §3.4)", st.Name), g.b.String())
@@ -1463,6 +1466,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.emitDestArray(w)
 	g.pf("    };\n\n")
 
+	g.emitLineage(st, hash, layout, body)
+
 	g.pf("    /** everything a FILE carries once, in front of the records: §3's own\n")
 	g.pf("     *  sixteen-byte header, then the u32 layout length, then the layout. */\n")
 	g.pf("    public static final int headerBytes = TableFixed.fileHeaderBytes + 4 + %d;\n\n", len(layout))
@@ -1534,97 +1539,170 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    /** a scratch image of one record body, allocated ONCE by the caller. */\n")
 	g.pf("    public static byte[] image() { return new byte[bodyBytes]; }\n")
 	g.pf("\n")
-	g.pf("    /** THE READ, AND IT IS ONE PATH (docs/SPEC-TABLES.md §3.4): the prefill of\n")
-	g.pf("     *  the holes the chosen plan leaves, ONE loop over that plan, ONE scatter,\n")
-	g.pf("     *  and the bounds the scatter holds. WHICH PLAN is the only thing the hash\n")
-	g.pf("     *  decides — the identity plan when the file's layout is this build's own,\n")
-	g.pf("     *  a plan compiled from the writer's layout when it is not. There is no\n")
-	g.pf("     *  identity flag in the record loop and no second method behind the door,\n")
-	g.pf("     *  because a plan is data: one path is exercised by every read, and there\n")
-	g.pf("     *  is one shape to test rather than two.\n")
+	g.pf("    /** THE READ, AND IT IS ONE PATH (docs/SPEC-TABLES.md §3.4, and §5.3 of\n")
+	g.pf("     *  docs/FIXED-FORM-ALGORITHM.md): the prefill of the holes the chosen plan\n")
+	g.pf("     *  leaves, ONE loop over that plan, ONE scatter, and the bounds the scatter\n")
+	g.pf("     *  holds. WHICH PLAN is the only thing the hash decides, and the hash\n")
+	g.pf("     *  SELECTS it out of the lineage the build laid down: the identity plan for\n")
+	g.pf("     *  this build's own layout, and for every older one a plan already built\n")
+	g.pf("     *  from THE LOCK'S OWN BYTES. NOTHING ON THIS PATH COMPILES, nothing on it\n")
+	g.pf("     *  parses a layout, and it cannot fail for want of a plan (§5.9 #3).\n")
 	g.pf("     *\n")
-	g.pf("     *  THE PREFILL IS PER-PLAN, computed once per load from whichever plan\n")
-	g.pf("     *  won: identity's one move covers the body, so its hole list is empty; a\n")
-	g.pf("     *  compiled plan that leaves a field out has that field in the list, and\n")
-	g.pf("     *  the declared default is what that field keeps.\n")
+	g.pf("     *  THE FIXED TABLE READS BACKWARD AND NEVER FORWARD. A hash in no lineage\n")
+	g.pf("     *  entry is `layoutNewer` — ship the reader — carrying THE FILE'S HASH and\n")
+	g.pf("     *  nothing else; a hash below the floor is `layoutUnsupported` — upgrade the\n")
+	g.pf("     *  client — carrying it too. Neither decodes a byte and neither moves a\n")
+	g.pf("     *  counter: REFUSE IS TOTAL, the prefill included.\n")
 	g.pf("     *\n")
-	g.pf("     *  NOTHING PER RECORD ALLOCATES, which is the claim the batch loop rests\n")
-	g.pf("     *  on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal remap scratch\n")
-	g.pf("     *  and the record image — and the loop below only fills them. What this\n")
-	g.pf("     *  DOES make is a fixed handful of cursors, once per call: the header, the\n")
-	g.pf("     *  hole list (cover and the packed ranges), and on a stranger's layout the\n")
-	g.pf("     *  two Layout views (a byte[] reference and two ints each, over the\n")
-	g.pf("     *  caller's own bytes) that TableFixed.parse returns. None escapes this\n")
-	g.pf("     *  method, and none is per record. Answers the records read, or -1. */\n")
+	g.pf("     *  THE PLAN AND THE REMAP ARGUMENTS ARE CAPACITY DECLARATIONS NOW, checked\n")
+	g.pf("     *  and never written through (§5.9 #5, #24): a static plan carries its own\n")
+	g.pf("     *  ordinal table, because the table is part of the plan. They stay in the\n")
+	g.pf("     *  signature because §5.6 retires MECHANISMS and not API (§5.9 #16).\n")
+	g.pf("     *  Answers the records read, or -1. */\n")
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
+	g.pf("        // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,\n")
+	g.pf("        // and 20 + L is inside the file. The first is framing damage and has no\n")
+	g.pf("        // name; the other two refuse by name.\n")
 	g.pf("        final TableFixed.Header head = new TableFixed.Header();\n")
 	g.pf("        if (!TableFixed.readHeader(data, head, report)) { return -1; }\n")
 	g.pf("\n")
-	g.pf("        // WHICH PLAN, and that is the only thing that differs between reading\n")
-	g.pf("        // this build's own record and reading anybody else's. A STRANGER'S\n")
-	g.pf("        // LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
-	g.pf("        // every rule it fails refuses under ITS OWN NAME.\n")
+	g.pf("        // STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from\n")
+	g.pf("        // the wire — the definitions digest is not on the wire, so the hash\n")
+	g.pf("        // cannot be re-derived from a file at all.\n")
+	g.pf("        final long fileHash = head.hash;\n")
+	g.pf("\n")
+	g.pf("        // STEPS 5 AND 6: SELECT BY HASH, then the floor. Two answers that point\n")
+	g.pf("        // an operator in opposite directions, and both report the file's hash.\n")
+	g.pf("        final int pick = TableFixed.select(known, fileHash);\n")
+	g.pf("        if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutNewer, fileHash); return -1; }\n")
+	g.pf("        if (pick < floor) { report.refuseHash(TableFixed.Reason.layoutUnsupported, fileHash); return -1; }\n")
+	g.pf("\n")
+	g.pf("        // STEP 7: a known hash is read under THE LOCK'S layout bytes, held to a\n")
+	g.pf("        // BYTE COMPARISON and never to §1.1's seven rules. The seven\n")
+	g.pf("        // malformations under a known hash all come back as ONE name — a lie\n")
+	g.pf("        // about a known version.\n")
+	g.pf("        final TableFixed.KnownLayout known_ = known[pick];\n")
+	g.pf("        if (head.layoutLength != known_.layoutBytes) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
+	g.pf("        for (int i = 0; i < known_.layoutBytes; i++) {\n")
+	g.pf("            if (data[head.layoutAt + i] != known_.layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
+	g.pf("        }\n")
+	g.pf("\n")
+	g.pf("        // STEP 8: the plan this peer resolves to, and the record size FROM THE\n")
+	g.pf("        // LOCK. The census is the plan's own numbers, carried to the bottom.\n")
 	g.pf("        TableFixed.Entry[] entries = Identity.plan;\n")
 	g.pf("        int made = Identity.plan.length;\n")
-	g.pf("        long recordSize = recordBytes;\n")
-	g.pf("        if (head.hash == hash) {\n")
-	g.pf("            if (head.layoutLength != layout.length) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
-	g.pf("            for (int i = 0; i < layout.length; i++) {\n")
-	g.pf("                if (data[head.layoutAt + i] != layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
+	g.pf("        short[] table = remap;\n")
+	g.pf("        int censusUnknown = 0;\n")
+	g.pf("        int censusKind = 0;\n")
+	g.pf("        if (fileHash != hash) {\n")
+	g.pf("            final TableFixed.Plan lane = Lineage.plans[pick];\n")
+	g.pf("            if (lane == null || lane.why != TableFixed.Reason.none) {\n")
+	g.pf("                report.refuse(lane == null ? TableFixed.Reason.layoutMalformed : lane.why);\n")
+	g.pf("                return -1;\n")
 	g.pf("            }\n")
-	g.pf("        } else {\n")
-	g.pf("            final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);\n")
-	g.pf("            if (theirs == null) { return -1; }\n")
-	g.pf("            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);\n")
-	g.pf("            if (mine == null) { return -1; }\n")
-	g.pf("            made = TableFixed.compile(theirs, mine, dest, plan, remap, report);\n")
-	g.pf("            if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }\n")
-	g.pf("            entries = plan;\n")
-	g.pf("            recordSize = 8 + theirs.size(0);\n")
+	g.pf("            if (plan != null && lane.count > plan.length) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }\n")
+	g.pf("            entries = lane.entries;\n")
+	g.pf("            made = lane.count;\n")
+	g.pf("            table = lane.remap;\n")
+	g.pf("            censusUnknown = lane.unknown;\n")
+	g.pf("            censusKind = lane.kindMismatch;\n")
 	g.pf("        }\n")
-	g.pf("        final int n = records(values, count, data, head, recordSize, report);\n")
-	g.pf("        if (n < 0) { return -1; }\n")
+	g.pf("        final long recordSize = known_.recordBytes;\n")
+	g.pf("\n")
+	g.pf("        // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight\n")
+	g.pf("        // or less and a ragged tail are framing damage and have no name — and the\n")
+	g.pf("        // caller's capacity, which does.\n")
+	g.pf("        final long rest = data.length - head.recordsAt;\n")
+	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.malformed = true; return -1; }\n")
+	g.pf("        final long count64 = rest / recordSize;\n")
+	g.pf("        if (count64 > count || count64 > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }\n")
+	g.pf("        final int n = (int) count64;\n")
 	g.pf("        final int bodySize = (int) (recordSize - 8);\n")
 	g.pf("\n")
 	g.pf("        // THE PREFILL IS THE BYTES THIS PLAN DOES NOT WRITE, and no more than\n")
-	g.pf("        // those: packed once per call rather than a whole-image copy per\n")
-	g.pf("        // record, and empty when the plan is the identity plan.\n")
+	g.pf("        // those: packed once per call rather than a whole-image copy per record,\n")
+	g.pf("        // and empty when the plan is the identity plan.\n")
 	g.pf("        final byte[] cover = new byte[bodyBytes];\n")
 	g.pf("        final int[] hole = new int[Math.max(2, bodyBytes * 2)];\n")
 	g.pf("        final int holeN = TableFixed.holes(entries, made, cover, hole);\n")
 	g.pf("        int at = head.recordsAt;\n")
+	g.pf("        // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a\n")
+	g.pf("        // refusal has written not one destination byte.\n")
 	g.pf("        for (int k = 0; k < n; k++) {\n")
-	g.pf("            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A\n")
-	g.pf("            // REFUSAL BY NAME, never a guess and never damage.\n")
-	g.pf("            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("            if (TableFixed.get64(data, at) != fileHash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
 	g.pf("            for (int h = 0; h < holeN; h++) {\n")
 	g.pf("                final int off = hole[h * 2];\n")
 	g.pf("                final int hn = hole[h * 2 + 1];\n")
 	g.pf("                System.arraycopy(defaults, off, image, off, hn);\n")
 	g.pf("            }\n")
-	g.pf("            TableFixed.run(entries, made, remap, data, at + 8, bodySize, image, report);\n")
+	g.pf("            TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);\n")
 	g.pf("            scatter(image, 0, values[k], report);\n")
-	g.pf("            at += 8 + bodySize;\n")
+	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
+	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")
+	g.pf("        // RETURNS (§5.9 #6): once per peer and never per record, which is also how\n")
+	g.pf("        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).\n")
+	g.pf("        report.unknown += censusUnknown;\n")
+	g.pf("        report.kindMismatch += censusKind;\n")
 	g.pf("        return n;\n")
 	g.pf("    }\n")
-	g.pf("\n")
-	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the\n")
-	g.pf("    // three: the layout's own rules each refuse under their own name\n")
-	g.pf("    // first, so a broken layout is never reported as a lying header (§3).\n")
-	g.pf("    // Then the records: a whole number of them at the writer's own size,\n")
-	g.pf("    // and no more than the caller has room for. Answers how many, or -1.\n")
-	g.pf("    private static int records(Value[] values, int count, byte[] data, TableFixed.Header head,\n")
-	g.pf("                               long recordSize, TableFixed.Report report) {\n")
-	g.pf("        if (head.declaredHash != head.hash) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
-	g.pf("        final long rest = data.length - head.recordsAt;\n")
-	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.malformed = true; return -1; }\n")
-	g.pf("        final long n = rest / recordSize;\n")
-	g.pf("        if (n > count || n > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }\n")
-	g.pf("        return (int) n;\n")
+}
+
+// emitLineage lays the lineage down as STATIC DATA (§5.2's COMPILE): the known
+// layouts OLDEST FIRST with the current one last, the floor as one number, and
+// one plan per entry built from the lock's bytes by the class initializer.
+//
+// EVERY LINEAGE ENTRY'S LAYOUT RIDES AS AN OCTAL-ESCAPED STRING, decoded once,
+// never as a byte-array literal — which is bill §11's cost note read as a shape
+// rather than as a warning. An array initializer is CODE in Java, a class
+// initializer holds 64KiB of it, and a lineage multiplies `4 + 17E` bytes of
+// layout by its entry count: the one shape that does not grow the initializer
+// with the lineage is the string constant.
+func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, body int64) {
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
+	for i, e := range entries {
+		if e.Wire == hash {
+			continue // the current layout is already the `layout` constant
+		}
+		g.pf("    /** LINEAGE ENTRY %d's layout, verbatim from the lock: what LOAD compares\n", i)
+		g.pf("     *  and what the plan below was built from. A string and not an array\n")
+		g.pf("     *  literal, because a lineage of arrays is a class initializer past Java's\n")
+		g.pf("     *  own 64KiB bound (the bill's §11 cost note). */\n")
+		g.pf("    private static final byte[] known%dLayout = TableFixed.bytes(\n", i)
+		g.emitByteChunks(e.Layout)
+		g.pf("    );\n\n")
+	}
+	g.pf("    /** THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2, §5.9 #2). It\n")
+	g.pf("     *  is the BUILD's data and never the wire's: a file is matched on its hash\n")
+	g.pf("     *  against these entries, and the layout it carries is COMPARED with the\n")
+	g.pf("     *  bytes the lock recorded, never walked. */\n")
+	g.pf("    public static final TableFixed.KnownLayout[] known = {\n")
+	for i, e := range entries {
+		name := fmt.Sprintf("known%dLayout", i)
+		if e.Wire == hash {
+			name = "layout"
+		}
+		if e.Retired {
+			g.pf("        // RETIRED: %s\n", e.Reason)
+		}
+		g.pf("        new TableFixed.KnownLayout(0x%016xL, %s, %s.length, %d),\n", e.Wire, name, name, e.Record)
+	}
+	g.pf("    };\n\n")
+	g.pf("    /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a\n")
+	g.pf("     *  layout this build once served is retired, and the answer is\n")
+	g.pf("     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry\n")
+	g.pf("     *  stays in the lineage forever: the floor is an index cut. */\n")
+	g.pf("    public static final int floor = %d;\n\n", floor)
+	g.pf("    // ONE PLAN PER LINEAGE ENTRY, BUILT AT CLASS INITIALIZATION from the\n")
+	g.pf("    // lock's own bytes — build time for a language with no constexpr, and\n")
+	g.pf("    // conforming (§5.9 #3). Nothing on the load path compiles, nothing on it\n")
+	g.pf("    // parses a layout, and there is no cache a load can miss.\n")
+	g.pf("    private static final class Lineage {\n")
+	g.pf("        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);\n")
 	g.pf("    }\n")
+	g.pf("\n")
 }
 
 // fixedLiteralCap is where a readable byte-array literal stops being one. A
