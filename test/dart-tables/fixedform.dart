@@ -57,6 +57,12 @@ import '../../build/dart-fixed/fx2/FX2Fixed.dart' as fx2;
 import '../../build/dart-fixed/fx2/Tblfx2Fixed.dart' as fx2home;
 import '../../build/dart-fixed/fxw/FXWFixed.dart' as fxw;
 import '../../build/dart-fixed/fxw/TblfxwFixed.dart' as fxwhome;
+import '../../build/dart-fixed/fu1/FU1.dart' as fu1decl;
+import '../../build/dart-fixed/fu1/FU1Fixed.dart' as fu1;
+import '../../build/dart-fixed/fu1/Tblfu1Fixed.dart' as fu1home;
+import '../../build/dart-fixed/fu2/FU2.dart' as fu2decl;
+import '../../build/dart-fixed/fu2/FU2Fixed.dart' as fu2;
+import '../../build/dart-fixed/fu2/Tblfu2Fixed.dart' as fu2home;
 import '../../build/dart-fixed/p1/P1Fixed.dart' as p1;
 import '../../build/dart-fixed/p1/Tblp1Fixed.dart' as p1home;
 import '../../build/dart-fixed/p3/P3Fixed.dart' as p3;
@@ -1000,6 +1006,149 @@ void fxCase() {
   }
 }
 
+// TEXT UNDER AN ARM (docs/SPEC-TABLES.md §3.4, §15). FU1 writes a string(8)
+// in the union's SECOND arm; FU2 appends `extra` so a read of those bytes is
+// a COMPILED plan. Both reads go through fuRootFixedLoad — the same one-path
+// load the rest of this form uses. Hash chooses the plan. The compiled read
+// has to see "hello".
+void fuCase() {
+  check(
+    fu1.fuRootFixedHash != fu2.fuRootFixedHash,
+    'text under an arm: FU2 extra changed the layout hash',
+  );
+
+  final labelled = fu1home.FuRoot();
+  labelled.flag = true;
+  labelled.note = 44;
+  labelled.notePresent = true;
+  labelled.pick.type = fu1decl.PickType.labelled; // the SECOND arm
+  labelled.pick.labelled.lead = 101;
+  labelled.pick.labelled.label.setRange(0, 5, 'hello'.codeUnits);
+  labelled.pick.labelled.labelLength = 5;
+  labelled.pick.labelled.trail = 202;
+  labelled.tail = 11;
+
+  final plain = fu1home.FuRoot();
+  plain.pick.type = fu1decl.PickType.plain;
+  plain.pick.plain.n = 303;
+  plain.tail = 12;
+
+  final w = Uint8List(fu1.fuRootFixedMeasure(2));
+  check(
+    fu1.fuRootFixedSave(<fu1home.FuRoot>[labelled, plain], 2, w) == w.length,
+    'FU1 save',
+  );
+
+  {
+    final back = <fu1home.FuRoot>[fu1home.FuRoot(), fu1home.FuRoot()];
+    final r = fu1home.TableFixedReport();
+    final n = fu1.fuRootFixedLoad(
+      back,
+      2,
+      w,
+      w.length,
+      fu1.fuRootFixedNewPlan(),
+      r,
+    );
+    check(n == 2, 'text under an arm: the identity read takes both records');
+    check(
+      back[0].pick.type == fu1decl.PickType.labelled,
+      'text under an arm: identity, the SECOND arm',
+    );
+    check(
+      back[0].pick.labelled.lead == 101,
+      'text under an arm: identity, the scalar BEFORE the text',
+    );
+    check(
+      back[0].pick.labelled.labelLength == 5 &&
+          text(
+                back[0].pick.labelled.label,
+                back[0].pick.labelled.labelLength,
+              ) ==
+              'hello',
+      'text under an arm: the IDENTITY read lands the text',
+    );
+    check(
+      back[0].pick.labelled.trail == 202,
+      'text under an arm: identity, the scalar AFTER the text',
+    );
+    check(
+      back[0].flag &&
+          back[0].notePresent &&
+          back[0].note == 44 &&
+          back[0].tail == 11,
+      'text under an arm: identity, the rest of the labelled record',
+    );
+    check(
+      back[1].pick.type == fu1decl.PickType.plain &&
+          back[1].pick.plain.n == 303 &&
+          back[1].tail == 12,
+      'text under an arm: identity, the FIRST arm as well',
+    );
+    quiet(r, 'text under an arm: identity');
+  }
+
+  {
+    final back = <fu2home.FuRoot>[fu2home.FuRoot(), fu2home.FuRoot()];
+    final r = fu2home.TableFixedReport();
+    final n = fu2.fuRootFixedLoad(
+      back,
+      2,
+      w,
+      w.length,
+      fu2.fuRootFixedNewPlan(),
+      r,
+    );
+    check(n == 2, 'text under an arm: the compiled read takes both records');
+    check(
+      back[0].pick.type == fu2decl.PickType.labelled,
+      'text under an arm: compiled, the SECOND arm',
+    );
+    check(
+      back[0].pick.labelled.lead == 101,
+      'text under an arm: compiled, the scalar BEFORE the text',
+    );
+    check(
+      back[0].pick.labelled.labelLength == 5 &&
+          text(
+                back[0].pick.labelled.label,
+                back[0].pick.labelled.labelLength,
+              ) ==
+              'hello',
+      'text under an arm: the COMPILED read still sees the text',
+    );
+    check(
+      back[0].pick.labelled.trail == 202,
+      'text under an arm: compiled, the scalar AFTER the text',
+    );
+    check(
+      back[0].flag &&
+          back[0].notePresent &&
+          back[0].note == 44 &&
+          back[0].tail == 11,
+      'text under an arm: compiled, the rest of the labelled record',
+    );
+    check(
+      back[0].extra == 11,
+      'text under an arm: the field FU1 does not carry took its declared default',
+    );
+    check(
+      back[1].pick.type == fu2decl.PickType.plain &&
+          back[1].pick.plain.n == 303 &&
+          back[1].tail == 12,
+      'text under an arm: compiled, the FIRST arm as well',
+    );
+    check(
+      back[1].extra == 11,
+      'text under an arm: compiled, extra defaults on the FIRST arm too',
+    );
+    check(
+      !r.malformed && r.refused == 0 && r.clamped == 0,
+      'text under an arm: compiled, a clean read moves no counter',
+    );
+  }
+}
+
 // 6. AN ENUM VARIANT AND A UNION ARM INSERTED IN THE MIDDLE, and a keyed
 // array whose keys slid — remapped BY NAME and never by position.
 void vCase() {
@@ -1646,6 +1795,7 @@ void main(List<String> args) {
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
   fxCase();
+  fuCase();
   vCase();
   pCase();
   absentOptionalCase();

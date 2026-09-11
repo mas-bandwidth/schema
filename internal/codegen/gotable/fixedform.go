@@ -17,10 +17,11 @@
 // Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
 // 2026-09-09), never a slow read — and the word that matters is DECLARED.
 // The refusal is keyed on the `fixed table` KEYWORD ([ir.Struct.FixedDeclared],
-// #823), not on the shape: a table the compiler merely derived into the fixed
-// mode asked for nothing and keeps the form-1 Load it never lost, even though
-// this backend also emits form 3 for it. FixedLoad itself is the form-3 reader
-// either way, and it answers by the form REGISTRY (§3): previous_form for 1,
+// #823), not on the shape, and since #823 landed so is the FORM: a bounded body
+// a plain `table` declares is the variable wire, emits no form-3 surface at all
+// and keeps the form-1 Load it never lost — nothing is derived in either
+// direction (§2.2, [ir.TableFixedRoots]). FixedLoad is the form-3 reader, and
+// it answers by the form REGISTRY (§3): previous_form for 1,
 // message_form_as_file for 2, newer_form for every byte §3 has not assigned.
 // The C++ reference still accepts form 1 by the form byte; this port does not
 // copy that for a declared fixed table.
@@ -324,10 +325,12 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 // refusesForm1 is the OTHER question, and Glenn 2026-09-09 is that they are
 // two: a form-1 file handed to <T>Load is a named refusal when the AUTHOR
 // DECLARED the table fixed, never merely because the compiler could lay it
-// out fixed. hasFixedForm above is shape; this is the keyword. Nothing sets
-// [ir.Struct.FixedDeclared] until #823's `fixed table` lands, so today every
-// table in this tree keeps its form-1 Load and the shared wire oracle reads
-// what it always read.
+// out fixed. hasFixedForm above is shape; this is the keyword. Since #823
+// landed, hasFixedForm asks the declaration too — [ir.VariableTables] is
+// [ir.Struct.FixedDeclared]'s complement — so the two answer together on this
+// leg; the conjunction stays because the refusal is owed to the KEYWORD, and a
+// backend may carry the form for FEWER types than the declaration (the leaf
+// cap above is one such narrowing) but never for more.
 func (g *tableGen) refusesForm1(st *ir.Struct) bool {
 	return g.hasFixedForm(st) && st.FixedDeclared
 }
@@ -740,7 +743,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
 	g.pf("\thash := tableFixedHashOf(layout)\n")
-	g.pf("\tif tableFixedGet64(data[TableFixedHashAt:]) != hash {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
@@ -748,13 +750,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\trecordBytes := int64(%sFixedRecordBytes)\n", st.Name)
 	g.pf("\tidentity := hash == %sFixedHash\n", st.Name)
 	g.pf("\tif !identity {\n")
-	g.pf("\t\tparsed, ok := tableFixedParseLayout(layout)\n")
-	g.pf("\t\tif !ok {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n")
+	g.pf("\t\t// ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("\t\t// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
+	g.pf("\t\t// every rule it fails refuses under ITS OWN NAME (§1.1).\n")
+	g.pf("\t\tparsed, why := tableFixedParseLayout(layout)\n")
+	g.pf("\t\tif why != \"\" {\n\t\t\treturn tableFixedRefuse(report, why)\n\t\t}\n")
 	g.pf("\t\tmade := tableFixedCompile(parsed, %sFixedLayout, %sFixedDst, plan, report)\n", st.Name, st.Name)
+	g.pf("\t\tif made == -2 {\n\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t}\n")
 	g.pf("\t\tif made < 0 {\n\t\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t\t}\n")
 	g.pf("\t\tentries = plan\n\t\tentryCount = made\n")
 	g.pf("\t\trecordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)\n")
 	g.pf("\t}\n")
+	// THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three
+	// (docs/FIXED-FORM-ALGORITHM.md §2.1 step 5): the layout's own rules each
+	// refuse under their own name first, so a broken layout is never reported as
+	// a lying header. A header whose hash is not the hash of the layout behind it
+	// is refused.
+	g.pf("\tif tableFixedGet64(data[TableFixedHashAt:]) != hash {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
