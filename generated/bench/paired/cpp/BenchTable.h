@@ -3226,12 +3226,20 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // this is overwritten by the arm that matches and stands when none
             // does. It is the ONE byte this form writes twice, and it is the
             // compiled path's alone.
+            //
+            // Nested: None answers to the OUTER tag at the OUTER width. Push
+            // stamps c.argw, which is the inner tag's width here, so restore
+            // the outer width for this one entry (bill §12.7, #876 card 13).
             {
+                const uint8_t inner_argw = c.argw;
+                if ( guard != kTableFixedNoGuard ) { c.argw = saved_argw ? saved_argw : 1u; }
                 TableFixedEntry none;
                 none.src = their_at; none.dst = aux_at; none.size = my_tag;
                 none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
                 TableFixedPush( c, none );
+                c.argw = inner_argw;
             }
+            const int32_t restamp_from = c.count;
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
                 const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
@@ -3254,6 +3262,24 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                     their_arm += TableFixedSubtree( theirs, their_arm );
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
+            }
+            // Nested: an arm inside an arm answers to the OUTER tag, which is
+            // the one that decides whether any of it is there at all. Identity
+            // rewrites inner-guarded leaves onto that tag; the compiled path
+            // does the same so a foreign outer arm is not read as this inner
+            // union (#876 card 13).
+            if ( guard != kTableFixedNoGuard )
+            {
+                const uint8_t outer_w = saved_argw ? saved_argw : 1u;
+                for ( int32_t i = restamp_from; i < c.count; ++i )
+                {
+                    if ( c.plan[i].guard == their_at )
+                    {
+                        c.plan[i].guard = guard;
+                        c.plan[i].arg = arg;
+                        c.plan[i].argw = outer_w;
+                    }
+                }
             }
             c.argw = saved_argw;
             break;

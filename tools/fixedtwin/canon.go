@@ -107,6 +107,10 @@ var (
 	reOwedArgLaneRemap   = regexp.MustCompile(`(?s)const uint32_t n = te\.children;\s+const uint32_t at_map = TableFixedLayTable\( c, NULL, \(int32_t\) n \);\s+if \( c\.overflow \) \{ break; \}\s+uint16_t \* map = \(uint16_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at_map \);\s+for \( uint32_t j = 0; j < n; \+\+j \)\s*\{.*?map\[1 \+ j\] = landed;\s*\}\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.guard = guard; e\.op = kTableFixedOrdinal;\s*e\.arg = arg; e\.dstsize = \(uint8_t\) me\.size;\s*e\.aux = at_map;\s*TableFixedPush\( c, e \);`)
 	reOwedByteLaneRemap  = regexp.MustCompile(`(?s)uint16_t remap\[256\];.*?TableFixedLayTable\( c, remap, \(int32_t\) n \);\s*TableFixedPush\( c, e \);`)
 	reOwedLayTableNull   = regexp.MustCompile(`if \( values != NULL \)\s*\{\s*for \( int32_t i = 0; i < n; \+\+i \) \{ dst\[1 \+ i\] = values\[i\]; \}\s*\}`)
+	reOwedNestedNoneArgw = regexp.MustCompile(`const uint8_t inner_argw = c\.argw;\s*if \( guard != kTableFixedNoGuard \) \{ c\.argw = saved_argw \? saved_argw : 1u; \}\s*`)
+	reOwedNestedNoneRest = regexp.MustCompile(`TableFixedPush\( c, none \);\s*c\.argw = inner_argw;`)
+	reOwedNestedRestamp  = regexp.MustCompile(`(?s)const int32_t restamp_from = c\.count;\s*`)
+	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
 )
 
 func tableFixedIdent(name string) string {
@@ -239,6 +243,11 @@ func stripOwedC(s string) string {
 	s = reOwedLayTableNull.ReplaceAllString(s, "for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }")
 	s = reOwedArgLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
 	s = reOwedByteLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
+	// owed 7: nested union answers to the outer tag; C still loses it.
+	s = reOwedNestedNoneArgw.ReplaceAllString(s, "")
+	s = reOwedNestedNoneRest.ReplaceAllString(s, "TableFixedPush( c, none );")
+	s = reOwedNestedRestamp.ReplaceAllString(s, "")
+	s = reOwedNestedRewrite.ReplaceAllString(s, "")
 	return s
 }
 
