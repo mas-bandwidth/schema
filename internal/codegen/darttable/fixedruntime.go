@@ -635,6 +635,7 @@ final class TableFixedPlan {
     : entries = Int32List(entryCapacity * TableFixedLane.lanes),
       capacity = entryCapacity,
       image = Uint8List(imageBytes),
+      fill = Int32List((imageBytes + 1) * 2),
       remap = Int32List(remapCapacity) {
     imageView = ByteData.sublistView(image);
   }
@@ -646,6 +647,11 @@ final class TableFixedPlan {
   /// the reader's own storage: this build's declared order at its own widths
   final Uint8List image;
   late final ByteData imageView;
+
+  /// THE PREFILL'S RANGES, packed (dst, size) once when the plan is compiled.
+  /// Identity's count is zero — empty list is the skip, not a flag.
+  final Int32List fill;
+  int fillCount = 0;
 
   /// the remap tables an ordinal entry resolves through, laid down here rather
   /// than above the entries: Dart has no pointer to alias two lists through,
@@ -812,13 +818,29 @@ void tableFixedRun(
   }
 }
 
+/// THE PREFILL ITSELF: the declared defaults, into the ranges named and
+/// nowhere else. Empty count is the skip — identity's list is empty because
+/// its destinations ARE the value bytes, so there is nothing left to subtract.
+void tableFixedFillRun(
+  Int32List fill,
+  int count,
+  Uint8List defaults,
+  Uint8List dst,
+) {
+  for (var i = 0; i < count; i++) {
+    final o = fill[i * 2];
+    final n = fill[i * 2 + 1];
+    dst.setRange(o, o + n, defaults, o);
+  }
+}
+
 /// THE PLAN COMPILER. The SAME LOOP runs over this plan as over the identity
 /// plan. What the compiler does, ONCE PER PEER, is what a read would otherwise
 /// do once per record: map the writer's ids onto this reader's fields; leave a
 /// field it cannot name OUT of the plan, which is what skips it, by arithmetic
 /// that was going to step past it anyway; and leave a field the writer does
-/// not carry out too, which is what defaults it, because the prefill already
-/// put the declared default there.
+/// not carry out too, which is what defaults it, because the compiler's fill
+/// list names those bytes and the load copies the declared default there.
 ///
 /// THE PLAN IS COMPILED ONLY AFTER THE LAYOUT HAS PASSED EVERY RULE, so no
 /// arithmetic here is ever performed on a size or a child count a stranger
@@ -1199,14 +1221,110 @@ abstract final class TableFixedCompiler {
     plan.count = out;
   }
 
+  /// TableFixedEntryLands is the bytes of the READER'S OWN IMAGE one entry
+  /// writes — TWO runs, because a text entry lands a length and a buffer and
+  /// every other op lands one run and leaves the second empty.
+  ///
+  /// A GUARDED ENTRY COUNTS AS LANDING ITS BYTES. It is a union arm, and an
+  /// arm's storage is the arm's: the tag says which one is live and nothing
+  /// reads the others. What must never be conditional is the TAG, and the
+  /// compiler lays an unguarded one down for exactly this reason.
+  static void entryLands(Int32List plan, int b, Int32List lands) {
+    final dst = plan[b + TableFixedLane.dst];
+    final size = plan[b + TableFixedLane.size];
+    lands[0] = dst;
+    lands[1] = dst;
+    lands[2] = 0;
+    lands[3] = 0;
+    switch (plan[b + TableFixedLane.op]) {
+      case TableFixedOp.count:
+        lands[1] = dst + 4;
+        break;
+      case TableFixedOp.text:
+        lands[1] = dst + 4;
+        lands[2] = plan[b + TableFixedLane.aux];
+        // Dart's image IS the wire: no terminator past the bound.
+        lands[3] = lands[2] + size;
+        break;
+      case TableFixedOp.widenFloat:
+        lands[1] = dst + 8;
+        break;
+      case TableFixedOp.widen:
+      case TableFixedOp.ordinal:
+        lands[1] = dst + (plan[b + TableFixedLane.meta] & 0xff);
+        break;
+      default:
+        lands[1] = dst + size;
+        break;
+    }
+  }
+
+  /// fills is the subtraction: the cover MINUS everything the plan lands, as
+  /// (dst, size) pairs packed into out. It runs once per compile, never per
+  /// record. Guarded entries count as landing, so the identity plan's list is
+  /// empty — that is the rule's limit case, not an exception to it.
+  static int fills(
+    Int32List plan,
+    int count,
+    Int32List cover,
+    int coverCount,
+    Int32List out,
+  ) {
+    var n = 0;
+    final lands = Int32List(4);
+    for (var r = 0; r < coverCount; r++) {
+      final hi = cover[r * 2] + cover[r * 2 + 1];
+      var pos = cover[r * 2];
+      while (pos < hi) {
+        var end = pos;
+        var next = hi;
+        for (var i = 0; i < count; i++) {
+          entryLands(plan, i * TableFixedLane.lanes, lands);
+          for (var q = 0; q < 4; q += 2) {
+            final lo = lands[q];
+            final top = lands[q + 1];
+            if (top <= lo) {
+              continue;
+            }
+            if (lo <= pos && pos < top) {
+              if (top > end) {
+                end = top;
+              }
+            } else if (lo > pos && lo < next) {
+              next = lo;
+            }
+          }
+        }
+        if (end > pos) {
+          pos = end;
+          continue;
+        }
+        if (next > hi) {
+          next = hi;
+        }
+        if (n * 2 + 1 < out.length) {
+          out[n * 2] = pos;
+          out[n * 2 + 1] = next - pos;
+        }
+        n++;
+        pos = next;
+      }
+    }
+    return n;
+  }
+
   /// compile builds the plan for ANOTHER writer's layout against my own and
   /// answers how many entries it wrote, or -1 when it did not fit. The peer's
-  /// layout must already have passed TableFixedLayout.parse.
+  /// layout must already have passed TableFixedLayout.parse. THE PREFILL'S
+  /// RANGES are worked out here, once: the type's value bytes minus everything
+  /// this plan lands.
   static int compile(
     TableFixedPlan plan,
     Uint8List myLayout,
     ByteData myLayoutView,
     Int32List myDst,
+    Int32List cover,
+    int coverCount,
     TableFixedReport report,
   ) {
     if (!plan.mine.parse(myLayoutView, 0, myLayout.length)) {
@@ -1215,11 +1333,19 @@ abstract final class TableFixedCompiler {
     plan.count = 0;
     plan.remapUsed = 0;
     plan.overflow = false;
+    plan.fillCount = 0;
     matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report);
     if (plan.overflow) {
       return -1;
     }
     coalesce(plan);
+    plan.fillCount = fills(
+      plan.entries,
+      plan.count,
+      cover,
+      coverCount,
+      plan.fill,
+    );
     return plan.count;
   }
 }

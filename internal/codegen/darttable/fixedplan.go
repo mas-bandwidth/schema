@@ -16,6 +16,8 @@
 package darttable
 
 import (
+	"sort"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -255,6 +257,62 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 			}
 		}
 		out = append(out, e)
+	}
+	return out
+}
+
+// fixedFill is one prefill range: the bytes a plan does not land. Packed as
+// (dst, size) in the generated cover and in the plan's fill list.
+type fixedFill struct {
+	dst, size int64
+}
+
+// fixedEntryLands is the bytes of THIS BUILD's image one identity-plan entry
+// writes. A COUNT lands four bytes (its size is the bound, not the move). A
+// TEXT lands the length and the units; Dart's image IS the wire, so there is
+// no terminator past the bound the way C++ storage has one.
+func fixedEntryLands(e fixedPlanEntry) []fixedFill {
+	switch e.op {
+	case fixedOpCount:
+		return []fixedFill{{dst: e.dst, size: fixedCountBytes}}
+	case fixedOpText:
+		return []fixedFill{
+			{dst: e.dst, size: fixedCountBytes},
+			{dst: e.aux, size: e.size},
+		}
+	default:
+		return []fixedFill{{dst: e.dst, size: e.size}}
+	}
+}
+
+// fixedIdentityCover is the type's value bytes: every destination the identity
+// plan lands, sorted and merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN
+// LANDS, so against the identity plan it is empty.
+func fixedIdentityCover(plan []fixedPlanEntry) []fixedFill {
+	var raw []fixedFill
+	for _, e := range plan {
+		raw = append(raw, fixedEntryLands(e)...)
+	}
+	return mergeFixedFills(raw)
+}
+
+func mergeFixedFills(raw []fixedFill) []fixedFill {
+	sort.Slice(raw, func(i, j int) bool { return raw[i].dst < raw[j].dst })
+	var out []fixedFill
+	for _, r := range raw {
+		if r.size <= 0 {
+			continue
+		}
+		if len(out) > 0 {
+			last := &out[len(out)-1]
+			if r.dst <= last.dst+last.size {
+				if end := r.dst + r.size; end > last.dst+last.size {
+					last.size = end - last.dst
+				}
+				continue
+			}
+		}
+		out = append(out, r)
 	}
 	return out
 }

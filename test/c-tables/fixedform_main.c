@@ -38,6 +38,7 @@ int main( void )
     n = fixed_fx2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx2_bytes(), "FX2 save" );
     fixed_fx1_read_fx2( g_buffer, n );
+    fixed_fx1_layout_validation( g_buffer, n );
 
     n = fixed_v1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_v1_bytes(), "V1 save" );

@@ -561,9 +561,10 @@ func (g *fixedGen) emitTextDefaultCascade(f *ir.Field, ind string, n int64) {
 //
 // A COUNTED ARRAY WRITES ITS LIVE COUNT. Decode walks Count, so unused
 // slots still hold constructor defaults; writing the bound would put those
-// on the wire. Slack stays the template's zeros (SPEC §3.4). A string's N
-// bytes still ride as the storage holds them: decode copies the whole
-// declared span from the image, so that slack is the peer's.
+// on the wire. Slack stays the template's zeros (SPEC §3.4). A string,
+// wstring, or bytes writes its live length and zeroes slack (SPEC §3.4);
+// decode copies the whole declared span from the image, so that slack is
+// the peer's.
 //
 // AN ABSENT OPTIONAL'S PAYLOAD IS THE ONE EXCEPTION, and it is §3.4's own:
 // under a present flag of `0` the payload is SLACK, and slack is ZERO ON
@@ -630,8 +631,13 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, nam
 			[]string{fixedOff(base, at), val + "." + name + "Length", "Endian.little"}, ";")
 		g.call(ind, "", "bytes.setRange", []string{
 			fixedOff(base, at+fixedCountBytes),
-			fixedOff(base, at+fixedCountBytes+f.Type.Size),
+			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length",
 			val + "." + name,
+		}, ";")
+		g.call(ind, "", "bytes.fillRange", []string{
+			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length",
+			fixedOff(base, at+fixedCountBytes+f.Type.Size),
+			"0",
 		}, ";")
 	case f.Type.Kind == ir.TWString:
 		// the length in CODE UNITS, then 2N bytes
@@ -639,10 +645,15 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, nam
 		g.pf("%sassert(%s.%sLength <= %d);\n", ind, val, name, f.Type.Size)
 		g.call(ind, "", "view.setInt32",
 			[]string{fixedOff(base, at), val + "." + name + "Length", "Endian.little"}, ";")
-		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, f.Type.Size)
+		g.pf("%sfor (var i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
 		g.call(ind+"  ", "", "view.setUint16",
 			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", val + "." + name + "[i]", "Endian.little"}, ";")
 		g.pf("%s}\n", ind)
+		g.call(ind, "", "bytes.fillRange", []string{
+			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length * 2",
+			fixedOff(base, at+fixedCountBytes+2*f.Type.Size),
+			"0",
+		}, ";")
 	default:
 		g.emitWriteElement(f, base, at, val+"."+name, ind)
 	}

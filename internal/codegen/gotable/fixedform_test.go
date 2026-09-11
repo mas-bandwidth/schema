@@ -13,7 +13,7 @@ import (
 
 func TestFixedFormEmitsSurface(t *testing.T) {
 	files := generate(t, `package probe
-table Point {
+fixed table Point {
     x int32
     y int32
 }
@@ -48,17 +48,16 @@ table Point {
 	if strings.Contains(body, "block_malformed") {
 		t.Error("the layout is still named a block")
 	}
-	// DERIVED into the fixed mode, not declared fixed: the form-3 surface
-	// above is emitted, and the form-1 Load it never lost still reads.
-	load := funcSource(body, "func PointLoad(")
-	if load == "" {
+	// DECLARED fixed, because #823's keyword is the SELECTION POINT: the form
+	// follows the declaration and nothing is derived in either direction (§2.2,
+	// [ir.TableFixedRoots]), so the surface above exists for a `fixed table`
+	// and for nothing else. The keyword selects the FORM a writer emits; it
+	// does not move the form-1 refusal out of FixedLoad and into <T>Load, which
+	// stays the variable form's entry point and still reads form 1 — the pair is
+	// held next door by TestFixedFormForm1RefusalLivesInFixedLoad, and the
+	// variable half by TestForm1OfVariableTableStillLoads.
+	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
-	}
-	if !strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad of a table nobody declared fixed must still walk form 1")
-	}
-	if strings.Contains(load, "previous_form") {
-		t.Error("PointLoad refuses form 1 on a table nobody declared fixed")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if fixedLoad == "" {
@@ -92,10 +91,11 @@ table Point {
 // shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
 // fixed root and the C++ reference reads it there, so a Go <T>Load that
 // refused would be the one leg disagreeing with the reference
-// (docs/SPEC-TABLES.md §3.4, §15).
+// (docs/SPEC-TABLES.md §3.4, §15). The schema says the keyword and the fixture
+// walks the real parser: there is no second way to say the class here.
 func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
-	files := generateFixed(t, `package probe
-table Point {
+	files := generate(t, `package probe
+fixed table Point {
     x int32
     y int32
 }
@@ -124,7 +124,7 @@ table Point {
 
 func TestFixedFormRoundTrip(t *testing.T) {
 	runGenerated(t, `package probe
-table Point {
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
@@ -178,11 +178,15 @@ func TestRoundTrip(t *testing.T) {
 			t.Fatalf("FixedLoad form %d: want %s, got %d %+v", form, want, n, r)
 		}
 	}
+	// THE LAYOUT'S OWN RULES REFUSE UNDER THEIR OWN NAMES and before the header
+	// is doubted (docs/FIXED-FORM-ALGORITHM.md §1.1, §2.1 step 5): breaking the
+	// entry count is rule 1, so this is layout_count_mismatch and not the one
+	// word the residue keeps.
 	broken := append([]byte(nil), buf...)
 	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
-		t.Fatalf("layout_malformed: %d %+v", n, r)
+	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_count_mismatch" {
+		t.Fatalf("layout_count_mismatch: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
@@ -367,8 +371,11 @@ func TestPlanPath(t *testing.T) {
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)
 		n := tblfx1.FxRootFixedLoad(v, broken, plan, &r)
-		if n >= 0 || r.Reason != "layout_malformed" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
-			t.Fatalf("layout_malformed: n=%d %+v", n, r)
+		// RULE 1 BY ITS OWN NAME: 4 + 17*count is not the length given. The
+		// seven rules run before the header's hash is checked, so a broken
+		// layout is never reported as a lying header (§1.1, §2.1 step 5).
+		if n >= 0 || r.Reason != "layout_count_mismatch" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
+			t.Fatalf("layout_count_mismatch: n=%d %+v", n, r)
 		}
 	}
 	{
@@ -434,10 +441,11 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 }
 
 // TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: the two
-// entry points of a DECLARED fixed table, each over the other's form byte.
+// entry points of a DECLARED fixed table, each over the other's form byte —
+// Load reads the form-1 file back, FixedLoad names it `previous_form`.
 func TestForm1OfFixedTableReadsAndFixedLoadRefuses(t *testing.T) {
-	runGeneratedFixed(t, `package probe
-table Point {
+	runGenerated(t, `package probe
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
@@ -536,7 +544,7 @@ func TestForm1VariableLoad(t *testing.T) {
 // build's.
 func TestFixedFormHostileBoolByte(t *testing.T) {
 	runGenerated(t, `package probe
-table Host {
+fixed table Host {
     on bool
     off bool
     maybe ?bool
@@ -693,7 +701,7 @@ union Pick
     hit  Hit
     chat Chat
 }
-table Host {
+fixed table Host {
     pick Pick
     tail int32 = 9
 }
@@ -775,7 +783,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
 }
 `
@@ -787,7 +795,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
     tail int32 = 7
 }
@@ -871,10 +879,10 @@ union Pick
     a ArmA
     b ArmB
 }
-table Writer {
+fixed table Writer {
     pick Pick
 }
-table Reader {
+fixed table Reader {
     pick Pick
     tail int32 = 7
 }
@@ -967,7 +975,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
     marks [..4]int32 | min = 0, max = 10
@@ -1010,7 +1018,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
 }
@@ -1035,7 +1043,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     n     int32 = 0 | min = 0, max = 10
     marks [..4]int32 | min = 0, max = 10
     note  ?int32 | min = 0, max = 10

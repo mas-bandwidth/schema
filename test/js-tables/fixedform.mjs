@@ -84,6 +84,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   liveCountSlack(check, fx1, fx1home);
   holePrefill(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
+  layoutValidation(check, fx1, fx2, fx1home, fx2home);
   unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
   if (oracleDir) {
     referenceOracle(check, fx1, fx2, fx1home, oracleDir);
@@ -539,6 +540,35 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   // nothing is decoded and there is nothing to count.
   const fresh = () => [new fx1home.FxRoot()];
   {
+    const R = fx1home.TableFixedRefusal;
+    const seven = [
+      R.LayoutCountMismatch, R.LayoutKindUnknown, R.LayoutSizeMismatch,
+      R.LayoutKindInvalid, R.LayoutTreeUnclosed, R.LayoutRecordTooLarge,
+      R.LayoutTooDeep,
+    ];
+    check(new Set(seven).size === 7 && seven.every((v) => v !== R.LayoutMalformed && v !== R.None),
+      "the seven layout refusals are distinct, and none is layout_malformed");
+  }
+  {
+    // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
+    // Every rule has its own case in layoutValidation() below; this one is
+    // here because it is also the check that a refusal MOVES NO COUNTER.
+    const two = new fx2home.FxRoot();
+    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
+    fx2.FxRootFixedSave([two], 1, w2);
+    const broken = Uint8Array.from(w2);
+    // THE ENTRY COUNT, which is the layout's own first four bytes and not
+    // the u32 LENGTH in front of them: a length that no longer matches the
+    // file is a different rule with a different name.
+    broken[LAYOUT_AT] ^= 0xff;
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(fresh(), 1, broken, broken.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutCountMismatch,
+      "REFUSED BY NAME: layout_count_mismatch");
+    check(r.unknown === 0 && r.kindMismatch === 0 && !r.malformed,
+      "REFUSED BY NAME: a refusal moves no counter");
+  }
+  {
     // THE FORM BYTE SAYS WHICH DIRECTION (§3). The registry is ORDERED, so a
     // byte this reader cannot read is named by WHERE IT SITS relative to this
     // form — and never by one word for all three.
@@ -580,8 +610,8 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     bad[LAYOUT_AT + 4 + 13] = 0x7f; // the root's child count, which now closes nothing
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
-      "REFUSAL: a layout whose tree does not close is layout_malformed, and it sets nothing");
+    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutTreeUnclosed,
+      "REFUSAL: a layout whose tree does not close is layout_tree_unclosed, and it sets nothing");
   }
   {
     // THE HEADER NAMES THE LAYOUT ONCE, AND IT IS CHECKED LAST (§3): a header
@@ -645,6 +675,490 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE LAYOUT VALIDATION — §1.1'S SEVEN RULES, EACH UNDER ITS OWN NAME
+// ---------------------------------------------------------------------------
+//
+// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4). It is
+// the one structure a reader must parse before it knows anything at all, so
+// docs/FIXED-FORM-ALGORITHM.md §1.1 holds it to SEVEN RULES and gives each one
+// ITS OWN NAME, raised before a single record byte is touched. A VALIDATION
+// NOBODY WATCHED FAIL IS A VALIDATION NOBODY HAS, so there is one case per
+// named rule here — the C++ reference's own twelve, in its own order
+// (test/tables/fixedform_main.cpp, layout_validation) — each taking a layout
+// this reader ACCEPTS and breaking EXACTLY ONE THING in it.
+//
+// THE ASSERTION IS ON THE NAME AND NOT ON THE VALUE, which is the one place
+// this leg departs from the reference's spelling. `TableFixedRefusal` does not
+// carry §1.1's seven members yet, so `fx1home.TableFixedRefusal.LayoutCountMismatch`
+// is `undefined` and `r.refused === undefined` would go red reading "false" —
+// one opaque failure that says nothing about which rule is missing. So the
+// refusal's VALUE is reverse-mapped through the frozen enum to its MEMBER NAME
+// and the name string is what is compared. That is exactly as strong as the
+// enum comparison — a wrong member fails it, and it passes unchanged the day
+// the runtime registers the seven — and it makes every red say what the
+// document owes and what this leg actually answers.
+//
+// The file is §3's HEADER (the form byte, seven reserved zero bytes, the layout
+// hash at 8, the body at 16), then `u32 layout length, layout, records` — so
+// the layout starts at LAYOUT_AT, the entry count is the four bytes there, and
+// entry k is the seventeen bytes at LAYOUT_AT + 4 + 17k: id (u64), kind (u8),
+// size (u32), children (u32), every number little-endian.
+//
+// AND THE BROKEN FILE IS SEALED AROUND THE BREAK. A hostile peer writes a file
+// that is consistent with itself: the header's hash IS the hash of the layout
+// it carries, and so is every record's. §2 step 5 puts the header hash check
+// LAST of the three for exactly this reason — so a broken layout is never
+// reported as a lying header — and this leg's loader does order it last in its
+// code. But the rules it orders it after are the ones it HAS, and §1.1's seven
+// are not among them: a file left with the good layout's hash in its header
+// would be refused `layout_malformed` for the tampering rather than for the
+// rule, and every red below would read the same whether the rule is checked
+// late, misnamed, or absent. So the layout's fnv1a64 is recomputed over the
+// broken bytes and stamped into the header and into the record behind it. What
+// refuses a sealed file is the RULE or nothing, which is the measurement.
+//
+// The hash is computed here from §1's own definition, in BigInt, rather than
+// borrowed from the module under test — a driver that hashed with the code it
+// is checking would agree with whatever that code happened to do. The seal is
+// proved against the good file first: resealing bytes that are already right
+// must change nothing.
+
+function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
+  // §1'S HASH: fnv1a64 over the layout's bytes as written, THE 4-BYTE COUNT
+  // INCLUDED. A fixture's oracle, so it is written the plain way.
+  const fnv1a64 = (bytes, at, length) => {
+    let h = 0xcbf29ce484222325n;
+    for (let i = 0; i < length; i++) {
+      h = ((h ^ BigInt(bytes[at + i])) * 0x100000001b3n) & 0xffffffffffffffffn;
+    }
+    return h;
+  };
+
+  const get32 = (f, at) => (f[at] | (f[at + 1] << 8) | (f[at + 2] << 16) | (f[at + 3] << 24)) >>> 0;
+  const put32 = (f, at, v) => {
+    f[at] = v & 0xff; f[at + 1] = (v >>> 8) & 0xff;
+    f[at + 2] = (v >>> 16) & 0xff; f[at + 3] = (v >>> 24) & 0xff;
+  };
+
+  const ENTRY_BYTES = 17;
+  const entryAt = (k) => LAYOUT_AT + 4 + ENTRY_BYTES * k;
+  const KIND_AT = 8, SIZE_AT = 9, CHILDREN_AT = 13; // inside an entry
+
+  // the hash stamped into the header and into every record behind the layout
+  const seal = (f, recordBytes) => {
+    const layoutBytes = get32(f, LAYOUT_LENGTH_AT);
+    const h = fnv1a64(f, LAYOUT_AT, layoutBytes);
+    const lo = Number(h & 0xffffffffn), hi = Number((h >> 32n) & 0xffffffffn);
+    put32(f, HASH_AT, lo); put32(f, HASH_AT + 4, hi);
+    for (let at = LAYOUT_AT + layoutBytes; recordBytes > 0 && at + 8 <= f.length; at += recordBytes) {
+      put32(f, at, lo); put32(f, at + 4, hi);
+    }
+    return f;
+  };
+
+  // A FILE AROUND A HAND-BUILT LAYOUT, for the rules no single break of a real
+  // layout reaches: the form byte, the layout's length, the layout, NO records.
+  // Every rule below refuses before a record would be reached.
+  const fileOf = (layout) => {
+    const f = new Uint8Array(LAYOUT_AT + layout.length);
+    f[0] = 3; // the fixed form's byte
+    put32(f, LAYOUT_LENGTH_AT, layout.length);
+    f.set(layout, LAYOUT_AT);
+    return seal(f, 0);
+  };
+
+  const putEntry = (out, id, kind, size, children) => {
+    out.push(id & 0xff, (id >>> 8) & 0xff, (id >>> 16) & 0xff, (id >>> 24) & 0xff, 0, 0, 0, 0);
+    out.push(kind & 0xff);
+    out.push(size & 0xff, (size >>> 8) & 0xff, (size >>> 16) & 0xff, (size >>> 24) & 0xff);
+    out.push(children & 0xff, (children >>> 8) & 0xff, (children >>> 16) & 0xff, (children >>> 24) & 0xff);
+    return out;
+  };
+
+  const handLayout = (count, build) => {
+    const out = build([0, 0, 0, 0]);
+    const layout = Uint8Array.from(out);
+    put32(layout, 0, count);
+    return layout;
+  };
+
+  // THE NAME, NOT THE VALUE: the frozen enum read backwards. A refusal this
+  // build does not register at all comes back as the bare number, which is
+  // itself the report — a reader answering a value nobody named.
+  const REFUSAL_NAME = new Map(Object.entries(fx1home.TableFixedRefusal).map(([name, v]) => [v, name]));
+  const refusalName = (v) => REFUSAL_NAME.get(v) ?? `an unregistered refusal value (${v})`;
+
+  const read = (bytes) => {
+    const values = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    return { n, r };
+  };
+
+  // ONE CASE IS ONE RED AND NEVER THE RUN'S LAST WORD: a throw out of the
+  // loader is a failure of THAT case and the rest are still measured, because a
+  // reader that walks a hostile layout off the end of its own array is the
+  // damage the validation exists to prevent and not a reason to stop looking.
+  const refuses = (bytes, want, what) => {
+    let got = null, n = 0, threw = null;
+    try {
+      const out = read(bytes);
+      n = out.n; got = out.r;
+    } catch (e) {
+      threw = e;
+    }
+    if (threw !== null) {
+      check(false, `${what} — expected ${want}, and the read THREW ${threw.name}: ${threw.message}`);
+      return;
+    }
+    const name = refusalName(got.refused);
+    check(n === -1 && got.refused !== 0 && name === want,
+      `${what} — expected ${want}, got ${name}` + (n === -1 ? "" : ` and a read of ${n} record(s)`));
+    // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
+    // record, or that compiled a plan over the hostile layout on its way out,
+    // would be the damage the refusal exists to prevent.
+    check(got.unknown === 0 && got.kindMismatch === 0 && got.widened === 0 && got.clamped === 0 && !got.malformed,
+      `${what}: a layout refusal sets nothing and counts nothing ` +
+      `(unknown ${got.unknown}, kindMismatch ${got.kindMismatch}, widened ${got.widened}, ` +
+      `clamped ${got.clamped}, malformed ${got.malformed})`);
+  };
+
+  // the layout this reader ACCEPTS, which every case below breaks once: the
+  // OTHER generation's file, read by this one, which is the versioning path
+  const two = new fx2home.FxRoot();
+  two.Keep = 5150; two.Narrow = 70000; two.RenamedTo = 808; two.Added = 909;
+  two.Nested.A = 33; two.Nested.B = 44; two.Extra.X = 55; two.Extra.Y = 66;
+  const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
+  check(fx2.FxRootFixedSave([two], 1, good) === good.length,
+    "layout validation: the unbroken file saves");
+  const RECORD_BYTES = fx2.FxRootFixedRecordBytes;
+
+  {
+    // and it READS, so every refusal below is the ONE break and not the file
+    const { n, r } = read(good);
+    check(n === 1 && r.refused === 0 && !r.malformed,
+      `layout validation: the unbroken file reads, so the breaks below are the breaks ` +
+      `(got ${n}, refused ${refusalName(r.refused)})`);
+  }
+  {
+    // THE SEAL IS THE READER'S OWN ARITHMETIC. Resealing a file that is already
+    // consistent must not move a byte; if this goes red every case below is
+    // measuring a hash of the fixture's own making and nothing else.
+    const resealed = seal(Uint8Array.from(good), RECORD_BYTES);
+    let same = resealed.length === good.length;
+    for (let i = 0; same && i < good.length; i++) { same = resealed[i] === good[i]; }
+    check(same, "layout validation: resealing the unbroken file changes nothing, so the seal is §1's own hash");
+  }
+  {
+    // and the two entries every case below indexes are the entries it thinks
+    // they are: the ROOT is the table, entry 1 is `keep`, a u32 leaf in four
+    check(good[entryAt(0) + KIND_AT] === 13 && get32(good, entryAt(0) + SIZE_AT) > 0,
+      `layout validation: entry 0 is the root TABLE, kind 13 (got kind ${good[entryAt(0) + KIND_AT]})`);
+    check(good[entryAt(1) + KIND_AT] === 8 && get32(good, entryAt(1) + SIZE_AT) === 4 &&
+      get32(good, entryAt(1) + CHILDREN_AT) === 0,
+      `layout validation: entry 1 is a u32 LEAF in four bytes (got kind ${good[entryAt(1) + KIND_AT]}, ` +
+      `size ${get32(good, entryAt(1) + SIZE_AT)})`);
+  }
+
+  const broken = (mutate) => {
+    const f = Uint8Array.from(good);
+    mutate(f);
+    return seal(f, RECORD_BYTES);
+  };
+
+  // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY (§1.1 rule 1)
+  {
+    const f = broken((f) => put32(f, LAYOUT_AT, get32(f, LAYOUT_AT) + 1));
+    refuses(f, "LayoutCountMismatch", "RULE: the entry count fits the layout length exactly");
+  }
+  {
+    // a count of ZERO is not a layout either: there is no root to walk
+    const f = broken((f) => put32(f, LAYOUT_AT, 0));
+    refuses(f, "LayoutCountMismatch", "RULE: an entry count of zero is not a layout");
+  }
+
+  // 2. EVERY KIND IS IN THE CLOSED SET (§1.1 rule 2). A fixed form's kind set is
+  //    CLOSED — 1..30, 32, 33, 35 — so a kind outside it means a NEWER FORM
+  //    BYTE, a different form, and not a newer layout of this one. It is
+  //    refused, never stepped over.
+  {
+    const f = broken((f) => { f[entryAt(1) + KIND_AT] = 200; }); // a kind no form byte this build carries defines
+    refuses(f, "LayoutKindUnknown", "RULE: a kind outside the closed set is REFUSED, not skipped");
+  }
+
+  // 3. A KIND IS USED AS ITS DEFINITION ALLOWS (§1.1 rule 4) — here, the ROOT
+  //    is a table
+  {
+    const f = broken((f) => { f[entryAt(0) + KIND_AT] = 14; }); // an array as the root of a record
+    refuses(f, "LayoutKindInvalid", "RULE: the root entry is a TABLE");
+  }
+
+  // 4. A CONSTANT SIZE MATCHES ITS KIND (§1.1 rule 3, §1.2)
+  {
+    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 5)); // a uint32 leaf in five bytes
+    refuses(f, "LayoutSizeMismatch", "RULE: a constant size its kind does not admit");
+  }
+  {
+    // and a TABLE's size is the SUM of its children's, not a number of its own
+    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, get32(f, entryAt(0) + SIZE_AT) + 4));
+    refuses(f, "LayoutSizeMismatch", "RULE: a table's size is the sum of its fields'");
+  }
+
+  // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES (§1.1 rule 5)
+  {
+    const f = broken((f) => put32(f, entryAt(0) + CHILDREN_AT, get32(f, entryAt(0) + CHILDREN_AT) + 1));
+    refuses(f, "LayoutTreeUnclosed", "RULE: the tree runs out of layout");
+  }
+  {
+    // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
+    // reaches. It takes a hand-built layout to reach, and that is itself worth
+    // stating: dropping a child of a TABLE is caught one rule sooner, by the
+    // size that no longer sums, so the only subtree whose loss the size rule
+    // cannot see is one that contributes NO size — an enum's variants, at kind
+    // 32 and size 0.
+    const layout = handLayout(4, (out) => {
+      putEntry(out, 1, 13, 4, 1); // a table of one field
+      putEntry(out, 2, 30, 4, 0); // an enum, its TWO variants unreached
+      putEntry(out, 3, 32, 0, 0);
+      putEntry(out, 4, 32, 0, 0);
+      return out;
+    });
+    refuses(fileOf(layout), "LayoutTreeUnclosed", "RULE: the layout outlasts the tree");
+  }
+
+  // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW (§1.1 rule 6)
+  {
+    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, 65537));
+    refuses(f, "LayoutRecordTooLarge", "RULE: a record size past 65536");
+  }
+  {
+    // A SIZE THAT WOULD WRAP. The children's sizes are summed wider than 32
+    // bits precisely so a u32 that overflows is CAUGHT rather than wrapped into
+    // a small number that then agrees with a parent.
+    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 0xffffffff));
+    refuses(f, "LayoutRecordTooLarge", "RULE: a size that would overflow the sum");
+  }
+
+  // 7. NOTHING NESTED PAST THE READER'S WALK BOUND (§1.1 rule 7). A BOUND ON
+  //    THE WALK AND NOT ON THE WIRE: the validation recurses, so a layout of a
+  //    thousand entries each claiming one child would spend a reader's stack
+  //    before any other rule could fire. Nothing in §3.4 fixes the number; the
+  //    reference states 64.
+  {
+    const depth = 4096; // far past any reader's own bound
+    const layout = handLayout(depth + 1, (out) => {
+      for (let i = 0; i < depth; i++) {
+        // a table, then optional wrappers all the way down
+        putEntry(out, 1, i === 0 ? 13 : 35, depth - i, 1);
+      }
+      putEntry(out, 2, 1, 1, 0); // a bool at the bottom
+      return out;
+    });
+    refuses(fileOf(layout), "LayoutTooDeep", "RULE: a nesting depth past the walk's own bound");
+  }
+
+  // AND THE RESIDUE: bytes that are not a layout at all, which is the one case
+  // the seven named rules never reach (§1.1).
+  {
+    refuses(fileOf(new Uint8Array(2)), "LayoutMalformed",
+      "RULE: fewer bytes than a layout header is layout_malformed");
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4)
+// ---------------------------------------------------------------------------
+//
+// It is the one structure a reader must parse before it knows anything at all,
+// so every rule it is held to refuses under ITS OWN NAME, before a single
+// record byte is touched. A VALIDATION NOBODY WATCHED FAIL IS A VALIDATION
+// NOBODY HAS, so there is one case per named rule, each taking a layout this
+// reader accepts and breaking EXACTLY ONE THING in it. Fixtures match the C++
+// reference (test/tables/fixedform_main.cpp layout_validation). Rowan's
+// hostile-layout fixtures PR, when it posts, is the shared corpus; until then
+// this pins the C++ names.
+
+const ENTRY0 = LAYOUT_AT + 4;
+
+function putU32(b, at, v) {
+  v = v >>> 0;
+  b[at] = v & 0xff;
+  b[at + 1] = (v >>> 8) & 0xff;
+  b[at + 2] = (v >>> 16) & 0xff;
+  b[at + 3] = (v >>> 24) & 0xff;
+}
+
+function getU32(b, at) {
+  return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
+}
+
+function entryAt(k) { return ENTRY0 + k * 17; }
+
+function putEntryAt(layout, at, id, kind, size, children) {
+  putU32(layout, at, id);
+  putU32(layout, at + 4, 0);
+  layout[at + 8] = kind;
+  putU32(layout, at + 9, size);
+  putU32(layout, at + 13, children);
+}
+
+function putEntry(layout, id, kind, size, children) {
+  const at = layout.length;
+  const next = new Uint8Array(at + 17);
+  next.set(layout);
+  putEntryAt(next, at, id, kind, size, children);
+  return next;
+}
+
+// a FILE around a hand-built layout: the form byte, the layout's length, the
+// layout, and no records — every rule below refuses before a record is reached
+function fileOf(fx1home, layout) {
+  const f = new Uint8Array(LAYOUT_AT + layout.length);
+  f[0] = 3;
+  const h = fx1home.TableFixedHashOf(layout, 0, layout.length);
+  const lo = h[0] | 0, hi = h[1] | 0;
+  putU32(f, HASH_AT, lo);
+  putU32(f, HASH_AT + 4, hi);
+  putU32(f, LAYOUT_LENGTH_AT, layout.length);
+  f.set(layout, LAYOUT_AT);
+  return f;
+}
+
+function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
+  const nameOf = (r) => fx1home.TableFixedRefusalName(r);
+  const refuses = (broken, want, what) => {
+    const v = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(v, 1, broken, broken.length, fx1.FxRootFixedNewPlan(), r);
+    check(n < 0 && r.refused === want,
+      `${what} (got ${nameOf(r.refused)}, want ${nameOf(want)})`);
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed,
+      `${what}: a layout refusal sets nothing and counts nothing`);
+  };
+
+  // the layout this reader ACCEPTS, which every case below breaks once
+  const two = new fx2home.FxRoot();
+  const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
+  check(fx2.FxRootFixedSave([two], 1, good) === good.length,
+    "layout validation: the unbroken file saves");
+  {
+    const v = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    check(fx1.FxRootFixedLoad(v, 1, good, good.length, fx1.FxRootFixedNewPlan(), r) === 1 && r.refused === 0,
+      "layout validation: the unbroken file reads, so the breaks below are the breaks");
+  }
+  const copy = () => Uint8Array.from(good);
+
+  // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
+  {
+    const f = copy();
+    putU32(f, LAYOUT_AT, getU32(f, LAYOUT_AT) + 1);
+    refuses(f, fx1home.TableFixedRefusal.LayoutCountMismatch,
+      "RULE: the entry count fits the layout length exactly");
+  }
+  {
+    const f = copy();
+    putU32(f, LAYOUT_AT, 0);
+    refuses(f, fx1home.TableFixedRefusal.LayoutCountMismatch,
+      "RULE: an entry count of zero is not a layout");
+  }
+
+  // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
+  //    a kind outside it means a NEWER FORM BYTE — a different form — and not
+  //    a newer layout of this one. It is refused, never stepped over.
+  {
+    const f = copy();
+    f[entryAt(1) + 8] = 200; // a kind no form byte this build carries defines
+    refuses(f, fx1home.TableFixedRefusal.LayoutKindUnknown,
+      "RULE: a kind outside the closed set is REFUSED, not skipped");
+  }
+
+  // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
+  {
+    const f = copy();
+    f[entryAt(0) + 8] = 14; // an array as the root of a record
+    refuses(f, fx1home.TableFixedRefusal.LayoutKindInvalid,
+      "RULE: the root entry is a TABLE");
+  }
+
+  // 4. A CONSTANT SIZE MATCHES ITS KIND
+  {
+    const f = copy();
+    putU32(f, entryAt(1) + 9, 5); // a uint32 leaf in five bytes
+    refuses(f, fx1home.TableFixedRefusal.LayoutSizeMismatch,
+      "RULE: a constant size its kind does not admit");
+  }
+  {
+    const f = copy();
+    putU32(f, entryAt(0) + 9, getU32(f, entryAt(0) + 9) + 4);
+    refuses(f, fx1home.TableFixedRefusal.LayoutSizeMismatch,
+      "RULE: a table's size is the sum of its fields'");
+  }
+
+  // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
+  {
+    const f = copy();
+    putU32(f, entryAt(0) + 13, getU32(f, entryAt(0) + 13) + 1);
+    refuses(f, fx1home.TableFixedRefusal.LayoutTreeUnclosed,
+      "RULE: the tree runs out of layout");
+  }
+  {
+    // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
+    // reaches. It takes a hand-built layout to reach, and that is itself
+    // worth stating: dropping a child of a TABLE is caught one rule sooner,
+    // by the size that no longer sums, so the only subtree whose loss the
+    // size rule cannot see is one that contributes NO size — an enum's
+    // variants, at kind 32 and size 0.
+    let layout = new Uint8Array(4);
+    putU32(layout, 0, 4);
+    layout = putEntry(layout, 1, 13, 4, 1); // a table of one field
+    layout = putEntry(layout, 2, 30, 4, 0); // an enum, its TWO variants unreached
+    layout = putEntry(layout, 3, 32, 0, 0);
+    layout = putEntry(layout, 4, 32, 0, 0);
+    refuses(fileOf(fx1home, layout), fx1home.TableFixedRefusal.LayoutTreeUnclosed,
+      "RULE: the layout outlasts the tree");
+  }
+
+  // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
+  {
+    const f = copy();
+    putU32(f, entryAt(0) + 9, 65537);
+    refuses(f, fx1home.TableFixedRefusal.LayoutRecordTooLarge,
+      "RULE: a record size past 65536");
+  }
+  {
+    const f = copy();
+    putU32(f, entryAt(1) + 9, 0xffffffff);
+    refuses(f, fx1home.TableFixedRefusal.LayoutRecordTooLarge,
+      "RULE: a size that would overflow the sum");
+  }
+
+  // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
+  //    NOT ON THE WIRE: the validation recurses, so a layout of a thousand
+  //    entries each claiming one child would spend a reader's stack before
+  //    any other rule could fire. Nothing in §3.4 fixes the number.
+  {
+    const depth = 4096; // far past any reader's own bound
+    const layout = new Uint8Array(4 + (depth + 1) * 17);
+    putU32(layout, 0, depth + 1);
+    for (let i = 0; i < depth; i++) {
+      putEntryAt(layout, 4 + i * 17, 1, i === 0 ? 13 : 35, depth - i, 1);
+    }
+    putEntryAt(layout, 4 + depth * 17, 2, 1, 1, 0); // a bool at the bottom
+    refuses(fileOf(fx1home, layout), fx1home.TableFixedRefusal.LayoutTooDeep,
+      "RULE: a nesting depth past the walk's own bound");
+  }
+
+  // AND THE RESIDUE: bytes that are not a layout at all, which is the one
+  // case the seven named rules never reach.
+  {
+    refuses(fileOf(fx1home, new Uint8Array(2)), fx1home.TableFixedRefusal.LayoutMalformed,
+      "RULE: fewer bytes than a header is layout_malformed");
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // 4. THE OPTIONALS — §3.4's kind 35, against the C++ reference's own bytes
@@ -671,6 +1185,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
 //   66..69  effect's widest arm     70..71  tail
 const OPT_PRESENT = 20, OPT_V = 21, NUM_PRESENT = 37, MARK_PRESENT = 42;
 const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
+const PLAIN = 16, MARK = MARK_PRESENT + 1, BOOST_POWER = EFFECT_TAG + 1;
 
 // setText lays a string(N) member down the way every port must: the bytes,
 // then the USED LENGTH beside them.
@@ -1416,13 +1931,13 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30; // 12345, so a projection is visible
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03; // 999, in Leaf.v's range, so a projection is visible
     bad[b + WRAP_LEAF_PRESENT] = 0xff;
     bad[b + WRAP_LEAF_V] = 0x2a;
     bad[b + NUM_PRESENT] = 2;
     bad[b + MARK_PRESENT] = 0x80;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
     check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
@@ -1461,9 +1976,9 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30;
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
   }
   {
@@ -1500,6 +2015,82 @@ function optionalControls(check, o, dir) {
     const { n, v } = load(bad, fo2, fo2home);
     check(n === 1 && v.Effect.Type === 0,
       "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
+  }
+
+  // A RANGED INTEGER CLAMPS ON LOAD AND COUNTS. Identity is one OP_COPY, so
+  // the plan never holds the bound; the projection is the pass both paths
+  // share. `plain` is `int32 | min = 0, max = 1000`.
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000,
+      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.Plain})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: a ranged integer past max counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: a ranged clamp is an event and not a refusal — the record still reads");
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, -1, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 0 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.Plain}, clamped ${r.clamped})`);
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 1000, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000 && r.clamped === 0,
+      "NEGATIVE CONTROL: a ranged integer AT the bound is not a clamp and moves no counter");
+  }
+  {
+    // the same bound through a COMPILED plan: same-size is a copy, so the
+    // decode is what holds it, on this path too
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad, fo2, fo2home);
+    check(n === 1 && v.Plain2 === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.Plain2}, clamped ${r.clamped})`);
+  }
+  {
+    // a ranged field under a live union arm, identity COPY of the whole body
+    const bad = oneRecord(0);
+    new DataView(bad.buffer).setInt32(body + BOOST_POWER, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Effect.Type === 1 && v.Effect.Boost.Power === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.Effect.Boost.Power}, clamped ${r.clamped})`);
+  }
+
+  // AN ENUM ORDINAL PAST THE TOP VALUE LANDS None AND COUNTS ONE clamped.
+  // Record 0 has `mark` PRESENT as Gold (2). Identity copies the ordinal raw.
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.Mark})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: an enum ordinal past the last variant counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the set is an event and not a refusal — the record still reads");
+    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
+  }
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 2;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 2 && r.clamped === 0,
+      "NEGATIVE CONTROL: an enum ordinal in the set is not a clamp and moves no counter");
+  }
+  {
+    // compiled path: kind 30 remaps through an ordinal op, so a value past
+    // this reader's table is already None in the image and the decode's
+    // comparison does not fire. The consumer still sees None.
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the last variant is None on the COMPILED path too");
   }
 }
 
