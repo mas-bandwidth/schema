@@ -145,11 +145,11 @@ var versionRows = []versionRow{
     // whose storage is twice as wide, so every old element must land
     // SIGN-EXTENDED and exact. The values are the ends of the old element's raw
     // range and the one a zero-extension gets wrong.
-    let want: [i32; 4] = [-1, -128, 112, 0];
+    let want: [i32; 4] = [-1, -128, 0, 112];
     for k in 0..4 {
         assert!(
-            values[0].v[k] == want[k],
-            "slot {k} widened wrong: {} and not {}", values[0].v[k], want[k]
+            values[0].vals[k] == want[k],
+            "slot {k} widened wrong: {} and not {}", values[0].vals[k], want[k]
         );
     }
     assert!(

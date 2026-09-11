@@ -108,7 +108,7 @@ var csVersionRows = []csVersionRow{
 	{row: "fixed_I_grow", widens: true},
 	{row: "fixed_I_grow_element", widens: true, check: `
             {
-                int[] wantRaw = { -1, -1, -1, -1 };
+                int[] wantRaw = { -1, -128, 0, 112 };
                 for (int k = 0; k < 4; ++k)
                 {
                     if (back[0].Vals[k] != wantRaw[k])

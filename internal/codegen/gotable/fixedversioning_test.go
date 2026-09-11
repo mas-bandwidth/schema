@@ -84,9 +84,9 @@ var versionRows = []versionRow{
 	if n != 1 {
 		t.Fatalf("the fixed_I_grow_element file carries one record, not %d", n)
 	}
-	want := []int32{-1, -2, -3, -4}
+	want := []int32{-1, -128, 0, 112}
 	for k := range want {
-		if int32(back[0].V[k]) != want[k] {
+		if int32(back[0].Vals[k]) != want[k] {
 			t.Fatalf("slot %d did not land its raw scaled value: %+v", k, back[0])
 		}
 	}

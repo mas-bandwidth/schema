@@ -11,6 +11,6 @@ package vold_fixed_i_grow_element
 fixed table FixedIGrowElement
 {
     lead  uint32 = 1
-    v     [4]fixed(12, 4) | min = -8, max = 7
+    vals  [4]fixed(12, 4) | min = -8, max = 7
     trail uint32 = 2
 }

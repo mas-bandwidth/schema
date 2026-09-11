@@ -97,7 +97,7 @@ var versionRows = []versionRow{
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
 	{row: "fixed_I_grow_element", widens: true, check: `
-  const want = <int>[-1, -1, -1, -1];
+  const want = <int>[-1, -128, 0, 112];
   for (var i = 0; i < 4; i++) {
     check(values[0].vals[i] == want[i],
         'slot $i is not the raw scaled value the writer packed: ${values[0].vals[i]}');

@@ -110,7 +110,7 @@ var jsVersionRows = []jsVersionRow{
   // THE RAW SCALED VALUE, SLOT BY SLOT (SPEC §4.6: I is the raw value's width
   // and F is held), and the two neighbours that bracket the array, exactly as
   // the scalar row asserts one value and its bracket.
-  const want = [-1, -128, 112, 0];
+  const want = [-1, -128, 0, 112];
   for (let k = 0; k < want.length; k++) {
     if (Number(back[0].Vals[k]) !== want[k]) { fail("slot " + k + " widened wrong: " + show(back[0])); }
   }
