@@ -9446,35 +9446,45 @@ static SCHEMA_UNUSED const TableFixedEntry table_mixed_fixed_plan[] = {
     { 26u, 32u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* nonce */
     { 54u, 576u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* entities count */
     { 58u, 64u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 99u, 112u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 99u, 112u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 107u, 120u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 109u, 128u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 150u, 176u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 150u, 176u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 158u, 184u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 160u, 192u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 201u, 240u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 201u, 240u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 209u, 248u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 211u, 256u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 252u, 304u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 252u, 304u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 260u, 312u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 262u, 320u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 303u, 368u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 303u, 368u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 311u, 376u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 313u, 384u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 354u, 432u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 354u, 432u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 362u, 440u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 364u, 448u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 405u, 496u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 405u, 496u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 413u, 504u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 415u, 512u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* entity_id */
-    { 456u, 560u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 456u, 560u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
+    { 464u, 568u, 2u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* moving */
     { 466u, 1220u, 80u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* stats count */
     { 470u, 580u, 640u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* stats, whole */
     { 1110u, 1224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* game_event tag */
     { 1124u, 1244u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* loadout, whole */
     { 1128u, 1264u, 15u, 1248u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* player_name */
     { 1147u, 1284u, 16u, 1268u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0, 1 }, /* payload */
-    { 1167u, 1288u, 49u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* aim_x */
+    { 1167u, 1288u, 48u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* aim_x */
+    { 1215u, 1336u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* has_extra */
     { 1216u, 1340u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* extra */
-    { 1111u, 1228u, 13u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1 }, /* target_id */
+    { 1111u, 1228u, 12u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1 }, /* target_id */
+    { 1123u, 1240u, 1u, 0u, 1110u, kTableFixedBool, 1, 0, 0, 0, 1 }, /* crit */
     { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1 }, /* channel */
     { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1 }, /* item_id */
 };
-static SCHEMA_UNUSED const int32_t table_mixed_fixed_plan_count = 31;
-static SCHEMA_UNUSED const int32_t table_mixed_fixed_plan_guarded = 28;
+static SCHEMA_UNUSED const int32_t table_mixed_fixed_plan_count = 41;
+static SCHEMA_UNUSED const int32_t table_mixed_fixed_plan_guarded = 37;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
