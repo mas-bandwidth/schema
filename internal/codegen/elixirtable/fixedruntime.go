@@ -1642,10 +1642,15 @@ const fixedRuntimeBody = `  @moduledoc """
 
   defp widen_float(value), do: value
 
-  # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
-  # ALL: it lands None and counts one ` + "`" + `clamped` + "`" + `, which is the answer §3 gives
-  # every other value outside its range and the answer a union tag beyond the
-  # declared arm count gets too. TAG 0 IS None and is not a clamp.
+  # THE ORDINAL OP LANDS THE RAW VALUE AND COUNTS NOTHING (§5.9 #27). An
+  # ordinal inside the writer's table comes through the table; an ordinal PAST
+  # the writer's own variant count lands UNREMAPPED, exactly as it arrived. The
+  # generated BOUNDS PASS over storage is what clamps an ordinal past THIS
+  # reader's extent to None and counts the ` + "`" + `clamped` + "`" + `, on the identity plan and
+  # the compiled plan alike — a leg that counts here too would count it TWICE.
+  # The pass cannot tell a forged None from a real one, so the raw has to
+  # survive to it, and the lock guarantees the raw fits this reader's storage
+  # because widths only grow. TAG 0 IS None and lands as itself.
   #
   # ` + "`" + `remap` + "`" + ` is the WRITER's table where the two sides can disagree about
   # what a number means, and the plain VARIANT COUNT where they cannot — which
@@ -1653,14 +1658,14 @@ const fixedRuntimeBody = `  @moduledoc """
   # layout remaps every ordinal to itself.
   defp ordinal(0, _remap, report), do: {0, report}
 
-  defp ordinal(raw, variants, report) when is_integer(variants) do
-    if raw <= variants, do: {raw, report}, else: {0, bump(report, :clamped)}
-  end
+  # A PLAIN COUNT REMAPS EVERY ORDINAL TO ITSELF, inside its range and past it
+  # alike, so the identity plan hands the raw straight back.
+  defp ordinal(raw, variants, report) when is_integer(variants), do: {raw, report}
 
   defp ordinal(raw, remap, report) do
     if raw <= tuple_size(remap),
       do: {elem(remap, raw - 1), report},
-      else: {0, bump(report, :clamped)}
+      else: {raw, report}
   end
 
   defp clamp_count(raw, max, report) do

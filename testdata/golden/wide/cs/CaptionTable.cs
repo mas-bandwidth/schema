@@ -815,6 +815,10 @@ namespace Wide
                 if (values[k] == null) { values[k] = new Stamp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]);
                 TableFixedWire.Run(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != StampFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 StampFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

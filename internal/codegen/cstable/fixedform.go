@@ -1805,6 +1805,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
 	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
+	// THE BOUNDS PASS'S WRITER HALF (§4.6, §5.2): an ordinal is clamped against
+	// THE WRITER'S variant count, which the plan carries per entry — the band
+	// between that count and this reader's larger extent being exactly what a
+	// pass over the reader's own bounds cannot see. Only a COMPILED plan has
+	// such an entry: an identity plan carries only copy, count and text, and
+	// there the writer IS the reader.
+	g.pf("        if (hash != %sFixedHash)\n        {\n", name)
+	g.pf("            TableFixedWire.ClampPlanBounds(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes);\n", name)
+	g.pf("        }\n")
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.

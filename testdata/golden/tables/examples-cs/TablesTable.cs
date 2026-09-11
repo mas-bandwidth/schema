@@ -2755,6 +2755,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RootConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RootConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RootConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RootConfigFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RootConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RootConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3052,6 +3056,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new WeaponConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), WeaponConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != WeaponConfigFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 WeaponConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3525,6 +3533,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new LoadoutConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), LoadoutConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != LoadoutConfigFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 LoadoutConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4071,6 +4083,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new ProfileConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ProfileConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, ProfileConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != ProfileConfigFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, ProfileConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 ProfileConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

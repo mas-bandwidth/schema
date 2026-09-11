@@ -1293,6 +1293,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedSigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RangedSignedFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RangedSignedFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -1636,6 +1640,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RangedUnsignedFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RangedUnsignedFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -1917,6 +1925,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new RangedWidths(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RangedWidthsFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RangedWidthsFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

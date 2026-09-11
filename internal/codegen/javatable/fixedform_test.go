@@ -679,7 +679,8 @@ const fu1fu2Driver = `public final class Driver {
 //     passes `raw <= n`, truncates to 0 and returns the remap table's LENGTH
 //     WORD as a variant; 0xFFFFFFFFFFFFFFFF truncates to -1 and indexes BEFORE
 //     the table — an ArrayIndexOutOfBoundsException out of a load that was
-//     asked a question.
+//     asked a question. Compared unsigned, both are past the writer's count
+//     and the op lands them raw for the bounds pass to clamp (§5.9 #27).
 //  3. THE REMAP TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2, §5.8 row
 //     14). Capped at 255 it lost the 256th variant on, each landing None as
 //     though this reader did not name it.
@@ -798,7 +799,11 @@ public final class Hostile {
     }
 
     // AN EIGHT-BYTE ORDINAL, FORGED. Unsigned at every width: a value past the
-    // WRITER's own variant count lands None and throws nothing.
+    // WRITER's own variant count never indexes the remap table and throws
+    // nothing. THE OP ALONE runs here, the bounds pass not yet (§5.9 #27):
+    // the forged raw lands UNREMAPPED, as itself, and the op counts NOTHING —
+    // the generated bounds pass over storage is what clamps it to None and
+    // counts it, so a count here would count twice.
     static void unsignedOrdinal() {
         final long[][] rows = {
             { 1, 13, 8, 1 },
@@ -822,12 +827,13 @@ public final class Hostile {
             final TableFixed.Report r = new TableFixed.Report();
             TableFixed.run(plan, made, remap, body, 0, body.length, image, r);
             final long got = TableFixed.get64(image, 0);
-            if (got != 0) {
-                fail("unsignedOrdinal: a forged ordinal landed " + got + ", want None");
+            if (got != forged[k]) {
+                fail("unsignedOrdinal: the op owes the RAW ordinal " + Long.toUnsignedString(forged[k])
+                     + ", landed " + Long.toUnsignedString(got));
             }
-            if (r.clamped != 1) {
-                fail("unsignedOrdinal: clamped=" + r.clamped + ", want exactly one for an ordinal"
-                     + " past the writer's own variant count");
+            if (r.clamped != 0) {
+                fail("unsignedOrdinal: clamped=" + r.clamped + ", want 0: the bounds pass counts,"
+                     + " the op does not");
             }
             if (r.malformed) { fail("unsignedOrdinal: a record inside the writer's bounds came back malformed"); }
         }

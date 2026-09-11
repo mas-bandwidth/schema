@@ -1256,6 +1256,10 @@ namespace Bench
                 if (values[k] == null) { values[k] = new FixedTable(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
                 TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != FixedTableFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 FixedTableFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

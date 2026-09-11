@@ -679,6 +679,11 @@ static partial class Program
         ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
         byte[] utScratch = Array.Empty<byte>();
         UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch);
+        // THE COMPILED PATH IS THE RUN AND THEN THE PLAN'S BOUNDS (§4.6, §5.2),
+        // exactly as the generated root spells it: the ordinal op lands the RAW
+        // and counts nothing, and this pass clamps it against the WRITER's own
+        // variant count out of the plan and counts there (§5.9 #27).
+        UT.Schema.TableFixedWire.ClampPlanBounds(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
         return outVal;
     }
 

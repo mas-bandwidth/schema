@@ -6227,7 +6227,23 @@ namespace Tabledemo
                                 else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                                 else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
                                 else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                                uint v = 0;
+                                // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped
+                                // through the writer's table while the raw is inside
+                                // the table, and THE RAW ITSELF, UNREMAPPED, once it
+                                // is past the writer's variant count. The op COUNTS
+                                // NOTHING: the raw has to survive this op to reach a
+                                // pass that can judge it, and the two passes that do
+                                // are ClampPlanBounds, against the WRITER's variant
+                                // count out of the plan, and the generated bounds pass
+                                // over storage, against THIS READER'S extent. A pass
+                                // over storage cannot tell a forged None from a real
+                                // one, which is why a count here would be the wrong
+                                // place for it; the lock guarantees the raw fits the
+                                // reader's storage, because widths only grow. The
+                                // counter's place is the contract: the passes count,
+                                // the op does not, and a port that counts in both
+                                // counts twice.
+                                ulong v = raw;
                                 if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                                 {
                                     ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
@@ -6236,17 +6252,6 @@ namespace Tabledemo
                                     {
                                         v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                     }
-                                    // A FORGED ORDINAL — one past the WRITER's own variant
-                                    // count — lands 0 and COUNTS HERE, which is NOT where
-                                    // §5.4 and §5.9 #27 put it. The move is OWED and it is
-                                    // not a one-line move: a bounds pass over STORAGE cannot
-                                    // tell this None from an enum or a union the writer left
-                                    // unset, so the count would simply VANISH on the compiled
-                                    // path. Either the op lands the RAW ordinal and the pass
-                                    // clamps it, or §5.4 names this one exception. Glenn's
-                                    // call; until then the number stays where this leg's own
-                                    // green fixture asserts it.
-                                    if (raw > count && report != null) { report.Clamped++; }
                                 }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
@@ -6254,7 +6259,13 @@ namespace Tabledemo
                                 }
                                 else
                                 {
-                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, report);
+                                    // NULL AND NOT report: an enum or tag slot's own
+                                    // setter holds the value to THIS READER'S extent,
+                                    // and on this leg that clamp is the storage pass's
+                                    // twin rather than a third counter. The op counts
+                                    // nothing, so the number is ClampPlanBounds's and
+                                    // is reached exactly once.
+                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, null);
                                 }
                                 break;
                             }
@@ -6309,6 +6320,74 @@ namespace Tabledemo
                             default: break;
                         }
                     }
+                }
+
+                // ---- THE BOUNDS PASS'S WRITER HALF (§4.6, §5.2, bill §12.5) --------
+                //
+                // A FORGED ORDINAL IS ONE PAST THE WRITER'S OWN COUNT, and THIS
+                // READER'S EXTENT CANNOT SEE IT. A raw in the BAND between the writer's
+                // variant count and this reader's larger extent is one of the reader's
+                // own variants: a pass that knows only the reader's extent lands it as
+                // a name the writer never had and counts nothing. That band is the hole
+                // the ordinal op's landing of the raw opened, and THE PLAN is what
+                // closes it — §5.2 has the plan carry THE WRITER'S bounds for the
+                // hostile pass — so this pass reads each entry's own writer count out of
+                // the plan's remap table, whose FIRST ENTRY IS that count, and clamps
+                // the raw against THAT.
+                //
+                // It runs on the COMPILED plan only, and that is no exception to "the
+                // same pass on either plan": an identity plan carries only copy, count
+                // and text (§5.4), so it has no ordinal entry to walk, and there the
+                // writer IS the reader and the generated pass over storage holds the
+                // one extent both of them have. A GUARDED ENTRY IS RE-TESTED against
+                // the writer's tag exactly as the run loop tested it, so an arm that
+                // did not run is never held to a bound it never landed.
+                //
+                // THE RAW IS READ BACK OUT OF THE RECORD and not out of storage,
+                // because storage holds the REMAPPED ordinal — this reader's own number
+                // for the writer's variant, lawfully past the writer's count whenever a
+                // variant moved or was appended. The number to judge is the one the
+                // writer wrote.
+                public static void ClampPlanBounds<T>(
+                    ReadOnlySpan<TableFixedEntry> plan,
+                    ReadOnlySpan<TableFixedSlot<T>> slots,
+                    ReadOnlySpan<byte> src,
+                    T dst,
+                    TableReport report,
+                    ReadOnlySpan<byte> planBytes)
+                {
+                    if (planBytes.IsEmpty) { return; }
+                    int clamped = 0;
+                    for (int i = 0; i < plan.Length; ++i)
+                    {
+                        ref readonly TableFixedEntry p = ref plan[i];
+                        if (p.Op != Ordinal) { continue; }
+                        if (p.Aux >= (uint)planBytes.Length) { continue; }
+                        if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                        ulong bound = BinaryPrimitives.ReadUInt16LittleEndian(planBytes.Slice((int)p.Aux));
+                        ulong raw;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        else { continue; }
+                        if (raw <= bound) { continue; }
+                        // None IS THE SAME NOTHING AN UNSET UNION HOLDS (§4.6), and the
+                        // clamp COUNTS — once, here, on the compiled plan exactly as
+                        // the generated pass counts the reader-extent case on the
+                        // identity one (§5.9 #27). The slot's setter is handed a null
+                        // report: zero is in range for it and the count is this pass's.
+                        if (slots[(int)p.Dst].SetRaw != null)
+                        {
+                            slots[(int)p.Dst].SetRaw(dst, 0);
+                        }
+                        else
+                        {
+                            slots[(int)p.Dst].SetRawReport?.Invoke(dst, 0, null);
+                        }
+                        clamped++;
+                    }
+                    if (report != null) { report.Clamped += clamped; }
                 }
             }
         // TableReset(Effect) restores None and every arm in place, reusing buffers.

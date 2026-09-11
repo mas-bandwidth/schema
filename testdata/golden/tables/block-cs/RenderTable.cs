@@ -3285,6 +3285,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderCamera(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderCameraFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -3644,6 +3648,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderShip(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderShipFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderShipFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3972,6 +3980,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderTurret(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderTurretFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderTurretFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4309,6 +4321,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderMissile(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderMissileFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderMissileFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4649,6 +4665,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderDynamicPropFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderDynamicPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4989,6 +5009,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderStaticPropFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderStaticPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5334,6 +5358,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderCosmeticPropFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderCosmeticPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5661,6 +5689,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderLaser(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderLaserFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderLaserFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5998,6 +6030,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != RenderExplosionFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 RenderExplosionFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

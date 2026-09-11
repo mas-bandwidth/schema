@@ -678,6 +678,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	/* THE BOUNDS PASS'S WRITER HALF (§4.6, §5.2): the writer's own variant and
+	   arm counts, carried per entry by the plan, which is the one thing that
+	   sees the band between them and this reader's larger extent. */
+	g.pf("        if ( hash != %s_fixed_hash )\n        {\n", n)
+	g.pf("            table_fixed_clamp_plan_bounds( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	g.pf("        }\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). */\n")

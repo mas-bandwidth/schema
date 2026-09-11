@@ -1262,6 +1262,10 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new ArchiveConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ArchiveConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, ArchiveConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != ArchiveConfigFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, ArchiveConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 ArchiveConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }

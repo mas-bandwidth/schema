@@ -388,11 +388,25 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
+        //
+        // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through the
+        // writer's table while the raw is inside the table, and THE RAW
+        // ITSELF, UNREMAPPED, once it is past the writer's variant count.
+        // The op COUNTS NOTHING: the generated BOUNDS PASS over storage
+        // clamps any ordinal past THIS READER'S extent to None and counts it
+        // clamped there, on the identity plan and the compiled plan alike. A
+        // pass over storage cannot tell a forged None from a real one, so the
+        // raw value has to survive this op to reach the pass; the lock
+        // guarantees the raw fits the reader's storage, because widths only
+        // grow. The counter's place is the contract: the pass counts, the op
+        // does not, and a port that counts in both counts twice.
+        //
         // AN ORDINAL OF WIDTH 8 IS TWO u32 LANES, AND THIS LEG SAYS SO
         // (§5.9 #34): an OR of src[s+k] << (8*k) shifts MOD 32 in JavaScript,
         // so byte 4 landed back on byte 0 and a forged eight-byte ordinal read
         // as its own low four bytes. A remap table is never longer than 65535
-        // entries, so a NONZERO HIGH LANE can name no variant at all.
+        // entries, so a NONZERO HIGH LANE can name no variant at all — and the
+        // raw that stands is therefore TWO LANES WIDE, both of them landed.
         let lo = 0, hi = 0;
         const half = size < 4 ? size : 4;
         for (let k = 0; k < half; k++) { lo |= src[s + k] << (8 * k); }
@@ -400,26 +414,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         lo = lo >>> 0; hi = hi >>> 0;
         const table = e[b + TableFixedLaneAux];
         const extent = remap[table];
-        let v = 0;
-        if (hi !== 0 || lo > extent) {
-          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE, as a
-          // count past its bound is: it lands None AND COUNTS ONE clamped, on
-          // THIS plan exactly as the identity plan's projection counts it
-          // (§5.4, §4.6, and §5.8 row 12 — the reference counts on neither
-          // compiled path). A variant the writer DOES carry and this reader
-          // cannot name is a different thing: it resolves to None through the
-          // table and counts nothing, because nothing was out of range.
-          report.clamped++;
-        } else if (lo !== 0) {
-          v = remap[table + lo];
-        }
+        let v = lo, vhi = hi;
+        if (hi === 0 && lo !== 0 && lo <= extent) { v = remap[table + lo]; vhi = 0; }
         const width = e[b + TableFixedLaneMeta] & 0xff;
         const dstHalf = width < 4 ? width : 4;
         for (let k = 0; k < dstHalf; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
-        // THE LANDED ORDINAL IS THIS READER'S OWN, never past 65535, so its high
-        // lane is zero — written, not left standing, because the prefill is not
+        // A REMAPPED ORDINAL IS THIS READER'S OWN, never past 65535, so its high
+        // lane is zero; a RAW that stood unremapped carries its own. Either way
+        // the lane is WRITTEN and not left standing, because the prefill is not
         // the only thing that may have been here.
-        for (let k = 4; k < width; k++) { dst[d + k] = 0; }
+        for (let k = 4; k < width; k++) { dst[d + k] = (vhi >>> (8 * (k - 4))) & 0xff; }
         break;
       }
       case TableFixedOpWiden: {

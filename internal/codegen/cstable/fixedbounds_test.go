@@ -144,13 +144,28 @@ func TestFixedOrdinalOpIsSixtyFourBit(t *testing.T) {
 	if !strings.Contains(op, "p.Size == 8") {
 		t.Error("the ordinal op has no eight-byte case; an ordinal width of 8 is admissible (§4.5)")
 	}
-	// §5.9 #27's move is OWED and NAMED, never silently skipped: the forged
-	// ordinal's `clamped` still lands in the op, because a bounds pass over
-	// STORAGE cannot tell a forged None from an unset one and the count would
-	// VANISH on the compiled path. The reason is carried in the emitted text so
-	// the next reader does not have to find it twice.
-	if !strings.Contains(op, "which is NOT where") {
-		t.Error("the forged ordinal's counter moved, or its debt stopped being named (§5.9 #27)")
+	// §5.9 #27'S MOVE IS PAID: the op LANDS THE RAW and COUNTS NOTHING, and the
+	// forged ordinal's `clamped` is ClampPlanBounds's, against the WRITER's
+	// variant count out of the plan — the one bound that sees the band between
+	// that count and this reader's larger extent. A count left here as well
+	// would be counted twice.
+	if !strings.Contains(op, "ulong v = raw;") {
+		t.Error("the ordinal op does not land the raw value (§5.9 #27)")
+	}
+	if strings.Contains(op, "report.Clamped++") {
+		t.Error("the ordinal op counts; §5.9 #27 puts the count in the bounds pass")
+	}
+	// and the pass that took it over reads the writer's count out of the plan
+	bounds := strings.Index(tableFixedWireSource, "public static void ClampPlanBounds<T>(")
+	if bounds < 0 {
+		t.Fatal("the plan's writer-half bounds pass is gone (§5.2, §4.6)")
+	}
+	pass := tableFixedWireSource[bounds:]
+	if !strings.Contains(pass, "ReadUInt16LittleEndian(planBytes.Slice((int)p.Aux))") {
+		t.Error("the bounds pass does not read the WRITER's variant count out of the plan's remap table")
+	}
+	if !strings.Contains(pass, "report.Clamped += clamped;") {
+		t.Error("the bounds pass does not count the forged ordinal it clamps (§5.9 #27)")
 	}
 }
 
