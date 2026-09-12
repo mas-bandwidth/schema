@@ -6,7 +6,7 @@
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
 //	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
-//	schema lock       [--print] [dir|files...]       write the fixed tables' append-only lock
+//	schema lock       [--print] [--parent <lock>...] [dir|files...]  write the fixed tables' append-only lock; --parent once per parent AT A MERGE COMMIT
 //	schema fmt        [dir|files...]                 canonicalize schema files in place — the ONLY command that writes one
 //	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
 //	schema unpack     --root T --in  F <dir>         the wire bytes become the tree again
@@ -199,6 +199,13 @@ func main() {
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
 		retire := fs.String("retire", "", "retire a locked layout (`Table@0x<hash>`) or a whole locked table (`Table`) — the lock's one non-append edit: nothing is removed, the entry or the block stays with its reason, and a retired table's declaration may then be dropped (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)")
 		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
+		// THE TWO-PARENT RUN, AT A MERGE COMMIT (bill §8a.1, §11.3). Given once
+		// per parent, it replaces the single `old` this command normally reads
+		// with one per side: the merged declaration must widen EACH of them, and
+		// a parent's fields are paired BY WIRE ID, so both branches' appends may
+		// be interleaved in any order. Within ONE branch nothing changes.
+		var parents parentLocks
+		fs.Var(&parents, "parent", "the `schema.lock` ONE PARENT of a merge commit committed — given once per parent (`--parent a.lock --parent b.lock`): the merged declaration is held to EACH parent's lock, its fields paired by wire id so both branches' appends may interleave, and the merged lineage is both parents' concatenated (docs/FIXED-FORM-BILL-READS-BACKWARD.md §8a.1, §11.3)")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -232,7 +239,17 @@ func main() {
 		if *reason != "" {
 			fail(fmt.Errorf("--reason belongs to --retire: every other write this command takes is an append, and an append declares nothing (docs/SPEC-TABLES.md §2.10)"))
 		}
-		path, rewrote, err := compiler.UpdateSchemaLock(u, paths)
+		var path string
+		var rewrote bool
+		if len(parents) > 0 {
+			// AT A MERGE COMMIT the run has two `old`s, and the person says so:
+			// there is no single parent to compare against, and guessing one
+			// would hold the merge to one branch and silently lose the other's
+			// lineage.
+			path, rewrote, err = compiler.MergeSchemaLockAtMerge(u, paths, parents)
+		} else {
+			path, rewrote, err = compiler.UpdateSchemaLock(u, paths)
+		}
 		if err != nil {
 			fail(err)
 		}
@@ -792,6 +809,32 @@ func loadUnit(c *compiler.Compiler, args []string) *ir.Unit {
 		fail(err)
 	}
 	return u
+}
+
+// parentLocks is the repeatable `--parent <lock>` flag of `schema lock`: the
+// lock each PARENT of a merge commit committed, in the order the parents are
+// named (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.3). Two is the case the bill
+// names and the minimum the run accepts; an octopus merge gives more and every
+// one of them is checked.
+//
+// It is a FLAG and not a thing the tool detects. `git rev-parse HEAD^2` would
+// say a merge is in progress, but the lock a parent COMMITTED lives in that
+// parent's tree rather than this one, so reading it means `git show
+// <parent>:schema.lock` into a temporary file — a git invocation per parent on
+// every `schema lock`, in a compiler that otherwise never shells out. The person
+// doing the merge knows which two commits they merged; the flag asks them, and a
+// merge nobody declared is held to the ordinary prefix rule, which is the safe
+// answer.
+type parentLocks []string
+
+func (p *parentLocks) String() string { return strings.Join(*p, ",") }
+
+func (p *parentLocks) Set(value string) error {
+	if value == "" {
+		return fmt.Errorf("--parent takes the path of one parent's %s", compiler.SchemaLockFileName)
+	}
+	*p = append(*p, value)
+	return nil
 }
 
 // messageTrees is the repeatable `--batch <Table>=<tree-dir>` flag: the

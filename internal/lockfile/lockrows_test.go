@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 )
 
@@ -677,4 +678,245 @@ func TestLockRenameWithoutWasRefuses(t *testing.T) {
 
 func TestLockRenameWithoutWasAllows(t *testing.T) {
 	rowUnchanged(t, rowTable("    a int32"), rowTable("    b int32 | was = \"a\""))
+}
+
+// ---- lineage_merge: THE TWO-PARENT LOCK RUN (bill §8a.1, §11.3) ------------
+//
+// The row the versioning page calls `lineage_merge`, on the lock's side of it.
+// Two branches append different fields; the merge takes both; neither parent's
+// field order is a prefix of the merged one, because a merge that took both
+// sides' appends cannot be a prefix of either. The run that judges it has TWO
+// `old`s — `schema lock --parent A --parent B` — and its one changed clause is
+// that a parent's fields are paired BY WIRE ID, so the merged record's NEW
+// fields may sit anywhere in the order (merge.go).
+//
+// The halves below are the page's LOCK-ALLOWS and LOCK-REFUSES for the row,
+// and the NEW-READS-OLD half is the Go probe in
+// internal/codegen/gotable/fixedredteam_test.go: build A, B and M, write under
+// A and B, read both files under M.
+
+// branchLock writes `src` in its own directory, locks it, and returns the path
+// of the lock it wrote under `name` — one parent of a merge, as the commit on
+// that branch left it.
+func branchLock(t *testing.T, dir, name, src string) string {
+	t.Helper()
+	side := filepath.Join(dir, name)
+	if err := os.MkdirAll(side, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(side, "Lock.schema"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := compiler.GatherPaths([]string{side})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatalf("locking the %s branch: %v", name, err)
+	}
+	return filepath.Join(side, lockfile.FileName)
+}
+
+// mergeRun is the whole path a merge takes: lock each branch from its own
+// schema, write the merged schema in a third directory, and run the two-parent
+// lock over it. It returns the merged unit's directory, its paths and what the
+// run said.
+func mergeRun(t *testing.T, a, b, merged string) (dir string, paths []string, err error) {
+	t.Helper()
+	root := t.TempDir()
+	aLock := branchLock(t, root, "A", a)
+	bLock := branchLock(t, root, "B", b)
+	dir, paths = fixture(t, merged)
+	_, _, err = lockfile.Merge(load(t, paths), paths, []string{aLock, bLock})
+	return dir, paths, err
+}
+
+// the three schemas of the row: a base both branches share, A's append, B's
+// append, and the merge that took both.
+func mergeBase() string { return rowTable("    a int32 = 0\n    b int32 = 0") }
+func mergeA() string    { return rowTable("    a int32 = 0\n    b int32 = 0\n    x int32 = 7") }
+func mergeB() string    { return rowTable("    a int32 = 0\n    b int32 = 0\n    y int32 = 9") }
+func mergeBoth() string {
+	return rowTable("    a int32 = 0\n    b int32 = 0\n    x int32 = 7\n    y int32 = 9")
+}
+func mergeBothB() string {
+	return rowTable("    a int32 = 0\n    b int32 = 0\n    y int32 = 9\n    x int32 = 7")
+}
+
+// (a) LOCK-ALLOWS: A appends x, B appends y, the merge has both — allowed
+// against BOTH parents, in either interleaving, and the merged lock is current
+// afterwards.
+func TestLockLineageMergeAllowsBothAppends(t *testing.T) {
+	for _, merged := range []struct {
+		name string
+		src  string
+	}{{"x then y", mergeBoth()}, {"y then x", mergeBothB()}} {
+		t.Run(merged.name, func(t *testing.T) {
+			dir, paths, err := mergeRun(t, mergeA(), mergeB(), merged.src)
+			if err != nil {
+				t.Fatalf("a merge that took both branches' appends widens both parents: %v", err)
+			}
+			if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+				t.Fatalf("the merged lock is current after the run: %v", errs)
+			}
+			lk := readLock(t, filepath.Join(dir, lockfile.FileName))
+			row := lk.Table("Row")
+			if row == nil || len(row.Entries) != 4 {
+				t.Fatalf("the merged lock holds all four fields: %+v", row)
+			}
+			// AND WHY THE RUN HAS TO EXIST: whichever interleaving the merge
+			// chose, the ORDINARY single-parent rule refuses it against ONE of
+			// the two parents — a merge that took both branches' appends is a
+			// prefix of neither side. This is the row red.
+			refusedBy := 0
+			for _, parent := range []string{mergeA(), mergeB()} {
+				pd, pp := fixture(t, parent)
+				if _, _, err := lockfile.Update(load(t, pp), pp); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(pd, "Lock.schema"), []byte(merged.src), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				for _, err := range lockfile.Check(load(t, pp), pp) {
+					// a STALE lock is not a break — it is the append this
+					// merge legitimately is, waiting to be written down. What
+					// proves the row is a refusal that names the ORDER.
+					if strings.Contains(err.Error(), "inserted not at the end") ||
+						strings.Contains(err.Error(), "fields reordered") {
+						refusedBy++
+					}
+				}
+			}
+			if refusedBy != 1 {
+				t.Errorf("the two-parent run exists because the single-parent ORDER rule refuses this merge against exactly one side; %d sides refused it, so the row proves nothing", refusedBy)
+			}
+		})
+	}
+}
+
+// (b) LOCK-REFUSES: the merge drops one branch's field. The refusal names the
+// field AND THE PARENT, because a merge has two `old`s and the person fixing it
+// has to know which side they dropped.
+func TestLockLineageMergeRefusesADroppedField(t *testing.T) {
+	_, _, err := mergeRun(t, mergeA(), mergeB(), mergeA())
+	if err == nil {
+		t.Fatal("a merge that drops a parent's field is not a widening of that parent")
+	}
+	for _, want := range []string{"field y", "field removed", "B", lockfile.FileName, "docs/SPEC-TABLES.md §2.10"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q:\n%s", want, err)
+		}
+	}
+}
+
+// (c) LOCK-REFUSES: the merge keeps both fields and changes one's KIND. Every
+// ordinary monotone rule still runs at a merge — what is position-free is the
+// ORDER and nothing else.
+func TestLockLineageMergeRefusesAChangedKind(t *testing.T) {
+	_, _, err := mergeRun(t, mergeA(), mergeB(),
+		rowTable("    a int32 = 0\n    b int32 = 0\n    x float32 = 7\n    y int32 = 9"))
+	if err == nil {
+		t.Fatal("a merge that changes a parent's field kind is not a widening of that parent")
+	}
+	for _, want := range []string{"field x", "kind", "A", "docs/SPEC-TABLES.md §2.10"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q:\n%s", want, err)
+		}
+	}
+}
+
+// (d) THE RECORD THE RUN WRITES: the merged lineage holds A's entry, B's entry
+// and the merged layout's own, the roll-up token is recomputed over the set, and
+// the floor is the MAX of the two parents' — a layout either branch retired is
+// retired in the merge.
+func TestLockLineageMergeComposesTheLineage(t *testing.T) {
+	root := t.TempDir()
+
+	// A's history is the shared base layout and then its own; B's is the base
+	// and then its own. A retires the base, B does not: the merged floor is A's.
+	aDir := filepath.Join(root, "A")
+	aLock := branchLock(t, root, "A", mergeBase())
+	aPaths, err := compiler.GatherPaths([]string{aDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(aDir, "Lock.schema"), []byte(mergeA()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, aPaths), aPaths); err != nil {
+		t.Fatalf("A's own append: %v", err)
+	}
+	baseWire := readLock(t, aLock).Table("Row").Lineage[0].Wire
+	if _, _, err := lockfile.Retire(load(t, aPaths), aPaths,
+		fmt.Sprintf("Row@0x%016x", baseWire), "the A branch stopped serving the base layout"); err != nil {
+		t.Fatalf("retiring the base layout on A: %v", err)
+	}
+
+	bDir := filepath.Join(root, "B")
+	bLock := branchLock(t, root, "B", mergeBase())
+	bPaths, err := compiler.GatherPaths([]string{bDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bDir, "Lock.schema"), []byte(mergeB()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, bPaths), bPaths); err != nil {
+		t.Fatalf("B's own append: %v", err)
+	}
+
+	aLk, bLk := readLock(t, aLock), readLock(t, bLock)
+	floorA, floorB := lockfile.Floor(aLk, "Row"), lockfile.Floor(bLk, "Row")
+	if floorA != 1 || floorB != 0 {
+		t.Fatalf("the fixture wants A's floor at 1 and B's at 0, got %d and %d", floorA, floorB)
+	}
+
+	dir, paths := fixture(t, mergeBoth())
+	if _, _, err := lockfile.Merge(load(t, paths), paths, []string{aLock, bLock}); err != nil {
+		t.Fatalf("the merge: %v", err)
+	}
+	merged := readLock(t, filepath.Join(dir, lockfile.FileName))
+	got := lockfile.Lineage(merged, "Row")
+
+	// A's two entries, then B's one new one, then the merged layout: the shared
+	// base is deduped by wire hash and keeps its place.
+	wantWires := []uint64{
+		baseWire,
+		aLk.Table("Row").Lineage[1].Wire,
+		bLk.Table("Row").Lineage[1].Wire,
+	}
+	if len(got) != 4 {
+		t.Fatalf("the merged lineage is both parents' entries and the merge's own: %d entries", len(got))
+	}
+	for i, w := range wantWires {
+		if got[i].Wire != w {
+			t.Errorf("merged lineage entry %d is 0x%016x, want 0x%016x", i, got[i].Wire, w)
+		}
+	}
+	if got[3].Wire == wantWires[1] || got[3].Wire == wantWires[2] {
+		t.Errorf("the merged layout is its own entry, not either parent's: 0x%016x", got[3].Wire)
+	}
+	// THE ROLL-UP over the set, recomputed: the committed file's token is the
+	// hash of the lineage it carries, or the set is unbound (§11.8).
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("the merged lock's roll-up must bind the lineage it wrote: %v", errs)
+	}
+	// THE FLOOR IS THE MAX: A's retirement stands through the merge.
+	if floor := lockfile.Floor(merged, "Row"); floor != max(floorA, floorB) {
+		t.Errorf("the merged floor is the max of the parents' (%d, %d), got %d", floorA, floorB, floor)
+	}
+	if !got[0].Retired || got[0].Reason == "" {
+		t.Errorf("a retirement from either parent stands, with its reason: %+v", got[0])
+	}
+}
+
+// (e) WITHIN ONE BRANCH NOTHING CHANGES: an insertion with no `--parent` is the
+// refusal it has always been. The two-parent run is the merge's law and not a
+// loophole in the ordinary one.
+func TestLockSingleBranchInsertionStillRefused(t *testing.T) {
+	rowRefuses(t, mergeA(), rowTable("    a int32 = 0\n    b int32 = 0\n    y int32 = 9\n    x int32 = 7"),
+		"fixed table Row", "field x", "field inserted not at the end")
+	if _, _, err := lockfile.Merge(nil, nil, []string{"one.lock"}); err == nil {
+		t.Fatal("the two-parent run wants a lock per parent and one is not a merge")
+	}
 }

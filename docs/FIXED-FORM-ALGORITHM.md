@@ -379,7 +379,19 @@ table `T` in `new` and every definition `D` in `T`'s closure (§5.5), with `D0` 
 where it existed:
 
 ```
-BASELINE(old, new):                      -- at a merge commit, run once per parent lock (bill §11.3)
+BASELINE(old, new):                      -- at a merge commit: ONE RUN, ONE `old` PER PARENT (bill §11.3, §8a.1)
+                                         -- `schema lock --parent <A.lock> --parent <B.lock>`, the flag once per
+                                         -- parent; the body below runs per parent, and the ONE clause that
+                                         -- changes is the field order: a parent's fields are paired with the
+                                         -- merged record's BY WIRE ID, not by position, so the merged record's
+                                         -- NEW fields may sit ANYWHERE (a merge that took both branches'
+                                         -- appends is a prefix of neither side). Every other rule is this
+                                         -- page's, per parent, unchanged. WITHIN ONE BRANCH the prefix rule
+                                         -- below is exact. The merged lock's lineage is both parents' entries
+                                         -- concatenated in the order the parents were given, deduped by wire
+                                         -- hash, then the merged layout's own; a retirement on either side
+                                         -- stands, so the merged floor is the max of the two.
+                                         -- Implementation: internal/lockfile/merge.go (Merge, diffAgainstParents).
   for T in new.fixed_tables:
     if T not in old:                    continue            -- a new table is a new lineage
     if old[T] is not fixed:             REFUSE "T: fixed added" -- a different form, not a version
@@ -397,7 +409,8 @@ WIDENS(a, b):                            -- b may replace a
                                                                        -- string/wstring/bytes and [N]/[..N]/[Enum] never cross
   match kind:
     table, type:   fields(a) is a SUBSET of fields(b) by NAME and a SUBSEQUENCE of it by position (append-only per
-                   branch, any interleaving after a merge; bill §11.3); every a-field WIDENS into its b-field;
+                   branch; AT A MERGE the position clause is dropped and the pairing is by WIRE ID alone, any
+                   interleaving — the two-parent run above; bill §11.3, §8a.1); every a-field WIDENS into its b-field;
                    a deprecated field keeps its place          or FAIL "field removed | inserted | reordered | modified"
     enum:          variants(a) prefix of variants(b) by name   or FAIL "variant removed | inserted | reordered | renamed"
     union:         arms(a) prefix of arms(b) by name; each payload WIDENS   or FAIL "arm ..."

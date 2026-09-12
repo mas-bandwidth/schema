@@ -60,3 +60,23 @@ func SchemaLockWarnings(paths []string) []string {
 func UpdateSchemaLock(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 	return lockfile.Update(u, paths)
 }
+
+// MergeSchemaLockAtMerge is the lock run AT A MERGE COMMIT
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §8a.1, §11.3): `parentLocks` are the
+// `schema.lock` files the merge's parents committed, one per parent, and the
+// merged declaration is held to EACH of them.
+//
+// It differs from [UpdateSchemaLock] in exactly one clause: a parent's fields
+// are paired with the merged record's BY WIRE ID rather than by position, so the
+// merged record may carry both branches' appends interleaved in any order. Every
+// other rule is the same — every parent's field is still present, deprecated in
+// place where it is finished, and widened and never narrowed — and WITHIN ONE
+// BRANCH `schema lock`'s strict prefix rule is untouched.
+//
+// The file it writes carries both parents' lineages concatenated in the order
+// the parents were given, deduped by wire hash, then the merged layout's own
+// entry; a retirement on either side stands, which makes the merged floor the
+// higher of the two.
+func MergeSchemaLockAtMerge(u *ir.Unit, paths []string, parentLocks []string) (path string, rewrote bool, err error) {
+	return lockfile.Merge(u, paths, parentLocks)
+}
