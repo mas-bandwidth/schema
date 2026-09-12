@@ -696,6 +696,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 20000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 20000L) {
+                v = 20000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 15;
@@ -936,6 +941,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 16.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 16L) {
+                v = 16L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 5;
@@ -1289,6 +1299,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 360.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 360L) {
+                v = 360L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 9;
@@ -1344,6 +1359,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 60.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 60L) {
+                v = 60L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 6;
@@ -1372,6 +1392,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 800.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 800L) {
+                v = 800L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 10;
@@ -1391,6 +1416,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 2000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 2000L) {
+                v = 2000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 11;
@@ -1428,6 +1458,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 500.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 500L) {
+                v = 500L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 9;
@@ -1447,6 +1482,11 @@ public final class RealWorld {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 10000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 10000L) {
+                v = 10000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 14;

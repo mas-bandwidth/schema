@@ -882,6 +882,9 @@ func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
+	g.pf("%s// the normative integer clamp (SPEC \u00a74.3): at a step count in [2^23, 2^24)\n", ind)
+	g.pf("%s// the float32 ulp is 1 and the rounded sum ties UP, one past the count\n", ind)
+	g.pf("%sif (v > %d) { v = %d; }\n", ind, maxInt, maxInt)
 	g.mergeW(bits, ind)
 }
 

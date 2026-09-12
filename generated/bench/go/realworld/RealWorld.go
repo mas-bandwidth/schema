@@ -282,7 +282,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f3 = (uint64(uint32(float32(normalizedValue*20000.0) + 0.5))) & 0x7fff
+			integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
+			if integerValue > 20000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 20000
+			}
+			f3 = (uint64(integerValue)) & 0x7fff
 		}
 		f4 := (uint64(uint32(rangeValue4))) & 0x1fff
 		f5 := (uint64(uint32(rangeValue5 - (-1513)))) & 0xfff
@@ -393,7 +397,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*16.0) + 0.5))) & 0x1f
+			integerValue := uint32(float32(normalizedValue*16.0) + 0.5)
+			if integerValue > 16 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 16
+			}
+			f1 = (uint64(integerValue)) & 0x1f
 		}
 		f2 := (uint64(value.F028Bits)) & 0xf
 		f3 := uint64(value.F029I64)
@@ -518,7 +526,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f6 = (uint64(uint32(float32(normalizedValue*360.0) + 0.5))) & 0x1ff
+			integerValue := uint32(float32(normalizedValue*360.0) + 0.5)
+			if integerValue > 360 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 360
+			}
+			f6 = (uint64(integerValue)) & 0x1ff
 		}
 		f7 := (uint64(uint32(rangeValue7))) & 0x1ff
 		f8 := uint64(value.F063I64)
@@ -531,7 +543,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f10 = (uint64(uint32(float32(normalizedValue*60.0) + 0.5))) & 0x3f
+			integerValue := uint32(float32(normalizedValue*60.0) + 0.5)
+			if integerValue > 60 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 60
+			}
+			f10 = (uint64(integerValue)) & 0x3f
 		}
 		w0 := f0 | (f1 << 1) | (f2 << 6) | (f3 << 11) | (f4 << 43)
 		stream.SerializeBits64(&w0, 64)
@@ -563,7 +579,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f0 = (uint64(uint32(float32(normalizedValue*800.0) + 0.5))) & 0x3ff
+			integerValue := uint32(float32(normalizedValue*800.0) + 0.5)
+			if integerValue > 800 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 800
+			}
+			f0 = (uint64(integerValue)) & 0x3ff
 		}
 		f1 := uint64(0)
 		{
@@ -573,7 +593,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*2000.0) + 0.5))) & 0x7ff
+			integerValue := uint32(float32(normalizedValue*2000.0) + 0.5)
+			if integerValue > 2000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 2000
+			}
+			f1 = (uint64(integerValue)) & 0x7ff
 		}
 		f2 := (uint64(value.F069Bits)) & 0x7ff
 		f3 := (uint64(uint32(rangeValue3))) & 0x3
@@ -585,7 +609,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f4 = (uint64(uint32(float32(normalizedValue*500.0) + 0.5))) & 0x1ff
+			integerValue := uint32(float32(normalizedValue*500.0) + 0.5)
+			if integerValue > 500 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 500
+			}
+			f4 = (uint64(integerValue)) & 0x1ff
 		}
 		f5 := uint64(0)
 		{
@@ -595,7 +623,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f5 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
+			integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
+			if integerValue > 10000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 10000
+			}
+			f5 = (uint64(integerValue)) & 0x3fff
 		}
 		f6 := (uint64(uint32(rangeValue6 - (-4)))) & 0xf
 		f7 := uint64(0)
