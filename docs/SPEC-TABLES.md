@@ -6865,6 +6865,16 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
 
+**A BOUNDED FLOAT'S LOW TEST IS `!(v >= min)` AND NOT `v < min`.** IEEE says
+every ordered comparison against a NaN is false, so a NaN in a `float32 | min,
+max` — or in a compressed float, which rides in this form as the float it is —
+fails `v < min` and `v > max` alike, and the plain shape would let it land
+WHOLE and count NOTHING: a value outside the declared range reaching the
+consumer, which is the one thing this pass exists to stop. **A NaN LANDS `min`
+AND COUNTS ONE `clamped`, exactly as `-inf` does.** Nothing else moves: `-0.0`
+against a `min` of `+0.0` compares EQUAL, so it is IN RANGE and lands as
+written, sign bit and all, counting nothing.
+
 **A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
 ```

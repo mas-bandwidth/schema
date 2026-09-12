@@ -10530,8 +10530,8 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & clamped, int
     // bits(48) width clamp
     clamped += ( value.frame_tick > 281474976710655ull );
     value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
-    clamped += (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
-    value.server_time = ( value.server_time < 0.0f ) ? 0.0f : ( ( value.server_time > 65535.0f ) ? 65535.0f : value.server_time );
+    clamped += (int) ( !( value.server_time >= 0.0f ) ) | (int) ( value.server_time > 65535.0f );
+    value.server_time = ( !( value.server_time >= 0.0f ) ) ? 0.0f : ( ( value.server_time > 65535.0f ) ? 65535.0f : value.server_time );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         TableEntityFixedClampBody( value.entities[i], clamped, damaged );
@@ -10566,16 +10566,16 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & clamped, int
         value.player_name_length = 0;
         damaged++;
     }
-    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
-    value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
-    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
-    value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
-    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
-    value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    clamped += (int) ( !( value.aim_x >= -1.0f ) ) | (int) ( value.aim_x > 1.0f );
+    value.aim_x = ( !( value.aim_x >= -1.0f ) ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    clamped += (int) ( !( value.aim_y >= -1.0f ) ) | (int) ( value.aim_y > 1.0f );
+    value.aim_y = ( !( value.aim_y >= -1.0f ) ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    clamped += (int) ( !( value.aim_z >= -1.0f ) ) | (int) ( value.aim_z > 1.0f );
+    value.aim_z = ( !( value.aim_z >= -1.0f ) ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
     clamped += (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
     value.flux = ( value.flux < -1000000000000000000ll ) ? -1000000000000000000ll : ( ( value.flux > 1000000000000000000ll ) ? 1000000000000000000ll : value.flux );
-    clamped += (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
-    value.ping = ( value.ping < 0.0f ) ? 0.0f : ( ( value.ping > 250.0f ) ? 250.0f : value.ping );
+    clamped += (int) ( !( value.ping >= 0.0f ) ) | (int) ( value.ping > 250.0f );
+    value.ping = ( !( value.ping >= 0.0f ) ) ? 0.0f : ( ( value.ping > 250.0f ) ? 250.0f : value.ping );
     // bits(24) width clamp
     clamped += ( value.crc_hint > 16777215ull );
     value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;

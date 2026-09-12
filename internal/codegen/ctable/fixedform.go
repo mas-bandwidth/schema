@@ -930,10 +930,17 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
+		/* A BOUNDED FLOAT'S LOW TEST IS NEGATED, the reference's twin: IEEE
+		   says every ordered comparison against a NaN is false, so `v < lo`
+		   and `v > hi` are both false and a NaN would land WHOLE and count
+		   nothing. `!( v >= lo )` is true for a NaN and for every value under
+		   the minimum, so a NaN lands `min` and counts one, as -inf does; and
+		   -0.0 against a min of +0.0 compares equal, so it stays in range and
+		   lands as written. */
+		g.fixedClampBoth(expr, "!( "+expr+" >= "+formatFloat(f.FMin, true)+" )", formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, false), formatFloat(f.FMin, false),
+		g.fixedClampBoth(expr, "!( "+expr+" >= "+formatFloat(f.FMin, false)+" )", formatFloat(f.FMin, false),
 			expr+" > "+formatFloat(f.FMax, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
