@@ -26,6 +26,13 @@
 #      is gone, or one the emitter now writes after all.
 set -eu
 
+# EVERY VERDICT HERE IS A `comm` OVER SORTED LISTINGS, and comm collates by the
+# ambient locale while these listings are sorted in C. Disagree on the order of
+# a `-`, a `.` or a `/` and the pairing is wrong — which is the one way a named
+# exception could fail to match the path it names. So the whole script runs in
+# one collation and there is nothing left to disagree about.
+export LC_ALL=C
+
 usage='usage: compare <emitted-dir> <tree-dir> [not-emitted-list]'
 emitted_dir=${1:?$usage}
 tree_dir=${2:?$usage}
@@ -68,7 +75,11 @@ comm -23 "$work/emitted" "$work/tree" > "$work/emitted-only"
 comm -12 "$work/emitted" "$work/tree" > "$work/common"
 comm -23 "$work/in-tree-only" "$work/allowed" > "$work/stale"
 comm -12 "$work/emitted" "$work/allowed" > "$work/claimed-but-emitted"
-comm -13 "$work/tree" "$work/allowed" > "$work/claimed-but-absent"
+# A NAMED PATH THAT MATCHES NOTHING THE GATE JUDGES is reported for the reason
+# it matches nothing, not as a missing file: an entry .gitignore excludes was
+# never judged here in the first place, so the line excuses nothing.
+comm -12 "$work/allowed" "$work/ignored" > "$work/claimed-but-ignored"
+comm -13 "$work/tree" "$work/allowed" | comm -23 - "$work/claimed-but-ignored" > "$work/claimed-but-absent"
 
 : > "$work/differ"
 while IFS= read -r path; do
@@ -115,6 +126,13 @@ if [ -s "$work/claimed-but-absent" ]; then
 	printf 'STALE EXCEPTION — %s named path(s) that the tree does not carry at all:\n' "$(count "$work/claimed-but-absent")"
 	show "$work/claimed-but-absent"
 	printf '  drop the line from %s.\n' "${exceptions:-test/generated-tree/not-emitted}"
+fi
+
+if [ -s "$work/claimed-but-ignored" ]; then
+	fail=1
+	printf 'STALE EXCEPTION — %s named path(s) that .gitignore excludes:\n' "$(count "$work/claimed-but-ignored")"
+	show "$work/claimed-but-ignored"
+	printf '  drop the line from %s: the gate never judges an ignored path, so the exception excuses nothing.\n' "${exceptions:-test/generated-tree/not-emitted}"
 fi
 
 if [ -s "$work/claimed-but-emitted" ]; then

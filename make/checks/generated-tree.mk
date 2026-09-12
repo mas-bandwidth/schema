@@ -11,7 +11,8 @@
 # belong in `make test` — a gate nobody has seen go red is a decoration.
 
 GENERATED_TREE_CONTROLS := changed stale retired-rule missing \
-	exception-absent exception-emitted exception-honoured ignored clean
+	exception-absent exception-emitted exception-ignored exception-honoured \
+	ignored clean
 
 .PHONY: generated-tree-negative-controls $(GENERATED_TREE_CONTROLS:%=generated-tree-control-%)
 

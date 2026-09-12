@@ -62,6 +62,13 @@ exception-emitted)
 	printf 'package examples\n\nconst A = 1\n' > "$emitted/go/ATable.go"
 	printf 'generated/go/ATable.go  # claimed as wiring\n' > "$list"
 	expected='STALE EXCEPTION — 1 named path(s) this compiler DOES emit' ;;
+exception-ignored)
+	# An exception may not name a path .gitignore excludes: the gate never
+	# judges such a path, so the line excuses nothing and is one more way the
+	# list rots. It must red for THAT reason and not as a path that is missing.
+	: > "$tree/go/.stamp"
+	printf 'generated/go/.stamp  # claimed as wiring\n' > "$list"
+	expected='STALE EXCEPTION — 1 named path(s) that .gitignore excludes' ;;
 exception-honoured)
 	# GREEN: tracked build wiring that is genuinely not generator output, named
 	# with its reason — the one shape that may be in the tree and not emitted.
