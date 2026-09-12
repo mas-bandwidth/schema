@@ -715,8 +715,13 @@ public final class Main {
             // — a hash the lineage holds whose layout bytes differ — is
             // layout_malformed, and the versioning harness's
             // hash_known_bytes_differ row is where it is asserted.
+            // The failure says WHAT IT GOT, the way checkForm above does. A
+            // refusal gate that prints only its own sentence tells a reader
+            // that the reason was wrong and not which reason it was, and the
+            // first platform to disagree is the one that needs the answer.
             check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
-                    "REFUSED BY NAME: a header hash no lineage entry holds");
+                    "REFUSED BY NAME: a header hash no lineage entry holds"
+                            + " (got n=" + n + " refused=" + r.refused + " reason=" + r.reason + ")");
             check(!r.malformed, "a lying header is a refusal and never damage");
         }
 

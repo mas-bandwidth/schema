@@ -151,13 +151,22 @@ jobs:
         run: go vet ./...
 
       # No SERIALIZE* overrides: the Makefile defaults already point at the
-      # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
-      # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless. DART, JAVA/JAVAC, ELIXIR/MIX and NODE likewise default to the
-      # repo-local dist/ toolchains; on CI setup-dart, setup-java, setup-node and
-      # setup-beam put the pinned versions on PATH.
+      # sibling layout cloned above. DART, JAVA/JAVAC, ELIXIR/MIX and NODE
+      # default to the repo-local dist/ toolchains; on CI setup-dart,
+      # setup-java, setup-node and setup-beam put the pinned versions on PATH.
+      #
+      # AND NO RUSTUP_BIN, which this step used to point at /usr/bin. make
+      # PREPENDS $(RUSTUP_BIN) to PATH around the WHOLE recipe, and `make test`
+      # now reaches `tables-rust-versioning` through `test-rust` — a GO TEST
+      # that shells out to cargo. /usr/bin in front put the ubuntu image's own
+      # go 1.24 ahead of the 1.26 actions/setup-go installed, which is the red
+      # run 34600421804 watched on the fast lane. The make default is a
+      # homebrew keg that does not exist on a runner: prepending a directory
+      # that is not there costs nothing, and cargo resolves out of the
+      # toolchain the rust setup step installed. internal/ci's
+      # TestNoWorkflowShadowsTheGoToolchain holds it.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -276,7 +285,7 @@ jobs:
           elixir-version: '1.20.4'
 
       - name: ${{ matrix.target }}
-        run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make "${{ matrix.target }}" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
@@ -379,7 +388,7 @@ jobs:
       # built — cheap enough to repeat per leg rather than invent a narrower
       # target with different semantics.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
@@ -535,7 +544,7 @@ jobs:
           status=0
           # shellcheck disable=SC2086
           make -k $targets \
-            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
             2>&1 | tee controls.log || status=1
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."

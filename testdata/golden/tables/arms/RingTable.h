@@ -2361,6 +2361,20 @@ inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 // technique; a move anchored OUTSIDE the run is not the technique, it is a
 // defect — it clobbers whatever field sits in front of the destination and it
 // reads past the record body.
+// THE ROOM LEFT IN THE READER'S RECORD, AND IT IS THE RUN'S BOUND. The plan
+// already guarantees it — a destination is THIS build's own storage offset and
+// a run's size is min( theirs, mine ) — but a guarantee the compiler cannot
+// follow is one it must assume the worst about: gcc 13 inlines the run copy,
+// keeps only n <= 64 from the branch it is in, and calls the tail move out of
+// bounds of a 32-byte record (#981). Saying the bound HERE, at the one place
+// both runs are handed their length, is what makes it visible — and it is a
+// min against a constant, branch-free, not a warning switched off.
+TABLE_FIXED_INLINE uint32_t TableFixedRoom( uint32_t at, uint32_t n, uint32_t bytes )
+{
+    const uint32_t room = at < bytes ? bytes - at : 0u;
+    return n < room ? n : room;
+}
+
 TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -2417,14 +2431,14 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
-                             const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+                             const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst, uint32_t dst_bytes,
                              int32_t & clamped, int32_t & widened )
 {
     switch ( p.op )
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyRun( dst + p.dst, src + p.src, TableFixedRoom( p.dst, p.size, dst_bytes ) );
             break;
         }
         case kTableFixedCount:
@@ -2443,7 +2457,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            TableFixedCopyRun( dst + p.aux, src + p.src + 4, TableFixedRoom( p.aux, p.size, dst_bytes ) );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -2528,7 +2542,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
-                           const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+                           const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst, uint32_t dst_bytes,
                            TableReport * report )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
@@ -2538,14 +2552,14 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, clamped, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, dst_bytes, clamped, widened );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
         if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
         if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, dst_bytes, clamped, widened );
     }
     report->clamped += clamped;
     report->widened += widened;
@@ -10184,7 +10198,7 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], (uint32_t) sizeof( Node ), report );
         TableFixedClampKnownRanges( NodeFixedKnownRanges[lineage_at], NodeFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;

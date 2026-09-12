@@ -530,6 +530,33 @@ jobs:
       # THE TWO GATES. The target names are the tree's own — the same ones
       # `make test` and ci-full.yml run — so a leg that renames a gate renames
       # it in one place and this row follows.
+      #
+      # AND THE OVERRIDES ARE THE ONES ci-full.yml PASSES, NOT THE ONES
+      # test/conformance/<leg>/ci.json PASSES, and the difference cost this
+      # lane its first red (run 34600421804, the rust row on PR #949): the
+      # rust row here was written with `RUSTUP_BIN=/usr/bin`, which is what the
+      # conformance registry hands the CONFORMANCE leg — correct there, where
+      # every target it names is a `cargo build`. But `tables-rust-versioning`
+      # is A GO TEST that shells out to cargo (make/rust.mk:309), and make
+      # prepends $(RUSTUP_BIN) to PATH around the whole recipe. /usr/bin is
+      # where the runner image keeps its OWN go — 1.24.13 — so prepending it
+      # put that Go in front of the 1.26 actions/setup-go had just installed,
+      # and the gate died before asserting anything:
+      #
+      #   go: go.mod requires go >= 1.26 (running go 1.24.13; GOTOOLCHAIN=local)
+      #   make: *** [make/rust.mk:309: tables-rust-versioning] Error 1
+      #
+      # So the rust row hands make THE DIRECTORY OF THE CARGO ALREADY ON PATH,
+      # `$(dirname "$(command -v cargo)")`, and never an image directory:
+      # on the hosted fallback that is ~/.cargo/bin, the toolchain the
+      # `dtolnay/rust-toolchain` step above installed and nothing else; on the
+      # Studio it is the runner's own /opt/homebrew/bin, which its `.path`
+      # already carries, so prepending it changes nothing and go stays the
+      # go it was. (ci-full.yml's rust versioning step passes no RUSTUP_BIN at
+      # all and leans on the make default, a homebrew keg that is absent on a
+      # hosted runner and harmless to prepend; either spelling keeps the
+      # image's own toolchain out of the front of PATH.) internal/ci's
+      # TestNoWorkflowShadowsTheGoToolchain keeps it that way.
       - name: the ${{ matrix.leg }} leg's fixed form and versioning rows
         run: |
           set -euo pipefail

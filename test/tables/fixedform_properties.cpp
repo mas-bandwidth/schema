@@ -225,7 +225,7 @@ struct TAG##Codec \
     static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
     { NS::TableFixedFillRun( f, n, defaults, d ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
-    { NS::TableFixedRun( p, n, g, s, d, r ); } \
+    { NS::TableFixedRun( p, n, g, s, d, (uint32_t) sizeof( T ), r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
     static uint64_t get64( const uint8_t * b ) { return NS::TableFixedGet64( b ); } \
     static uint64_t hash_of( const uint8_t * b, int64_t n ) { return NS::TableFixedHashOf( b, n ); } \
@@ -270,7 +270,7 @@ struct TAG##Codec \
     static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
     { NS::TableFixedFillRun( f, n, defaults, d ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
-    { NS::TableFixedRun( p, n, g, s, d, r ); } \
+    { NS::TableFixedRun( p, n, g, s, d, (uint32_t) sizeof( T ), r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
     static uint64_t get64( const uint8_t * b ) { return NS::TableFixedGet64( b ); } \
     static uint64_t hash_of( const uint8_t * b, int64_t n ) { return NS::TableFixedHashOf( b, n ); } \

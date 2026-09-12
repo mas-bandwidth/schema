@@ -687,7 +687,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), (uint32_t) sizeof( %s ), report );\n", st.Name)
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). */\n")

@@ -987,6 +987,20 @@ static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64
    technique; a move anchored OUTSIDE the run is not the technique, it is a
    defect — it clobbers whatever field sits in front of the destination and it
    reads past the record body. */
+/* THE ROOM LEFT IN THE READER'S RECORD, AND IT IS THE RUN'S BOUND. The plan
+   already guarantees it — a destination is THIS build's own storage offset and
+   a run's size is min( theirs, mine ) — but a guarantee the compiler cannot
+   follow is one it must assume the worst about: gcc 13 inlines the run copy,
+   keeps only n <= 64 from the branch it is in, and calls the tail move out of
+   bounds of a 32-byte record (#981). Saying the bound HERE, at the one place
+   both runs are handed their length, is what makes it visible — and it is a
+   min against a constant, branch-free, not a warning switched off. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE uint32_t table_fixed_room( uint32_t at, uint32_t n, uint32_t bytes )
+{
+    const uint32_t room = at < bytes ? bytes - at : 0u;
+    return n < room ? n : room;
+}
+
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_copy_run( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -1049,14 +1063,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_copy_run( uint8_
    force-inline has done its work. */
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const TableFixedEntry * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
-                                                      uint8_t * SCHEMA_TABLE_RESTRICT dst,
+                                                      uint8_t * SCHEMA_TABLE_RESTRICT dst, uint32_t dst_bytes,
                                                       int32_t * clamped, int32_t * widened )
 {
     switch ( p->op )
     {
         case kTableFixedCopy:
         {
-            table_fixed_copy_run( dst + p->dst, src + p->src, p->size );
+            table_fixed_copy_run( dst + p->dst, src + p->src, table_fixed_room( p->dst, p->size, dst_bytes ) );
             break;
         }
         case kTableFixedCount:
@@ -1075,7 +1089,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
-            table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
+            table_fixed_copy_run( dst + p->aux, src + p->src + 4, table_fixed_room( p->aux, p->size, dst_bytes ) );
             if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
@@ -1152,7 +1166,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
    reading anybody else's. */
 static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
-                                           uint8_t * SCHEMA_TABLE_RESTRICT dst,
+                                           uint8_t * SCHEMA_TABLE_RESTRICT dst, uint32_t dst_bytes,
                                            TableReport * report )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
@@ -1168,14 +1182,14 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &clamped, &widened );
+        table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, dst_bytes, &clamped, &widened );
     }
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
         if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
         if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
-        table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
+        table_fixed_apply( p, (const uint8_t *) plan, src, dst, dst_bytes, &clamped, &widened );
     }
     report->clamped += clamped;
     report->widened += widened;
@@ -3767,7 +3781,7 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), (uint32_t) sizeof( FixedTable ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). */
         schema_bench_fixed_table_fixed_clamp_( values + k, report );

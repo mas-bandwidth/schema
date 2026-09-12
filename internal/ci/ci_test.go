@@ -333,3 +333,106 @@ func gitLsFiles(t *testing.T, root, dir string) []string {
 	}
 	return paths
 }
+
+// pathPrependingMakeVars DISCOVERS, from the make includes themselves, every
+// variable whose value a recipe prepends to PATH — `PATH="$(RUSTUP_BIN):$$PATH"`
+// and its kind. It is discovered rather than listed because the set grows with
+// the legs: a tenth language that hands its toolchain in the same way lands in
+// this gate with no edit here.
+func pathPrependingMakeVars(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths = append(paths, filepath.Join(root, "Makefile"))
+	prepend := regexp.MustCompile(`PATH="\$\(([A-Z_][A-Z0-9_]*)\):`)
+	out := map[string]bool{}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			t.Fatal(err)
+		}
+		for _, m := range prepend.FindAllStringSubmatch(string(data), -1) {
+			out[m[1]] = true
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("no PATH-prepending make variable found under make/ — this gate would pass over an empty set")
+	}
+	return out
+}
+
+// theImagesOwnToolchainDirs are the directories a GitHub runner image keeps its
+// own, older compilers in. They are on PATH already and BEHIND what
+// actions/setup-go and its siblings install, which is the whole point of a
+// setup step: the installed toolchain goes in front.
+var theImagesOwnToolchainDirs = []string{"/usr/bin", "/bin", "/usr/local/bin", "/usr/sbin"}
+
+// TestNoWorkflowShadowsTheGoToolchain refuses a workflow that hands a make
+// target a toolchain directory make will PREPEND TO PATH, when that directory
+// is one of the runner image's own bin directories.
+//
+// THE RED THIS GATE COMES FROM (run 34600421804, the fast lane's rust row on
+// PR #949). ci-fast.yml's leg-gate ran
+//
+//	make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN=/usr/bin
+//
+// copying the override out of test/conformance/rust/ci.json, where it is
+// correct: every target that row names is a `cargo build`, and the image's
+// cargo is the one it wants. But make prepends $(RUSTUP_BIN) to PATH around the
+// WHOLE recipe, and `tables-rust-versioning` is a GO TEST that shells out to
+// cargo — so /usr/bin went in front of the Go 1.26 actions/setup-go had just
+// installed, the image's own go 1.24.13 answered, and the gate died on
+// `go.mod requires go >= 1.26` without asserting one row of §5. A gate that
+// cannot run is indistinguishable from a gate nobody wrote.
+//
+// THE RULE, THEN: a workflow names a toolchain by installing it, never by
+// prepending the image's own bin directory over what it installed. Where a leg
+// genuinely needs nothing but the image's tool, the make default — a homebrew
+// keg that does not exist on a runner — already resolves it: prepending a
+// directory that is not there costs nothing and leaves every setup step's
+// toolchain in front, which is what ci-full.yml's rust versioning step does.
+//
+// THE GATE WATCHES EVERY WORKFLOW, which is the second half of the fix the
+// commit above named and left open. The same override was handed to whole
+// suites in certify.yml's `test` and `inline-gate` jobs and to ci-full.yml's
+// negative-control groups, written when the only recipes that read it were
+// `cargo` lines. `make test` now reaches `tables-rust-versioning` through
+// `test-rust` and a control group's targets come out of
+// tools/negativecontrols, so both carried exactly the shadowing this gate
+// names, on a runner whose /usr/bin holds an older go. All three are gone, and
+// the glob is the whole directory rather than one lane so the next workflow
+// that copies the override is red where it is written.
+func TestNoWorkflowShadowsTheGoToolchain(t *testing.T) {
+	root := repoRoot(t)
+	vars := pathPrependingMakeVars(t, root)
+	names := make([]string, 0, len(vars))
+	for name := range vars {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	watched := 0
+	for name, data := range workflows(t, root) {
+		watched++
+		for _, l := range lines(name, data) {
+			for _, v := range names {
+				for _, dir := range theImagesOwnToolchainDirs {
+					if !strings.Contains(l.full, v+"="+dir) {
+						continue
+					}
+					t.Errorf("%s: %q hands make %s=%s, which make PREPENDS to PATH — that puts the image's own toolchain in front of every setup step's (run 34600421804: go 1.24.13 shadowed the installed 1.26 and the rust versioning gate died before asserting anything). Install the toolchain and leave the make default alone.",
+						l.where, l.full, v, dir)
+				}
+			}
+		}
+	}
+	if watched == 0 {
+		t.Fatal("no workflow found under .github/workflows — this gate would pass over an empty set")
+	}
+	t.Logf("PATH-prepending make variables watched: %s", strings.Join(names, " "))
+}
