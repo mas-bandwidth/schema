@@ -1,2 +1,2 @@
-challenge/*.hi
-challenge/*.o
+*.hi
+*.o
