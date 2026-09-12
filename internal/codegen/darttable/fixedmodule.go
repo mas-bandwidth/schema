@@ -340,8 +340,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		if e.note != "" {
 			note = " // " + e.note
 		}
-		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
-			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, note)
+		g.pf("  %d, %d, %d, %d, %d, %d, %d, %d, %d,%s\n",
+			e.op, e.src, e.dst, e.size, e.aux, e.guard, e.arg, e.meta, e.argw, note)
 	}
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)

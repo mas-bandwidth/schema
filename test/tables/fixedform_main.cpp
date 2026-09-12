@@ -1872,10 +1872,13 @@ static void plan_partition_case()
 // W16: AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG
 // (docs/FIXED-FORM-ALGORITHM.md §4.1). A union's guard is stamped over
 // EVERYTHING its arm produced, and a nested union's own arm selection must
-// survive that stamp. So every entry an INNER union contributes — its own tag
-// byte included — is guarded by the OUTER tag's byte and never by the inner
-// one, or a record whose outer tag selects the other arm would run the inner
-// arm's entries over storage that arm does not own. The #864 read found JS's
+// SURVIVE that stamp — so the two tags are CONJOINED (§5.8 row 6): an inner
+// arm's entries answer to the inner tag on the first lane and to the OUTER tag
+// on the second, and they run only when BOTH hold their ordinal. Neither half
+// stands alone: under the outer tag alone every inner arm fires the moment the
+// outer one rides, and under the inner tag alone a record whose outer tag
+// selects the other arm runs the inner arm's entries over storage that arm does
+// not own. The #864 read found JS's
 // inner union overwriting the outer guard; FU1/FU2 are the C leg's pair and are
 // not this shape. FH1/FH2 on the tip are the compiled pair (owed 7); FG1 is the
 // identity-plan fixture this PR carries.
@@ -1885,15 +1888,18 @@ static void plan_partition_case()
 // what makes the assertion sharp.
 static void nested_union_case()
 {
-    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag, and
-    //    not one to the inner tag's own byte.
+    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag — on
+    //    the first lane when it is the outer union's own, on the SECOND when it
+    //    belongs to an arm inside an arm — and not one answers to the inner tag
+    //    alone.
     uint32_t outer_tag_at = 0xFFFFFFFFu;
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
         if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = e.guard; }
-        check( e.guard == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE tag" );
+        const uint32_t outer = e.guard2 == tblfg1::kTableFixedNoGuard ? e.guard : e.guard2;
+        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = outer; }
+        check( outer == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE OUTER tag" );
     }
     check( outer_tag_at != 0xFFFFFFFFu, "W16: the plan really has guarded entries" );
     // the inner union's OWN tag rides as a guarded entry, whose SOURCE is the
@@ -1906,9 +1912,9 @@ static void nested_union_case()
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
         if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = e.arg; }
-        check( e.guard != e.src || e.src == outer_tag_at,
-               "W16: an inner entry is never guarded by the INNER tag's own byte" );
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = (uint8_t) e.arg; }
+        check( e.guard == outer_tag_at || e.guard2 == outer_tag_at,
+               "W16: an inner entry answers to the inner tag AND the outer one, never the inner alone" );
     }
     check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
 
@@ -1921,7 +1927,7 @@ static void nested_union_case()
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
-        if ( e.guard == tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        if ( e.guard != outer_tag_at || e.guard2 != tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
         other_arm_dst = e.dst;
     }
     check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
@@ -1981,20 +1987,13 @@ static void nested_union_case()
     // 3. THE OTHER WAY: the outer tag selects A, and the inner union's arm lands
     //    whole — the stamp does not cost the inner selection.
     //
-    //    AND THIS HALF IS BLUNT, and a different schema does not sharpen it. The
-    //    inner union's two arms are each a single int32, so the plan's two inner
-    //    arm entries are the same copy of the same source bytes to the same
-    //    destination: a read that ran BOTH is indistinguishable from one that
-    //    ran only the selected arm. Giving the arms different SHAPES was tried
-    //    (int16 + int8 against int32) and changes nothing — the stamp leaves both
-    //    inner arms guarded by the OUTER tag alone, so both entries still run,
-    //    and because each copies the same record offsets to the same storage
-    //    offsets the overlapping bytes are IDENTICAL and the selected arm still
-    //    reads back whole. Only an arm whose storage image maps the wire to
-    //    DIFFERENT offsets could separate the two, and that is a finding for the
-    //    card (an inner arm selection that is not guarded by the inner tag) and
-    //    not something this fixture can assert. What the case below holds is
-    //    that the inner selection ARRIVES.
+    //    THIS HALF WAS BLUNT WHILE THE STAMP REPLACED THE INNER GUARD: both
+    //    inner arms ran whenever the outer one rode, and because each copied the
+    //    same record offsets to the same storage offsets the overlapping bytes
+    //    were IDENTICAL and the selected arm read back whole either way. The
+    //    conjunction (§5.8 row 6) ends that: part 1 above is now the assertion
+    //    that the inner tag is a condition of its own, and what the case below
+    //    holds is that the inner selection ARRIVES through both conditions.
     {
         tblfg1::FhRoot one;
         tblfg1::FhRootReset( one );

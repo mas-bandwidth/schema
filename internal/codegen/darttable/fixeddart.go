@@ -830,8 +830,15 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// AN ORDINAL PAST THE LAST VARIANT IS None (§3.4): the ordinal is
 			// the variant's POSITION IN THE LAYOUT, from 1, and the layout
 			// lists this reader's variants and no more. Past them it lands 0
-			// and counts one clamp, which is where the plan's own remap lands
-			// it too.
+			// and counts one clamp.
+			//
+			// THIS TEST ONLY EVER SEES THE IDENTITY PLAN'S BYTES. On a
+			// compiled plan the `ordinal` op has already landed a forged value
+			// as None before this line runs, so `> n` cannot trip and the
+			// count has to be made THERE — it is (fixedruntime.go, the ordinal
+			// case). §5.4 asks for `clamped` on BOTH plans, and the two paths
+			// now each make their own; the note that used to stand here said
+			// this test covered both, which was false.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
 				g.pf("%s  %s = 0;\n", ind, expr)

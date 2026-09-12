@@ -34,7 +34,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refLayoutLen = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash      = uint64(0x6237c1dc195f9ec9)
+		refHash      = uint64(0x5f1320927e9ad910)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {
@@ -800,4 +800,53 @@ func loadUnit(t *testing.T, paths ...string) *ir.Unit {
 		t.Fatalf("check: %v", errs)
 	}
 	return u
+}
+
+// TestFixedGuardIsComparedAtItsFullWidth is §5.2's THE GUARD'S WIDTH. A union
+// tag is one, two, four or eight bytes, `argw` is that width and the guard is
+// compared at ALL of it: tested at its FIRST BYTE, a foreign tag of 0x0101 —
+// an ordinal no arm of this build names — fires arm 1 and runs that arm's
+// entries over a stranger's record. So the width is a LANE of its own (meta
+// already carries a widen's width and sign and a text entry's flavour), the
+// read loop loads the tag through it, and the coalescer may not join two
+// entries whose guards are of different widths.
+func TestFixedGuardIsComparedAtItsFullWidth(t *testing.T) {
+	src := fixedRuntime
+	if strings.Contains(src, "source[at + guard] != plan[b + TableFixedLane.arg]") {
+		t.Error("the guard is compared at ONE BYTE: a two-byte foreign tag of 0x0101 fires arm 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, THE GUARD'S WIDTH)")
+	}
+	if !strings.Contains(src, "static const int argW = 8;") {
+		t.Error("the plan has no width lane for the guard, so the width a union stamped is not on the entry")
+	}
+	if !strings.Contains(src, "tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argW])") {
+		t.Error("the read loop does not load the tag at the entry's own argW width")
+	}
+	// AND THE IDENTITY PLAN CARRIES IT TOO: ir.TableFixedBuildPlan supplies
+	// ArgW for a compiled plan, and this leg's own baked plan must state the
+	// same fact, or this build's own records are the ones read at one byte.
+	u := unitFrom(t, `package probe
+union Shape
+{
+    a int32
+    b float32
+}
+fixed table Holder
+{
+    s Shape
+}
+`)
+	plan := fixedIdentityPlan(u.Tables["Holder"])
+	armed := 0
+	for _, e := range plan {
+		if e.guard == fixedNoGuard {
+			continue
+		}
+		armed++
+		if e.argw != 1 {
+			t.Errorf("an arm entry under a one-byte tag carries argw %d", e.argw)
+		}
+	}
+	if armed == 0 {
+		t.Fatal("the fixture's union gives the identity plan guarded entries")
+	}
 }

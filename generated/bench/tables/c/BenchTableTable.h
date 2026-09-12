@@ -9306,7 +9306,7 @@ static SCHEMA_UNUSED void schema_benchtable_table_mixed_fixed_clamp_( TableMixed
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t table_mixed_fixed_body_bytes = 1224;
 static SCHEMA_UNUSED const int64_t table_mixed_fixed_record_bytes = 8 + 1224; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t table_mixed_fixed_hash = 0x66b51fa9ec65d701ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
+static SCHEMA_UNUSED const uint64_t table_mixed_fixed_hash = 0x301b55c58e640302ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -9558,7 +9558,7 @@ static SCHEMA_UNUSED const int32_t table_mixed_fixed_cover_count = 23;
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const TableFixedKnownLayout table_mixed_fixed_known[] = {
-    { 0x66b51fa9ec65d701ull, table_mixed_fixed_layout, (int64_t) sizeof( table_mixed_fixed_layout ), 1232 },
+    { 0x301b55c58e640302ull, table_mixed_fixed_layout, (int64_t) sizeof( table_mixed_fixed_layout ), 1232 },
 };
 static SCHEMA_UNUSED const int32_t table_mixed_fixed_known_count = 1;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an

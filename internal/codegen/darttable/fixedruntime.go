@@ -68,11 +68,11 @@ abstract final class TableFixedOp {
   static const int textBytes = 3;
 }
 
-/// A PLAN ENTRY is eight int32 lanes of one flat Int32List. A flat list of a
+/// A PLAN ENTRY is nine int32 lanes of one flat Int32List. A flat list of a
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 8;
+  static const int lanes = 9;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -81,6 +81,10 @@ abstract final class TableFixedLane {
   static const int guard = 5;
   static const int arg = 6;
   static const int meta = 7;
+  // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8, and the guard is
+  // compared at ALL of them. It is its own lane because meta already carries a
+  // widen's width and sign and a text entry's flavour (§5.2, THE GUARD'S WIDTH).
+  static const int argW = 8;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -680,6 +684,21 @@ final class TableFixedPlan {
   final Int32List remap;
   int remapUsed = 0;
 
+  /// THE CURRENT UNION'S TAG WIDTH, stamped onto every entry the walk pushes
+  /// beneath it (§5.2, THE GUARD'S WIDTH). One outside a union, and the union
+  /// case saves it, sets its own and restores it, so a nested union's arms carry
+  /// their OWN tag's width.
+  int argw = 1;
+
+  /// THE TWO-PASS SPLIT (§5.2, §5.9 #42). The walk runs TWICE — unguarded
+  /// entries first, guarded ones second — and split is the index the guarded
+  /// half starts at. pass is which half the walk is keeping, tested at the
+  /// PUSH so a kind that allocates from the pool before it pushes does not
+  /// spend it twice. The split is what puts a union's unguarded None tag AHEAD
+  /// of the arm that overwrites it; the coalescer never merges across it.
+  int pass = 0;
+  int split = 0;
+
   /// an enum's remap, built here and then laid down; a scratch of the plan and
   /// never of the loop
   final Int32List remapScratch = Int32List(256);
@@ -881,6 +900,27 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
   return out;
 }
 
+/// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose LOW
+/// BYTE happens to be 1 is not arm 1: it is an ordinal this build has no arm
+/// for, and reading only the first byte let a foreign tag of 0x0101 run arm 1's
+/// entries over a stranger's record (§5.2, THE GUARD'S WIDTH; §7 fix 12).
+/// ArgW is clamped to 1..8 at both ends and ZERO READS AS ONE, because one is
+/// the width a tag had when this lane did not exist, so a plan laid down before
+/// it still reads.
+int tableFixedTagAt(Uint8List source, int at, int argw) {
+  var w = argw;
+  if (w <= 0) {
+    w = 1;
+  } else if (w > 8) {
+    w = 8;
+  }
+  var v = 0;
+  for (var i = 0; i < w; i++) {
+    v |= source[at + i] << (8 * i);
+  }
+  return v;
+}
+
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
 /// Which plan it is handed is the only thing that differs between reading this
 /// build's own record and reading anybody else's — the owner's ruling, which
@@ -907,9 +947,11 @@ void tableFixedRun(
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];
-    // an entry belonging to an ARM runs only under its own tag
+    // an entry belonging to an ARM runs only under its own tag, compared at
+    // ArgW bytes and never as a prefix
     if (guard != tableFixedNoGuard &&
-        source[at + guard] != plan[b + TableFixedLane.arg]) {
+        tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argW]) !=
+            plan[b + TableFixedLane.arg]) {
       continue;
     }
     final s = at + plan[b + TableFixedLane.src];
@@ -955,13 +997,23 @@ void tableFixedRun(
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
+        // AND THE ORDINAL IS UNSIGNED. A Dart int is 64-bit SIGNED, so an
+        // eight-byte ordinal with the high bit set — 0x8000000000000000 — comes
+        // out of this loop NEGATIVE, and a signed 'raw <= table[0]' then passes
+        // it straight into the remap as a NEGATIVE INDEX: a RangeError thrown
+        // out of the read loop at hostile bytes, which is the one thing the
+        // forgery oracle refuses (§5.4, §5.9 #8). Any raw the WRITER could not
+        // have written — past its variant count, the negative case included —
+        // is None AND COUNTED, on this plan exactly as on the identity one.
         var raw = 0;
         for (var k = 0; k < size; k++) {
           raw |= source[s + k] << (8 * k);
         }
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
-        if (raw != 0 && raw <= remap[remapAt]) {
+        if (raw < 0 || raw > remap[remapAt]) {
+          report.clamped++;
+        } else if (raw != 0) {
           landed = remap[remapAt + raw];
         }
         final ordinalWidth = plan[b + TableFixedLane.meta] & 0xff;
@@ -1001,6 +1053,19 @@ void tableFixedRun(
         final value = plan[b + TableFixedLane.aux];
         for (var k = 0; k < size; k++) {
           image[d + k] = (value >>> (8 * k)) & 0xff;
+        }
+        // AN UNGUARDED None CONST CARRIES THE WRITER'S ARM COUNT in meta: a tag
+        // PAST that set lands None — already written, just above — and COUNTS,
+        // which is the same landing the identity plan's decode gives it (§5.4).
+        // THE TAG IS READ UNSIGNED: a Dart int is 64-bit signed, so an
+        // eight-byte tag with the high bit set is negative here and a signed
+        // '>' would pass it as if it named an arm.
+        final arms = plan[b + TableFixedLane.meta];
+        if (value == 0 && arms != 0 && guard == tableFixedNoGuard) {
+          final raw = tableFixedTagAt(source, s, size);
+          if (raw < 0 || raw > arms) {
+            report.clamped++;
+          }
         }
         break;
       case TableFixedOp.present:
@@ -1073,6 +1138,14 @@ abstract final class TableFixedCompiler {
   static bool signedKind(int kind) =>
       (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
 
+  /// THE TWO-PASS SPLIT (§5.2, §5.9 #42): pass 0 keeps the UNGUARDED entries,
+  /// pass 1 the guarded ones. A kind that ALLOCATES from the pool before it
+  /// pushes — the enum, whose remap table is laid down — must test the half
+  /// FIRST, or the discarded pass still spends the pool and a plan that fits
+  /// comes back plan_too_large.
+  static bool keeping(TableFixedPlan plan, int guard) =>
+      plan.pass == 0 ? guard == tableFixedNoGuard : guard != tableFixedNoGuard;
+
   static void push(
     TableFixedPlan plan,
     int op,
@@ -1084,6 +1157,11 @@ abstract final class TableFixedCompiler {
     int arg,
     int meta,
   ) {
+    // THE HALF IS TESTED AT THE PUSH, so the two walks push the same pairs and
+    // each keeps only its own.
+    if (!keeping(plan, guard)) {
+      return;
+    }
     if (plan.count >= plan.capacity) {
       plan.overflow = true;
       return;
@@ -1098,6 +1176,8 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.guard] = guard;
     e[b + TableFixedLane.arg] = arg;
     e[b + TableFixedLane.meta] = meta;
+    // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
+    e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
     plan.count++;
   }
 
@@ -1314,8 +1394,46 @@ abstract final class TableFixedCompiler {
       case 15: // a union: the tag, remapped, then each arm matched by id
         final theirTag = theirs.tagBytes(ti);
         final myTag = mine.tagBytes(mi);
+        // THE GUARD IS THE WRITER'S TAG AND IS COMPARED AT ITS WIDTH (§5.2).
+        final savedArgw = plan.argw;
+        plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
         final theirArms = theirs.children(ti);
         final myArms = mine.children(mi);
+        // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag value below
+        // is written under THEIR tag's guard, so a record naming an arm this
+        // build does not have — or a tag past the writer's arm set entirely —
+        // would land NO TAG AT ALL, and the prefill cannot answer for it
+        // because those bytes are named by the guarded entries. The image is
+        // reused record to record, so what stood there was the PREVIOUS
+        // record's arm. The plan is partitioned unguarded-first, so this is
+        // overwritten by the arm that matches and stands when none does. It is
+        // the one byte this form writes twice, and it is the compiled path's
+        // alone.
+        //
+        // Nested: None answers to the OUTER tag at the OUTER width. push stamps
+        // plan.argw, which is the INNER tag's width by now, so the outer width
+        // is restored for this one entry.
+        //
+        // meta CARRIES THE WRITER'S ARM COUNT for this one entry — the plan
+        // is private to a reader and not a wire structure, so the lane costs
+        // nothing — and the read loop counts a clamp for a tag past that set
+        // (§5.4: a hostile tag is counted on BOTH plans).
+        final innerArgw = plan.argw;
+        if (guard != tableFixedNoGuard) {
+          plan.argw = savedArgw <= 0 ? 1 : savedArgw;
+        }
+        push(
+          plan,
+          TableFixedOp.constant,
+          theirAt,
+          auxAt,
+          myTag,
+          0,
+          guard,
+          arg,
+          (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
+        );
+        plan.argw = innerArgw;
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1350,8 +1468,15 @@ abstract final class TableFixedCompiler {
           }
           myArm += mine.subtree(myArm);
         }
+        plan.argw = savedArgw;
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
+        // THE HALF IS TESTED BEFORE THE POOL SPENDS (§5.2, the two-pass split):
+        // layRemap allocates ahead of its push, so the discarded pass would
+        // spend the pool and a plan that fits would come back plan_too_large.
+        if (!keeping(plan, guard)) {
+          break;
+        }
         // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts 'widened'
         // (§5.2's EMIT, bill §12.7): the names did not move, the width did.
         if (theirSize < mySize) {
@@ -1444,17 +1569,21 @@ abstract final class TableFixedCompiler {
   /// THE COALESCER, and it is the only optimization a plan compiler performs:
   /// two neighbouring COPY entries whose source and destination both advance
   /// together are one entry. It is performed identically on both sides.
-  static void coalesce(TableFixedPlan plan) {
+  /// It runs ONCE PER HALF, from the index that half starts at: coalescing
+  /// ACROSS the split would put a guarded entry's bytes under an unguarded run
+  /// (§5.9 #42).
+  static void coalesce(TableFixedPlan plan, int from) {
     final e = plan.entries;
-    var out = 0;
-    for (var i = 0; i < plan.count; i++) {
+    var out = from;
+    for (var i = from; i < plan.count; i++) {
       final b = i * TableFixedLane.lanes;
-      if (out > 0) {
+      if (out > from) {
         final p = (out - 1) * TableFixedLane.lanes;
         if (e[p + TableFixedLane.op] == TableFixedOp.copy &&
             e[b + TableFixedLane.op] == TableFixedOp.copy &&
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
+            e[p + TableFixedLane.argW] == e[b + TableFixedLane.argW] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1585,11 +1714,33 @@ abstract final class TableFixedCompiler {
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.fillCount = 0;
+    plan.argw = 1;
+    // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING
+    // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per peer, so a second
+    // walk of the same pairs must not count them twice — the second report is
+    // quiet and thrown away.
+    plan.pass = 0;
     matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report);
+    coalesce(plan, 0);
+    plan.split = plan.count;
+    plan.pass = 1;
+    plan.argw = 1;
+    matchChildren(
+      plan,
+      0,
+      0,
+      0,
+      myDst,
+      0,
+      tableFixedNoGuard,
+      0,
+      TableFixedReport(),
+    );
+    coalesce(plan, plan.split);
+    plan.pass = 0;
     if (plan.overflow) {
       return -1;
     }
-    coalesce(plan);
     plan.fillCount = fills(
       plan.entries,
       plan.count,

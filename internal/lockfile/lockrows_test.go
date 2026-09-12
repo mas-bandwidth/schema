@@ -526,6 +526,36 @@ func TestLockRangeWidenAllows(t *testing.T) {
 	})
 }
 
+// ---- cfloat_res_refine / cfloat_res_coarsen / cfloat_range_widen ----
+//
+// A COMPRESSED FLOAT RIDES AS THE FLOAT in the fixed form (SPEC-TABLES §3.4),
+// so its min, max and resolution are DEFINITIONS: the range WIDENS like any
+// ranged scalar's, the resolution only REFINES — an old writer quantized to its
+// coarser step, and a finer reader lands those values exactly — and every other
+// move is refused.
+
+func TestLockCfloatResRefineAllows(t *testing.T) {
+	rowAllows(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.1"),
+		rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"), "Row")
+}
+
+func TestLockCfloatResCoarsenRefuses(t *testing.T) {
+	rowRefuses(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -1, max = 1, resolution = 0.1"),
+		"fixed table Row", "field aim", "resolution coarsened (0.01 -> 0.1)")
+}
+
+func TestLockCfloatRangeWidenAllows(t *testing.T) {
+	rowAllows(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -2, max = 2, resolution = 0.01"), "Row")
+}
+
+func TestLockCfloatRangeWidenRefuses(t *testing.T) {
+	rowRefuses(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -1, max = 0.5, resolution = 0.01"),
+		"fixed table Row", "field aim", "range narrowed", "[-1.0, 1.0]", "[-1.0, 0.5]")
+}
+
 // ---- range_added ----
 
 func TestLockRangeAddedRefuses(t *testing.T) {
