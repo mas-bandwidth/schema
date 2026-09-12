@@ -3,12 +3,14 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestCTableRuntimeNamesAreClaimed is the C leg's half of the §11 promise, and
@@ -438,4 +440,106 @@ fixed table RenderFrame
 			t.Errorf("the block header still spells %q", gone)
 		}
 	}
+}
+
+// TestCFixedFormLayoutIsIrsByteForByte is the C leg's half of the Rust test of
+// the same name (compiler/tablesrust_test.go), and it exists for the same
+// reason: the LAYOUT is §3.4's whole self-description and its fnv1a64 is the
+// eight bytes every record carries, so a backend whose layout differs anywhere
+// is a backend nobody reads — silently, as `no_layout`, which looks like a
+// deployment problem and is not one.
+//
+// THE ORACLE IS ir, because another backend is not an oracle. ir/fixedform.go
+// is the law — the constant size of every field, the pre-order walk, and the
+// hash over it, in one place because it produces BYTES — so the bytes THIS
+// emitter writes into `<snake>_fixed_layout[]` and `<snake>_fixed_hash` are
+// compared against ir's, per root, and the C++ backend is not in the room.
+func TestCFixedFormLayoutIsIrsByteForByte(t *testing.T) {
+	unit := unitFromSource(t, fixedFormSrc)
+	files, err := New().Generate(unit, "c", Options{})
+	if err != nil {
+		t.Fatalf("--lang c: %v", err)
+	}
+	text := join(files)
+	blocks, hashes := map[string]string{}, map[string]string{}
+	for _, m := range cFixedLayoutRe.FindAllStringSubmatch(text, -1) {
+		blocks[m[1]] = strings.Join(fixedByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range cFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	if len(blocks) == 0 {
+		t.Fatal("the C backend emitted no fixed-form layout at all for a unit of fixed tables — " +
+			"the scan, or the emitter, is what broke")
+	}
+	want := map[string]string{}
+	wantHash := map[string]string{}
+	for _, st := range ir.TableFixedRoots(unit) {
+		if !ir.TableFixedEmitted(unit, st) {
+			continue
+		}
+		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		hex := make([]string, 0, len(layout))
+		for _, b := range layout {
+			hex = append(hex, fmt.Sprintf("0x%02x", b))
+		}
+		key := cSnakeOf(st.Name)
+		want[key] = strings.Join(hex, " ")
+		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, st))
+	}
+	if len(want) == 0 {
+		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")
+	}
+	names := make([]string, 0, len(blocks))
+	for name := range blocks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		golden, ok := want[name]
+		if !ok {
+			t.Errorf("the C backend emits a fixed-form layout for %s and ir does not name it a fixed root — "+
+				"a port may carry fewer shapes than the law, never more", name)
+			continue
+		}
+		compared++
+		if golden != blocks[name] {
+			t.Errorf("%s's layout differs from ir's:\n  ir %s\n  c  %s", name, golden, blocks[name])
+		}
+		if wantHash[name] != hashes[name] {
+			t.Errorf("%s's fixed-form hash differs from ir's: ir %s, c %s — "+
+				"a record written against the law is `no_layout` to this port", name, wantHash[name], hashes[name])
+		}
+	}
+	if compared == 0 {
+		t.Fatal("no root was compared against ir at all")
+	}
+	for name := range want {
+		if _, ok := blocks[name]; !ok {
+			t.Errorf("ir names %s a fixed root and the C backend emits no layout for it", name)
+		}
+	}
+}
+
+var (
+	cFixedLayoutRe = regexp.MustCompile(`(?s)const uint8_t (\w+)_fixed_layout\[\] = \{(.*?)\};`)
+	cFixedHashRe   = regexp.MustCompile(`const uint64_t (\w+)_fixed_hash = (0x[0-9a-f]+)ull;`)
+)
+
+// cSnakeOf is the rule the C emitter names a table's runtime symbols by, spelled
+// here so the test does not borrow the emitter's own helper to check the
+// emitter — the same reason screamingOf is spelled beside the Rust test.
+func cSnakeOf(name string) string {
+	var b strings.Builder
+	for i, r := range name {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			b.WriteByte('_')
+		}
+		if r >= 'A' && r <= 'Z' {
+			r += 32
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

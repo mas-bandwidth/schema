@@ -400,6 +400,14 @@
       "dotnet": "pin"
     },
     {
+      "name": "c-versioning",
+      "when": "pull-request",
+      "why": "the C leg's §5 versioning gate's own control (docs/FIXED-FORM-ALGORITHM.md §5.9 #11, #39): it builds the C++ reference's byte corpus first and then compiles one probe binary per row under a go overlay, which is the same compile-heavy shape every other base-c-* group is in its own job for. It is the only control in this group because a group is a JOB, and this one's corpus build is not shared with any other control's.",
+      "targets": [
+        "tables-c-versioning-negative-control"
+      ]
+    },
+    {
       "name": "cs",
       "when": "pull-request",
       "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
