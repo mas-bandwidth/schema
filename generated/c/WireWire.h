@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0x2ad00ce4e6bbdc26 */
 
 #ifndef SCHEMA_EXAMPLE_WIREWIRE_H
 #define SCHEMA_EXAMPLE_WIREWIRE_H
@@ -1390,6 +1390,32 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_probe( serialize_r
         return 0;
     }
     if ( !serialize_read_compressed_float_precomputed( stream, &value->offset, 10000u, 14, 10.0f, -5.0f ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Writes CompressedCeiling. */
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_ceiling( serialize_write_stream_t * stream, const CompressedCeiling * value )
+{
+    if ( !serialize_write_compressed_float_precomputed( stream, value->ceiling, 8388609u, 24, 8.388609e+06f, 0.0f ) )
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/* Reads CompressedCeiling. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_ceiling( serialize_read_stream_t * stream, CompressedCeiling * value )
+{
+    /* fixed 24-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 24 )
+    {
+        return serialize_read_fail( stream );
+    }
+
+    if ( !serialize_read_compressed_float_precomputed( stream, &value->ceiling, 8388609u, 24, 8.388609e+06f, 0.0f ) )
     {
         return 0;
     }

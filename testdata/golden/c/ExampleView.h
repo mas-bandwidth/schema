@@ -355,6 +355,8 @@ static SCHEMA_UNUSED void block_reset( Block * value );
 static SCHEMA_UNUSED void schema_example_block_reset_raw_( void * storage );
 static SCHEMA_UNUSED void chat_reset( Chat * value );
 static SCHEMA_UNUSED void schema_example_chat_reset_raw_( void * storage );
+static SCHEMA_UNUSED void compressed_ceiling_reset( CompressedCeiling * value );
+static SCHEMA_UNUSED void schema_example_compressed_ceiling_reset_raw_( void * storage );
 static SCHEMA_UNUSED void compressed_probe_reset( CompressedProbe * value );
 static SCHEMA_UNUSED void schema_example_compressed_probe_reset_raw_( void * storage );
 static SCHEMA_UNUSED void default_arm_reset( DefaultArm * value );
@@ -626,6 +628,15 @@ static SCHEMA_UNUSED void schema_example_chat_reset_raw_( void * storage ) { cha
 
 extern const TableTypeInfo schema_example_chat_info_;
 static SCHEMA_UNUSED const TableTypeInfo * chat_table_type(void) { return &schema_example_chat_info_; }
+static SCHEMA_UNUSED void compressed_ceiling_reset( CompressedCeiling * value )
+{
+    value->ceiling = 0.0f;
+}
+
+static SCHEMA_UNUSED void schema_example_compressed_ceiling_reset_raw_( void * storage ) { compressed_ceiling_reset( (CompressedCeiling *) storage ); }
+
+extern const TableTypeInfo schema_example_compressed_ceiling_info_;
+static SCHEMA_UNUSED const TableTypeInfo * compressed_ceiling_table_type(void) { return &schema_example_compressed_ceiling_info_; }
 static SCHEMA_UNUSED void compressed_probe_reset( CompressedProbe * value )
 {
     value->boundary = 0.0f;

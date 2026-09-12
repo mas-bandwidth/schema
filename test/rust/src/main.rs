@@ -355,6 +355,29 @@ fn main() {
         check(out.offset == 142.0f32 / 10000.0f32 * 10.0f32 - 5.0f32, "offset reconstructs integer 142");
     }
 
+    // ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+    // steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+    // 8388609.0 and the float32 sum + 0.5 is a TIE that rounds half-to-even to
+    // 8388610 — one past the step count. The normative integer clamp keeps the
+    // index at 8388609, and all nine legs on the same bytes.
+    {
+        let mut input = CompressedCeiling::default();
+        input.ceiling = 8388609.0;
+
+        let mut buffer = [0u8; 64];
+        let mut ws = WriteStream::new(&mut buffer);
+        check_err(write_compressed_ceiling(&mut ws, &input), "write CompressedCeiling");
+        ws.flush();
+        let n = ws.bytes_processed() as usize;
+        golden_wire("compressed_ceiling", &buffer[..n]);
+
+        let mut out = CompressedCeiling::default();
+        let mut rs = ReadStream::new(&buffer, n);
+        // an unclamped index is REFUSED here
+        check_err(read_compressed_ceiling(&mut rs, &mut out), "read CompressedCeiling");
+        check(out.ceiling == 8388609.0f32, "ceiling reads back exactly max");
+    }
+
     // ---- specified defaults: new() carries them; the zero value stays zero ----
     {
         let sample = ProbeSample::new();

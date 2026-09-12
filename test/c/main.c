@@ -489,6 +489,34 @@ int main( void )
         }
     }
 
+    /* ---- CompressedCeiling: the integer-clamp boundary (SPEC 4.3) ----
+       steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+       8388609.0f and the float32 sum + 0.5f is a TIE that rounds half-to-even
+       to 8388610, one past the step count. The normative integer clamp keeps
+       the index at 8388609, and all nine legs on the same bytes. */
+    {
+        CompressedCeiling in, out;
+        memset( &in, 0, sizeof( in ) );
+        in.ceiling = 8388609.0f;
+
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_compressed_ceiling( &w, &in ), "write CompressedCeiling" );
+        serialize_write_flush( &w );
+        golden_wire( "compressed_ceiling", buffer, serialize_write_bytes_processed( &w ) );
+
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_compressed_ceiling( &r, &out ), "read CompressedCeiling" );  /* an unclamped index is REFUSED here */
+        check( out.ceiling == 8388609.0f, "ceiling reads back exactly max" );
+
+        {
+            volatile float ceiling_n = ( 8388609.0f - 0.0f ) / 8388609.0f;
+            volatile float ceiling_scaled = ceiling_n * 8388609.0f;
+            check( (unsigned) floor( ceiling_scaled + 0.5f ) == 8388610,
+                   "unclamped, the rounded sum is one past the step count" );
+        }
+    }
+
     /* The read-side UTF-8 validator can reject each malformation class.
        The packet-text gate also proves the generated reader calls it. */
     {

@@ -259,6 +259,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if value.F003Int < -835897 || value.F003Int > 835897 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.F004Cf32-value.F004Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue4 := int32(value.F005Uint)
 		if rangeValue4 < 0 || rangeValue4 > 7316 {
 			return serialize.ErrValueOutOfRange
@@ -282,7 +285,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f3 = (uint64(uint32(float32(normalizedValue*20000.0) + 0.5))) & 0x7fff
+			integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
+			if integerValue > 20000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 20000
+			}
+			f3 = (uint64(integerValue)) & 0x7fff
 		}
 		f4 := (uint64(uint32(rangeValue4))) & 0x1fff
 		f5 := (uint64(uint32(rangeValue5 - (-1513)))) & 0xfff
@@ -368,6 +375,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFixed64(&fixedValue, 8, 8, -119, 119)
 	}
 	{
+		if value.F027Cf32-value.F027Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue6 := int32(value.F032Int)
 		if rangeValue6 < -3 || rangeValue6 > 3 {
 			return serialize.ErrValueOutOfRange
@@ -393,7 +403,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*16.0) + 0.5))) & 0x1f
+			integerValue := uint32(float32(normalizedValue*16.0) + 0.5)
+			if integerValue > 16 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 16
+			}
+			f1 = (uint64(integerValue)) & 0x1f
 		}
 		f2 := (uint64(value.F028Bits)) & 0xf
 		f3 := uint64(value.F029I64)
@@ -493,12 +507,18 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if rangeValue2 < -15 || rangeValue2 > 15 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.F061Cf32-value.F061Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue7 := int32(value.F062Uint)
 		if rangeValue7 < 0 || rangeValue7 > 503 {
 			return serialize.ErrValueOutOfRange
 		}
 		rangeValue9 := int32(value.F064Uint)
 		if rangeValue9 < 0 || rangeValue9 > 299 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F065Cf32-value.F065Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
 		f0 := uint64(0)
@@ -518,7 +538,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f6 = (uint64(uint32(float32(normalizedValue*360.0) + 0.5))) & 0x1ff
+			integerValue := uint32(float32(normalizedValue*360.0) + 0.5)
+			if integerValue > 360 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 360
+			}
+			f6 = (uint64(integerValue)) & 0x1ff
 		}
 		f7 := (uint64(uint32(rangeValue7))) & 0x1ff
 		f8 := uint64(value.F063I64)
@@ -531,7 +555,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f10 = (uint64(uint32(float32(normalizedValue*60.0) + 0.5))) & 0x3f
+			integerValue := uint32(float32(normalizedValue*60.0) + 0.5)
+			if integerValue > 60 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 60
+			}
+			f10 = (uint64(integerValue)) & 0x3f
 		}
 		w0 := f0 | (f1 << 1) | (f2 << 6) | (f3 << 11) | (f4 << 43)
 		stream.SerializeBits64(&w0, 64)
@@ -547,8 +575,20 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFixed64(&fixedValue, 2, 14, 0, 2)
 	}
 	{
+		if value.F067Cf32-value.F067Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F068Cf32-value.F068Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue3 := int32(value.F070Uint)
 		if rangeValue3 < 0 || rangeValue3 > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F071Cf32-value.F071Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F072Cf32-value.F072Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
 		rangeValue6 := int32(value.F073Int)
@@ -563,7 +603,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f0 = (uint64(uint32(float32(normalizedValue*800.0) + 0.5))) & 0x3ff
+			integerValue := uint32(float32(normalizedValue*800.0) + 0.5)
+			if integerValue > 800 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 800
+			}
+			f0 = (uint64(integerValue)) & 0x3ff
 		}
 		f1 := uint64(0)
 		{
@@ -573,7 +617,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*2000.0) + 0.5))) & 0x7ff
+			integerValue := uint32(float32(normalizedValue*2000.0) + 0.5)
+			if integerValue > 2000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 2000
+			}
+			f1 = (uint64(integerValue)) & 0x7ff
 		}
 		f2 := (uint64(value.F069Bits)) & 0x7ff
 		f3 := (uint64(uint32(rangeValue3))) & 0x3
@@ -585,7 +633,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f4 = (uint64(uint32(float32(normalizedValue*500.0) + 0.5))) & 0x1ff
+			integerValue := uint32(float32(normalizedValue*500.0) + 0.5)
+			if integerValue > 500 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 500
+			}
+			f4 = (uint64(integerValue)) & 0x1ff
 		}
 		f5 := uint64(0)
 		{
@@ -595,7 +647,11 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f5 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
+			integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
+			if integerValue > 10000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 10000
+			}
+			f5 = (uint64(integerValue)) & 0x3fff
 		}
 		f6 := (uint64(uint32(rangeValue6 - (-4)))) & 0xf
 		f7 := uint64(0)

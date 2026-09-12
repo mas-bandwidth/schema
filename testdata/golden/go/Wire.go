@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 package example
 
@@ -253,6 +253,9 @@ const ProbeSampleMaxBytes = 40
 
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	{
+		if value.Orientation-value.Orientation != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := uint64(0)
 		if value.Active {
 			f0 = 1
@@ -265,7 +268,11 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*36000.0) + 0.5))) & 0xffff
+			integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
+			if integerValue > 36000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 36000
+			}
+			f1 = (uint64(integerValue)) & 0xffff
 		}
 		f2 := (uint64(uint32(value.RawDelta))) & 0xffffffff
 		f3 := uint64(value.BigDelta)
@@ -1057,6 +1064,9 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		}
 	}
 	{
+		if value.CompressedFloatValue-value.CompressedFloatValue != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1069,7 +1079,11 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
+			integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+			if integerValue > 1000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 1000
+			}
+			f1 = (uint64(integerValue)) & 0x3ff
 		}
 		f2 := math.Float64bits(value.DoubleValue)
 		f3 := (uint64(uint8(value.Int8Value))) & 0xff
@@ -1259,6 +1273,12 @@ const CompressedProbeMaxBytes = 8
 
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
 	{
+		if value.Boundary-value.Boundary != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Offset-value.Offset != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := uint64(0)
 		{
 			normalizedValue := value.Boundary / 10.0
@@ -1267,7 +1287,11 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f0 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
+			integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+			if integerValue > 1000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 1000
+			}
+			f0 = (uint64(integerValue)) & 0x3ff
 		}
 		f1 := uint64(0)
 		{
@@ -1277,7 +1301,11 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
+			integerValue := uint32(float32(normalizedValue*10000.0) + 0.5)
+			if integerValue > 10000 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 10000
+			}
+			f1 = (uint64(integerValue)) & 0x3fff
 		}
 		w0 := uint32(f0 | (f1 << 10))
 		stream.SerializeBits(&w0, 24)
@@ -1309,6 +1337,52 @@ func ReadCompressedProbe(stream *serialize.ReadStream, value *CompressedProbe) e
 			normalizedValue := float32(v1) / 10000.0
 			value.Offset = float32(normalizedValue*10.0) + (-5.0)
 		}
+	}
+	return stream.Err()
+}
+
+// type CompressedCeiling
+type CompressedCeiling struct {
+	Ceiling float32 // compressed float [0.0, 8.388609e+06] @ 1.0
+}
+
+// CompressedCeilingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// CompressedCeilingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const CompressedCeilingMaxBits = 24
+const CompressedCeilingMaxBytes = 8
+
+func WriteCompressedCeiling(stream *serialize.WriteStream, value *CompressedCeiling) error {
+	if value.Ceiling-value.Ceiling != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+		return serialize.ErrValueOutOfRange
+	}
+	{
+		normalizedValue := value.Ceiling / 8.388609e+06
+		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+			normalizedValue = 0
+		} else if !(normalizedValue <= 1) {
+			normalizedValue = 1
+		}
+		integerValue := uint32(float32(normalizedValue*8.388609e+06) + 0.5)
+		if integerValue > 8388609 { // the normative integer clamp (SPEC §4.3)
+			integerValue = 8388609
+		}
+		stream.SerializeBits(&integerValue, 24)
+	}
+	return stream.Err()
+}
+
+func ReadCompressedCeiling(stream *serialize.ReadStream, value *CompressedCeiling) error {
+	{
+		integerValue := uint32(0)
+		stream.SerializeBits(&integerValue, 24)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		if integerValue > 8388609 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
+			return ErrValidation
+		}
+		normalizedValue := float32(integerValue) / 8.388609e+06
+		value.Ceiling = float32(normalizedValue * 8.388609e+06)
 	}
 	return stream.Err()
 }
