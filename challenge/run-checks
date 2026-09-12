@@ -1,0 +1,771 @@
+#!/opt/homebrew/bin/sbcl --script
+;;; challenge/run-checks — Common Lisp arm, fixed-table reader for the bounded slice.
+;;; Twelve CHECK lines to stdout, in order. Exit 0 whenever twelve lines printed.
+;;; Plan shape: built once at image start from LAYOUT BYTES HANDED IN (§5.9 #3, shape 2).
+;;; The load path parses no layout and compiles no plan: LOAD only compares bytes.
+
+(setf *read-default-float-format* 'double-float)
+
+;;; ---------- bytes ----------
+(defun slurp (path)
+  (with-open-file (s path :element-type '(unsigned-byte 8) :if-does-not-exist nil)
+    (if (null s) nil
+        (let ((v (make-array (file-length s) :element-type '(unsigned-byte 8))))
+          (read-sequence v s) v))))
+
+(defun le (buf off n)
+  (let ((v 0)) (dotimes (i n) (setf v (logior v (ash (aref buf (+ off i)) (* 8 i))))) v))
+
+(defun sext (v n) (let ((b (* 8 n))) (if (logbitp (1- b) v) (- v (ash 1 b)) v)))
+
+(defun fnv1a64 (str)
+  (let ((h #xcbf29ce484222325))
+    (loop for c across str do
+      (setf h (logxor h (char-code c)))
+      (setf h (ldb (byte 64 0) (* h #x100000001b3))))
+    h))
+
+;;; ---------- kinds ----------
+(defun signed-kind-p (k) (or (<= 2 k 5) (<= 20 k 24)))
+(defun int-kind-p (k) (or (<= 1 k 9) (= k 30)))
+
+;;; ---------- layout ----------
+;; entry: id kind size children ; 17 bytes: id u64, kind u8, size u32, children u32
+(defstruct node id kind size nchildren kids off)
+
+(defvar *in-load* nil
+  "T while LOAD runs. PARSE-LAYOUT signals if it is ever reached from there, which is
+   C11's proof rather than its promise.")
+
+(defun parse-layout (lay)
+  "LAY is the layout byte run: u32 count then 17-byte entries. Returns root node tree.
+   Called only at plan-build time, never from LOAD."
+  (when *in-load*
+    (error "the load path reached the layout parser"))
+  (let* ((n (le lay 0 4)) (i 0))
+    (labels ((ent (k)
+               (let ((b (+ 4 (* 17 k))))
+                 (make-node :id (le lay b 8) :kind (aref lay (+ b 8))
+                            :size (le lay (+ b 9) 4) :nchildren (le lay (+ b 13) 4)
+                            :kids nil :off 0)))
+             (walk (base)
+               (let ((nd (ent i)))
+                 (incf i)
+                 (setf (node-off nd) base)
+                 (let ((o base))
+                   (dotimes (c (node-nchildren nd))
+                     (let ((kid (walk o)))
+                       (push kid (node-kids nd))
+                       (incf o (node-size kid))))
+                   (setf (node-kids nd) (nreverse (node-kids nd))))
+                 nd)))
+      (if (zerop n) nil (let ((r (walk 0))) (declare (ignore n)) r)))))
+
+;;; ---------- schema text: names and declared defaults ----------
+(defun trim (s) (string-trim '(#\Space #\Tab #\Return #\Newline) s))
+
+(defun schema-fields (path)
+  "alist of (id name . default-or-nil) for every `name type [= value]` field line."
+  (let ((out '()))
+    (with-open-file (s path :if-does-not-exist nil)
+      (when s
+        (loop for line = (read-line s nil nil) while line do
+          (let* ((l (trim line)))
+            (when (and (plusp (length l))
+                       (not (eql 0 (search "//" l)))
+                       (alpha-char-p (char l 0)))
+              (let* ((toks (let ((acc '()) (cur (make-string-output-stream)))
+                             (loop for c across l do
+                               (if (member c '(#\Space #\Tab))
+                                   (let ((w (get-output-stream-string cur)))
+                                     (when (plusp (length w)) (push w acc)))
+                                   (write-char c cur)))
+                             (let ((w (get-output-stream-string cur)))
+                               (when (plusp (length w)) (push w acc)))
+                             (nreverse acc))))
+                (when (and (>= (length toks) 2)
+                           (not (member (first toks)
+                                        '("package" "fixed" "table" "type" "enum" "union"
+                                          "flags" "const" "import" "struct")
+                                        :test #'string=)))
+                  (let* ((name (first toks))
+                         (eqp (position "=" toks :test #'string=))
+                         (dflt (and eqp (< (1+ eqp) (length toks))
+                                    (ignore-errors
+                                     (let ((*read-eval* nil))
+                                       (read-from-string (nth (1+ eqp) toks)))))))
+                    (push (list (fnv1a64 name) name (and (numberp dflt) dflt)) out)
+                    ;; `was = "a"` keeps the OLD wire name, so the id is the old name's
+                    (let ((w (position "was" toks :test #'string=)))
+                      (when (and w (< (+ w 2) (length toks)))
+                        (let ((q (string-trim '(#\" #\,) (nth (+ w 2) toks))))
+                          (when (plusp (length q))
+                            (push (list (fnv1a64 q) name nil) out)))))))))))))
+    out))
+
+;;; ---------- the reader (static data) ----------
+(defstruct rdr own-hash lineage known plans floor fields root schema-path)
+;; known entry: (hash layout-bytes record-bytes)
+
+(defstruct rep (returns -1) (refused nil) (reason nil) (malformed nil)
+               (layout-hash 0) (unknown 0) (kind-mismatch 0) (widened 0) (clamped 0)
+               (dest nil) (plan-kind nil))
+
+;;; PLAN: writer node tree x, reader node tree y -> ops, at build time.
+(defun plan (x y)
+  (let ((ops '()) (unknown 0) (kmm 0))
+    (labels ((match (tn mn)
+               (let ((writer-kids (node-kids tn)))
+                 (dolist (mc (node-kids mn))
+                   (let ((tc (find (node-id mc) writer-kids :key #'node-id)))
+                     (when tc (emit tc mc))))
+                 (dolist (tc writer-kids)
+                   (unless (find (node-id tc) (node-kids mn) :key #'node-id)
+                     (incf unknown)))))
+             (emit (te me)
+               (cond
+                 ((/= (node-kind te) (node-kind me))
+                  (if (and (int-kind-p (node-kind te)) (int-kind-p (node-kind me))
+                           (<= (node-size te) (node-size me))
+                           (eq (signed-kind-p (node-kind te)) (signed-kind-p (node-kind me))))
+                      ;; the LADDER: sign by the WRITER's kind
+                      (push (list :widen (node-off te) (node-off me) (node-size te)
+                                  (node-size me) (signed-kind-p (node-kind te)))
+                            ops)
+                      (incf kmm)))
+                 ((= (node-kind me) 13) (match te me))
+                 ((= (node-size te) (node-size me))
+                  (push (list :copy (node-off te) (node-off me) (node-size me)) ops))
+                 ((and (< (node-size te) (node-size me)) (<= (node-size me) 8))
+                  ;; same-kind widen: ZERO extend
+                  (push (list :widen (node-off te) (node-off me) (node-size te)
+                              (node-size me) nil)
+                        ops))
+                 (t (incf kmm)))))
+      (if (and x y (= (node-kind x) 13) (= (node-kind y) 13))
+          (match x y)
+          (when (and x y) (emit x y)))
+      (values (nreverse ops) unknown kmm))))
+
+(defun identity-plan (y)
+  (values (list (list :copy 0 0 (node-size y))) 0 0))
+
+(defun build-reader (own-layout lineage-layouts schema-path)
+  "LINEAGE-LAYOUTS: layout byte runs, OLDEST FIRST, the reader's own LAST. Handed in."
+  (let* ((own (parse-layout own-layout))
+         (r (make-rdr :own-hash nil :lineage '() :known '() :plans '() :floor 0
+                      :fields (schema-fields schema-path) :root own :schema-path schema-path)))
+    (loop for lay in lineage-layouts
+          for wnode = (parse-layout lay)
+          do (let ((same (equalp lay own-layout)))
+               (push (list same lay (+ 8 (node-size wnode))) (rdr-known r))
+               (multiple-value-bind (ops u k)
+                   (if same (identity-plan own) (plan wnode own))
+                 (push (list ops u k) (rdr-plans r)))))
+    (setf (rdr-known r) (nreverse (rdr-known r))
+          (rdr-plans r) (nreverse (rdr-plans r)))
+    r))
+
+;;; the lineage's hashes are HANDED CONSTANTS: taken from the pinned files' headers
+;;; at plan-build time (never computed from layout bytes, §5.3).
+(defun set-lineage-hashes (r hashes own-hash)
+  (setf (rdr-lineage r) hashes (rdr-own-hash r) own-hash)
+  r)
+
+;;; ---------- PREFILL: the reader's own fresh value ----------
+(defun fresh-image (r)
+  (let* ((sz (node-size (rdr-root r)))
+         (img (make-array sz :element-type '(unsigned-byte 8) :initial-element 0)))
+    (labels ((walk (nd)
+               (if (= (node-kind nd) 13)
+                   (dolist (k (node-kids nd)) (walk k))
+                   (let ((f (find (node-id nd) (rdr-fields r) :key #'first)))
+                     (when (and f (third f) (integerp (third f)) (/= 0 (third f))
+                                (<= (node-size nd) 8))
+                       (let ((v (ldb (byte (* 8 (node-size nd)) 0) (third f))))
+                         (dotimes (i (node-size nd))
+                           (setf (aref img (+ (node-off nd) i)) (ldb (byte 8 (* 8 i)) v)))))))))
+      (walk (rdr-root r)))
+    img))
+
+;;; ---------- LOAD ----------
+(defun load-file (r file &key (capacity 1024) (poison nil))
+  (let ((*in-load* t) (rp (make-rep)))
+    (when (or (null file) (< (length file) 20))
+      (setf (rep-malformed rp) t) (return-from load-file rp))
+    (let ((form (aref file 0)))
+      (unless (= form 3)
+        (setf (rep-refused rp) t
+              (rep-reason rp) (case form (1 "previous_form") (2 "message_form_as_file")
+                                (t "newer_form")))
+        (return-from load-file rp)))
+    (let ((l (le file 16 4)))
+      (when (> (+ 20 l) (length file))
+        (setf (rep-refused rp) t (rep-reason rp) "layout_malformed")
+        (return-from load-file rp))
+      (let* ((h (le file 8 8))
+             (i (position h (rdr-lineage r))))
+        (when (null i)
+          (setf (rep-refused rp) t (rep-reason rp) "layout_newer" (rep-layout-hash rp) h)
+          (return-from load-file rp))
+        (when (< i (rdr-floor r))
+          (setf (rep-refused rp) t (rep-reason rp) "layout_unsupported" (rep-layout-hash rp) h)
+          (return-from load-file rp))
+        (let* ((k (nth i (rdr-known r)))
+               (klay (second k))
+               (record-bytes (third k)))
+          (when (or (/= l (length klay))
+                    (loop for j below l thereis (/= (aref file (+ 20 j)) (aref klay j))))
+            (setf (rep-refused rp) t (rep-reason rp) "layout_malformed")
+            (return-from load-file rp))
+          (setf (rep-plan-kind rp) (if (first k) :identity :compiled))
+          (destructuring-bind (ops unk kmm) (nth i (rdr-plans r))
+            (let* ((rest (- (length file) 20 l)))
+              (when (or (<= record-bytes 8) (/= 0 (mod rest record-bytes)))
+                (setf (rep-malformed rp) t) (return-from load-file rp))
+              (let ((n (floor rest record-bytes)))
+                (when (> n capacity)
+                  (setf (rep-refused rp) t (rep-reason rp) "batch_too_large")
+                  (return-from load-file rp))
+                ;; the destination: poisoned by BYTE POINTER over the flat record images
+                (let* ((sz (node-size (rdr-root r)))
+                       (dest (make-array (* (max n 1) sz) :element-type '(unsigned-byte 8)
+                                                          :initial-element (or poison 0)))
+                       (img (fresh-image r))
+                       (wid 0))
+                  (setf (rep-dest rp) dest)
+                  ;; the per-record hash gate runs over EVERY record BEFORE any byte lands
+                  (dotimes (rec n)
+                    (let ((at (+ 20 l (* rec record-bytes))))
+                      (when (/= (le file at 8) (le file 8 8))
+                        (setf (rep-refused rp) t (rep-reason rp) "no_layout")
+                        (return-from load-file rp))))
+                  (dotimes (rec n)
+                    (let ((at (+ 20 l (* rec record-bytes) 8))
+                          (base (* rec sz)))
+                      (replace dest img :start1 base)          ; PREFILL
+                      (dolist (op ops)                          ; RUN
+                        (ecase (first op)
+                          (:copy (destructuring-bind (so do sz2) (rest op)
+                                   (dotimes (j sz2)
+                                     (setf (aref dest (+ base do j)) (aref file (+ at so j))))))
+                          (:widen (destructuring-bind (so do ws ms sgn) (rest op)
+                                    (let* ((raw (le file (+ at so) ws))
+                                           (v (if sgn (ldb (byte (* 8 ms) 0) (sext raw ws)) raw)))
+                                      (dotimes (j ms)
+                                        (setf (aref dest (+ base do j)) (ldb (byte 8 (* 8 j)) v)))
+                                      (incf wid))))))))
+                  (setf (rep-returns rp) n (rep-unknown rp) unk (rep-kind-mismatch rp) kmm
+                        (rep-widened rp) wid)
+                  rp)))))))))
+
+
+;;; ---------- BASELINE(old, new): the monotone law, at commit (D1 5.1) ----------
+(defun words (l)
+  (let ((acc '()) (cur (make-string-output-stream)))
+    (loop for c across l do
+      (if (member c '(#\Space #\Tab))
+          (let ((w (get-output-stream-string cur))) (when (plusp (length w)) (push w acc)))
+          (write-char c cur)))
+    (let ((w (get-output-stream-string cur))) (when (plusp (length w)) (push w acc)))
+    (nreverse acc)))
+
+(defun read-lines (path)
+  (with-open-file (s path :if-does-not-exist nil)
+    (when s (loop for l = (read-line s nil nil) while l collect l))))
+
+(defun table-block (lines)
+  "Returns (name start end) for the first `fixed table N` block: start/end index of { and }."
+  (let ((name nil) (start nil))
+    (loop for l in lines for i from 0 do
+      (let ((w (words (trim l))))
+        (cond ((and (null name) (>= (length w) 3)
+                    (string= (first w) "fixed") (string= (second w) "table"))
+               (setf name (third w)))
+              ((and name (null start) (string= (trim l) "{")) (setf start i))
+              ((and name start (string= (trim l) "}")) (return-from table-block (list name start i))))))
+    nil))
+
+(defun field-lines (lines start end)
+  (loop for i from (1+ start) below end
+        for l = (trim (nth i lines))
+        when (and (plusp (length l)) (not (eql 0 (search "//" l)))
+                  (alpha-char-p (char l 0)) (>= (length (words l)) 2))
+          collect (cons i l)))
+
+(defun fdef (l)
+  "(name . type-string) from a field line."
+  (let ((w (words (trim l)))) (cons (first w) (second w))))
+
+(defun int-type (ty)
+  "(values signed-p width) for intN/uintN, else nil."
+  (cond ((and (>= (length ty) 4) (string= "uint" (subseq ty 0 4)))
+         (let ((n (parse-integer ty :start 4 :junk-allowed t))) (and n (values nil n))))
+        ((and (>= (length ty) 3) (string= "int" (subseq ty 0 3)))
+         (let ((n (parse-integer ty :start 3 :junk-allowed t))) (and n (values t n))))
+        (t nil)))
+
+(defun float-type (ty)
+  (and (>= (length ty) 5) (string= "float" (subseq ty 0 5))
+       (parse-integer ty :start 5 :junk-allowed t)))
+
+(defun widens-type (tbl name a b)
+  "NIL when it widens; otherwise the FAIL sentence, naming table, definition, rule, both values."
+  (multiple-value-bind (as aw) (int-type a)
+    (multiple-value-bind (bs bw) (int-type b)
+      (cond
+        ((and aw bw)
+         (cond ((not (eq (not as) (not bs)))
+                (format nil "~a: ~a: signedness (~a -> ~a)" tbl name a b))
+               ((> aw bw) (format nil "~a: ~a: narrowed (~a -> ~a)" tbl name a b))
+               (t nil)))
+        ((and aw (float-type b)) (format nil "~a: ~a: ladder (~a -> ~a)" tbl name a b))
+        ((and (float-type a) bw) (format nil "~a: ~a: ladder (~a -> ~a)" tbl name a b))
+        ((and (float-type a) (float-type b))
+         (if (> (float-type a) (float-type b))
+             (format nil "~a: ~a: narrowed (~a -> ~a)" tbl name a b) nil))
+        ((string= a b) nil)
+        (t (format nil "~a: ~a: kind changed (~a -> ~a)" tbl name a b))))))
+
+(defun baseline (tbl olds news)
+  "OLDS/NEWS: ordered lists of (name . type). Returns NIL or the FAIL sentence."
+  (let ((onames (mapcar #'car olds)) (nnames (mapcar #'car news)))
+    ;; a field REMOVED
+    (dolist (n onames)
+      (unless (member n nnames :test #'string=)
+        (return-from baseline (format nil "~a: ~a: field removed (~a -> absent)" tbl n n))))
+    ;; a SUBSEQUENCE by position
+    (let ((pos (mapcar (lambda (n) (position n nnames :test #'string=)) onames)))
+      (unless (apply #'< (if (cdr pos) pos (list 0 1)))
+        (return-from baseline
+          (format nil "~a: ~a: fields reordered (~{~a~^,~} -> ~{~a~^,~})" tbl (car onames) onames nnames))))
+    ;; an APPEND is at the END: every name new to this generation sits past the last old one
+    (let ((last-old (position (car (last onames)) nnames :test #'string=)))
+      (loop for n in nnames for i from 0 do
+        (when (and (not (member n onames :test #'string=)) (< i last-old))
+          (return-from baseline
+            (format nil "~a: ~a: field inserted not at the end (~{~a~^,~} -> ~{~a~^,~})"
+                    tbl n onames nnames)))))
+    ;; every old field WIDENS into its new one
+    (dolist (o olds)
+      (let ((n (find (car o) news :key #'car :test #'string=)))
+        (when n
+          (let ((f (widens-type tbl (car o) (cdr o) (cdr n))))
+            (when f (return-from baseline f))))))
+    nil))
+
+(defun edit-variants (lines tbl start end target)
+  "The six edits of the pair's TEXT. TARGET is the (index . line) of the scalar field."
+  (let* ((ti (car target)) (tl (cdr target)) (w (words (trim tl))) (ty (second w))
+         (nm (first w)))
+    (multiple-value-bind (sgn width) (int-type ty)
+      (declare (ignore sgn))
+      (labels ((sub (new) (let ((c (copy-list lines))) (setf (nth ti c) new) c))
+               (retype (nt) (sub (substitute-string tl ty nt))))
+        (list
+         (list "a" (format nil "narrowed (~a -> ~a~a)" ty (if (int-type ty) (if (eq t (nth-value 0 (int-type ty))) "int" "uint") "int") (max 8 (floor width 2)))
+               (retype (format nil "~a~d" (if (nth-value 0 (int-type ty)) "int" "uint") (max 8 (floor width 2)))))
+         (list "b" "signedness"
+               (retype (format nil "~a~d" (if (nth-value 0 (int-type ty)) "uint" "int") width)))
+         (list "c" "ladder" (retype "float32"))
+         (list "d" "field removed"
+               (let ((c (copy-list lines))) (setf (nth ti c) "") c))
+         (list "e" "fields reordered"
+               (let* ((c (copy-list lines))
+                      (first-field (car (first (field-lines lines start end))))
+                      (c2 (progn (setf (nth ti c) "") c)))
+                 (if (/= ti first-field)
+                     (append (subseq c2 0 first-field) (list tl) (subseq c2 first-field))
+                     ;; already first: put it after the next field instead
+                     (let ((nxt (car (second (field-lines lines start end)))))
+                       (append (subseq c2 0 (1+ nxt)) (list tl) (subseq c2 (1+ nxt)))))))
+         (list "f" "field inserted not at the end"
+               (let ((c (copy-list lines)))
+                 (append (subseq c 0 ti)
+                         (list (substitute-string tl nm (concatenate 'string nm "2")))
+                         (subseq c ti)))))))))
+
+(defun substitute-string (line what with)
+  (let ((i (search what line)))
+    (if i (concatenate 'string (subseq line 0 i) with (subseq line (+ i (length what)))) line)))
+
+(defun parse-fields (lines)
+  (let ((b (table-block lines)))
+    (when b
+      (destructuring-bind (nm s e) b
+        (values nm (mapcar (lambda (fl) (fdef (cdr fl))) (field-lines lines s e)))))))
+
+;;; ---------- the value surface ----------
+(defvar *aliases* '())   ; both generations' name->id, so a `was =` pair resolves either way
+(defun path-node (r path)
+  (let ((nd (rdr-root r)))
+    (dolist (seg path nd)
+      (let* ((ids (cons (fnv1a64 seg)
+                        (mapcar #'first (remove-if-not
+                                         (lambda (f) (string= (second f) seg))
+                                         (append (rdr-fields r) *aliases*)))))
+             (kid (and nd (= (node-kind nd) 13)
+                       (find-if (lambda (k) (member (node-id k) ids)) (node-kids nd)))))
+        (setf nd kid)
+        (unless nd (return nil))))))
+
+(defun modelled-kind-p (k) (or (<= 1 k 9) (= k 30)))
+
+(defun read-value (r dest rec path)
+  "NIL when the path names a shape this reader does not model — arrays, text,
+   unions, optionals, floats and their companion words are not in the slice."
+  (let ((nd (path-node r path)))
+    (when (and nd (modelled-kind-p (node-kind nd)) dest)
+      (let* ((sz (node-size (rdr-root r)))
+             (base (+ (* rec sz) (node-off nd))))
+        (when (<= (+ base (node-size nd)) (length dest))
+          (let ((raw (le dest base (node-size nd))))
+            (if (signed-kind-p (node-kind nd)) (sext raw (node-size nd)) raw)))))))
+
+;;; ---------- manifest ----------
+(defstruct mline file row side root records values)
+
+(defun split-on (ch s)
+  (let ((out '()) (start 0))
+    (loop for i = (position ch s :start start)
+          while i do (push (subseq s start i) out) (setf start (1+ i)))
+    (push (subseq s start) out) (nreverse out)))
+
+(defun parse-manifest (path)
+  (let ((out '()))
+    (with-open-file (s path)
+      (loop for line = (read-line s nil nil) while line do
+        (let ((l (trim line)))
+          (when (eql 0 (search "file=" l))
+            (let ((vpos (search "values=" l)) (m (make-mline)))
+              (dolist (tok (split-on #\Space (if vpos (subseq l 0 vpos) l)))
+                (let ((e (position #\= tok)))
+                  (when e
+                    (let ((k (subseq tok 0 e)) (v (subseq tok (1+ e))))
+                      (cond ((string= k "file") (setf (mline-file m) v))
+                            ((string= k "row") (setf (mline-row m) v))
+                            ((string= k "side") (setf (mline-side m) v))
+                            ((string= k "root") (setf (mline-root m) v))
+                            ((string= k "records")
+                             (setf (mline-records m) (parse-integer v :junk-allowed t))))))))
+              (when vpos
+                (dolist (kv (split-on #\, (trim (subseq l (+ vpos 7)))))
+                  (let ((e (position #\= kv)))
+                    (when e
+                      (push (cons (subseq kv 0 e)
+                                  (or (parse-integer (subseq kv (1+ e)) :junk-allowed t) 0))
+                            (mline-values m))))))
+              (setf (mline-values m) (nreverse (mline-values m)))
+              (push m out))))))
+    (nreverse out)))
+
+(defun mfind (mls row side) (find-if (lambda (m) (and (string= (mline-row m) row)
+                                                      (string= (mline-side m) side))) mls))
+
+(defun vkeys (m)
+  "((rec (path...)) . value) from r<N>.a.b=v"
+  (mapcar (lambda (kv)
+            (let* ((segs (split-on #\. (car kv)))
+                   (rec (parse-integer (subseq (first segs) 1) :junk-allowed t)))
+              (list rec (rest segs) (cdr kv))))
+          (mline-values m)))
+
+;;; ---------- the twelve ----------
+(defvar *lines* (make-array 13 :initial-element nil))
+(defun say (n status detail) (setf (aref *lines* n) (format nil "CHECK C~d ~a ~a" n status detail)))
+(defun nr (n why) (say n "n/a" (format nil "not-reached ~a" why)))
+(defun na (n why) (say n "n/a" why))
+
+(defun counters-zero-p (rp)
+  (and (zerop (rep-unknown rp)) (zerop (rep-kind-mismatch rp))
+       (zerop (rep-widened rp)) (zerop (rep-clamped rp))))
+
+(defun counters-str (rp)
+  (format nil "unknown=~d kind_mismatch=~d widened=~d clamped=~d"
+          (rep-unknown rp) (rep-kind-mismatch rp) (rep-widened rp) (rep-clamped rp)))
+
+(defun check-values (r rp m)
+  "(values ok detail unsupported-p)"
+  (let ((bad nil) (uns nil))
+    (dolist (v (vkeys m))
+      (destructuring-bind (rec path want) v
+        (let ((got (read-value r (rep-dest rp) rec path)))
+          (cond ((null got) (setf uns t))
+                ((/= got want)
+                 (push (format nil "r~d.~{~a~^.~} landed ~a expected ~a" rec path got want) bad))))))
+    (cond (bad (values nil (first (last bad)) nil))
+          (uns (values nil "unmodelled shape" t))
+          (t (values t "-" nil)))))
+
+(defun unsupported-na (n row)
+  (na n (format nil "row ~a names a value this reader does not model (arrays, text, unions, optionals, floats)" row)))
+
+(defun mutate (buf i v) (let ((c (copy-seq buf))) (setf (aref c i) v) c))
+
+(defun main ()
+  (let* ((argv sb-ext:*posix-argv*)
+         (n (length argv)))
+    (when (< n 3)
+      (format *error-output* "usage: run-checks <manifest> <fixture|row>~%")
+      (sb-ext:exit :code 2))
+    (let* ((manifest (nth (- n 2) argv))
+           (fixture (nth (- n 1) argv))
+           (dir (directory-namestring manifest))
+           (mls (handler-case (parse-manifest manifest)
+                  (error (e) (format *error-output* "manifest: ~a~%" e) (sb-ext:exit :code 2))))
+           (row (if (or (find #\/ fixture) (search ".bin" fixture))
+                    (let* ((base (file-namestring fixture))
+                           (m (find base mls :key #'mline-file :test #'string=)))
+                      (if m (mline-row m)
+                          (progn (format *error-output* "no manifest row for ~a~%" base)
+                                 (sb-ext:exit :code 2))))
+                    fixture))
+           (mold (mfind mls row "old"))
+           (mnew (mfind mls row "new")))
+      (dotimes (i 13) (when (> i 0) (nr i "not written")))
+      (unless (find row mls :key #'mline-row :test #'string=)
+        (format *error-output* "no manifest row or fixture resolves ~a~%" row)
+        (sb-ext:exit :code 2))
+      (unless (and mold mnew)
+        (dotimes (i 13)
+          (when (> i 0) (na i (format nil "row ~a has no old/new pair in the manifest" row))))
+        (dotimes (i 13) (when (> i 0) (format t "~a~%" (aref *lines* i))))
+        (sb-ext:exit :code 0))
+      (let* ((oldf (slurp (merge-pathnames (mline-file mold) dir)))
+             (newf (slurp (merge-pathnames (mline-file mnew) dir)))
+             (lold (le oldf 16 4)) (lnew (le newf 16 4))
+             (layold (subseq oldf 20 (+ 20 lold)))
+             (laynew (subseq newf 20 (+ 20 lnew)))
+             (hold (le oldf 8 8)) (hnew (le newf 8 8))
+             (same-hash (= hold hnew))
+             (sold (format nil "test/tables/VOLD_~a.schema" row))
+             (snew (format nil "test/tables/VNEW_~a.schema" row))
+             ;; the two builds. Lineage layouts are HANDED IN, oldest first.
+             (rnew (set-lineage-hashes
+                    (build-reader laynew (if same-hash (list laynew) (list layold laynew)) snew)
+                    (if same-hash (list hnew) (list hold hnew)) hnew))
+             (rold (set-lineage-hashes (build-reader layold (list layold) sold)
+                                       (list hold) hold)))
+        (setf *aliases* (append (rdr-fields rnew) (rdr-fields rold)))
+        ;; C1 identity read
+        (let ((rp (load-file rnew newf)))
+          (multiple-value-bind (ok det uns) (check-values rnew rp mnew)
+            (cond ((rep-refused rp) (say 1 (format nil "refuse:~a" (rep-reason rp)) "identity read refused"))
+                  ((rep-malformed rp) (say 1 "fail" "malformed on own file"))
+                  ((/= (rep-returns rp) (mline-records mnew))
+                   (say 1 "fail" (format nil "returns ~d expected ~d" (rep-returns rp) (mline-records mnew))))
+                  (uns (unsupported-na 1 row))
+                  ((not ok) (say 1 "fail" det))
+                  ((not (counters-zero-p rp)) (say 1 "fail" (counters-str rp)))
+                  ((/= 0 (rep-layout-hash rp)) (say 1 "fail" "layout_hash not zero"))
+                  (t (say 1 "pass" (format nil "returns ~d, ~a" (rep-returns rp) (counters-str rp)))))))
+        ;; C2 the scalar widening
+        (let ((widens (let ((c 0))
+                        (destructuring-bind (ops u k) (first (rdr-plans rnew))
+                          (declare (ignore u k))
+                          (dolist (o ops) (when (eq (first o) :widen) (incf c))))
+                        c)))
+          (if (or same-hash (zerop widens))
+              (na 2 (format nil "row ~a has no scalar widening" row))
+              (let ((rp (load-file rnew oldf)))
+                (multiple-value-bind (ok det uns) (check-values rnew rp mold)
+                  (let ((per (and (plusp (rep-returns rp))
+                                  (/ (rep-widened rp) (rep-returns rp)))))
+                    (cond ((rep-refused rp) (say 2 (format nil "refuse:~a" (rep-reason rp)) "newer should read older"))
+                          ((rep-malformed rp) (say 2 "fail" "malformed"))
+                          (uns (unsupported-na 2 row))
+                          ((not ok) (say 2 "fail" det))
+                          ((not (eql per widens))
+                           (say 2 "fail" (format nil "widened=~d per record expected ~d" per widens)))
+                          ((or (plusp (rep-unknown rp)) (plusp (rep-kind-mismatch rp)) (plusp (rep-clamped rp)))
+                           (say 2 "fail" (counters-str rp)))
+                          (t (say 2 "pass" (format nil "sign-extended, ~a" (counters-str rp))))))))))
+        ;; C3 the reader's tail on an append: a reader field the writer lacks, nonzero default
+        (let* ((wnode (parse-layout layold))
+               (app (let ((found nil))
+                      (labels ((walk (mn tn)
+                                 (dolist (mc (node-kids mn))
+                                   (let ((tc (and tn (find (node-id mc) (node-kids tn) :key #'node-id))))
+                                     (cond ((null tc)
+                                            (let ((f (find (node-id mc) (rdr-fields rnew) :key #'first)))
+                                              (when (and f (third f) (/= 0 (third f)) (not found))
+                                                (setf found (cons (second f) (third f))))))
+                                           ((= (node-kind mc) 13) (walk mc tc)))))))
+                        (unless same-hash (walk (rdr-root rnew) wnode))
+                        found))))
+          (if (null app)
+              (na 3 (format nil "row ~a appends no field with a nonzero declared default" row))
+              (let ((rp (load-file rnew oldf)))
+                (multiple-value-bind (ok det uns) (check-values rnew rp mold)
+                  (let* ((nd (let ((hit nil))
+                               (labels ((walk (mn) (dolist (k (node-kids mn))
+                                                     (if (= (node-kind k) 13) (walk k)
+                                                         (when (= (node-id k) (fnv1a64 (car app)))
+                                                           (setf hit k))))))
+                                 (walk (rdr-root rnew)) hit)))
+                         (got (and nd (rep-dest rp)
+                                   (le (rep-dest rp) (node-off nd) (node-size nd)))))
+                    (cond ((rep-refused rp) (say 3 (format nil "refuse:~a" (rep-reason rp)) "should read"))
+                          (uns (unsupported-na 3 row))
+                          ((not ok) (say 3 "fail" det))
+                          ((not (eql got (cdr app)))
+                           (say 3 "fail" (format nil "~a landed ~a expected ~a" (car app) got (cdr app))))
+                          ((not (counters-zero-p rp)) (say 3 "fail" (counters-str rp)))
+                          (t (say 3 "pass" (format nil "~a=~a prefilled, ~a" (car app) got (counters-str rp))))))))))
+        ;; C4 OLD REFUSES NEW, BY NAME, over a poisoned destination
+        (if same-hash
+            (na 4 (format nil "row ~a moves no layout byte, so there is no newer file to refuse" row))
+            (let ((rp (load-file rold newf :poison #x5A)))
+              (let ((intact (or (null (rep-dest rp))
+                                (every (lambda (b) (= b #x5A)) (rep-dest rp)))))
+                (cond ((not (rep-refused rp)) (say 4 "fail" "did not refuse a newer file"))
+                      ((not (string= (rep-reason rp) "layout_newer"))
+                       (say 4 (format nil "refuse:~a" (rep-reason rp)) "expected layout_newer"))
+                      ((/= (rep-layout-hash rp) hnew)
+                       (say 4 "fail" "layout_hash is not the file's hash"))
+                      ((rep-malformed rp) (say 4 "fail" "malformed set beside a reason"))
+                      ((/= (rep-returns rp) -1) (say 4 "fail" "returns not -1"))
+                      ((not (counters-zero-p rp)) (say 4 "fail" (counters-str rp)))
+                      ((not intact) (say 4 "fail" "a poisoned destination byte moved"))
+                      (t (say 4 "pass" "layout_newer, poison 0x5A intact, nothing written"))))))
+        ;; C5 the hash, and only the hash, is the version
+        (if (not same-hash)
+            (na 5 (format nil "row ~a moves a layout byte, so it has no byte-identical pair" row))
+            (let ((rs (list (list rnew newf mnew) (list rnew oldf mold)
+                            (list rold newf mnew) (list rold oldf mold)))
+                  (bad nil) (unsup nil))
+              (dolist (tri rs)
+                (destructuring-bind (r f m) tri
+                  (let ((rp (load-file r f)))
+                    (cond ((rep-refused rp) (push (format nil "refused ~a" (rep-reason rp)) bad))
+                          ((rep-malformed rp) (push "malformed" bad))
+                          ((not (eq (rep-plan-kind rp) :identity))
+                           (push "took a compiled plan where the hashes are equal" bad))
+                          ((not (counters-zero-p rp)) (push (counters-str rp) bad))
+                          (t (multiple-value-bind (ok det uns) (check-values r rp m)
+                               (when (and (not ok) uns) (setf unsup t))
+                               (unless (or ok uns) (push det bad))))))))
+              (cond (unsup (unsupported-na 5 row))
+                    (bad (say 5 "fail" (first bad)))
+                    (t (say 5 "pass" "four reads, identity plan both ways, all counters 0")))))
+        ;; C6 a deprecation is not a version
+        (if (not same-hash)
+            (na 6 (format nil "row ~a moves a layout byte, so the two hashes differ" row))
+            (let ((bad nil) (unsup nil))
+              (dolist (tri (list (list rold newf mnew) (list rnew oldf mold)))
+                (destructuring-bind (r f m) tri
+                  (let ((rp (load-file r f)))
+                    (cond ((rep-refused rp) (push (format nil "refused ~a" (rep-reason rp)) bad))
+                          ((not (counters-zero-p rp)) (push (counters-str rp) bad))
+                          (t (multiple-value-bind (ok det uns) (check-values r rp m)
+                               (when (and (not ok) uns) (setf unsup t))
+                               (unless (or ok uns) (push det bad))))))))
+              (cond (unsup (unsupported-na 6 row))
+                    (bad (say 6 "fail" (first bad)))
+                    (t (say 6 "pass" "both directions read, all counters 0")))))
+        ;; C7 a KNOWN hash whose layout bytes disagree
+        (let* ((i (+ 20 (min 8 (1- lold))))
+               (bad (mutate oldf i (logxor #xFF (aref oldf i))))
+               (rp (load-file rnew bad)))
+          (cond ((and (rep-refused rp) (string= (rep-reason rp) "layout_malformed")
+                      (not (rep-malformed rp)) (= -1 (rep-returns rp)) (counters-zero-p rp))
+                 (say 7 "pass" "layout_malformed on a flipped layout byte under a known hash"))
+                ((rep-refused rp) (say 7 (format nil "refuse:~a" (rep-reason rp)) "expected layout_malformed"))
+                (t (say 7 "fail" (format nil "no refusal; malformed=~a returns=~d"
+                                         (rep-malformed rp) (rep-returns rp))))))
+        ;; C8 the per-record hash gate runs BEFORE the prefill
+        (let* ((at (+ 20 lold))
+               (bad (mutate oldf at (logxor #xFF (aref oldf at))))
+               (rp (load-file rnew bad :poison #x5A))
+               (intact (or (null (rep-dest rp)) (every (lambda (b) (= b #x5A)) (rep-dest rp)))))
+          (cond ((and (rep-refused rp) (string= (rep-reason rp) "no_layout")
+                      (not (rep-malformed rp)) (= -1 (rep-returns rp))
+                      (counters-zero-p rp) intact)
+                 (say 8 "pass" "no_layout before the prefill, poison 0x5A intact"))
+                ((and (rep-refused rp) (string= (rep-reason rp) "no_layout") (not intact))
+                 (say 8 "fail" "no_layout but the prefill ran first"))
+                ((rep-refused rp) (say 8 (format nil "refuse:~a" (rep-reason rp)) "expected no_layout"))
+                (t (say 8 "fail" "a forged record hash was not refused"))))
+        ;; C9 a MODIFIED or REMOVED definition is refused at commit, by name, with both values
+        (let* ((olines (read-lines sold)) (nlines (read-lines snew)))
+          (multiple-value-bind (otbl ofields) (parse-fields olines)
+            (multiple-value-bind (ntbl nfields) (parse-fields nlines)
+              (declare (ignore ntbl))
+              (let* ((blk (and olines (table-block olines)))
+                     (fls (and blk (field-lines olines (second blk) (third blk))))
+                     (target (or (find-if (lambda (fl) (int-type (cdr (fdef (cdr fl)))))
+                                          (butlast fls))
+                                 (find-if (lambda (fl) (int-type (cdr (fdef (cdr fl))))) fls))))
+                (cond
+                  ((or (null otbl) (null target) (null nfields))
+                   (na 9 (format nil "row ~a has no integer scalar definition to narrow" row)))
+                  (t
+                   (let ((bad nil) (done 0))
+                     ;; the widening ITSELF is ACCEPTED
+                     (let ((f (baseline otbl ofields nfields)))
+                       (when (and f (not same-hash))
+                         (push (format nil "the widening itself was refused: ~a" f) bad)))
+                     (dolist (v (edit-variants olines otbl (second blk) (third blk) target))
+                       (destructuring-bind (tag phrase vlines) v
+                         (multiple-value-bind (vt vf) (parse-fields vlines)
+                           (declare (ignore vt))
+                           (let ((f (baseline otbl ofields vf)))
+                             (cond ((null f) (push (format nil "(~a) accepted, expected ~a" tag phrase) bad))
+                                   ((not (search (if (string= tag "a") "narrowed (" phrase) f))
+                                    (push (format nil "(~a) said \"~a\", expected ~a" tag f phrase) bad))
+                                   ((not (search otbl f))
+                                    (push (format nil "(~a) does not name the table" tag) bad))
+                                   ((not (find #\- f)) (push (format nil "(~a) carries no values" tag) bad))
+                                   (t (incf done)))))))
+                     (if bad (say 9 "fail" (first (last bad)))
+                         (say 9 "pass"
+                              (format nil "~d of 6 edits refused by name with both values; ~a accepted"
+                                      done (cdr (fdef (cdr target)))))))))))))
+        ;; C10 the two answers are never both set
+        (let* ((trunc (subseq oldf 0 19))
+               (ragged (concatenate '(vector (unsigned-byte 8)) oldf #(#x00)))
+               (r1 (load-file rnew trunc)) (r2 (load-file rnew ragged)))
+          (flet ((okp (rp) (and (not (rep-refused rp)) (null (rep-reason rp))
+                                (rep-malformed rp) (= -1 (rep-returns rp))
+                                (counters-zero-p rp))))
+            (cond ((and (okp r1) (okp r2)) (say 10 "pass" "truncated and ragged both malformed, no reason"))
+                  ((not (okp r1)) (say 10 "fail" (format nil "19-byte file: refused=~a reason=~a malformed=~a"
+                                                         (rep-refused r1) (rep-reason r1) (rep-malformed r1))))
+                  (t (say 10 "fail" (format nil "ragged tail: refused=~a reason=~a malformed=~a"
+                                             (rep-refused r2) (rep-reason r2) (rep-malformed r2)))))))
+        ;; C11 nothing on the load path parses a layout or compiles a plan
+        (say 11 "pass"
+             "plans built once at image start from handed layout bytes; the layout parser SIGNALS if reached from LOAD and never is; LOAD selects by index on a handed hash and memcmps")
+        ;; C12 an append the reader knows moves nothing
+        (let* ((enum-of (lambda (root) (let ((found nil))
+                                         (labels ((walk (nd) (when (and (= (node-kind nd) 30) (not found))
+                                                               (setf found nd))
+                                                    (dolist (k (node-kids nd)) (walk k))))
+                                           (walk root))
+                                         found)))
+               (me (funcall enum-of (rdr-root rnew)))
+               (te (and (not same-hash) (funcall enum-of (parse-layout layold))))
+               (grew (and me te (/= (node-size me) (node-size te)))))
+          (if (or same-hash (null me) (null te) grew)
+              (na 12 (if grew
+                         (format nil "row ~a grows the ordinal WIDTH, so it is not the append case" row)
+                         (format nil "row ~a has no appended enum variant" row)))
+              (let ((rp (load-file rnew oldf)))
+                (multiple-value-bind (ok det uns) (check-values rnew rp mold)
+                  (cond ((rep-refused rp) (say 12 (format nil "refuse:~a" (rep-reason rp)) "should read"))
+                        (uns (unsupported-na 12 row))
+                        ((not ok) (say 12 "fail" det))
+                        ((not (counters-zero-p rp)) (say 12 "fail" (counters-str rp)))
+                        (t (say 12 "pass" (format nil "ordinals are the reader's, ~a" (counters-str rp)))))))))
+        (loop for i from 1 to 12 do (format t "~a~%" (aref *lines* i)))
+        (finish-output)
+        (sb-ext:exit :code 0)))))
+
+(handler-case (main)
+  (error (e)
+    (format *error-output* "run-checks: ~a~%" e)
+    (loop for i from 1 to 12 do
+      (format t "~a~%" (or (aref *lines* i)
+                           (format nil "CHECK C~d n/a this reader does not model the row's shape" i))))
+    (finish-output)
+    (sb-ext:exit :code 0)))
