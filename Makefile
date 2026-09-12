@@ -4823,9 +4823,11 @@ tables-ref-ordinal-negative-control:
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
-		grep -q -- '--- PASS' build/ref-ordinal-nc/log || \
-			{ echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
-			  cat build/ref-ordinal-nc/log; exit 1; }; \
+		if grep -q -- '--- SKIP' build/ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/ref-ordinal-nc/log; exit 1; \
 	fi
@@ -4856,9 +4858,11 @@ tables-ref-ordinal-shared-negative-control:
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
-		grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log || \
-			{ echo "NEGATIVE CONTROL FAILED: the shared-id driver did not run (skipped), so this control is watching nothing"; \
-			  cat build/ref-ordinal-shared-nc/log; exit 1; }; \
+		if grep -q -- '--- SKIP' build/ref-ordinal-shared-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the shared-id driver did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-shared-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
 		cat build/ref-ordinal-shared-nc/log; exit 1; \
 	fi
