@@ -169,6 +169,21 @@ static std::string man_path( const char * expr, std::initializer_list<long long>
         }
         out += *p++;
     }
+    // `.slots` IS A C++ MEMBER NAME AND NOT A SCHEMA PATH (§5.9 #32). A keyed
+    // field is a `TableKeyed<>` here and its storage sits behind `.slots`, so
+    // `teams.slots[0].spawn_count` is the C++ spelling of the schema's
+    // `teams[0].spawn_count` — and a port reading the manifest has no `.slots`.
+    // THE ONE `.slots` THAT STAYS is a schema field actually NAMED `slots`
+    // (`keyed_array_enum_append`'s root declares one), which is reached as the
+    // FIRST segment under the record head and never as a wrapper: the wrapper
+    // always hangs off a field, so it always has a `.` before it inside the
+    // record. Strip every `.slots` but the head's.
+    for ( size_t at = out.find( ".slots" ); at != std::string::npos; at = out.find( ".slots", at ) )
+    {
+        const bool head = out.find( '.' ) == at;   // `r0.slots[...]`: the schema's own field
+        if ( head ) { at += 6; continue; }
+        out.erase( at, 6 );
+    }
     // the RECORD subscript at the head is the record number: `v[1].` -> `r1.`
     const size_t open = out.find( '[' );
     const size_t close = out.find( ']' );
@@ -193,16 +208,22 @@ static std::string man_quote( const std::string & raw )
         const unsigned char c = (unsigned char) raw[i];
         if ( c == '"' || c == '\\' || c == ',' ) { out += '\\'; out += (char) c; }
         else if ( c >= 0x20 && c < 0x7F ) { out += (char) c; }
-        else { char b[8]; std::snprintf( b, sizeof( b ), "\\x%02X", c ); out += b; }
+        else { char b[12]; std::snprintf( b, sizeof( b ), "\\u%04X", (unsigned) c ); out += b; }
     }
     return out + "\"";
 }
 
 // THE VALUE'S TEXT. Integers in decimal, a float by its BITS as well as its
-// digits (a signalling NaN's payload is the value, the FU ruling), a bool as
-// true/false, text quoted, a code unit in hex.
-inline std::string man_text( bool v ) { return v ? "true" : "false"; }
-inline std::string man_text( char16_t v ) { char b[16]; std::snprintf( b, sizeof( b ), "0x%04X", (unsigned) v ); return b; }
+// digits (a signalling NaN's payload is the value, the FU ruling), a bool as the
+// wire's 1/0, a fixed(I,F) as the real AND the scaled raw, text quoted — and
+// wide text in ONE encoding, `u"…"`, wherever it appears.
+// A BOOL RIDES AS ONE BYTE THAT IS 1 OR 0 (§3.4), and the PRESENT COMPANION
+// owes `1` and not a fresh value's `false` (§5.9 #40) — so the manifest says
+// what the wire says and never C++'s `true`/`false`.
+inline std::string man_text( bool v ) { return v ? "1" : "0"; }
+// there is NO `man_text( char16_t )`: one encoding for wide text everywhere, and
+// it is `man_wtext`'s `u"…"` (§5.9 #32). A per-code-unit hex line was the second
+// encoding this corpus carried and it is gone.
 static std::string man_dec( long long v ) { char b[32]; std::snprintf( b, sizeof( b ), "%lld", v ); return b; }
 static std::string man_udec( unsigned long long v ) { char b[32]; std::snprintf( b, sizeof( b ), "%llu", v ); return b; }
 inline std::string man_text( signed char v ) { return man_dec( v ); }
@@ -230,6 +251,18 @@ inline std::string man_text( double v )
     return b;
 }
 
+// A fixed(I,F) VALUE IS A SCALED INTEGER ON THE WIRE, and a bare number in the
+// manifest says nothing about which of the two a port should assert. So it says
+// BOTH, the way a float says digits AND bits: `<real>|raw=<int>`, the real being
+// `raw / 2^F` exactly (§5.9 #32).
+static std::string man_fixed( long long raw, int frac )
+{
+    const double real = (double) raw / (double) ( 1ll << frac );
+    char b[80];
+    std::snprintf( b, sizeof( b ), "%.17g|raw=%lld", real, raw );
+    return b;
+}
+
 static std::string man_wtext( const char16_t * src, size_t n )
 {
     std::string out = "u\"";
@@ -243,8 +276,35 @@ static std::string man_wtext( const char16_t * src, size_t n )
     return out + "\"";
 }
 
+// A PAYLOAD UNDER AN ABSENT OPTIONAL IS NOT A VALUE (§5.9 #32). The writer
+// emits an optional's payload only where the flag says PRESENT; where it says
+// absent the bytes are the template's ZEROS, so a store made under a false flag
+// is a thing the wire does not carry and the manifest must not record it. The
+// flag is stored FIRST and its entry is `<path>_present=0`; every path at or
+// below it is then dropped — `<path>` itself for a scalar optional, and
+// `<path>.<field>` for a payload with fields of its own.
+static bool man_flag_off( const std::string & head )
+{
+    const std::string needle = head + "_present=0";
+    for ( size_t i = 0; i < g_values.size(); ++i ) { if ( g_values[i] == needle ) { return true; } }
+    return false;
+}
+
+static bool man_under_absent( const std::string & path )
+{
+    if ( man_flag_off( path ) ) { return true; }
+    size_t dot = path.rfind( '.' );
+    while ( dot != std::string::npos && dot != 0 )
+    {
+        if ( man_flag_off( path.substr( 0, dot ) ) ) { return true; }
+        dot = path.rfind( '.', dot - 1 );
+    }
+    return false;
+}
+
 static void man_add( const std::string & path, const std::string & text )
 {
+    if ( man_under_absent( path ) ) { return; }
     g_values.push_back( path + "=" + text );
 }
 
@@ -264,6 +324,20 @@ static void man_wcopy( char16_t * dst, const char16_t ( & src )[N], const std::s
     man_add( path, man_wtext( src, N ) );
 }
 #define MWCPY( LV, SRC )      man_wcopy( LV, SRC, man_path( #LV, {} ) )
+// the same copy under a SUBSCRIPT the call site is looping over: without it a
+// wide field reached through an index had to be stored unit by unit, and the
+// manifest then carried TWO encodings for wide text (§5.9 #32).
+#define MWCPYI( LV, SRC, ... ) man_wcopy( LV, SRC, man_path( #LV, { __VA_ARGS__ } ) )
+
+// a fixed(I,F) field: the store is the raw scaled integer and the record says
+// the real beside it
+#define MSFX( LV, VAL, FRAC )      do { man_add( man_path( #LV, {} ), man_fixed( (long long) ( (LV) = (VAL) ), (FRAC) ) ); } while ( 0 )
+#define MSFXI( LV, VAL, FRAC, ... ) do { man_add( man_path( #LV, { __VA_ARGS__ } ), man_fixed( (long long) ( (LV) = (VAL) ), (FRAC) ) ); } while ( 0 )
+
+// A KEYED ARRAY'S INDEX IS THE BYTE SLOT, 0-BASED, EVERYWHERE (§5.9 #32). The
+// accessor takes the enum KEY and the storage index is `key - 1`, so a call site
+// that records the key records a number the bytes do not carry.
+#define KSLOT( KEY )          ( (long long) ( KEY ) - 1 )
 
 // THE ROOT'S NAME FROM THE TYPE ITSELF (Itanium `N6tblfx16FxRootE`, or MSVC's
 // `struct tblfx1::FxRoot`): a renamed table renames its manifest line too.
@@ -349,6 +423,10 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
     if ( save( values.data(), (int64_t) values.size(), out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
     {
         std::fprintf( stderr, "%s: save refused\n", name );
+        // THE ROW IS FINISHED EVEN HERE. g_values holds this file's stores, and
+        // a return that leaves them attached spills them onto the NEXT file's
+        // line — a manifest that says a value the next file's bytes never had.
+        g_values.clear();
         return false;
     }
     // ---- rowan/corpus-manifest ----
@@ -459,6 +537,11 @@ static bool p3_file( const char * dir )
     // flag is 0 what rides is ZERO. These stores are here to prove it: the
     // storage carries values, the flag says absent, and the file's bytes for
     // this payload are the template's zeros all the same.
+    //
+    // SO THE MANIFEST DOES NOT RECORD THEM. The flag is stored first and
+    // `man_add` drops every path under a companion that is `0` (§5.9 #32): a
+    // reader of this file lands zeros here, never 99 and never "still", and a
+    // manifest that said otherwise handed four legs an oracle the bytes refuse.
     MS( v[1].link.value, 99 );
     MSTR( v[1].link.tag, "still" );
     MS( v[1].link.tag_length, 5 );
@@ -743,8 +826,12 @@ static bool versioning_numbers_files( const char * dir )
     const char16_t wsrc[8] = { u'h', u'e', u'l', u'l', u'o', 0xD83D, 0xDE00, u'￿' };
     VROW( vold_wstring_grow, WstringGrow, "old_wstring_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MWCPY( v[0].text, wsrc ); MS( v[0].text_length, 8 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+    // ONE ENCODING FOR WIDE TEXT: the grown side is a wide copy too, so both
+    // sides of this pair read `u"…"` and neither reads a column of hex units.
+    const char16_t wgrown[16] = { u'a', u'b', u'c', u'd', u'e', u'f', u'g', u'h',
+                                  u'i', u'j', u'k', u'l', u'm', u'n', u'o', u'p' };
     VROW( vnew_wstring_grow, WstringGrow, "new_wstring_grow.bin",
-          MS( v[0].lead, 0xAAAAAAAAu ); for ( int i = 0; i < 16; ++i ) { MSI( v[0].text[i], (char16_t) ( u'a' + i ), (long long) ( i ) ); }
+          MS( v[0].lead, 0xAAAAAAAAu ); MWCPY( v[0].text, wgrown );
           MS( v[0].text_length, 16 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_bytes_grow, BytesGrow, "old_bytes_grow.bin",
@@ -797,9 +884,9 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xFFFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_fixed_i_grow, FixedIGrow, "old_fixed_I_grow.bin",
-          MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, -1 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+          MS( v[0].lead, 0xAAAAAAAAu ); MSFX( v[0].v, -1, 4 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_fixed_i_grow, FixedIGrow, "new_fixed_I_grow.bin",
-          MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 1000 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+          MS( v[0].lead, 0xAAAAAAAAu ); MSFX( v[0].v, 1000, 4 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_optional_add, OptionalAdd, "old_optional_add.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].link.value, 777 ); MS( v[0].trail, 0xBBBBBBBBu ); );
@@ -982,19 +1069,19 @@ static bool vlists_files( const char * dir )
     {
         std::vector<vold_keyed_array_enum_append::Lineage> o( 1 );
         vold_keyed_array_enum_append::LineageReset( o[0] );
-        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Bronze].n, 101, (long long) ( vold_keyed_array_enum_append::Tier::Bronze ) );
-        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Silver].n, 102, (long long) ( vold_keyed_array_enum_append::Tier::Silver ) );
-        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Gold].n, 103, (long long) ( vold_keyed_array_enum_append::Tier::Gold ) );
+        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Bronze].n, 101, KSLOT( vold_keyed_array_enum_append::Tier::Bronze ) );
+        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Silver].n, 102, KSLOT( vold_keyed_array_enum_append::Tier::Silver ) );
+        MSI( o[0].slots[vold_keyed_array_enum_append::Tier::Gold].n, 103, KSLOT( vold_keyed_array_enum_append::Tier::Gold ) );
         MS( o[0].seq, 22 );
         if ( !emit( dir, "old_keyed_array_enum_append.bin", o, vold_keyed_array_enum_append::LineageFixedMeasure,
                     vold_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
 
         std::vector<vnew_keyed_array_enum_append::Lineage> n( 1 );
         vnew_keyed_array_enum_append::LineageReset( n[0] );
-        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Bronze].n, 201, (long long) ( vnew_keyed_array_enum_append::Tier::Bronze ) );
-        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Silver].n, 202, (long long) ( vnew_keyed_array_enum_append::Tier::Silver ) );
-        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Gold].n, 203, (long long) ( vnew_keyed_array_enum_append::Tier::Gold ) );
-        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum].n, 204, (long long) ( vnew_keyed_array_enum_append::Tier::Platinum ) );
+        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Bronze].n, 201, KSLOT( vnew_keyed_array_enum_append::Tier::Bronze ) );
+        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Silver].n, 202, KSLOT( vnew_keyed_array_enum_append::Tier::Silver ) );
+        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Gold].n, 203, KSLOT( vnew_keyed_array_enum_append::Tier::Gold ) );
+        MSI( n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum].n, 204, KSLOT( vnew_keyed_array_enum_append::Tier::Platinum ) );
         MS( n[0].seq, 23 );
         if ( !emit( dir, "new_keyed_array_enum_append.bin", n, vnew_keyed_array_enum_append::LineageFixedMeasure,
                     vnew_keyed_array_enum_append::LineageFixedSave ) ) { return false; }

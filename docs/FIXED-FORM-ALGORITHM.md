@@ -1039,7 +1039,7 @@ unopened) ran it this way and nothing in it is optional.
 
 | # | the step |
 |---|---|
-| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. **A ROW ID KEEPS ITS CASE IN A FILE NAME**: `fixed_I_grow` carries a CAPITAL `I` (it is the `I` of `fixed(I,F)`), so the pair is `old_fixed_I_grow.bin` / `new_fixed_I_grow.bin` and a leg lower-casing the row id finds no file. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default, **with the one exception of a payload under a `present` companion that is `0`, where the bytes are the template's ZEROS** (§5.9 #32) |
 | 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch. **EVERY HASH THE RUNTIME HOLDS IS A HANDED CONSTANT** — the leg computes none from layout bytes, on the identity lane or anywhere else (§5.9 #47) |
 | 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time. **`record_bytes` ARRIVES WHOLE**, `8 + body`, and the leg adds nothing to it (§5.9 #46). **A TABLE PAST §3.4's CEILING GETS NO STATIC DATA AT ALL** — no lineage consulted, no entry parsed, only the line naming the missing form (§5.9 #48) |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
@@ -1383,16 +1383,43 @@ file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=
 
 — where `row` and `side` come from the FILE NAME, `root` from the record's own TYPE and `records` from the
 vector the dump saved, and every value is stored through one helper that performs the assignment AND records the
-line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` — the `I` pair take the
-SUBSCRIPT the call site is looping over, so the path holds the index the bytes hold and never the variable's
-name), so the manifest cannot drift from the corpus: a changed value changes both or neither. `values=` is the
+line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` / `MWCPYI` / `MSFX` /
+`MSFXI` — the `I` forms take **THE INDEX THE BYTES CARRY, which is the 0-BASED SLOT and never the key**: a keyed
+array's accessor takes the enum KEY and its storage index is `key - 1`, so a call site looping over the keys
+records `KSLOT( key )` and a call site looping over the raw container records the subscript it already holds, and
+both land the same number), so the manifest cannot drift from the corpus: a changed value changes both or
+neither. `values=` is the
 LAST field and runs to the end of the line: split the head on spaces, then take everything after `values=` whole
 — a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
 rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
 per-file name. A record's values are prefixed `r<i>.`, nested fields are
-dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide, `\uXXXX` for
-anything not printable ASCII), a float is given as digits AND bits (`nan|0x7F8ABCDE` — a signalling NaN's
-payload is the value), and a field the dump did not set carries its schema default. **The manifest is the
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide — **ONE encoding
+for wide text everywhere, both sides of a pair included, and never a column of per-code-unit hex** — and
+`\uXXXX`, never `\xNN`, for anything not printable ASCII), a float is given as digits AND bits
+(`nan|0x7F8ABCDE` — a signalling NaN's payload is the value), **a `fixed(I,F)` as `<real>|raw=<int>`** — the
+scaled integer the bytes hold beside the real it means, because a bare number says neither — **a `bool` and the
+`present` companion as the wire's `1`/`0` and never C++'s `true`/`false`** (§5.9 #40 speaks of `1`), and a field
+the dump did not set carries its schema default.
+
+**FOUR THINGS THE MANIFEST MUST NOT SAY, each one a thing an audit of the corpus caught it saying.** A line is
+what A READER WILL PRODUCE from the bytes, not a transcript of the stores the dump made.
+
+- **A VALUE UNDER AN ABSENT OPTIONAL IS NOT RECORDED.** The writer emits an optional's payload only where the
+  flag says present; where it says absent **the bytes are the TEMPLATE'S ZEROS and not the declared default** —
+  the one place "a field absent from a line carries its schema default" does not hold, and the reason the rule
+  is written here rather than left to be inferred. A dump may store under a false flag on purpose (`p3`'s second
+  record does, to pin exactly this), and the RECORD drops it: the companion is stored FIRST and every path at or
+  below a companion that is `0` is skipped.
+- **A PATH IS A DOTTED SCHEMA PATH AND CARRIES NO C++ MEMBER NAME.** A keyed field is a `TableKeyed<>` in the
+  reference and its storage sits behind `.slots`, so `r0.teams.slots[0].spawn_count` was the C++ spelling of
+  `r0.teams[0].spawn_count`; the wrapper's member is stripped. A schema field actually NAMED `slots` keeps its
+  name (`keyed_array_enum_append`'s root declares one).
+- **A KEYED INDEX IS THE 0-BASED BYTE SLOT.** Not the 1-based enum member, anywhere: `keyed_array_enum_append`'s
+  four slots are `[0]` to `[3]` while `Tier`'s members are `1` to `4`.
+- **NOTHING LEAKS FROM ONE FILE'S LINE TO THE NEXT.** A refused save finishes (or clears) the row before it
+  returns; otherwise the values belong to the next file written.
+
+`manifest_case` checks each of these against every line. **The manifest is the
 card's source and the dump is off limits**; `manifest_case` in `test/tables/fixedform_main.cpp` is what keeps it
 honest — every `.bin` in the corpus has a line, and every `root=` names a table the generator emitted — and
 nothing under `build/` is committed.
