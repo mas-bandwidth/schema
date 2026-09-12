@@ -336,6 +336,20 @@ jobs:
         if: matrix.group == 'versioning'
         run: make tables-go-versioning
 
+      # EVERY ROW, EVERY LEG (compiler/everyrow_test.go). The rows of
+      # docs/FIXED-FORM-VERSIONING-TESTS.md are the fixed form's edge cases and
+      # each leg's harness probes them BY NAME; nothing said a row is probed on
+      # every leg, so a row could be written into the page, probed on four legs,
+      # and nobody would see the other five. This gate names every (row, leg)
+      # pair nobody probes, against the ledger in docs/FIXED-FORM-OWED-ROWS.md,
+      # and names every row the dump writes no bytes for. It is seconds — two
+      # file reads and a regexp — and it rides HERE, after the step above, for
+      # one reason: that step is what builds build/fixedform-corpus, so the
+      # corpus half runs for real instead of skipping. It also rides the plain
+      # `go test ./...` above, where the corpus half skips by design.
+      - name: every row of the versioning page is probed on every leg
+        run: SCHEMA_REQUIRE_CORPUS=1 go test ./compiler/ -run 'EveryRow|Owed'
+
       # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
       # gates). The C half generates a probe unit per row per column and compiles
       # it, because two generations of one table name cannot share a translation
