@@ -4524,24 +4524,19 @@ bench-fixedform-measure: build/schema_bench_fixedform
 .PHONY: bench-fixedform-measure
 
 
-# Prove the COMMITTED generated/ tree matches what the current compiler
-# emits (issue #30). `make test` regenerates every tracked generated file in
-# place, so staleness is precisely a dirty tree afterwards — a tracked file
-# that changed, or a newly emitted file nobody committed. CI runs the same
-# two checks after its make test step.
-generated-current: test
-	@git diff --exit-code generated/ || { \
-		echo "committed generated/ tree is STALE — the current compiler emits different text."; \
-		echo "review the diff above, then commit the regenerated files."; \
-		exit 1; \
-	}
-	@untracked=$$(git status --porcelain generated/); \
-	if [ -n "$$untracked" ]; then \
-		echo "$$untracked"; \
-		echo "the generator emitted files that are not committed under generated/ — add them."; \
-		exit 1; \
-	fi
-	@echo "generated/ tree is current"
+# Prove the COMMITTED generated/ tree matches what the current compiler emits
+# (issue #30, tightened by #898's gate G3). It used to regenerate in place and
+# read `git diff`: in place a rule only writes and never removes, so a file the
+# emitter STOPPED writing stayed on disk byte-identical to the index and the
+# diff was silent about it — and a rule that never ran at all left its whole
+# directory standing and was called green. So the tree is moved aside and the
+# compiler emits into NOTHING; the full listing and the bytes are compared both
+# ways, with every failing file named. test/generated-tree/verify says how, the
+# `generated` job in ci-full.yml and the certify workflow run that same script,
+# and it no longer needs the whole `make test` chain to get there: the emission
+# takes bin/schema and nothing else.
+generated-current: bin/schema
+	@test/generated-tree/verify
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -5660,6 +5655,7 @@ include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
+include make/checks/generated-tree.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the

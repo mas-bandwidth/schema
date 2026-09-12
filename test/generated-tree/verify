@@ -1,0 +1,113 @@
+#!/bin/sh
+# THE COMMITTED generated/ TREE IS WHAT THE COMPILER AT THIS SHA EMITS — proved
+# from an EMPTY directory (issue #898, Fixed Tables gate G3, issue #30 before
+# it).
+#
+# THE HOLE THIS CLOSES. The check was: regenerate the tree IN PLACE, then let
+# `git diff --exit-code generated/` and a `git status --porcelain` be the
+# verdict. In place a generation rule can only write a file; it never removes
+# one. So:
+#
+#   * a file the emitter STOPPED writing stays on disk, byte-identical to the
+#     index, and the diff is silent about it — forever. The reader then
+#     receipts a finding against a header the compiler no longer emits.
+#   * a rule that never RAN — renamed, dropped, or named by a grep over the
+#     Makefile's text that matched a rule and not its execution — leaves every
+#     one of its files standing too, and the diff calls that GREEN. Deriving
+#     the stamp list from the Makefile proves the rules EXIST. It cannot prove
+#     one ran, and this verifier does not claim it does: the proof of execution
+#     is that every committed file comes BACK from nothing.
+#
+# SO THE TREE IS MOVED ASIDE AND THE COMPILER EMITS INTO NOTHING, and the full
+# listing and the bytes are compared both ways. Two halves, both loud, and
+# every failing file named:
+#
+#   (a) the tree on disk IS the committed tree (git, as before);
+#   (b) the tree on disk IS a clean emission (test/generated-tree/compare).
+#
+# Together: emission == disk == committed.
+#
+# Every generation rule takes exactly one input, bin/schema, and no toolchain
+# and no sibling checkout, which is what makes (b) affordable at all. The stamp
+# list is DERIVED from the Makefile and its per-language includes, so a port
+# that adds generated/<lang>/.stamp in its make/<lang>.mk is covered the moment
+# it rebases, with no edit here.
+#
+# THE TREE IS ALWAYS PUT BACK, on any exit, including a failed regeneration and
+# a signal: the emission goes to build/generated-tree/fresh for reading, and
+# the tree that was on disk goes back where it was. Nothing else may build
+# while this runs — for that window generated/ is not there.
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+out=build/generated-tree
+prev=$out/prev
+fresh=$out/fresh
+exceptions=test/generated-tree/not-emitted
+
+[ -d generated ] || { printf 'there is no generated/ tree in %s\n' "$(pwd)" >&2; exit 1; }
+
+fail=0
+
+# THE STAMP LIST, derived and never typed. An empty list would pass over an
+# empty set, so it is a hard error, exactly as the workflow had it.
+stamps=$(grep -hoE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile make/*.mk | sed 's/:$//' | LC_ALL=C sort -u)
+if [ -z "$stamps" ]; then
+	printf 'no generated/*/.stamp rules found in the Makefile or make/*.mk — this check would pass over an empty set\n' >&2
+	exit 1
+fi
+printf 'generated-tree: %s generation rule(s)\n' "$(printf '%s\n' "$stamps" | wc -l | tr -d ' ')"
+
+# (a) THE TREE ON DISK IS THE COMMITTED TREE. Staged counts as committed here,
+# the way `git diff` has always read it, so `git add` is enough to go green on
+# a regeneration you are about to commit.
+if ! git diff --quiet -- generated/; then
+	fail=1
+	printf 'NOT COMMITTED — the generated/ tree on disk differs from the committed tree:\n'
+	git diff --name-status -- generated/ | sed 's|^|    |'
+	printf '  commit the regenerated files.\n'
+fi
+untracked=$(git ls-files --others --exclude-standard -- generated/)
+if [ -n "$untracked" ]; then
+	fail=1
+	printf 'NOT COMMITTED — file(s) under generated/ that nobody committed:\n'
+	printf '%s\n' "$untracked" | sed 's|^|    |'
+	printf '  add them.\n'
+fi
+
+# (b) THE TREE ON DISK IS A CLEAN EMISSION.
+mkdir -p "$out"
+rm -rf "$prev" "$fresh"
+
+restore() {
+	if [ -d "$prev" ]; then
+		if [ -d generated ]; then
+			rm -rf "$fresh"
+			mv generated "$fresh"
+		fi
+		mv "$prev" generated
+	fi
+}
+trap restore EXIT HUP INT TERM
+
+mv generated "$prev"
+# shellcheck disable=SC2086
+if ! make $stamps > "$out/regenerate.log" 2>&1; then
+	printf 'the regeneration itself failed — the last of %s is:\n' "$out/regenerate.log"
+	tail -40 "$out/regenerate.log" | sed 's|^|    |'
+	exit 1
+fi
+
+if ! test/generated-tree/compare generated "$prev" "$exceptions"; then
+	fail=1
+fi
+
+restore
+
+if [ "$fail" -ne 0 ]; then
+	printf 'the emission that decided this is at %s; the tree on disk is untouched.\n' "$fresh"
+	exit 1
+fi
+
+printf 'the committed generated/ tree is what this compiler emits.\n'

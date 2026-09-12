@@ -1,0 +1,133 @@
+#!/bin/sh
+# COMPARE A CLEAN EMISSION AGAINST THE TREE THE REPOSITORY CARRIES. This is the
+# whole verdict of the generated-tree gate (issue #898, Fixed Tables gate G3),
+# kept in its own command so its negative control can hand it two prepared
+# directories instead of paying for a full regeneration per case.
+#
+#   usage: compare <emitted-dir> <tree-dir> [not-emitted-list]
+#
+# Both directories hold the same relative paths a committed generated/ tree
+# holds, so `generated/<rel>` is the name .gitignore is asked about: a build
+# stamp and a cargo artefact are ignored on both sides and belong to neither
+# verdict.
+#
+# FOUR WAYS TO BE WRONG, each reported with its file list:
+#
+#   1. a path the TREE carries that the emission does not contain. This is the
+#      class an in-place regeneration and a `git diff` cannot see at all: in
+#      place a rule only writes, it never removes, so a file the emitter
+#      stopped writing stays on disk byte-identical to the index and the diff
+#      is silent about it forever. A whole directory in this class means the
+#      rule that writes it never ran — which is also why a scan of the
+#      Makefile's text is not proof of execution, only of a rule's existence.
+#   2. a path the EMISSION contains that the tree does not carry.
+#   3. a path both hold whose BYTES differ.
+#   4. an exception line that no longer describes the tree: a named path that
+#      is gone, or one the emitter now writes after all.
+set -eu
+
+usage='usage: compare <emitted-dir> <tree-dir> [not-emitted-list]'
+emitted_dir=${1:?$usage}
+tree_dir=${2:?$usage}
+exceptions=${3:-}
+
+for d in "$emitted_dir" "$tree_dir"; do
+	[ -d "$d" ] || { printf 'compare: %s is not a directory\n' "$d" >&2; exit 1; }
+done
+
+work=${GENERATED_TREE_WORK:-build/generated-tree/compare}
+rm -rf "$work"
+mkdir -p "$work"
+
+listing() { ( cd "$1" && find . -type f -o -type l ) | sed 's|^\./||' | LC_ALL=C sort; }
+
+# The paths git ignores, asked of the real generated/ names. Nothing is typed
+# here: `.stamp`, a cargo target/ and a Cargo.lock are ignored because
+# .gitignore says so, and a new one is covered the moment it is listed there.
+ignored() { sed 's|^|generated/|' | git check-ignore --stdin | sed 's|^generated/||'; }
+
+listing "$emitted_dir" > "$work/emitted.all"
+listing "$tree_dir" > "$work/tree.all"
+LC_ALL=C sort -u "$work/emitted.all" "$work/tree.all" > "$work/all"
+ignored < "$work/all" | LC_ALL=C sort -u > "$work/ignored"
+comm -23 "$work/emitted.all" "$work/ignored" > "$work/emitted"
+comm -23 "$work/tree.all" "$work/ignored" > "$work/tree"
+
+# THE NAMED EXCEPTIONS: tracked build wiring that lives under generated/ and is
+# not generator output. A line is a path, then `#` and the reason it is tracked.
+# The list is checked in both directions below, so it cannot rot into a hole.
+: > "$work/allowed"
+if [ -n "$exceptions" ] && [ -f "$exceptions" ]; then
+	# A line may spell the path either way; `generated/` is dropped so the
+	# list reads like the messages do.
+	sed 's/#.*//' "$exceptions" | awk 'NF { sub(/^generated\//, "", $1); print $1 }' | LC_ALL=C sort -u > "$work/allowed"
+fi
+
+comm -13 "$work/emitted" "$work/tree" > "$work/in-tree-only"
+comm -23 "$work/emitted" "$work/tree" > "$work/emitted-only"
+comm -12 "$work/emitted" "$work/tree" > "$work/common"
+comm -23 "$work/in-tree-only" "$work/allowed" > "$work/stale"
+comm -12 "$work/emitted" "$work/allowed" > "$work/claimed-but-emitted"
+comm -13 "$work/tree" "$work/allowed" > "$work/claimed-but-absent"
+
+: > "$work/differ"
+while IFS= read -r path; do
+	[ -n "$path" ] || continue
+	cmp -s "$emitted_dir/$path" "$tree_dir/$path" || printf '%s\n' "$path" >> "$work/differ"
+done < "$work/common"
+
+count() { wc -l < "$1" | tr -d ' '; }
+show() { sed 's|^|    generated/|' "$1"; }
+
+fail=0
+
+if [ -s "$work/stale" ]; then
+	fail=1
+	printf 'STALE — %s file(s) the tree carries and this compiler does NOT emit:\n' "$(count "$work/stale")"
+	show "$work/stale"
+	sed 's|/[^/]*$||' "$work/stale" | LC_ALL=C sort -u > "$work/stale-dirs"
+	while IFS= read -r dir; do
+		[ -n "$dir" ] || continue
+		if ! awk -v d="$dir/" 'index($0, d) == 1 { found = 1 } END { exit !found }' "$work/emitted"; then
+			printf '    NOTHING was emitted under generated/%s — the rule that writes it did not run.\n' "$dir"
+		fi
+	done < "$work/stale-dirs"
+	printf '  an in-place regeneration cannot see this class; only an emission into an empty directory can.\n'
+	printf '  either `git rm` them, or name each one in %s with the reason it is tracked build wiring.\n' "${exceptions:-test/generated-tree/not-emitted}"
+fi
+
+if [ -s "$work/emitted-only" ]; then
+	fail=1
+	printf 'MISSING — %s file(s) this compiler emits that the tree does not carry:\n' "$(count "$work/emitted-only")"
+	show "$work/emitted-only"
+	printf '  add or restore them: they are generator output the tree does not carry.\n'
+fi
+
+if [ -s "$work/differ" ]; then
+	fail=1
+	printf 'CHANGED — %s file(s) whose committed bytes are not what this compiler emits:\n' "$(count "$work/differ")"
+	show "$work/differ"
+	printf '  regenerate and commit them; the committed tree is what this repository receipts findings against.\n'
+fi
+
+if [ -s "$work/claimed-but-absent" ]; then
+	fail=1
+	printf 'STALE EXCEPTION — %s named path(s) that the tree does not carry at all:\n' "$(count "$work/claimed-but-absent")"
+	show "$work/claimed-but-absent"
+	printf '  drop the line from %s.\n' "${exceptions:-test/generated-tree/not-emitted}"
+fi
+
+if [ -s "$work/claimed-but-emitted" ]; then
+	fail=1
+	printf 'STALE EXCEPTION — %s named path(s) this compiler DOES emit:\n' "$(count "$work/claimed-but-emitted")"
+	show "$work/claimed-but-emitted"
+	printf '  drop the line from %s: it is generator output now, and the exception hides its staleness.\n' "${exceptions:-test/generated-tree/not-emitted}"
+fi
+
+if [ "$fail" -ne 0 ]; then
+	printf 'the generated/ tree is NOT what this compiler emits. The lists above are the whole difference.\n'
+	exit 1
+fi
+
+printf 'generated/ tree is current: %s emitted file(s) byte-identical, %s named exception(s), %s ignored path(s).\n' \
+	"$(count "$work/common")" "$(count "$work/allowed")" "$(count "$work/ignored")"

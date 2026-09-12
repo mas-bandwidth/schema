@@ -161,23 +161,21 @@ jobs:
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
-      # above regenerated every tracked file IN PLACE, so staleness is
-      # precisely a dirty tree here: a tracked file that changed, or a newly
-      # emitted file nobody committed (which a diff-only check would miss).
-      # The pull-request gate reaches the same verdict from bin/schema alone;
-      # this is the same check against the whole chain's output.
-      - name: generated tree is current
+      # above regenerated every tracked file IN PLACE, and in place a rule only
+      # writes: a file the emitter STOPPED writing stays on disk byte-identical
+      # to the index, and a rule that never ran leaves its whole directory
+      # standing, and a diff calls both green. So the verdict here is the same
+      # script the `generated` job in ci-full.yml and `make generated-current`
+      # run — test/generated-tree/verify, which moves the tree aside and emits
+      # into NOTHING (#898's gate G3), then compares the full listing and the
+      # bytes both ways. It checks this chain's in-place output against the
+      # committed tree on its way past.
+      - name: the committed generated/ tree is what this compiler emits, from an empty directory
         run: |
-          git diff --exit-code generated/ || {
-            echo "::error::committed generated/ tree is stale — the current compiler emits different text. Run 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit the regenerated files."
+          test/generated-tree/verify || {
+            echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
-          untracked=$(git status --porcelain generated/)
-          if [ -n "$untracked" ]; then
-            echo "$untracked"
-            echo "::error::the generator emitted files that are not committed under generated/ — add them."
-            exit 1
-          fi
 
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input

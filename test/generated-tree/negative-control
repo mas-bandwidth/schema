@@ -1,0 +1,108 @@
+#!/bin/sh
+# THE GENERATED-TREE GATE'S OWN NEGATIVE CONTROL (issue #898, gate G3). A gate
+# nobody has ever seen go red is a decoration, so every way of being wrong gets
+# planted here and the verdict must name it — and the two ways that must stay
+# GREEN are planted too, because a gate that reds on everything is the same
+# decoration.
+#
+# It drives test/generated-tree/compare, which is the verifier's whole verdict,
+# with prepared directories: the same code the gate runs, and no wait for a
+# regeneration per case. The clean-room half — that the emission comes from an
+# EMPTY directory — is what `make generated-current` proves on the real tree.
+#
+#   usage: negative-control <case>
+set -eu
+
+mode=${1:?usage: negative-control <case>}
+out=build/generated-tree/nc/$mode
+emitted=$out/emitted
+tree=$out/tree
+list=$out/not-emitted
+
+rm -rf "$out"
+mkdir -p "$emitted/go" "$tree/go"
+: > "$list"
+
+# The unremarkable file both sides share in every case, so that a case's verdict
+# is about the thing it planted and not about an empty comparison.
+printf 'package examples\n\nconst A = 1\n' > "$emitted/go/ATable.go"
+cp "$emitted/go/ATable.go" "$tree/go/ATable.go"
+
+expected=
+expect_red=yes
+case "$mode" in
+changed)
+	# The class the old check DID catch: a file whose bytes moved.
+	printf 'package examples\n\nconst A = 2\n' > "$tree/go/ATable.go"
+	expected='CHANGED — 1 file(s)' ;;
+stale)
+	# THE CLASS THE OLD CHECK COULD NOT SEE: the emitter stopped writing this
+	# file, so an in-place regeneration leaves it standing and `git diff` is
+	# silent. Here the emission simply does not contain it.
+	printf 'package examples\n\nconst Gone = 1\n' > "$tree/go/GoneTable.go"
+	expected='STALE — 1 file(s) the tree carries and this compiler does NOT emit' ;;
+retired-rule)
+	# The same class, a whole directory of it: the rule that wrote this
+	# directory did not run at all. A scan of the Makefile's text would still
+	# have found its name.
+	mkdir -p "$tree/retired"
+	printf 'package retired\n' > "$tree/retired/OneTable.go"
+	printf 'package retired\n' > "$tree/retired/TwoTable.go"
+	expected='NOTHING was emitted under generated/retired' ;;
+missing)
+	printf 'package examples\n\nconst New = 1\n' > "$emitted/go/NewTable.go"
+	expected='MISSING — 1 file(s) this compiler emits that the tree does not carry' ;;
+exception-absent)
+	# The exception list may not rot: a named path that is not there any more.
+	printf 'generated/go/WiringTable.go  # gone\n' > "$list"
+	expected='STALE EXCEPTION — 1 named path(s) that the tree does not carry at all' ;;
+exception-emitted)
+	# Nor may it hide a file that became generator output: then the exception
+	# would be the hole, not the fix.
+	printf 'package examples\n\nconst A = 1\n' > "$emitted/go/ATable.go"
+	printf 'generated/go/ATable.go  # claimed as wiring\n' > "$list"
+	expected='STALE EXCEPTION — 1 named path(s) this compiler DOES emit' ;;
+exception-honoured)
+	# GREEN: tracked build wiring that is genuinely not generator output, named
+	# with its reason — the one shape that may be in the tree and not emitted.
+	printf '[package]\nname = "wiring"\n' > "$tree/go/Cargo.toml"
+	printf 'generated/go/Cargo.toml  # hand-written build wiring\n' > "$list"
+	expect_red=no
+	expected='named exception(s)' ;;
+ignored)
+	# GREEN: a build stamp is ignored by .gitignore on both sides, so it is
+	# neither a stale file nor a missing one.
+	: > "$tree/go/.stamp"
+	expect_red=no
+	expected='generated/ tree is current' ;;
+clean)
+	expect_red=no
+	expected='generated/ tree is current' ;;
+*)
+	printf 'unknown control: %s\n' "$mode" >&2; exit 1 ;;
+esac
+
+log=$out/log
+if GENERATED_TREE_WORK=$out/work test/generated-tree/compare "$emitted" "$tree" "$list" > "$log" 2>&1; then
+	verdict=green
+else
+	verdict=red
+fi
+
+if [ "$expect_red" = yes ] && [ "$verdict" = green ]; then
+	printf 'NEGATIVE CONTROL FAILED: the generated-tree gate stayed green with %s planted\n' "$mode" >&2
+	cat "$log" >&2
+	exit 1
+fi
+if [ "$expect_red" = no ] && [ "$verdict" = red ]; then
+	printf 'NEGATIVE CONTROL FAILED: the generated-tree gate went red on %s, which is sound\n' "$mode" >&2
+	cat "$log" >&2
+	exit 1
+fi
+if ! grep -Fq "$expected" "$log"; then
+	printf 'NEGATIVE CONTROL FAILED: the gate went %s on %s, but not on the claim (%s)\n' "$verdict" "$mode" "$expected" >&2
+	cat "$log" >&2
+	exit 1
+fi
+
+printf 'generated-tree control: %s is %s, on the claim — %s\n' "$mode" "$verdict" "$(grep -Fm1 "$expected" "$log")"

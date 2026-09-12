@@ -475,15 +475,22 @@ jobs:
   #
   # Every generation rule takes exactly one input, bin/schema, and no toolchain
   # and no sibling checkout: the emitted text of a Go, Rust, C#, Dart, Java or
-  # Elixir unit is a function of the compiler alone. So this job regenerates
-  # the whole tree IN PLACE with Go and nothing else, and staleness is
-  # precisely a dirty tree afterwards — a tracked file that changed, or a newly
-  # emitted file nobody committed, which a diff-only check would miss.
+  # Elixir unit is a function of the compiler alone. So this job emits the whole
+  # tree with Go and nothing else — and it emits it into an EMPTY DIRECTORY
+  # (#898's gate G3). In place, which is what this job used to do, a rule only
+  # ever writes: a file the emitter STOPPED writing stays on disk byte-identical
+  # to the index, and a rule that never ran leaves its whole directory standing,
+  # and `git diff` calls both of those green. From nothing, the full listing and
+  # the bytes answer in both directions, and every failing file is named.
   #
-  # The stamp list is DERIVED from the Makefile and its per-language includes
-  # rather than typed here, so a port that adds generated/<lang>/.stamp in its
-  # make/<lang>.mk is covered the moment it rebases, with no edit to this file. Locally the same check is `make
-  # generated-current`, which gets there through the whole `make test` chain.
+  # THE WHOLE VERDICT IS test/generated-tree/verify, which `make
+  # generated-current` runs locally and the certify workflow runs on main — one
+  # script, so the three cannot drift. Its own negative control is in `make
+  # test`. The stamp list is DERIVED inside it from the Makefile and its
+  # per-language includes rather than typed anywhere, so a port that adds
+  # generated/<lang>/.stamp in its make/<lang>.mk is covered the moment it
+  # rebases; that scan proves the rules EXIST, and the emission from nothing is
+  # what proves one ran.
   generated:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -498,29 +505,15 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: regenerate every committed generated/ tree
-        run: |
-          stamps=$(grep -hoE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile make/*.mk | sed 's/:$//' | sort -u)
-          if [ -z "$stamps" ]; then
-            echo "::error::no generated/*/.stamp rules found in the Makefile or make/*.mk — this check would pass over an empty set"
-            exit 1
-          fi
-          echo "$stamps"
-          # shellcheck disable=SC2086
-          make $stamps
+      - name: the gate's own negative control
+        run: make generated-tree-negative-controls
 
-      - name: generated tree is current
+      - name: the committed generated/ tree is what this compiler emits, from an empty directory
         run: |
-          git diff --exit-code generated/ || {
-            echo "::error::committed generated/ tree is stale — the current compiler emits different text. Run 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit the regenerated files."
+          test/generated-tree/verify || {
+            echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
-          untracked=$(git status --porcelain generated/)
-          if [ -n "$untracked" ]; then
-            echo "$untracked"
-            echo "::error::the generator emitted files that are not committed under generated/ — add them."
-            exit 1
-          fi
 
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
         run: make tables-block-zero-cost
