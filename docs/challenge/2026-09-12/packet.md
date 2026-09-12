@@ -25,7 +25,10 @@ reader, plus the boundaries that sit immediately around it —
 Everything else in Fixed Tables is out of scope for this run: no bitpacked form, no variable table, no
 block or cooked projection, no message form, no lock-file tooling beyond what §3 C9 names.
 
-**Timebox: 30 minutes of implementation per arm** (see §6). The boundary above is sized for that.
+**Timebox: ONE CLOCK of 30 minutes per arm, starting when the packet is delivered, with debugging
+inside it; the result is FROZEN at the 30-minute mark** (see §6). The boundary above is sized for that.
+**Every arm ships one executable, `challenge/run-checks`, so an adjudicator can run the held-out cases
+without reading any arm's source** (see §7).
 
 ## 1. The repo, the commit, and the documents an arm may read
 
@@ -316,7 +319,7 @@ prototype should satisfy; the FILE ITSELF IS NOT READABLE BY AN ARM** (§5).
 For the bounded slice, the property an arm owes is **P1 over the training rows in §2.3** plus the
 **PAIR direction** D1 §5.7 adds to it: FORWARD, the newer reader compiles the older file through its lineage
 and returns one record; REVERSE, the older reader given the newer file refuses `layout_newer` BY NAME. P2
-and P3 are stated for completeness and are NOT inside the 30-minute timebox. The gate's own record check is
+and P3 are stated for completeness and are OUTSIDE the 30-minute clock. The gate's own record check is
 the reader's COMPILED HASH CONSTANT, never a hash of the layout bytes it just read (D1 §5.7).
 
 One drift worth recording, found while assembling: D1 names the fixture pair map as
@@ -349,28 +352,167 @@ and it points into the reference, so it is a path an arm must NOT follow. No exp
    hand over most of §3's answers.
 7. **Rowan's and Stella's own working notes, queues and bus traffic** on the slice.
 
-## 6. The measurement fields each arm reports
+## 6. The clock, and the measurement fields each arm reports
 
-One line per arm, the same fields, reported when the arm stops:
+### 6.1 ONE CLOCK. The result is FROZEN at 30 minutes.
 
-| field | unit | note |
-|---|---|---|
-| `arm` | — | language (Common Lisp \| Haskell) and coordinator (Rowan \| Stella) |
-| `setup_minutes` | minutes | clone, toolchain, corpus build, reading D1 and D2 — before the first line of the reader |
-| `implementation_minutes` | minutes | **TIMEBOX 30.** Wall clock spent writing the reader. An arm that hits 30 stops and reports what is done |
-| `debug_minutes` | minutes | after the timebox: making the written checks pass |
-| `review_minutes` | minutes | the arm's own read of its work before handing it over |
-| `tokens` | count | if the harness exposes them: report per model, and say which harness and which model. `n/a` if not exposed — never an estimate presented as a measurement |
-| `elapsed_minutes` | minutes | first keystroke to handoff, including every wait |
-| `checks_passed_training` | `k of 12` | against §3's twelve, on the TRAINING rows only |
-| `checks_passed_heldout` | `k of 12` | **filled by the ADJUDICATOR, not the arm**, re-running the same twelve against the held-out rows in §2.2 |
-| `poison_form` | — | which of D1 §5.9 #35's three conforming poison targets the arm laid (byte pointer, plan record image, or the value surface field by field) |
-| `plan_shape` | — | which of D1 §5.9 #3's two conforming shapes the arm took (plans emitted as source, or built once at package initialization) — C11's prose answer |
-| `reds_named` | list | every red the arm leaves, named, plus any red it did not write and had to route around (D1 §5.9 #31: a red nobody wrote down is a red nobody owes) |
+**The clock starts when the packet is DELIVERED to the arm and stops 30 minutes later. That is the WHOLE
+budget: reading D1 and D2, setup, the corpus build, writing the reader, running the checks and DEBUGGING are
+all inside it.** There is no implementation budget and there is no separate debug allowance. At the
+30-minute mark the arm STOPS, records the state of the tree, and reports — whatever is passing is passing
+and whatever is red is red.
 
-No arm reports a check as passed that it did not run, and no arm reports the held-out column at all.
+**`debug_minutes` is a SPLIT OF THE 30, NEVER AN ADDITION TO IT.** Every minutes field in §6.3 marked "in
+the box" is a SLICE of the one 30-minute clock, and those slices **SUM TO AT MOST 30**. A report whose
+in-box minutes sum past 30 is a reporting error to be corrected, not a longer run to be accepted.
 
-## 7. Counts
+**Anything after the freeze is a REPAIR PHASE.** It is named as such, timed separately, reported APART, and
+**never merged into the frozen result**: no check that first passed during repair may be counted in
+`checks_passed_training`; no in-box minutes may be revised upward after the freeze; and a repair phase's
+numbers are **NOT COMPARABLE ACROSS ARMS** — the four arms are compared on the frozen result and on nothing
+else. A repair phase is allowed and usually worth doing, because it is where an arm learns what it got
+wrong; it is simply a second, separately labelled row that never touches the first.
+
+**A frozen PARTIAL result is a legitimate outcome, and the packet expects several.** An arm at the freeze
+with C1, C2 and C4 green, C3 red and C5–C12 not yet written reports `checks_passed_training = 3 of 12`,
+names C3's red, and marks C5–C12 not reached. **That is a result.** An arm that ran to 45 minutes and
+reports 9 of 12 has no result at all under this packet, and its row is void rather than better.
+
+### 6.2 What the coordinator owes the clock
+
+One recorded delivery moment per arm: the UTC timestamp at which that arm was handed this branch. Four
+arms, four recorded starts, four freezes, and the freeze is arithmetic — `delivered_at + 30 minutes` — not
+a judgement anyone makes at the time.
+
+An arm blocked on something the COORDINATOR owes it — a toolchain that will not install, a corpus build that
+will not run, an access problem — **pauses the clock, with the pause and its reason recorded**, and reports
+the total as `blocked_minutes`. A pause is for an impediment outside the arm's work; it is never a way to
+buy working time, and an arm that pauses to think has not paused.
+
+### 6.3 The fields
+
+One row per arm, the same fields, reported at the freeze:
+
+| field | unit | in the box? | note |
+|---|---|---|---|
+| `arm` | — | — | language (Common Lisp \| Haskell) and coordinator (Rowan \| Stella) |
+| `delivered_at` | UTC timestamp | — | the recorded delivery moment; the clock's zero |
+| `frozen_at` | UTC timestamp | — | `delivered_at` + 30 minutes, plus any recorded `blocked_minutes`. Arithmetic, not judgement |
+| `setup_minutes` | minutes | **YES** | clone, toolchain, corpus build |
+| `reading_minutes` | minutes | **YES** | D1 and D2, and this packet |
+| `implementation_minutes` | minutes | **YES** | writing the reader and the twelve checks |
+| `debug_minutes` | minutes | **YES** | making written checks pass. **A SLICE OF THE 30, NOT A SECOND BUDGET** |
+| `review_minutes` | minutes | **YES** | the arm's own read of its work before handing over |
+| `in_box_total` | minutes | — | the sum of the five rows above. **MUST BE ≤ 30** |
+| `blocked_minutes` | minutes | no | recorded pauses on a coordinator-owed impediment, each with its reason |
+| `elapsed_minutes` | minutes | — | `delivered_at` to `frozen_at`, pauses included |
+| `tokens` | count | — | if the harness exposes them: per model, naming the harness and the model. `n/a` when it does not — never an estimate presented as a measurement |
+| `checks_passed_training` | `k of 12` | — | §3's twelve on the TRAINING rows, **as frozen** |
+| `runner_path` | — | — | the executable §7 requires, and that it runs from a clean checkout |
+| `poison_form` | — | — | which of D1 §5.9 #35's three conforming poison targets the arm laid (byte pointer, plan record image, or the value surface field by field) |
+| `plan_shape` | — | — | which of D1 §5.9 #3's two conforming shapes the arm took (plans emitted as source, or built once at package initialization) — C11's prose answer |
+| `reds_named` | list | — | every red the arm leaves, named; plus any red it did NOT write and had to route around (D1 §5.9 #31: a red nobody wrote down is a red nobody owes) |
+| `heldout_passed` / `heldout_applicable` / `heldout_unknown` | counts | — | **FILLED BY THE ADJUDICATOR, NEVER BY THE ARM.** §7.4's counting |
+| `repair_minutes` | minutes | **no** | after the freeze, timed separately |
+| `repair_checks_passed` | `k of 12` | **no** | reported apart and **NEVER folded into `checks_passed_training`** |
+
+No arm reports a check as passed that it did not run. No arm reports the held-out columns at all. No arm
+reports a repair number inside the box.
+
+## 7. The runner: one invocation, so an adjudicator never reads an arm's source
+
+Four arms in two languages cannot be compared by reading four implementations. **Every arm ships ONE
+EXECUTABLE with the shape below**, and the adjudicator runs the held-out cases through it without opening a
+line of the arm's code — which is also what keeps the held-out set held out: the arm never sees the
+fixtures the adjudicator names.
+
+### 7.1 The invocation
+
+```
+<arm-repo-root>/challenge/run-checks  <manifest-path>  <fixture>
+```
+
+**The path is fixed: `challenge/run-checks`, relative to the arm's own repository root.** It is DIRECTLY
+EXECUTABLE — the adjudicator invokes it with `execve` and argv only. **The contract is SHELL-FREE**: no
+`sh -c`, no shell quoting, no word splitting, no environment variable an arm expects to be set, no working
+directory other than the arm's repo root, no wrapper script the adjudicator must compose. A compiled binary
+is fine; a script with a `#!` line is fine, because the kernel handles that and no shell is involved.
+
+| argv | what it is |
+|---|---|
+| `argv[1]` | an ABSOLUTE path to a corpus manifest — `build/fixedform-corpus/manifest.txt`. The runner reads the manifest at THIS path and nowhere else, and takes the fixture `.bin` files from the manifest's own directory |
+| `argv[2]` | the fixture. **If it contains a `/` or ends in `.bin`, it is a PATH to a fixture file; otherwise it is a ROW ID** (`int_widen`, `nested_append`, …) resolved against the manifest's `row=` field. That rule is the whole disambiguation and needs no flag |
+
+No other arguments. No flags, no subcommands, no config file, no environment.
+
+### 7.2 The output: twelve lines, one per check
+
+To **stdout**, one line per check, **in order C1 through C12**:
+
+```
+CHECK <id> <status> <detail>
+```
+
+| token | form |
+|---|---|
+| `CHECK` | literally that, at the start of the line |
+| `<id>` | exactly `C1` … `C12`, matching §3's numbering |
+| `<status>` | exactly one of **`pass`**, **`fail`**, **`refuse:<class>`**, **`n/a`** |
+| `<detail>` | everything after the third space, running to the end of the line; free text, never empty — write `-` when there is nothing to say |
+
+Single ASCII spaces separate the first three tokens; `<detail>` may contain spaces. One line per check,
+twelve lines, nothing else on stdout — no banner, no summary, no totals.
+
+**The four statuses:**
+
+| status | means |
+|---|---|
+| `pass` | the check's expectation in §3 was met IN FULL. **A check whose expectation IS a refusal (C4, C7, C8) prints `pass` when the observed class is the expected one** — the expected refusal is a pass, not a refusal |
+| `fail` | the expectation was not met and the reader did not refuse. `<detail>` names WHICH column disagreed and gives the observed value, e.g. `v landed 65535 expected -1` or `widened=0 expected 1` |
+| `refuse:<class>` | the reader REFUSED where this check did not expect that refusal — either it expected a read, or it expected a different class. `<class>` is the reason NAME from D1 §5.3: `layout_newer`, `layout_unsupported`, `layout_malformed`, `no_layout`, `previous_form`, `message_form_as_file`, `newer_form`, `batch_too_large`, `plan_too_large`, `layout_record_too_large`, or `malformed` for the unnamed residue. This status exists so the adjudicator sees WHICH refusal fired without reading source |
+| `n/a` | the check does not apply to this fixture, **or** the arm never wrote it. The two are separated by the DETAIL and not by a fifth status: **a check the arm did not reach by the freeze begins its detail with the token `not-reached`**; anything else is a genuine inapplicability, and the detail says why (`no enum in this row`, `row has no byte-identical pair`) |
+
+`n/a` is the load-bearing status. **A held-out case that a training check does not exercise is `n/a`** — C12
+asks about an appended enum variant and `uint_widen` has no enum; C3 asks for `Vec.w == 88` and no other
+row has that field; C5 and C6 need a pair whose edit moves no layout byte. Marking those `fail` would
+punish an arm for the packet's own shape.
+
+### 7.3 Exit status, streams, determinism
+
+- **Exit `0` whenever all twelve lines were printed**, whatever they say. The exit code reports the
+  RUNNER's health, never the checks' verdict; an adjudicator that reads pass/fail from `$?` has read the
+  wrong thing.
+- **Non-zero only when the runner could not run at all** — an unreadable manifest, a fixture neither path
+  nor row id resolves, the arm's reader failing to load as a program — with a diagnostic on **stderr**.
+  **stderr is never parsed** and may carry anything.
+- **Deterministic**: the same two arguments produce the same twelve lines, byte for byte. No timestamps, no
+  absolute paths, no addresses, no run-to-run ordering in the detail text.
+- **No framework and no dependency**: the language's standard library plus the arm's own reader, and
+  nothing else. No test framework output, no TAP, no JUnit XML, no JSON, no colour. Twelve lines.
+
+### 7.4 How the adjudicator counts — applicable and unknown cells, never a forced `k of 12`
+
+Per held-out fixture the adjudicator runs the runner once and reads twelve cells. Across the held-out set:
+
+| quantity | how |
+|---|---|
+| `heldout_applicable` | cells whose status is `pass`, `fail` or `refuse:<class>` |
+| `heldout_passed` | cells whose status is `pass` |
+| `heldout_unknown` | cells whose status is `n/a`, **reported in two parts**: `not-reached` cells and genuinely-inapplicable cells |
+
+**The headline is `heldout_passed of heldout_applicable`, and `heldout_unknown` is reported BESIDE it,
+never folded into either number.** There is no `k of 12` on the held-out set: forcing one would either
+credit an arm for a check that could not apply or penalise it for the same, and both are measurement errors.
+
+**An `n/a` the adjudicator believes IS applicable is itself a finding.** It is recorded by fixture and
+check id and reported as a discrepancy — never silently converted to a `fail`, and never silently accepted.
+A pattern of over-broad `n/a` is the one way this contract can be gamed, so it is read for.
+
+**Two facts the adjudicator establishes before counting anything:** that the runner builds and runs from a
+CLEAN CHECKOUT of the arm's branch at the frozen commit, and that it was FROZEN — the commit is at or
+before `frozen_at`. A runner repaired after the freeze is adjudicated in the repair row, not the frozen one.
+
+## 8. Counts
 
 | | |
 |---|---|
@@ -380,4 +522,6 @@ No arm reports a check as passed that it did not run, and no arm reports the hel
 | checks | **12** |
 | property tests named | 3 (P1, P2, P3; P1 + the pair direction inside the timebox) |
 | deliberate wrong implementations the checks must reject | 1 (the clamping reader) |
+| the clock | **ONE, 30 minutes from delivery, debugging included; frozen** |
+| the runner | `challenge/run-checks <manifest> <fixture>`, twelve `CHECK` lines, shell-free |
 | repo / commit | `mas-bandwidth/schema` @ `b7ab66a88b6023f4016ef577fd163b84e45e692e` |
