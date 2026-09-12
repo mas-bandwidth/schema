@@ -1626,12 +1626,11 @@ union Value
   TABLE-CLOSURE construct** (SPEC-TABLES.md §2.6, §11) — a `table` arm, a
   pointer arm, and an arm whose payload is a scalar, an enum, a flags mask,
   a string, a `bytes` or an array: its shape is emitted beside the tables,
-  and a `type` body refuses it by name, naming the arm. **The packet wire's
-  rule is nevertheless fixed, so no port guesses it**: an arm rides after
-  the tag as the field encoding its type already has on this wire, a bounded
-  integer in its minimal bits, a compressed float in its steps, a string in
-  §4.7's form, and nothing new is encoded. What waits is that encoding in
-  nine backends, which is the named follow-on (SPEC-TABLES.md §15).
+  and a `type` body refuses it by name, naming the arm. **Such an arm is
+  REFUSED BY NAME TODAY and its PACKET WIRE IS UNASSIGNED until a schema needs
+  it** — no leg encodes one and no `type` body can declare one, so a wire rule
+  written here would be a rule nothing reads; it is assigned the day the
+  construct has a carrier, which is the named follow-on (SPEC-TABLES.md §15).
 - **A PAYLOAD-FREE arm is not in that class.** It has no payload to place,
   so there is nothing for a port to guess: it rides the packet wire as its
   tag alone (the wire bullet below), and a `type` body takes it. `check` is
@@ -2336,7 +2335,16 @@ Per `type`, per target:
    (generated validation refusals return `false` latching nothing, so callers
    tell the two channels apart exactly as in C#). The consumed size (§5)
    surfaces per target idiom — a success value that carries bits consumed
-   where the idiom allows, an out-parameter where it does not.
+   where the idiom allows, an out-parameter where it does not. **In ELIXIR it
+   is a SECOND ENTRY and not a second argument**, a binary carrying no
+   position: `read_<name>_bits(data, num_bits)` returns `{:ok, value,
+   bits_read}` or `:error`, and `read_<name>/2` is that function with the count
+   dropped. Both are generated for every `type` and every `union`, the verdict
+   and the refusals identical; `read_<name>_bits` is what frames a second
+   object behind the first in one buffer, the next one beginning at
+   `div(bits_read + 7, 8)` bytes in. The name is claimed like any other
+   generated name, so a `type FrameBits` beside a `type Frame` is refused
+   rather than silently taking the same binding (§4.11).
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer

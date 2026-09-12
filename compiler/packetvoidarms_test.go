@@ -136,6 +136,20 @@ func TestPagesPlaceTheVoidArmOutsideTheTableClosureClass(t *testing.T) {
 	if !strings.Contains(string(spec), "A PAYLOAD-FREE arm is not in that class") {
 		t.Error("docs/SPEC.md §4.8 no longer states that the payload-free arm is outside the table-closure class")
 	}
+	// THE STRUCK RULE (ruling 14): §4.8 used to fix the packet wire for a
+	// non-`type` arm — "so no port guesses it" — and no leg ever implemented
+	// it, a `type` body being unable to declare such an arm at all. A wire
+	// rule no reader reads is a rule that drifts, so the page says the wire is
+	// UNASSIGNED and the refusal is what holds today. The refusal itself is
+	// pinned by TestScalarArmInTypeBodyIsRefusedByCheck above and by
+	// internal/check's TestTableRefusals / TestDiagnostics.
+	if strings.Contains(string(spec), "rule is nevertheless fixed, so no port guesses it") {
+		t.Error("docs/SPEC.md §4.8 still fixes the packet wire for a non-`type` union arm, which no leg implements")
+	}
+	if !strings.Contains(string(spec), "its PACKET WIRE IS UNASSIGNED until a schema needs") {
+		t.Error("docs/SPEC.md §4.8 no longer states that a non-`type` arm's packet wire is unassigned")
+	}
+
 	usage, err := os.ReadFile("../docs/USAGE.md")
 	if err != nil {
 		t.Fatal(err)

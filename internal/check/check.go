@@ -3724,6 +3724,10 @@ func (c *checker) checkClaimedNames() {
 			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
 			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
 			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
+			// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): a union
+			// named Frame claims read_frame_bits, so a second union named
+			// FrameBits cannot take the same binding through read_frame_bits.
+			addRust("read_"+ir.RustSnake(name)+"_bits", whyRustU, d.Pos, "Read"+name)
 			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
 			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
 			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
@@ -4043,6 +4047,10 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
+	// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): `type Frame`
+	// claims read_frame_bits, so a `type FrameBits` cannot take the same
+	// module binding through its own read_frame_bits.
+	addRust("read_"+ir.RustSnake(name)+"_bits", whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }

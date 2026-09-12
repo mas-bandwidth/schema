@@ -151,7 +151,17 @@ load, in order:**
 announcement, once per hash, before the first record carrying it. **A peer may announce more than one layout,
 one per hash** — the form's one departure from §3.3's "no re-announcement, ever", a layout being NAMED BY ITS
 HASH; a second for a hash already held is refused by name. **THE MESSAGE FORM (§3.3), planned**: one form byte
-per batch, the layout on its announcement. **Inside a packet no form byte is written at all**, the one exception.
+per batch, the layout on its announcement.
+
+**INSIDE A PACKET neither the form byte nor the layout is written at all**, the one exception — and the record is
+still **hash + body, the record exactly as it sits in a file** with the header taken off the front. The packet's
+field names the record, so nothing has to say what it is; the layout is NOT on the wire, and the reader takes it
+from its own lineage, named by the record's own hash. **The packet's reader validates that one record exactly as
+§5.3 validates a file's**: select by hash (step 5), the floor (6), the byte comparison — against the lock's own
+layout, there being no layout bytes to compare (7), the plan and the record size (8), the pre-pass over the one
+record (§4.6), and the landing through the identity lane or the plan (§4.4) — refusing by the same names. A
+packet carries no count and no `rest`, so steps 1-4, 9 and 10 have nothing to do. **No emitter writes this
+today** (§5.9 #49).
 
 ## 3. The record and the writer
 
@@ -882,6 +892,17 @@ string and has no integer to agree with. The C and C++ pair's values are **`18` 
 `layout_unsupported`**, taken in the order §5.3 names them — the order is the contract too, so a second leg
 pair numbering its own set numbers them in the same order.
 
+**THIS IS THE VALIDATION FOR EVERY CARRIER, NOT ONLY FOR A FILE** (§2). A STREAM's record and a MESSAGE form
+batch's body skip steps 1-3 — their form byte and their layout rode the carrier — and join at step 5 with the
+hash the record itself carries. **A RECORD INSIDE A PACKET joins at the same place and takes the whole of the
+rest**: steps 5 to 8 select by hash, check the floor, compare bytes and take the plan, step 11 runs the pre-pass
+and lands the one record, and a mismatch refuses by the SAME NAMES — `layout_newer`, `layout_unsupported`,
+`layout_malformed`, `no_layout`. Two differences, both arithmetic: **the byte comparison at step 7 has no layout
+bytes to compare**, the packet carrying none, so what step 7 holds is the lock's own layout and the comparison is
+the selection at step 5 alone; and steps 9, 10 and the `rest` arithmetic have nothing to do, a packet field being
+exactly one record with no count and no tail. **Nothing about the landing changes** — the identity lane or the
+plan, §4.4 either way. **No emitter writes this today** (§5.9 #49).
+
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
 — `record_bytes` is the BUILD's, the lock's body with the eight hash bytes already added (§5.2), but `rest`,
 the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
@@ -1104,7 +1125,7 @@ second argument a leg can omit — it is computed inside the hash from the schem
 properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
 named `layout_newer` rather than compiled both ways (§5.7).
 
-### 5.9 The twelve the pilot port had to guess, answered — and thirty-six the legs after it found
+### 5.9 The twelve the pilot port had to guess, answered — and thirty-seven the legs after it found
 
 The PILOT PORT (#914) wrote the Go leg from this section alone, with `internal/codegen/cpptable` and the C++
 runtime unopened, and went green on every fixture row. It also listed twelve places where this page was SILENT
@@ -1597,6 +1618,19 @@ lock's CORRECT entry to the form's rules, the root's size was past the 65536 a r
 failed the BUILD over a lock that was right. The pin is `TestJSFixedNoFormMeansNoLineageToParse`. **This is the
 one place #9's "every declared `fixed table` is a root" is read too far**: every declared fixed table is a root
 of its own LINEAGE and its own files, and a table with no form is a root of neither.
+
+**49. A RECORD INSIDE A PACKET RIDES AS `hash + body`, AND THE RULE IS AHEAD OF THE CODE.** §2's framing and
+SPEC-TABLES §3.4's fourth carrier row rule it: no form byte, no file header, no layout bytes, the eight-byte
+layout hash riding as it does in every carrier, and the packet's reader validating that one record exactly as
+§5.3 validates a file's — select by hash, the floor, the byte comparison against the LOCK's layout, the plan and
+the record size, the pre-pass, the landing through the identity lane or the plan, refusing by the same names.
+**NO LEG EMITS THIS TODAY AND NONE CAN BE ASKED TO**: there is no fixed-record field kind in any of the nine
+packet emitters (`internal/codegen/{c,cpp,csharp,dart,elixir,golang,java,js,rust}` — every layout-hash emitter
+lives in a `*table` package), and `internal/check` refuses the field one rule earlier, a `table` in a `type`
+body being "is a table, not a wire type" (`internal/check/check.go`, pinned by
+`TestTableRefusals` and `internal/check/fixedclosurerows_test.go`). So this item is a RULE WRITTEN BEFORE A
+BYTE, recorded the way §3.4's own packet bullet is: the reason to write it now is that the alternative is nine
+ports guessing later, and the reason it is in §5.9 rather than in a leg is that nothing is red.
 
 ## 6. The bounds
 
