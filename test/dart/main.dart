@@ -1950,6 +1950,71 @@ void main() {
     }
   }
 
+  // ---- float32 bit patterns: SPEC §4.3's "no canonicalisation", on the
+  // PACKET wire. Dart holds a float32 field in a WIDER cell (a Dart double is
+  // a float64), so both narrowings are SOFTWARE — the generated
+  // _float32BitsFromDouble / _doubleFromFloat32Bits. A hardware conversion
+  // would set the quiet bit on a SIGNALLING NaN and drop another's payload,
+  // so this gate reads the pattern back OFF THE WIRE rather than through the
+  // reader: Input's five bare float32 fields are the first 160 bits of its
+  // wire, byte-aligned and LSB-first, so field i is bytes [4i, 4i + 4)
+  // little-endian. The patterns are the ones a conversion moves.
+  {
+    final scratch = ByteData(8);
+    // the §4.3 widening: software for a NaN (the quiet bit is NOT forced),
+    // hardware for everything else
+    double doubleFromFloat32Bits(int bits) {
+      if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+        scratch.setUint64(
+          0,
+          ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29),
+          Endian.little,
+        );
+        return scratch.getFloat64(0, Endian.little);
+      }
+      scratch.setUint32(0, bits, Endian.little);
+      return scratch.getFloat32(0, Endian.little);
+    }
+
+    const patterns = <int, String>{
+      0x7f800001: 'a signalling NaN keeps its quiet bit clear',
+      0x7fc00001: 'a quiet NaN keeps its payload',
+      0xffc00000: 'a negative NaN keeps its sign',
+      0x80000000: 'negative zero stays negative zero',
+      0x3fc00000: 'a finite value is byte-exact (the hardware conversion is exact)',
+    };
+    final wanted = patterns.keys.toList();
+
+    final inp = Input()
+      ..stickX = doubleFromFloat32Bits(wanted[0])
+      ..stickY = doubleFromFloat32Bits(wanted[1])
+      ..throttle = doubleFromFloat32Bits(wanted[2])
+      ..yaw = doubleFromFloat32Bits(wanted[3])
+      ..pitch = doubleFromFloat32Bits(wanted[4]);
+
+    final n = writeInput(inp, writeView);
+    final bytes = written(n);
+    final view = ByteData.sublistView(bytes);
+    for (var i = 0; i < wanted.length; i++) {
+      check(
+        view.getUint32(i * 4, Endian.little) == wanted[i],
+        'float32 on the wire: ${patterns[wanted[i]]} '
+        '(0x${wanted[i].toRadixString(16)})',
+      );
+    }
+
+    // the reader reproduces the transmitted pattern, so a re-write is
+    // byte-identical
+    final out = Input();
+    check(readInput(out, view, n * 8), 'read Input (float32 patterns)');
+    final keep = Uint8List.fromList(bytes);
+    final n2 = writeInput(out, writeView);
+    check(
+      n2 == n && bytesEqual(written(n2), keep),
+      'float32 patterns round-trip bit for bit — sNaN, NaN payload, -NaN, -0.0',
+    );
+  }
+
   if (failed) {
     exitCode = 1;
     return;

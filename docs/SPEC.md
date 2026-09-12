@@ -1176,7 +1176,9 @@ tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
   in byte i/8 at bit position i%8.**
 - The writer accumulates into a 64-bit scratch flushed as **little-endian
   words**; the final flush zero-fills — the stream's logical length is
-  **ceil(bits/8) bytes**, and `Write` returns exactly that.
+  **ceil(bits/8) bytes**. That length is the wire; how a target's `Write`
+  reports it (a byte count, a binary, or not at all — the stream carries it)
+  is §6.1's table.
 - **All >32-bit quantities go low 32 bits first**, then the high remainder
   (`bits(N>32)`, `uint64`, `float64`, ranged encodings wider than 32 bits).
   **The 128-bit family and fixed point generalize the same rule: the value
@@ -2326,17 +2328,38 @@ Per `type`, per target:
    hold them — C#'s `enum E : uint` can, natively, which is why it needs no
    newtype.
 
-2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
-   wire order.
-3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
-   validation, in each target's native error idiom — the list is exhaustive
-   at all nine: `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
-   latched `Error` in C#, `error` in Go, `Result` in Rust, `{:ok, value}` or
-   `:error` in Elixir, and `bool` + the stream's latched `error` in JS
-   (generated validation refusals return `false` latching nothing, so callers
-   tell the two channels apart exactly as in C#). The consumed size (§5)
-   surfaces per target idiom — a success value that carries bits consumed
-   where the idiom allows, an out-parameter where it does not.
+2. **`Write`** — straight-line write code in wire order.
+3. **`Read`** — straight-line read code with full validation.
+
+   There is no single family signature for either: each target takes the
+   buffer in its own idiom and reports in its own error idiom, and the table
+   is exhaustive at all nine. `X` is the type name, spelled per the naming
+   rules below.
+
+   | target | write | read |
+   |---|---|---|
+   | C++ | `bool WriteX(serialize::WriteStream &, const X &)` | `bool ReadX(serialize::ReadStream &, X &)` |
+   | C | `int write_x(serialize_write_stream_t *, const X *)` — 1/0 | `int read_x(serialize_read_stream_t *, X *)` — 1/0 |
+   | Go | `WriteX(*serialize.WriteStream, *X) error` | `ReadX(*serialize.ReadStream, *X) error` |
+   | Rust | `write_x(&mut WriteStream, &X) -> Result` | `read_x(&mut ReadStream, &mut X) -> Result` |
+   | C# | `static bool WriteX(WriteStream, X)` | `static bool ReadX(ReadStream, X)` — plus the stream's latched `Error` |
+   | JS | `WriteX(stream, value) -> bool` | `ReadX(stream, value) -> bool` — plus the stream's latched `error` |
+   | Dart | `int writeX(X value, ByteData view)` — **bytes written** | `bool readX(X value, ByteData view, int numBits)` |
+   | Java | `static int writeX(X value, byte[] data)` — **bytes written** | `static boolean readX(X value, byte[] data, int numBits)` |
+   | Elixir | `write_x(value)` -> **the wire binary** | `read_x(data, num_bits)` -> `{:ok, value}` \| `:error` |
+
+   **Only the three buffer-owning backends return the written size.** Dart
+   and Java return the byte count and Elixir returns the bytes themselves,
+   because those three write into a buffer the caller handed over with no
+   stream object to ask afterwards; the six stream-based targets return a
+   verdict and the stream carries the size. §4.3's ceil(bits/8) is the wire's
+   logical length in all nine either way.
+
+   On the two latched-error targets (C#, JS) a generated validation refusal
+   returns false latching nothing, so callers tell the two channels apart.
+   The consumed size (§5) surfaces per target idiom — a success value that
+   carries bits consumed where the idiom allows, an out-parameter where it
+   does not.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer
@@ -2366,12 +2389,29 @@ rules; the generated function names are the family's own
 `WriteX`/`ReadX`/`ZeroX` (the runtime's methods stay camelCase —
 the seam is the stream parameter).
 
-**There is no generated measure function.** `Write` returns the actual size,
-`MaxBytes` sizes buffers, and that covers the real uses. Anyone who genuinely
+**A measure function is per-target, not part of the family surface.** Six
+targets emit none: `MaxBytes` sizes buffers, the write reports the actual
+size where its idiom allows (the table above), and that covers the real uses.
+Three emit one, because their write needs the exact size BEFORE it has a
+buffer to write into:
+
+| target | name | returns |
+|---|---|---|
+| Dart | `int measureX(X value)` | exact wire **bits** |
+| Java | `static int measureX(X value)` | exact wire **bits** |
+| Elixir | `measure_x(value)` | exact wire **bits** |
+
+The three agree: exact wire bits — not bytes — for that value, so the bytes
+`Write` produces are `(measure + 7) / 8`; they are trusted like the writer
+(no validation, static runs folded to one constant at generation time).
+Portable code must not call one: a program that wants a size in all nine
+targets uses `MaxBytes`, or the write's own report where it has one. The
+checker's collision registry claims `Measure<Name>`, `measure<Name>` and
+`measure_<name>` against schema names in all nine targets regardless — a name
+three targets take is refused for every target, so a schema that compiles
+anywhere compiles everywhere. A C++/C/Go/Rust/C#/JS caller who genuinely
 needs per-value sizing can hand-write stream code beside the generated
-code — the runtimes are unchanged and the two mix freely on the same wire. If
-a real need appears, an opt-in exact measure (a generated running bit count)
-is a clean later addition.
+code — the runtimes are unchanged and the two mix freely on the same wire.
 
 The generated API mirrors serialize.modern's `schema<...>` members — `Write`,
 `Read`, `MaxBits`, `MaxBytes` — so the two feel like one family.

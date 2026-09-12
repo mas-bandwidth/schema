@@ -135,6 +135,12 @@ function deepEqual(a, b) {
   if (a === b) {
     return true;
   }
+  // two NaNs are the same field value here: === says no, and a float32 field
+  // legitimately carries a NaN (SPEC §4.3). The PATTERN is pinned off the
+  // wire, not through this comparison.
+  if (typeof a === "number" && typeof b === "number" && Number.isNaN(a) && Number.isNaN(b)) {
+    return true;
+  }
   if (a instanceof Uint8Array && b instanceof Uint8Array) {
     return bytesEqual(a, b);
   }
@@ -447,6 +453,69 @@ function testDataInstance() {
   const rs = new ReadStream(ws.data());
   check(ex.ReadTestData(rs, out), "read TestData");
   check(deepEqual(out, inp), "TestData round-trips — signed narrows, full-range ints, align, fixed bytes, string");
+}
+
+// ---- float32 bit patterns: SPEC §4.3's "no canonicalisation", on the PACKET
+// wire. JavaScript holds a float32 field in a WIDER cell (a Number is a
+// double), so BOTH narrowings are software: serialize.js's
+// float32BitsFromNumber/numberFromFloat32Bits for the runtime tier, the same
+// chain inlined by internal/codegen/js/flat.go for the flat tier. A hardware
+// float64->float32 conversion would set the quiet bit on a SIGNALLING NaN and
+// drop another's payload, so this gate reads the pattern back OFF THE WIRE
+// rather than through the reader — Input's five bare float32 fields are the
+// first 160 bits of its wire, byte-aligned, LSB-first, so field i is bytes
+// [4i, 4i+4) little-endian. The patterns are the ones a conversion moves.
+{
+  const scratch = new DataView(new ArrayBuffer(8));
+  // the §4.3 widening: software for a NaN (the quiet bit is NOT forced),
+  // hardware for everything else
+  const numberFromFloat32Bits = (bits) => {
+    if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+      scratch.setBigUint64(0,
+        (BigInt(bits >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(bits & 0x007fffff) << 29n), true);
+      return scratch.getFloat64(0, true);
+    }
+    scratch.setUint32(0, bits, true);
+    return scratch.getFloat32(0, true);
+  };
+
+  const patterns = [
+    [0x7f800001, "a signalling NaN keeps its quiet bit clear"],
+    [0x7fc00001, "a quiet NaN keeps its payload"],
+    [0xffc00000, "a negative NaN keeps its sign"],
+    [0x80000000, "negative zero stays negative zero"],
+    [0x3fc00000, "a finite value is byte-exact (the hardware conversion is exact)"],
+  ];
+
+  const inp = new ex.Input();
+  inp.StickX = numberFromFloat32Bits(patterns[0][0] >>> 0);
+  inp.StickY = numberFromFloat32Bits(patterns[1][0] >>> 0);
+  inp.Throttle = numberFromFloat32Bits(patterns[2][0] >>> 0);
+  inp.Yaw = numberFromFloat32Bits(patterns[3][0] >>> 0);
+  inp.Pitch = numberFromFloat32Bits(patterns[4][0] >>> 0);
+
+  const ws = newWriteStream();
+  check(ex.WriteInput(ws, inp), "write Input (float32 patterns)");
+  ws.flush();
+  const bytes = Uint8Array.from(ws.data());
+  const wireView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = 0; i < patterns.length; i++) {
+    const [want, what] = patterns[i];
+    check(wireView.getUint32(i * 4, true) === (want >>> 0),
+      `float32 on the wire: ${what} (0x${(want >>> 0).toString(16)})`);
+  }
+
+  // the reader reproduces the transmitted pattern, so a re-write is byte-identical
+  const out = new ex.Input();
+  check(ex.ReadInput(new ReadStream(bytes), out), "read Input (float32 patterns)");
+  const ws2 = newWriteStream();
+  check(ex.WriteInput(ws2, out), "re-write Input (float32 patterns)");
+  ws2.flush();
+  check(bytesEqual(Uint8Array.from(ws2.data()), bytes),
+    "float32 patterns round-trip bit for bit — sNaN, NaN payload, -NaN, -0.0");
+
+  // and the flat tier — the shipped JS path — agrees byte for byte on them
+  flatCross("flat float32 patterns", ex, exFlat, "Input", inp, null);
 }
 
 // ---- CompressedProbe: the FMA-boundary vectors (SPEC §7.2 gate 7) ----
