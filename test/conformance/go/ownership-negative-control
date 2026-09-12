@@ -21,7 +21,8 @@ frame) source=regions.go; sabotage=go-allocator-frame; expected='Go allocations 
 file-count-floor) source=retain.go; sabotage=go-retain-file-count-floor; test=TestRetainFileCapacityBeforeExpansion; expected='count expanded past available resolved capacity' ;;
 message-depth) source=retainmessage.go; sabotage=go-retain-message-depth; test=TestRetainMessage; expected='depth 65' ;;
 runtime)
-    if SCHEMA_GO_ALLOC_TOOLCHAIN=go1.27.1 SCHEMA_GO_ALLOC_ANY_GO=0 GOTOOLCHAIN=go1.27.1 go test ./internal/codegen/gotable -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+    if SCHEMA_SLOW=1 SCHEMA_GO_ALLOC_TOOLCHAIN=go1.27.1 SCHEMA_GO_ALLOC_ANY_GO=0 GOTOOLCHAIN=go1.27.1 go test -v ./internal/codegen/gotable -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+        grep -q -- '--- PASS' "$out/log" || { echo "NEGATIVE CONTROL FAILED: the certification gate did not run (skipped), so this control is watching nothing: runtime" >&2; cat "$out/log" >&2; exit 1; }
         echo 'allocation certification accepted a different runtime' >&2; exit 1
     fi
     grep -Fq 'allocation certification requires go1.26.0, running go1.27.1' "$out/log"
@@ -32,7 +33,10 @@ source=internal/codegen/gotable/$source
 go run ./tools/sabotage -name "$sabotage" -out "$out/source.gotext" "$source"
 root=$(pwd)
 printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-if GOTOOLCHAIN=go1.26.0 go test -overlay "$out/overlay.json" ./internal/codegen/gotable -run "$test" -count=1 > "$out/log" 2>&1; then
+# SCHEMA_SLOW=1, AND THE PROOF THAT IT RAN — see the block in
+# test/tables/reference-review-control.
+if SCHEMA_SLOW=1 GOTOOLCHAIN=go1.26.0 go test -v -overlay "$out/overlay.json" ./internal/codegen/gotable -run "$test" -count=1 > "$out/log" 2>&1; then
+    grep -q -- '--- PASS' "$out/log" || { echo "NEGATIVE CONTROL FAILED: the gate did not run (skipped, or no test matched $test), so this control is watching nothing: $mode" >&2; cat "$out/log" >&2; exit 1; }
     echo "ownership control stayed green: $mode" >&2; exit 1
 fi
 if grep -q '\[build failed\]' "$out/log"; then cat "$out/log"; exit 1; fi

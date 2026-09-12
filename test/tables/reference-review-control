@@ -17,7 +17,14 @@ source=internal/codegen/cpptable/$source
 go run ./tools/sabotage -name "$sabotage" -out "$out/source.gotext" "$source"
 root=$(pwd)
 printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-if go test -overlay "$out/overlay.json" ./compiler -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+# SCHEMA_SLOW=1, AND THE PROOF THAT IT RAN. internal/slowtest gates every test
+# that shells out to a foreign toolchain, and a GATED TEST SKIPS, which `go
+# test` reports as exit 0 — indistinguishable, from the outside, from a gate
+# that stayed green under the sabotage. So the control sets the variable that
+# makes its gate run, and when the run comes back green it first asks whether
+# the gate ran at all: a skip is "watching nothing", never "stayed green".
+if SCHEMA_SLOW=1 go test -v -overlay "$out/overlay.json" ./compiler -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+ grep -q -- '--- PASS' "$out/log" || { echo "NEGATIVE CONTROL FAILED: the gate did not run (skipped, or no test matched $test), so this control is watching nothing: $mode" >&2; cat "$out/log" >&2; exit 1; }
  echo "reference control stayed green: $mode" >&2; exit 1
 fi
 if grep -q '\[build failed\]' "$out/log"; then cat "$out/log"; exit 1; fi
