@@ -1182,6 +1182,17 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
+	// STEP 10b: THE HASH PRE-PASS. Every record's leading hash is held against
+	// the file's BEFORE any prefill and before any landing, so a forged record
+	// in the middle of a batch leaves the caller's rows untouched and every
+	// counter at zero. In the landing loop the same check fired only after
+	// records 0..k-1 had landed, so "REFUSE is total" was false for any file of
+	// more than one record (§5.3 step 10b, §5.4).
+	g.pf("    for k in 0..n {\n")
+	g.pf("        let head = &rest[k * record_bytes..k * record_bytes + 8];\n")
+	g.pf("        if u64::from_le_bytes(head.try_into().expect(\"eight bytes\")) != hash {\n")
+	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
+	g.pf("    }\n")
 	g.pf("    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
 	g.pf("    // `Copy` over the whole body, so the hole list is empty and the loop below\n")
 	g.pf("    // is a no-op. A compiled plan that leaves a field out has that field in\n")
@@ -1192,9 +1203,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
 	g.pf("    for k in 0..n {\n")
+	g.pf("        // NO HASH CHECK HERE: step 10b's pre-pass already held every record\n")
+	g.pf("        // in the tail, so a refusal cannot come after a record has landed.\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
-	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
-	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
 	g.pf("            let o = h.off as usize;\n")
 	g.pf("            let z = h.size as usize;\n")

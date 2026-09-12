@@ -6989,6 +6989,15 @@ offset  16       layout length (u32 LE), then the layout
   knows the record size from the layout, so the count is arithmetic; **BYTES
   LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
   two ends of the file have met.
+- **EVERY RECORD'S HASH IS HELD IN ONE PRE-PASS, BEFORE THE FIRST RECORD IS
+  LANDED** (the algorithm's §5.3 step 10b). A load walks the tail once comparing
+  each record's leading eight bytes to the header's hash, refuses `no_layout` on
+  the first that differs, and only then lands the records — so a forged record
+  anywhere in the file, not only the first, leaves the caller's storage untouched
+  and every counter at zero. **That is what makes REFUSE total on a file of many
+  records**: the same check inside the landing loop wrote every record ahead of
+  the forged one before it refused. **A FILE IS ONE LAYOUT BY CONSTRUCTION**, so
+  the pre-pass only ever changes the answer on a corrupt or hostile file.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -7008,6 +7017,9 @@ hash and the body with no form byte in front of it, because the stream framed it
   applies.
 - **A RECORD WHOSE HASH NAMES NO HELD LAYOUT IS `no_layout`**, a refusal by
   name. The reader states the hash so the application can ask for that layout.
+  **In a FILE that answer comes out of the pre-pass above, before any record has
+  landed**; a stream and a batch hand their records over one at a time, so there
+  the refusal is per record by the carrier's own nature.
 
 **IN THE MESSAGE FORM THE FORM BYTE IS ONCE PER BATCH (§3.3).** A batch is
 framed by one form byte and its bodies follow it; a fixed-form body inside one
@@ -8364,7 +8376,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
   | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE VARIABLE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
-  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; in a FILE every record's hash is held in one PRE-PASS before the first record lands, so that holds for a forged record anywhere in the file and not only the first. The reader states the hash so the application can ask for that layout |
   | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). The layout is refused WHOLE and sets nothing |
   | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4) |
   | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over |

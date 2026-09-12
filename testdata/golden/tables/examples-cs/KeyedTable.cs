@@ -1432,13 +1432,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new TeamConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -1681,13 +1687,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new GunnerConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, GunnerConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -1947,13 +1959,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new TurretConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TurretConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TurretConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -2263,13 +2281,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new HullConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), HullConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, HullConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -2745,13 +2769,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);

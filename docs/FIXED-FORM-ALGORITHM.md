@@ -813,14 +813,30 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
                                                         -- 8 is the per-record hash; a body of nothing behind
                                                         -- it would make `n` the file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
+ 10b THE HASH PRE-PASS, over the WHOLE tail, before step 11 lands anything:
+       for j in 0 .. n-1:
+         if LE(8, at + j * record_bytes) != h:          REFUSE no_layout        -- BEFORE ANY byte is landed,
+                                                                               -- for ANY record, not only the first
  11  per record, at `at`:
-       if LE(8, at) != h:                               REFUSE no_layout        -- BEFORE any byte is landed
        PREFILL(out[rec], fills)                         -- §4.3
        RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
        BOUNDS(out[rec])                                 -- §4.5, §4.6, against THE PLAN'S bounds
        at := at + record_bytes
      return n
 ```
+
+**STEP 10b IS A SEPARATE WALK AND IT IS NOT AN OPTIMISATION TO FOLD BACK IN.** The per-record hash check used
+to sit INSIDE step 11's loop, first thing, "before the prefill" — and for a file of ONE record that is the same
+answer. For a file of MANY it is not: a forged record at index 7 of 64 was found only after records 0 through 6
+had been prefilled, run and bounded, so the caller's storage was written, the counters had moved, and **both
+"REFUSE is total" below and the joint-answer table were false of the very read they describe**. The fix is the
+order, not the check: **the pre-pass walks the tail once, comparing each record's leading eight bytes to `h`,
+and step 11 has no hash check at all.** The second walk costs a compare and an add per record on a file that
+loads, and **a file is ONE layout by construction** — every record of a lawful file carries the header's hash —
+so the only files that pay anything for it are corrupt or hostile ones, which is also the only case where the
+answer differs. Step 10b sits AFTER step 10 so `batch_too_large` still answers first, which is where every leg
+already put it. (The steps are NOT renumbered: PR #957's seams pass pinned the numbers for some twenty
+cross-references, so the new step is `10b` and steps 1 through 11 keep their names.)
 
 **The order is load-bearing and it is not §1.1's order.** A layout arriving on the wire is no longer walked,
 so the seven rules do not fire at run time: the hash is looked up, then the floor, then the bytes are
@@ -854,11 +870,13 @@ nothing could reach.
 | a record size of `8` or less — the per-record hash and no body behind it | — | `malformed`, and `-1` |
 | a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
 | more records than the caller's capacity | `batch_too_large` | the name |
-| a record hash that is not the file's | `no_layout` | the name |
+| a record hash that is not the file's — ANY record, found by step 10b's pre-pass over the whole tail before a byte is landed | `no_layout` | the name |
 | ill-formed text in the USED units | the name fix 11 owes (§4.5) | nothing decoded past it; the reference sets `malformed` instead — §5.8 |
 
 **REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
-prefill included. `malformed` is the residue and not a bucket a named rule falls into.
+prefill included. **This holds for a file of 64 records exactly as for a file of one, and step 10b is what makes
+it true**: every condition above is decided before step 11 runs, so there is no refusal left that can fire with
+records already landed. `malformed` is the residue and not a bucket a named rule falls into.
 
 **THE REPORT IS TWO ANSWERS, AND EVERY FIXTURE ASSERTS THEM JOINTLY** (`test/tables/versioning_lists.cpp:178`,
 the three lines `refuses_newer` shares with every OLD-REFUSES-NEW column). `refused` plus `reason` is one
@@ -906,6 +924,7 @@ when every value lands.
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
+| ANY refusal by name, `no_layout` included | none | **every counter stays at zero and no destination byte is written**: §5.3's conditions are all decided before step 11, so a refusal never comes after a record has landed — the per-record hash is step 10b's pre-pass and not the landing loop's |
 
 A `bool` or a present byte that is not `0` or `1` is normalised to the language's own true and **counts
 nothing** (bill §12.12).
@@ -1046,7 +1065,7 @@ unopened) ran it this way and nothing in it is optional.
 | 5 | **The three tests §5.6 RETIRES, by name.** The leg's twins of `TestFixedFormPlanPath`, `TestFixedFormArgLaneTextUnderSecondArm` and `TestFixedFormLayoutRules` asserted the run-time walk of a stranger's layout and a forward read; under this section each file comes back `layout_newer`. **SKIP them by name with the sentence that says where the coverage is owed** — the plan path moves to the lineage harness, §1.1's seven rules move to the LOCK's validation of what it records — and never delete them: a deleted test is a coverage claim nobody can audit. **A leg whose suite has no skip prints one instead** (§5.9 #23): a line at the CALL SITE naming the function, §5.6 and where the coverage is owed, plus a count at the end, and the function stays in the tree. **A NEGATIVE CONTROL PINNED TO A RETIRED CASE MOVES WITH IT**, to wherever the coverage went, and the PR names which of its controls moved (§5.9 #39) |
 | 6 | **The gate**, both halves, hung off that leg's `test-<lang>`: the BYTE gate against the reference's corpus and the VERSIONING gate over §5.7's rows, each with a negative control that moves one byte and proves the gate goes red (§5.9 #11). **The versioning gate's PROBE UNITS live beside the leg's generator** (§5.9 #18), one generated probe per row per COLUMN, built and run with the leg's own toolchain: two generations of one table name have no spelling inside one unit in every language, so the column is the unit — except where a language's own namespacing gives the two generations a spelling, and then one build and one run is conforming and the leg says so. **The versioning gate's control is a sabotage that reds exactly one column**: the wrong refusal name on a file outside the lineage (§5.9 #39) |
 | 7 | **§5.8 ROW 4's probe, `writer_bound_count`** — the forged count `7` in `hostile_array_bounded_grow.bin` (the writer's `[..4]`, the reader's `[..8]`) lands `vals_count == 4` and `clamped == 1` EXACTLY, the plan's bound being the WRITER's; its three sibling lanes are the range, the variant count and the arm count, and the number is `1` on each (`FIXED-FORM-VERSIONING-TESTS.md`, the divergence rows) |
-| 8 | **§5.8 ROW 9's probe, `refuse_writes_nothing`** — `nolayout_nested_append.bin`, whose per-record hash is forged under an untouched header hash, read with the caller's storage POISONED `0x5A` in #35's form the leg laid: `no_layout`, `malformed` FALSE, every counter `0`, and every poisoned byte still `0x5A` — the prefill's nonzero `Vec.w = 88` nowhere, because the hash check runs BEFORE the prefill |
+| 8 | **§5.8 ROW 9's probe, `refuse_writes_nothing`** — `nolayout_nested_append.bin`, whose per-record hash is forged under an untouched header hash, read with the caller's storage POISONED `0x5A` in #35's form the leg laid: `no_layout`, `malformed` FALSE, every counter `0`, and every poisoned byte still `0x5A` — the prefill's nonzero `Vec.w = 88` nowhere, because STEP 10b's PRE-PASS over the whole tail runs before the first prefill, and the file is 64 records with record 7 forged so a check inside the landing loop would have written seven rows before it refused |
 | 9 | **§5.8 ROW 11's probe, `unknown_census`** — the deliberately UNLAWFUL pair `VOLD_/VNEW_unknown_census`, its entry HANDED IN through #1's `GenerateLineage` rather than read from a lock, over an array of FOUR tables with one dropped field: `unknown == 1`, once per FIELD per peer, and `4` is the divergence. The only unlawful entry any leg builds, and the one row #30 leaves reachable |
 | 10 | **§5.8 ROW 12's probe, `forged_ordinal_both_plans`** — `hostile_enum_append.bin` read TWICE, by the NEW build's COMPILED plan and by the OLD build's IDENTITY plan: `None` and `clamped == 1` on both, the same number on both, counted in the BOUNDS pass and not in the `ordinal` op as well (§5.4's "counts twice") |
 

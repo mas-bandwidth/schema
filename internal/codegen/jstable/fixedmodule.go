@@ -393,13 +393,20 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // unaligned word move in this language (§3.4).\n")
 	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("  let at = layoutAt + layoutBytes;\n")
-	g.pf("  for (let k = 0; k < n; k++) {\n")
-	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
-	g.pf("    // NAME, never a guess and never damage: nothing is decoded, no counter moves.\n")
-	g.pf("    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||\n")
-	g.pf("        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {\n")
+	// STEP 10b: THE HASH PRE-PASS. A record whose hash names no layout this
+	// reader holds is a refusal BY NAME, and it is found BEFORE any prefill and
+	// before any landing, so a forged record in the middle of a batch leaves the
+	// caller's rows untouched and every counter at zero. In the landing loop the
+	// same check fired only after records 0..k-1 had landed, so "REFUSE is
+	// total" was false for any file of more than one record (§5.3 step 10b).
+	g.pf("  for (let scan = at, k = 0; k < n; k++, scan += recordBytes) {\n")
+	g.pf("    if (((bytes[scan] | (bytes[scan + 1] << 8) | (bytes[scan + 2] << 16) | (bytes[scan + 3] << 24)) >>> 0) !== hashLo ||\n")
+	g.pf("        ((bytes[scan + 4] | (bytes[scan + 5] << 8) | (bytes[scan + 6] << 16) | (bytes[scan + 7] << 24)) >>> 0) !== hashHi) {\n")
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
+	g.pf("  }\n")
+	g.pf("  for (let k = 0; k < n; k++) {\n")
+	g.pf("    // NO HASH CHECK HERE: the pre-pass above already held every record.\n")
 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
 	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)

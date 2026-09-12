@@ -317,9 +317,12 @@ defmodule Bench.WrapFixed do
     end
   end
 
-  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
-  # a byte is landed. Neither plan clamps a ranged integer: the generated
-  # projection holds the bound after the loop, the same pass for either plan.
+  # ONE PREFILL-AND-PROJECT PER RECORD, and §5.3 STEP 10b's HASH PRE-PASS ahead
+  # of it: `_fixed_split` walks the WHOLE tail and holds every record's hash
+  # before this `with` opens, so no record lands until all of them are good and
+  # REFUSE stays total on a file of many records. Neither plan clamps a ranged
+  # integer: the generated projection holds the bound after the loop, the same
+  # pass for either plan.
   defp fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
     {census_u, census_k} = census
 
@@ -358,7 +361,8 @@ defmodule Bench.WrapFixed do
 
       <<_::little-unsigned-64, _::binary-size(^size), _::binary>> ->
         # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-        # NAME, never a guess and never damage.
+        # NAME, never a guess and never damage. This split IS §5.3 step 10b's
+        # PRE-PASS: it runs over every record before the first one is landed.
         {:error, :no_layout}
 
       _ ->

@@ -573,12 +573,18 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  if (n > capacity) {\n")
 	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return -1;\n  }\n")
 	g.pf("  var at = TableFixedLimits.layoutAt + layoutBytes;\n")
-	g.pf("  for (var k = 0; k < n; k++) {\n")
-	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
-	g.pf("    // NAME, never a guess and never damage: nothing is decoded and no\n")
-	g.pf("    // counter moves.\n")
-	g.pf("    if (view.getUint64(at, Endian.little) != hash) {\n")
+	// STEP 10b: THE HASH PRE-PASS. A record whose hash names no layout this
+	// reader holds is a refusal BY NAME, and it is found BEFORE any prefill and
+	// before any landing, so a forged record in the middle of a batch leaves the
+	// caller's rows untouched and every counter at zero. In the landing loop the
+	// same check fired only after records 0..k-1 had landed, so "REFUSE is
+	// total" was false for any file of more than one record (§5.3 step 10b).
+	g.pf("  for (var scan = at, k = 0; k < n; k++, scan += recordBytes) {\n")
+	g.pf("    if (view.getUint64(scan, Endian.little) != hash) {\n")
 	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
+	g.pf("  }\n")
+	g.pf("  for (var k = 0; k < n; k++) {\n")
+	g.pf("    // NO HASH CHECK HERE: the pre-pass above already held every record.\n")
 	g.call("    ", "", "tableFixedFillRun",
 		[]string{"fills", "fillCount", lower + "FixedPrefill", "plan.image"}, ";")
 	g.pf("    tableFixedRun(\n")

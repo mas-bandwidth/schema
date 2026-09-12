@@ -3275,13 +3275,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderCamera(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -3634,13 +3640,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderShip(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -3962,13 +3974,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderTurret(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -4299,13 +4317,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderMissile(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -4639,13 +4663,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -4979,13 +5009,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -5324,13 +5360,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -5651,13 +5693,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderLaser(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -5988,13 +6036,19 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);

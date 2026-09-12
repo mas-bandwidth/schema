@@ -603,6 +603,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
 	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
+	g.pf("    const uint8_t * scan;\n")
 	g.pf("    int32_t pick;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
@@ -675,17 +676,29 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = 1; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
+	// STEP 10b: THE HASH PRE-PASS, the C twin of the C++ reference byte for byte
+	// in behaviour. Every record's leading hash is held BEFORE any prefill and
+	// any landing, so a forged record in the middle of a batch leaves the
+	// caller's storage untouched and every counter at zero (§5.3 step 10b).
+	g.pf("    /* 10b. THE HASH PRE-PASS: every record's leading hash is compared to the\n")
+	g.pf("       file's BEFORE a single destination byte is written. In the landing loop\n")
+	g.pf("       the same check fired only after records 0..k-1 had landed, so REFUSE was\n")
+	g.pf("       not total on a file of many records. A file is ONE layout by\n")
+	g.pf("       construction: this walk is paid only on a corrupt or hostile file. */\n")
+	g.pf("    for ( scan = at, k = 0; k < count; ++k )\n    {\n")
+	g.pf("        if ( table_fixed_get64( scan ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
+	g.pf("        scan += record_bytes;\n    }\n")
 	// STEP 11.
-	g.pf("    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before\n")
-	g.pf("       the prefill, so a refusal has written not one destination byte (§5.3,\n")
-	g.pf("       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per\n")
-	g.pf("       record, and only where there is a range to prefill at all. It is the\n")
+	g.pf("    /* 11. ONE RECORD LOOP, AND NO HASH CHECK IN IT — step 10b's pre-pass\n")
+	g.pf("       already held every record in the tail, so a refusal cannot come after a\n")
+	g.pf("       record has landed (§5.3, §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE\n")
+	g.pf("       PER READ, not once per record, and only where there is a range to\n")
+	g.pf("       prefill at all. It is the\n")
 	g.pf("       caller's own stack and this codec allocates nothing. */\n")
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
 	g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
-	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
 	if ir.TableFixedClampNeeded(st) {

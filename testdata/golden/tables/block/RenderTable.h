@@ -15109,6 +15109,14 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderCamera defaults;
     if ( fill_count > 0 )
     {
@@ -15117,7 +15125,9 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderCameraFixedKnownRanges[lineage_at], RenderCameraFixedKnownRangeCounts[lineage_at],
@@ -15441,6 +15451,14 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderShip defaults;
     if ( fill_count > 0 )
     {
@@ -15449,7 +15467,9 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderShipFixedKnownRanges[lineage_at], RenderShipFixedKnownRangeCounts[lineage_at],
@@ -15750,6 +15770,14 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderTurret defaults;
     if ( fill_count > 0 )
     {
@@ -15758,7 +15786,9 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderTurretFixedKnownRanges[lineage_at], RenderTurretFixedKnownRangeCounts[lineage_at],
@@ -16068,6 +16098,14 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderMissile defaults;
     if ( fill_count > 0 )
     {
@@ -16076,7 +16114,9 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderMissileFixedKnownRanges[lineage_at], RenderMissileFixedKnownRangeCounts[lineage_at],
@@ -16389,6 +16429,14 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderDynamicProp defaults;
     if ( fill_count > 0 )
     {
@@ -16397,7 +16445,9 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderDynamicPropFixedKnownRanges[lineage_at], RenderDynamicPropFixedKnownRangeCounts[lineage_at],
@@ -16710,6 +16760,14 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderStaticProp defaults;
     if ( fill_count > 0 )
     {
@@ -16718,7 +16776,9 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderStaticPropFixedKnownRanges[lineage_at], RenderStaticPropFixedKnownRangeCounts[lineage_at],
@@ -17034,6 +17094,14 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderCosmeticProp defaults;
     if ( fill_count > 0 )
     {
@@ -17042,7 +17110,9 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderCosmeticPropFixedKnownRanges[lineage_at], RenderCosmeticPropFixedKnownRangeCounts[lineage_at],
@@ -17346,6 +17416,14 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderLaser defaults;
     if ( fill_count > 0 )
     {
@@ -17354,7 +17432,9 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderLaserFixedKnownRanges[lineage_at], RenderLaserFixedKnownRangeCounts[lineage_at],
@@ -17664,6 +17744,14 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RenderExplosion defaults;
     if ( fill_count > 0 )
     {
@@ -17672,7 +17760,9 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RenderExplosionFixedKnownRanges[lineage_at], RenderExplosionFixedKnownRangeCounts[lineage_at],

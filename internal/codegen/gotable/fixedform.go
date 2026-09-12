@@ -792,6 +792,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
+	// STEP 10b: THE HASH PRE-PASS. Every record's leading hash word is held
+	// against the file's BEFORE any prefill and before any landing, so a forged
+	// record in the middle of a batch leaves the caller's storage untouched and
+	// every counter at zero. In the landing loop the same check fired only after
+	// records 0..k-1 had landed, so "REFUSE is total" was false for any file of
+	// more than one record (§5.3 step 10b, §5.4).
+	g.pf("\tfor scan := at; len(scan) > 0; scan = scan[recordBytes:] {\n")
+	g.pf("\t\tif tableFixedGet64(scan) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
+	g.pf("\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
 	// one Reset image. Identity's list on Go is the ABI padding and unselected
 	// arms. There is no identity flag in the record loop.
@@ -803,10 +812,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
 	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
 	g.pf("\t}\n")
-	// STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
-	// refusal has written not one destination byte (§5.3, §5.8 row 9).
+	// STEP 11: per record, and NO HASH CHECK IN IT — step 10b's pre-pass already
+	// held every record in the tail, so a refusal cannot come after a record has
+	// landed (§5.3, §5.8 row 9).
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
-	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")

@@ -573,12 +573,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = true; return -1; }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }\n")
+	// STEP 10b: THE HASH PRE-PASS. Every record's leading hash word is compared
+	// to the file's BEFORE any prefill and before any landing, so a forged
+	// record at index 7 of 64 leaves the caller's storage untouched and every
+	// counter at zero. The check is NOT in the landing loop: there it fired
+	// after records 0..k-1 had already landed, and "REFUSE is total" plus the
+	// joint-answer table were false for any file of more than one record
+	// (§5.3 step 10b, §5.4). A file is ONE layout by construction, so this
+	// second walk is paid only on a corrupt or hostile file.
+	g.pf("    {\n")
+	g.pf("        const uint8_t * scan = at;\n")
+	g.pf("        for ( int64_t k = 0; k < n; ++k )\n        {\n")
+	g.pf("            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("            scan += record_bytes;\n        }\n    }\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held\n")
+	g.pf("        // every record in the tail, and a check in this loop could only\n")
+	g.pf("        // refuse after earlier records had landed.\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
