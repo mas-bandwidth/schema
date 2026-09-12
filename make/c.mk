@@ -11,9 +11,9 @@ build/packet-text/c/.stamp: bin/schema test/packet-text/Narrow.schema
 
 .PHONY: packet-utf8-c packet-utf8-c-negative-control
 packet-utf8-c: build/packet-text/c/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/debug
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/debug
 	./build/packet-text/harness ./build/packet-text/c/debug
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/release
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/release
 	./build/packet-text/harness ./build/packet-text/c/release
 
 packet-utf8-c-negative-control: packet-utf8-c
@@ -21,7 +21,7 @@ packet-utf8-c-negative-control: packet-utf8-c
 	go run ./tools/sabotage -name packet-utf8-c-read -out build/packet-text/c-negative/fields.gotext internal/codegen/c/fields.go
 	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-text/c-negative/fields.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/c-negative/overlay.json
 	go run -overlay=build/packet-text/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-text/c-negative test/packet-text/Narrow.schema
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c-negative test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c-negative/driver
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c-negative test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c-negative/driver
 	@if ./build/packet-text/harness -mutations-only ./build/packet-text/c-negative/driver > build/packet-text/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/c-negative/log || { cat build/packet-text/c-negative/log; exit 1; }
 	@echo 'packet UTF-8 C negative control: removed read validation fails bit-flip agreement'
@@ -1016,12 +1016,12 @@ build/packet-wide/c-shapes/.stamp: bin/schema test/packet-wide/Shapes.schema
 
 .PHONY: packet-wide-c
 packet-wide-c: build/packet-wide/c/.stamp build/packet-wide/c-shapes/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/debug
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/debug
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/debug
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/release
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/release
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/release
 	@for mode in '' '-DNDEBUG'; do \
-		$(CC) -std=c99 -Wall -Wextra -Werror $$mode -fsanitize=address,undefined -I$(SERIALIZE_C) -Ibuild/packet-wide/c -Ibuild/packet-wide/c-shapes test/packet-wide/c_contract.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/contract || exit 1; \
+		$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror $$mode -fsanitize=address,undefined -I$(SERIALIZE_C) -Ibuild/packet-wide/c -Ibuild/packet-wide/c-shapes test/packet-wide/c_contract.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/contract || exit 1; \
 		./build/packet-wide/c/contract || exit 1; \
 	done
 
@@ -1031,7 +1031,7 @@ packet-wide-c-negative-control: packet-wide-c
 	go run ./tools/sabotage -name packet-wide-c-pairing -out build/packet-wide/c-negative/wstring.gotext internal/codegen/c/wstring.go
 	@printf '{"Replace":{"%s/internal/codegen/c/wstring.go":"%s/build/packet-wide/c-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/c-negative/overlay.json
 	go run -overlay=build/packet-wide/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-wide/c-negative build/packet-wide/source/WideText.schema
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c-negative test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c-negative/driver
+	$(CC) -std=c99 -ffp-contract=off -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c-negative test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c-negative/driver
 	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c-negative/driver > build/packet-wide/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C wide pairing removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/c-negative/log || { cat build/packet-wide/c-negative/log; exit 1; }
 	@echo 'packet wide C negative control: removed pairing fails bit-flip agreement'
@@ -1101,7 +1101,7 @@ build/c-collections-fuzz-asan: build/tables-generated-c/collections.stamp test/c
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c build/tables-generated-c/arms/*Table.c -o $@ -lm
 
 build/cpp-collections-fuzz: build/collections-cpp/.stamp test/c-tables/collections_fuzz.cpp test/c-tables/wire_fuzz_main.c test/conformance/c/driver.h
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -O2 -Itest/conformance/c -Ibuild/collections-cpp test/c-tables/collections_fuzz.cpp -o $@
+	$(CXX) -std=c++17 -ffp-contract=off -Wall -Wextra -Werror -O2 -Itest/conformance/c -Ibuild/collections-cpp test/c-tables/collections_fuzz.cpp -o $@
 
 .PHONY: tables-c-collections-fuzz
 tables-c-collections-fuzz: build/c-collections-fuzz build/c-collections-fuzz-asan build/cpp-collections-fuzz
