@@ -1205,6 +1205,30 @@ tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
   conversion would move. A *quantized* `float32` is a different field: its
   wire is the step index and not the pattern, per its row below.
 
+**The READ BUFFER CONTRACT — normative, and the one statement of it:**
+
+> **A caller hands a reader a buffer with AT LEAST 8 BYTES READABLE PAST THE
+> PAYLOAD'S LOGICAL LENGTH.**
+
+An implementation **MAY read up to 8 bytes past the payload** — that is what
+lets it load 64 bits at a time — and **MUST NOT depend on more**. An
+implementation that reads nothing past the payload is **conforming too**: the
+contract is a permission granted to the reader and an obligation placed on the
+caller, never a requirement that a reader use it. **The slack's contents are
+never interpreted.** No field, length, padding check or refusal depends on a
+byte at or past `ceil(bits/8)`, so a read's verdict and its bits consumed are
+identical whatever those bytes hold — the slack is allocation, never wire, and
+`Write` still returns exactly `ceil(bits/8)`.
+
+This is the DESIGN INTENT and not an implementation accident (Glenn,
+2026-09-11): "The design intent is to allow fast implementations by making
+this 8 bytes past the payload enabling 64bit reads. This is intentional. It is
+not required that implementations do this, but the standard allows them to do
+it if they want, to get the fastest, correct implementation." The number is 8
+in all nine targets, whatever any one of them reads today (§6.3), so a caller
+who honours it can hand the same buffer to any target. **A buffer shorter than
+the contract is a CALLER error, not a malformed payload** (§5).
+
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
 
@@ -2179,6 +2203,19 @@ remaining after the last field are the caller's concern, not a validation
 failure — a stream framed over a union ends on the in-band `None` tag by
 design.
 
+**A buffer short of the read buffer contract is a CALLER error, not a
+malformed payload.** §4.3 says what the caller owes — at least 8 bytes
+readable past the payload's logical length — and the guarantee that no target
+traps, panics or aborts on a malformed payload is a guarantee about BYTES: a
+payload that is damaged or hostile is REFUSED, terminally, in every target and
+every build. It is not a promise about a buffer that breaks the contract,
+because a reader permitted to load 64 bits at a time cannot detect that the
+last load was outside the allocation. There a target **fails however that
+target fails on a caller error** — JavaScript's flat tier throws a
+`RangeError` off the DataView, a C or C++ reader reads whatever the allocation
+holds — and §6.3 records what each one does. The fix is the caller's: size the
+receive buffer with the slack and pass the true length.
+
 **Writes assume trusted data.** The write path is trusted; writing correctly
 is the caller's responsibility. Writer inputs are stated as OBLIGATIONS, not
 defined behaviors: the spec owes a conforming writer exact bytes and owes a
@@ -2654,7 +2691,15 @@ and write through a serialize-family runtime:
 |---|---|---|---|---|---|---|
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
 | error idiom | `int` 1/0 early-out; the stream latches the error | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
-| buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
+| buffer contract — what it READS | write buffers multiple of 8; reads up to 8 bytes past the payload | write buffers multiple of 8 (asserted); reads up to 8 bytes past the payload | write buffers multiple of 8 (throws); reader takes (buffer, bytes) and reads nothing past the payload | write buffers multiple of 8; the fast path reads up to 7 bytes past the payload — the caller still owes 8 | caller-owned DataViews; the flat tier reads up to 8 bytes past the payload, and a buffer short of the contract throws a `RangeError` off the DataView — a caller error, not a malformed payload (§5) | write buffers multiple of 8; the fast path reads up to 8 bytes past the payload |
+
+**The buffer-contract row is WHAT EACH TARGET READS TODAY, under §4.3's read
+buffer contract — it is not nine contracts.** The law is one number, 8, in all
+nine: a caller hands every target a buffer with at least 8 bytes readable past
+the payload's logical length. A target that reads fewer of them, or none, is
+conforming (§4.3) and may start reading more without the caller changing
+anything; a caller who supplies fewer is in error (§5), whichever target
+happens to tolerate it.
 
 The three self-contained targets — no runtime library, so there is no stream
 object to emit against; the bit reader and writer live in the generated code:
@@ -2663,7 +2708,7 @@ object to emit against; the bit reader and writer live in the generated code:
 |---|---|---|---|
 | emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
 | error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
-| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | the writer returns the binary; read buffers need NO slack past the payload |
+| buffer contract — what it READS | write buffers hold `<name>MaxBytes` (a multiple of 8); reads NOTHING past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); reads NOTHING past the payload | the writer returns the binary; reads NOTHING past the payload |
 
 ## 7. The compiler
 
