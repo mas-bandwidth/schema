@@ -54,15 +54,19 @@ namespace wide {
 
 SCHEMA_WRITE_INLINE bool WriteLine( serialize::WriteStream & stream, const Line & value )
 {
-    for ( int32_t i = 0; i < value.text_length; i++ )
+    serialize_assert( value.text_length >= 0 && value.text_length <= 4 );
     {
-        serialize_assert( value.text[i] != 0 );
-    }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 4 ) );
-    write_bits( stream, uint32_t( value.text_length ), 3 );
-    for ( int32_t i = 0; i < value.text_length; i++ )
-    {
-        write_bits( stream, uint32_t( value.text[i] ), 32 );
+        const int32_t clamped_length = value.text_length < 0 ? 0 : ( value.text_length > ( 4 ) ? ( 4 ) : value.text_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.text[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 4 ) );
+        write_bits( stream, uint32_t( clamped_length ), 3 );
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            write_bits( stream, uint32_t( value.text[i] ), 32 );
+        }
     }
     return true;
 }

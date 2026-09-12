@@ -229,10 +229,13 @@ pub fn write_default_bulk_arm(stream: &mut WriteStream<'_>, value: &DefaultBulkA
     write_default_arm(stream, &value.payload)?;
     debug_assert!(value.data_length >= 0 && value.data_length <= 2, "data_length out of range [0, 2]");
     {
-        let mut offset_value = value.data_length as u32;
-        stream.serialize_bits(&mut offset_value, 2)?; // the length guards the slice (§6.3)
+        let clamped_length = value.data_length.clamp(0, 2); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 2)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.data[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 

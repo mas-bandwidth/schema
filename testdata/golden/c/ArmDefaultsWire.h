@@ -182,13 +182,17 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_arm( serialize
     {
         return 0;
     }
-    if ( !serialize_write_int( stream, value->data_length, 0, 2 ) )
+    serialize_assert( value->data_length >= 0 && value->data_length <= 2 );
     {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, value->data, (int) value->data_length ) )
-    {
-        return 0;
+        const int32_t clamped_length = value->data_length < 0 ? 0 : ( value->data_length > ( 2 ) ? ( 2 ) : value->data_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, 2 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, value->data, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     return 1;
 }

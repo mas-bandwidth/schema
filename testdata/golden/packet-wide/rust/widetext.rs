@@ -62,6 +62,7 @@ pub fn write_wide_seven(stream: &mut WriteStream<'_>, value: &WideSeven) -> Resu
     {
         let mut length = value.text_length;
         debug_assert!(length >= 0 && length <= 7, "text_length out of range [0, 7]");
+        length = length.clamp(0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -120,6 +121,7 @@ pub fn write_wide_four(stream: &mut WriteStream<'_>, value: &WideFour) -> Result
     {
         let mut length = value.text_length;
         debug_assert!(length >= 0 && length <= 4, "text_length out of range [0, 4]");
+        length = length.clamp(0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 4)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -177,10 +179,14 @@ pub const NARROW_FIFTEEN_MAX_BYTES: usize = 24;
 pub fn write_narrow_fifteen(stream: &mut WriteStream<'_>, value: &NarrowFifteen) -> Result {
     debug_assert!(value.text_length >= 0 && value.text_length <= 15, "text_length out of range [0, 15]");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let clamped_length = value.text_length.clamp(0, 15); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.text[..clamped_length as usize].contains(&0), "text_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.text[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
@@ -227,6 +233,7 @@ pub fn write_wide_interop(stream: &mut WriteStream<'_>, value: &WideInterop) -> 
     {
         let mut length = value.caption_length;
         debug_assert!(length >= 0 && length <= 7, "caption_length out of range [0, 7]");
+        length = length.clamp(0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.caption[..length as usize] {
             debug_assert!(unit != 0, "caption carries an interior null within its used length");

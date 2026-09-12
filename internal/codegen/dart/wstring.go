@@ -10,12 +10,23 @@ import (
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%s{\n%s  final wideLength = %sLength;\n", ind, ind, name)
-	g.pf("%s  if (wideLength < 0 || wideLength > %d) {\n%s    throw ArgumentError('wstring length');\n%s  }\n", ind, f.Type.Size, ind, ind)
-	g.emitWriteOffset("wideLength", big.NewInt(0), big.NewInt(f.Type.Size), ind+"  ")
+	// SPEC §4.12's two WRITE-side rules — the used length in [0, N], and no
+	// zero code unit among the used units — are the CALLER's contract, and
+	// write-side checks are DEBUG ONLY (SPEC §5). In Dart that idiom is
+	// assert, which is gone from a build without --enable-asserts; these were
+	// `throw ArgumentError(...)`, alive in every build and the only write path
+	// in the nine that could unwind outside Elixir. The READ side refuses both
+	// in every build.
+	g.pf("%s  assert(wideLength >= 0);\n%s  assert(wideLength <= %d);\n", ind, ind, f.Type.Size)
+	// and the release path must not unwind either: the buffer holds N units, so
+	// an out-of-contract length would RangeError on the list. Clamp into [0, N]
+	// once and write THAT length — deterministic bytes, never a trap (SPEC §5).
+	g.pf("%s  final wideUsed = wideLength.clamp(0, %d);\n", ind, f.Type.Size)
+	g.emitWriteOffset("wideUsed", big.NewInt(0), big.NewInt(f.Type.Size), ind+"  ")
 	g.chunkFlush(ind + "  ")
-	g.emitByteReadLoop(ind+"  ", "wideIndex", "wideLength")
+	g.emitByteReadLoop(ind+"  ", "wideIndex", "wideUsed")
 	g.pf("%s    v = %s[wideIndex];\n", ind, name)
-	g.pf("%s    if (v == 0) {\n%s      throw ArgumentError('wstring null unit');\n%s    }\n", ind, ind, ind)
+	g.pf("%s    assert(v != 0);\n", ind)
 	g.mergeW(32, ind+"    ")
 	g.pf("%s  }\n%s}\n", ind, ind)
 }

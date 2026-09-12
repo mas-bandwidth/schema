@@ -12,6 +12,15 @@ func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.pf("%s{\n%s    let mut length = %s_length;\n", ind, ind, name)
 	g.writeAssert(ind+"    ", fmt.Sprintf("length >= 0 && length <= %s", bound),
 		fmt.Sprintf("%s_length out of range [0, %s]", assertLabel(name), bound))
+	// The contract above is debug_assert!, gone from a release build (SPEC §5),
+	// so the RELEASE path has to survive an out-of-contract length without
+	// unwinding: `&value.text[..n as usize]` PANICS on a negative or oversized
+	// n, and a panic is an unwinding write — the one thing SPEC §5 says no
+	// target does outside Elixir. Clamp into [0, N] once and write THAT length:
+	// the wire carries the clamped length and the clamped payload, so a release
+	// write of a bad length gives the bytes of the clamped write, byte for
+	// byte, and never a trap. The read side refuses nothing less in any build.
+	g.pf("%s    length = length.clamp(0, %s); // release: an out-of-contract length writes the clamped length — never a trap (§5)\n", ind, bound)
 	g.pf("%s    stream.serialize_int(&mut length, 0, %s)?;\n", ind, bound)
 	g.pf("%s    for &unit in &%s[..length as usize] {\n", ind, name)
 	g.writeAssert(ind+"        ", "unit != 0", fmt.Sprintf("%s carries an interior null within its used length", assertLabel(name)))

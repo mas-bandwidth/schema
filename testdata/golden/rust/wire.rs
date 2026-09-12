@@ -873,10 +873,13 @@ pub const BLOCK_MAX_BYTES: usize = 2008;
 pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
     debug_assert!(value.data_length >= 0 && value.data_length <= 2000, "data_length out of range [0, 2000]");
     {
-        let mut offset_value = value.data_length as u32;
-        stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
+        let clamped_length = value.data_length.clamp(0, 2000); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 11)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.data[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.data[..value.data_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
@@ -914,10 +917,14 @@ pub const CHAT_MAX_BYTES: usize = 264;
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     debug_assert!(value.text_length >= 0 && value.text_length <= 256, "text_length out of range [0, 256]");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
+        let clamped_length = value.text_length.clamp(0, 256); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.text[..clamped_length as usize].contains(&0), "text_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.text[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
@@ -1125,10 +1132,14 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.text_length >= 0 && value.text_length <= 255, "text_length out of range [0, 255]");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
+        let clamped_length = value.text_length.clamp(0, 255); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.text[..clamped_length as usize].contains(&0), "text_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.text[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 

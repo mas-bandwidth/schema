@@ -711,13 +711,30 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		g.writeAssert(ind, fmt.Sprintf("%s_length >= 0 && %s_length <= %d", name, name, f.Type.Size),
 			fmt.Sprintf("%s_length out of range [0, %d]", assertLabel(name), f.Type.Size))
-		g.emitWriteRangedFold32(name+"_length", false, "0", true,
-			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
+		// The contract above is debug only (SPEC §5), so the RELEASE path has to
+		// survive an out-of-contract length without unwinding: `&value.x[..n as
+		// usize]` PANICS on a negative or oversized n, and a panic is an
+		// unwinding write — the one thing SPEC §5 says no target does outside
+		// Elixir. Clamp into [0, N] once and write THAT length: deterministic
+		// bytes, never a trap (SPEC §5).
+		g.pf("%s{\n", ind)
+		g.pf("%s    let clamped_length = %s_length.clamp(0, %d); // release: an out-of-contract length writes the clamped length — never a trap (§5)\n",
+			ind, name, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			// interior nulls among the used bytes are writer misuse, debug only,
+			// the same check the cpp and c backends fold in (SPEC §4.7, §5); the
+			// read side refuses them in every build
+			g.pf("%s    debug_assert!(!%s[..clamped_length as usize].contains(&0), \"%s carries an interior null\");\n",
+				ind, name, assertLabel(name+"_bytes"))
+		}
+		g.emitWriteRangedFold32("clamped_length", false, "0", true,
+			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind+"    ")
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
 		// local first — 256 B per chat, 2 KB per block, visible in perf
-		g.pf("%sstream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
+		g.pf("%s    stream.write_bytes(&%s[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name)
+		g.pf("%s}\n", ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

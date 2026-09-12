@@ -321,13 +321,17 @@ SCHEMA_WRITE_INLINE bool WriteArmAlign( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
-        for ( int32_t i = 0; i < value.s_length; i++ )
+        serialize_assert( value.s_length >= 0 && value.s_length <= 4 );
         {
-            serialize_assert( value.s[i] != 0 );
+            const int32_t clamped_length = value.s_length < 0 ? 0 : ( value.s_length > ( 4 ) ? ( 4 ) : value.s_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+            for ( int32_t i = 0; i < clamped_length; i++ )
+            {
+                serialize_assert( value.s[i] != 0 );
+            }
+            serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 4 ) );
+            write_bits( stream, uint32_t( clamped_length ), 3 );
+            write_bytes( stream, value.s, clamped_length );
         }
-        serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
-        write_bits( stream, uint32_t( value.s_length ), 3 );
-        write_bytes( stream, value.s, value.s_length );
     }
     else
     {
@@ -541,13 +545,17 @@ SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream,
         serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
-    for ( int32_t i = 0; i < value.s_length; i++ )
+    serialize_assert( value.s_length >= 0 && value.s_length <= 4 );
     {
-        serialize_assert( value.s[i] != 0 );
+        const int32_t clamped_length = value.s_length < 0 ? 0 : ( value.s_length > ( 4 ) ? ( 4 ) : value.s_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.s[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 4 ) );
+        write_bits( stream, uint32_t( clamped_length ), 3 );
+        write_bytes( stream, value.s, clamped_length );
     }
-    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
-    write_bits( stream, uint32_t( value.s_length ), 3 );
-    write_bytes( stream, value.s, value.s_length );
     write_bits( stream, value.p, 32 );
     write_bits( stream, value.q, 29 );
     write_bits( stream, value.r, 19 );

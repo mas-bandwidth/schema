@@ -85,19 +85,22 @@ namespace Wide
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 7, "value.TextLength out of range [0, 7]");
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                int clampedLength = Math.Clamp(value.TextLength, 0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
                 {
-                    return false;
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 3))
+                    {
+                        return false;
+                    }
                 }
-            }
-            for (int wideIndex = 0; wideIndex < value.TextLength; wideIndex++)
-            {
-                uint wideGroup = value.Text[wideIndex];
-                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
-                if (!stream.SerializeBits(ref wideGroup, 32))
+                for (int wideIndex = 0; wideIndex < clampedLength; wideIndex++)
                 {
-                    return false;
+                    uint wideGroup = value.Text[wideIndex];
+                    Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
+                    if (!stream.SerializeBits(ref wideGroup, 32))
+                    {
+                        return false;
+                    }
                 }
             }
             return true;
@@ -153,19 +156,22 @@ namespace Wide
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 4, "value.TextLength out of range [0, 4]");
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                int clampedLength = Math.Clamp(value.TextLength, 0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
                 {
-                    return false;
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 3))
+                    {
+                        return false;
+                    }
                 }
-            }
-            for (int wideIndex = 0; wideIndex < value.TextLength; wideIndex++)
-            {
-                uint wideGroup = value.Text[wideIndex];
-                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
-                if (!stream.SerializeBits(ref wideGroup, 32))
+                for (int wideIndex = 0; wideIndex < clampedLength; wideIndex++)
                 {
-                    return false;
+                    uint wideGroup = value.Text[wideIndex];
+                    Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
+                    if (!stream.SerializeBits(ref wideGroup, 32))
+                    {
+                        return false;
+                    }
                 }
             }
             return true;
@@ -221,15 +227,19 @@ namespace Wide
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 15, "value.TextLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                int clampedLength = Math.Clamp(value.TextLength, 0, 15); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.Text.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.Text carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 4))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Text.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
-            {
-                return false;
             }
             return true;
         }
@@ -297,19 +307,22 @@ namespace Wide
         {
             Debug.Assert(value.CaptionLength >= 0 && value.CaptionLength <= 7, "value.CaptionLength out of range [0, 7]");
             {
-                uint offsetValue = (uint)(value.CaptionLength);
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                int clampedLength = Math.Clamp(value.CaptionLength, 0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
                 {
-                    return false;
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 3))
+                    {
+                        return false;
+                    }
                 }
-            }
-            for (int wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++)
-            {
-                uint wideGroup = value.Caption[wideIndex];
-                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
-                if (!stream.SerializeBits(ref wideGroup, 32))
+                for (int wideIndex = 0; wideIndex < clampedLength; wideIndex++)
                 {
-                    return false;
+                    uint wideGroup = value.Caption[wideIndex];
+                    Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
+                    if (!stream.SerializeBits(ref wideGroup, 32))
+                    {
+                        return false;
+                    }
                 }
             }
             return true;

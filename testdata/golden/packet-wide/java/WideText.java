@@ -74,6 +74,7 @@ public final class WideText {
         assert data.length >= wideSevenMaxBytes;
         assert value.textLength >= 0;
         assert value.textLength <= 7;
+        for (int w0 = 0; w0 < value.textLength; w0++) assert value.text[w0] != 0;
         return true;
     }
 
@@ -86,26 +87,27 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.textLength < 0 || value.textLength > 7) throw new IllegalArgumentException("wstring length");
-        v = (value.textLength) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        for (int wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
-            v = value.text[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+        {
+            final int wideUsed = Math.min(Math.max(value.textLength, 0), 7);
+            v = (wideUsed) & 0x7L;
             scratch |= v << scratchBits;
-            scratchBits += 32;
+            scratchBits += 3;
             if (scratchBits >= 64) {
                 LONG_LE.set(data, wordIndex * 8, scratch);
                 wordIndex++;
                 scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
+                scratch = v >>> (3 - scratchBits);
+            }
+            for (int wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
+                v = value.text[wideIndex];
+                scratch |= v << scratchBits;
+                scratchBits += 32;
+                if (scratchBits >= 64) {
+                    LONG_LE.set(data, wordIndex * 8, scratch);
+                    wordIndex++;
+                    scratchBits -= 64;
+                    scratch = v >>> (32 - scratchBits);
+                }
             }
         }
         if (scratchBits != 0) {
@@ -216,6 +218,7 @@ public final class WideText {
         assert data.length >= wideFourMaxBytes;
         assert value.textLength >= 0;
         assert value.textLength <= 4;
+        for (int w0 = 0; w0 < value.textLength; w0++) assert value.text[w0] != 0;
         return true;
     }
 
@@ -228,26 +231,27 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.textLength < 0 || value.textLength > 4) throw new IllegalArgumentException("wstring length");
-        v = (value.textLength) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        for (int wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
-            v = value.text[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+        {
+            final int wideUsed = Math.min(Math.max(value.textLength, 0), 4);
+            v = (wideUsed) & 0x7L;
             scratch |= v << scratchBits;
-            scratchBits += 32;
+            scratchBits += 3;
             if (scratchBits >= 64) {
                 LONG_LE.set(data, wordIndex * 8, scratch);
                 wordIndex++;
                 scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
+                scratch = v >>> (3 - scratchBits);
+            }
+            for (int wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
+                v = value.text[wideIndex];
+                scratch |= v << scratchBits;
+                scratchBits += 32;
+                if (scratchBits >= 64) {
+                    LONG_LE.set(data, wordIndex * 8, scratch);
+                    wordIndex++;
+                    scratchBits -= 64;
+                    scratch = v >>> (32 - scratchBits);
+                }
             }
         }
         if (scratchBits != 0) {
@@ -536,6 +540,7 @@ public final class WideText {
         assert data.length >= wideInteropMaxBytes;
         assert value.captionLength >= 0;
         assert value.captionLength <= 7;
+        for (int w0 = 0; w0 < value.captionLength; w0++) assert value.caption[w0] != 0;
         return true;
     }
 
@@ -548,26 +553,27 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.captionLength < 0 || value.captionLength > 7) throw new IllegalArgumentException("wstring length");
-        v = (value.captionLength) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        for (int wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
-            v = value.caption[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+        {
+            final int wideUsed = Math.min(Math.max(value.captionLength, 0), 7);
+            v = (wideUsed) & 0x7L;
             scratch |= v << scratchBits;
-            scratchBits += 32;
+            scratchBits += 3;
             if (scratchBits >= 64) {
                 LONG_LE.set(data, wordIndex * 8, scratch);
                 wordIndex++;
                 scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
+                scratch = v >>> (3 - scratchBits);
+            }
+            for (int wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
+                v = value.caption[wideIndex];
+                scratch |= v << scratchBits;
+                scratchBits += 32;
+                if (scratchBits >= 64) {
+                    LONG_LE.set(data, wordIndex * 8, scratch);
+                    wordIndex++;
+                    scratchBits -= 64;
+                    scratch = v >>> (32 - scratchBits);
+                }
             }
         }
         if (scratchBits != 0) {

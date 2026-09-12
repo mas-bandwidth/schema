@@ -166,13 +166,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_seven( serialize_write_stream_t * stream, const WideSeven * value )
 {
     serialize_assert( value->text_length >= 0 && value->text_length <= 7 );
-    if ( !serialize_write_int( stream, value->text_length, 0, 7 ) )
-    {
-        return 0;
-    }
     {
         int32_t i;
-        for ( i = 0; i < value->text_length; i++ )
+        const int32_t clamped_length = value->text_length < 0 ? 0 : ( value->text_length > ( 7 ) ? ( 7 ) : value->text_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, 7 ) )
+        {
+            return 0;
+        }
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->text[i], 32 ) )
@@ -219,13 +220,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_seven( serialize_read_st
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_four( serialize_write_stream_t * stream, const WideFour * value )
 {
     serialize_assert( value->text_length >= 0 && value->text_length <= 4 );
-    if ( !serialize_write_int( stream, value->text_length, 0, 4 ) )
-    {
-        return 0;
-    }
     {
         int32_t i;
-        for ( i = 0; i < value->text_length; i++ )
+        const int32_t clamped_length = value->text_length < 0 ? 0 : ( value->text_length > ( 4 ) ? ( 4 ) : value->text_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, 4 ) )
+        {
+            return 0;
+        }
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->text[i], 32 ) )
@@ -271,20 +273,22 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_four( serialize_read_str
 /* Writes NarrowFifteen. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow_fifteen( serialize_write_stream_t * stream, const NarrowFifteen * value )
 {
+    serialize_assert( value->text_length >= 0 && value->text_length <= 15 );
     {
         int32_t i;
-        for ( i = 0; i < value->text_length; i++ )
+        const int32_t clamped_length = value->text_length < 0 ? 0 : ( value->text_length > ( 15 ) ? ( 15 ) : value->text_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
-    }
-    if ( !serialize_write_int( stream, value->text_length, 0, 15 ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) value->text_length ) )
-    {
-        return 0;
+        if ( !serialize_write_int( stream, clamped_length, 0, 15 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     return 1;
 }
@@ -316,13 +320,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow_fifteen( serialize_rea
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_interop( serialize_write_stream_t * stream, const WideInterop * value )
 {
     serialize_assert( value->caption_length >= 0 && value->caption_length <= 7 );
-    if ( !serialize_write_int( stream, value->caption_length, 0, 7 ) )
-    {
-        return 0;
-    }
     {
         int32_t i;
-        for ( i = 0; i < value->caption_length; i++ )
+        const int32_t clamped_length = value->caption_length < 0 ? 0 : ( value->caption_length > ( 7 ) ? ( 7 ) : value->caption_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, 7 ) )
+        {
+            return 0;
+        }
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->caption[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->caption[i], 32 ) )
