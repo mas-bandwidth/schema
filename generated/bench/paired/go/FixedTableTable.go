@@ -451,6 +451,8 @@ func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// MixedEntity's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	tableFixedPut32(b[0:], uint32(value.EntityId))
 	tableFixedPut32(b[4:], uint32(value.PosX))
@@ -497,6 +499,8 @@ func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// MixedStat's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[0:], uint32(value.StatId))
 	tableFixedPut32(b[4:], uint32(value.Delta))
@@ -531,6 +535,8 @@ func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// MixedHitEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	tableFixedPut32(b[0:], uint32(value.TargetId))
 	tableFixedPut32(b[4:], uint32(value.Damage))
@@ -561,6 +567,8 @@ func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// MixedChatEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[0:], uint32(value.Channel))
 	tableFixedPut32(b[4:], uint32(value.Speaker))
@@ -583,6 +591,8 @@ func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// MixedPickupEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[0:], uint32(value.ItemId))
 	tableFixedPut32(b[4:], uint32(value.Amount))
@@ -776,6 +786,8 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// BenchMixed's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[0:], uint32(value.Sequence))
 	tableFixedPut32(b[4:], uint32(value.AckSequence))
@@ -787,11 +799,11 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut64(b[40:], uint64(value.FrameTick))
 	tableFixedPut32(b[48:], uint32(value.ServerTime))
 	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
-	for i := int64(0); i < 8; i++ {
+	for i := int64(0); i < int64(value.EntitiesCount); i++ {
 		MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
 	}
 	tableFixedPut32(b[464:], uint32(value.StatsCount))
-	for i := int64(0); i < 80; i++ {
+	for i := int64(0); i < int64(value.StatsCount); i++ {
 		MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
 	}
 	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
@@ -807,9 +819,9 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
 	}
 	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
-	copy(b[1126:][4:], value.PlayerName[:])
+	copy(b[1126:][4:], value.PlayerName[:value.PlayerNameLength])
 	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
-	copy(b[1145:][4:], value.Payload[:])
+	copy(b[1145:][4:], value.Payload[:value.PayloadLength])
 	tableFixedPutF32(b[1165:], value.AimX)
 	tableFixedPutF32(b[1169:], value.AimY)
 	tableFixedPutF32(b[1173:], value.AimZ)
@@ -840,6 +852,8 @@ func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// FixedTable's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
 }
