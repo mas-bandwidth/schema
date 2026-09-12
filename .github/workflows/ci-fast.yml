@@ -335,6 +335,38 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
+      # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
+      # internal/codegen/ write a probe module whose go.mod carries
+      # `replace github.com/mas-bandwidth/serialize.go => <abs ../serialize.go>`
+      # (compiler/tableclosuredefaults_test.go:79,
+      # internal/codegen/golang/golang_test.go:557, seven more under
+      # internal/codegen/gotable) and then `go build` it; the C++, C and C#
+      # probes do the same with ../serialize, ../serialize.c and ../serialize.cs.
+      # Without the sibling checkouts every one of those is a `setup failed`,
+      # not a verdict on the diff.
+      #
+      # THE PINS ARE THE FILE'S OWN, the same SERIALIZE*_TAG values ci-full.yml
+      # reads, so this lane compiles against the runtime the full lane does.
+      #
+      # Measured on the Studio's own network: the four shallow clones are
+      # ~0.6 s each, ~2.5 s total for ~4.8 MB — inside the floor named at the
+      # top of this file, not a new minute.
+      - name: Check out the C++, C, C# and Go serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.cs serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
       # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
@@ -357,6 +389,25 @@ jobs:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE SIBLINGS ARE THERE OR THIS JOB IS NOT A VERDICT. Refusing by name
+      # here, before `go test`, turns a future missing checkout into one line
+      # that says which runtime and which pin, instead of forty
+      # `replacement directory ... does not exist` lines inside unrelated tests.
+      - name: the sibling runtimes are present
+        run: |
+          set -euo pipefail
+          missing=
+          for d in serialize serialize.c serialize.cs serialize.go; do
+            [ -d "../$d" ] || missing="$missing $d"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the Go probes link sibling runtimes this runner does not have:$missing." \
+                 "Clone them beside the checkout at the pins this file names" \
+                 "(SERIALIZE_TAG=$SERIALIZE_TAG, SERIALIZE_C_TAG=$SERIALIZE_C_TAG," \
+                 "SERIALIZE_CS_TAG=$SERIALIZE_CS_TAG, SERIALIZE_GO_TAG=$SERIALIZE_GO_TAG)."
+            exit 1
+          fi
 
       - name: go test the touched packages
         env:
