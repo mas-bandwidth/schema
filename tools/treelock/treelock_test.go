@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,9 +19,18 @@ import (
 
 var (
 	builtBinOnce sync.Once
+	builtBinDir  string
 	builtBinPath string
 	builtBinErr  error
 )
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if builtBinDir != "" {
+		_ = os.RemoveAll(builtBinDir)
+	}
+	os.Exit(code)
+}
 
 func buildTreelock(t *testing.T) string {
 	t.Helper()
@@ -30,6 +40,7 @@ func buildTreelock(t *testing.T) string {
 			builtBinErr = err
 			return
 		}
+		builtBinDir = dir
 		bin := filepath.Join(dir, "treelock")
 		cmd := exec.Command("go", "build", "-o", bin, ".")
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -51,11 +62,30 @@ func createFifo(t *testing.T, path string) {
 	}
 }
 
-func releaseFifo(path string) {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0600)
-	if err == nil {
-		_, _ = f.Write([]byte("ok\n"))
-		_ = f.Close()
+func releaseFifo(path string, timeout ...time.Duration) error {
+	wait := 100 * time.Millisecond
+	if len(timeout) > 0 {
+		wait = timeout[0]
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		fd, err := syscall.Open(path, syscall.O_WRONLY|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			f := os.NewFile(uintptr(fd), path)
+			_, writeErr := f.Write([]byte("ok\n"))
+			closeErr := f.Close()
+			if writeErr != nil {
+				return writeErr
+			}
+			return closeErr
+		}
+		if !errors.Is(err, syscall.ENXIO) {
+			return fmt.Errorf("open fifo nonblock %s: %w", path, err)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("release fifo timed out after %v (no reader on %s): %w", wait, path, err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -85,6 +115,69 @@ func waitForFile(t *testing.T, path string, done <-chan error, stderrPath string
 	return nil
 }
 
+func TestReviewerFifoWithoutReaderIsBounded(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "release.fifo")
+	createFifo(t, p)
+	err := releaseFifo(p)
+	if err == nil {
+		t.Fatal("expected error releasing fifo without reader, got nil")
+	}
+}
+
+func TestFifoEarlyChildExitIsBounded(t *testing.T) {
+	bin := buildTreelock(t)
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, "test.lock")
+	ownerPath := filepath.Join(dir, "owner")
+	readyPath := filepath.Join(dir, "ready")
+	fifoPath := filepath.Join(dir, "release.fifo")
+	stderrPath := filepath.Join(dir, "early_exit.stderr")
+
+	createFifo(t, fifoPath)
+
+	stderrFile, err := os.Create(stderrPath)
+	if err != nil {
+		t.Fatalf("failed to create stderr file: %v", err)
+	}
+	defer stderrFile.Close()
+
+	cmd := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
+		"sh", "-c", "echo ready > \"$1\"; exit 1", "--", readyPath)
+	cmd.Stderr = stderrFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start cmd: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	})
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected child to exit with error")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for child to exit")
+	}
+
+	start := time.Now()
+	err = releaseFifo(fifoPath, 100*time.Millisecond)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected releaseFifo to fail when child exited early, got nil")
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("releaseFifo took too long (%v), expected bounded return under 500ms", elapsed)
+	}
+}
+
 func TestTreelockExclusivity(t *testing.T) {
 	bin := buildTreelock(t)
 	dir := t.TempDir()
@@ -106,6 +199,7 @@ func TestTreelockExclusivity(t *testing.T) {
 	holder := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo ready > \"$1\"; read -r line < \"$2\"", "--", readyPath, fifoPath)
 	holder.Stderr = stderrFile
+	holder.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := holder.Start(); err != nil {
 		t.Fatalf("holder failed to start: %v", err)
 	}
@@ -115,9 +209,8 @@ func TestTreelockExclusivity(t *testing.T) {
 	}()
 
 	t.Cleanup(func() {
-		go releaseFifo(fifoPath)
 		if holder.Process != nil {
-			_ = holder.Process.Kill()
+			_ = syscall.Kill(-holder.Process.Pid, syscall.SIGKILL)
 		}
 	})
 
@@ -149,7 +242,9 @@ func TestTreelockExclusivity(t *testing.T) {
 	}
 
 	// Now release holder and wait for clean exit
-	releaseFifo(fifoPath)
+	if err := releaseFifo(fifoPath, 2*time.Second); err != nil {
+		t.Fatalf("failed to release fifo: %v", err)
+	}
 	select {
 	case err := <-holderDone:
 		if err != nil {
@@ -197,7 +292,6 @@ func TestTreelockOwnerDeathRelease(t *testing.T) {
 	}()
 
 	t.Cleanup(func() {
-		go releaseFifo(fifoPath)
 		if holder.Process != nil {
 			_ = syscall.Kill(-holder.Process.Pid, syscall.SIGKILL)
 		}
@@ -244,6 +338,7 @@ func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 	holder := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo $$ > \"$1\"; read -r line < \"$2\"", "--", childPidFile, fifoPath)
 	holder.Stderr = stderrFile
+	holder.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := holder.Start(); err != nil {
 		t.Fatalf("holder failed to start: %v", err)
 	}
@@ -255,9 +350,8 @@ func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 
 	var childPidInt int
 	t.Cleanup(func() {
-		go releaseFifo(fifoPath)
 		if holder.Process != nil {
-			_ = holder.Process.Kill()
+			_ = syscall.Kill(-holder.Process.Pid, syscall.SIGKILL)
 		}
 		if childPidInt > 0 {
 			_ = syscall.Kill(childPidInt, syscall.SIGKILL)
@@ -311,7 +405,9 @@ func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 	}
 
 	// Release the surviving child process cleanly via FIFO
-	releaseFifo(fifoPath)
+	if err := releaseFifo(fifoPath, 2*time.Second); err != nil {
+		t.Fatalf("failed to release child fifo: %v", err)
+	}
 
 	// Wait up to 5s for child to terminate cleanly
 	deadline := time.Now().Add(5 * time.Second)
