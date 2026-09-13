@@ -395,7 +395,7 @@
     (format out "|---")
     (dolist (col cols)
       (declare (ignore col))
-      (format out "|---"))
+      (format out "|:---:"))
     (format out "|~%")
 
     ;; Feature rows
