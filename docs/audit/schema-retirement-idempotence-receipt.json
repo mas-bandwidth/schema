@@ -1,0 +1,27 @@
+{
+  "target": "Floored",
+  "step1_initial_retire": {
+    "command": "schema lock --verbose --retire=Floored --reason=\"reason A\" VNEW_floor.schema",
+    "stdout": "retired Floored in /Users/glenn/emma-working/scratch/test_retire/schema.lock",
+    "exit_code": 0,
+    "rewrote": true,
+    "bytes_changed": true
+  },
+  "step2_same_reason_idempotence": {
+    "command": "schema lock --verbose --retire=Floored --reason=\"reason A\" VNEW_floor.schema",
+    "stdout": "Floored is already retired in /Users/glenn/emma-working/scratch/test_retire/schema.lock",
+    "exit_code": 0,
+    "is_already_retired": true,
+    "same_bytes": true,
+    "mtime_preserved": true
+  },
+  "step3_changed_reason_overwrite": {
+    "command": "schema lock --verbose --retire=Floored --reason=\"reason B\" VNEW_floor.schema",
+    "stdout": "retired Floored in /Users/glenn/emma-working/scratch/test_retire/schema.lock",
+    "exit_code": 0,
+    "rewrote_reported": true,
+    "bytes_changed": true,
+    "mtime_changed": true
+  },
+  "verdict": "CONFIRMED: same-reason retirement is strictly idempotent (preserves exact bytes and mtime; reports \"already retired\"); changed-reason overwrites the existing retirement reason, rewriting the file with new mtime. S3 status remains WEAK / PARTIAL."
+}
