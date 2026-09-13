@@ -77,6 +77,88 @@ func TestReviewerPublicCheckRejectsMalformedHistoricalLayout(t *testing.T) {
 	}
 }
 
+// TestReviewerRecordedRecordCannotDisableValidation verifies that a scalar
+// record= value above the 65536 ceiling in the lock does not disable layout
+// validation: an emitted fixed table must still have its recorded layout validated.
+func TestReviewerRecordedRecordCannotDisableValidation(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    a int32\n    b int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable("    a int32\n    b int32\n    c int32")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	lk, ok, err := lockfile.Open(paths)
+	if err != nil || !ok {
+		t.Fatalf("open: %v %v", ok, err)
+	}
+	entries := lockfile.Lineage(lk, "Row")
+	if len(entries) != 2 {
+		t.Fatal("want two entries")
+	}
+
+	// Historical entry carries unknown kind 200 and untrusted record=65537
+	badLayout := makeLayoutBytes(
+		makeLayoutEntry(1, 13, 4, 1),
+		makeLayoutEntry(2, 200, 4, 0),
+	)
+	wire := ir.TableFixedLayoutHash(badLayout, nil)
+	entries[0] = lockfile.LineageEntry{Wire: wire, Layout: badLayout, Record: 65537}
+
+	file := filepath.Join(dir, lockfile.FileName)
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	replaced := false
+	for i, line := range lines {
+		if !replaced && strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
+			lines[i] = fmt.Sprintf("    lineage wire=0x%016x record=65537 bytes=%x", wire, badLayout)
+			replaced = true
+		}
+	}
+	text := strings.Join(lines, "\n")
+	text = regexp.MustCompile(`lineage=0x[0-9a-f]+`).ReplaceAllString(text, fmt.Sprintf("lineage=0x%016x", lockfile.LineageHash(entries)))
+	if err := os.WriteFile(file, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	errs := lockfile.Check(load(t, paths), paths)
+	if len(errs) == 0 {
+		t.Fatal("public Check accepted malformed historical layout when record=65537")
+	}
+	if !strings.Contains(errs[0].Error(), "layout_kind_unknown") {
+		t.Fatalf("error %q does not contain layout_kind_unknown", errs[0].Error())
+	}
+
+	_, rewrote, uerr := lockfile.Update(load(t, paths), paths)
+	if uerr == nil || rewrote {
+		t.Fatalf("Update accepted malformed layout: rewrote=%v err=%v", rewrote, uerr)
+	}
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != text {
+		t.Error("Update modified the file on refusal")
+	}
+}
+
+// TestReviewerRecordedRootMustBeNonzero verifies that a zero-size root table entry
+// violates §1.1 Rule 6 (0 < size <= 65536) and is refused under layout_record_too_large.
+func TestReviewerRecordedRootMustBeNonzero(t *testing.T) {
+	zeroRoot := makeLayoutBytes(makeLayoutEntry(1, 13, 0, 0))
+	if got := lockfile.ValidateLayout(zeroRoot); got != "layout_record_too_large" {
+		t.Fatalf("ValidateLayout(zeroRoot) = %q, want layout_record_too_large", got)
+	}
+	testMalformedLayoutAtBoundary(t, zeroRoot, "layout_record_too_large", true)
+	testMalformedLayoutAtBoundary(t, zeroRoot, "layout_record_too_large", false)
+}
+
 func testMalformedLayoutAtBoundary(t *testing.T, badLayout []byte, expectedReason string, targetHistorical bool) {
 	t.Helper()
 	dir, paths := fixture(t, rowTable("    a int32\n    b int32"))
@@ -304,10 +386,11 @@ func TestRecordedLayoutRule5TreeUnclosed(t *testing.T) {
 	testMalformedLayoutAtBoundary(t, badUnclosed, "layout_tree_unclosed", true)
 	testMalformedLayoutAtBoundary(t, badUnclosed, "layout_tree_unclosed", false)
 
-	// Table claims 0 children, but layout provides 2 entries (entry left over)
+	// Table claims 1 child, but layout provides 3 entries (entry left over)
 	badLeftover := makeLayoutBytes(
-		makeLayoutEntry(1, 13, 0, 0),
+		makeLayoutEntry(1, 13, 4, 1),
 		makeLayoutEntry(2, 4, 4, 0),
+		makeLayoutEntry(3, 4, 4, 0),
 	)
 	testMalformedLayoutAtBoundary(t, badLeftover, "layout_tree_unclosed", true)
 }

@@ -451,9 +451,6 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 	}
 	if lv != nil && lv.FixedEmitted {
 		for _, e := range lk.Lineage {
-			if e.Record > ir.TableFixedRecordMaxBytes {
-				continue
-			}
 			if reason := ValidateLayout(e.Layout); reason != "" {
 				return fmt.Errorf("fixed table %s: lineage wire=0x%016x carries malformed layout: %s", lk.Name, e.Wire, reason)
 			}

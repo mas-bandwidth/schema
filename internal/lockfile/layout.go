@@ -19,16 +19,21 @@ type layoutEntry struct {
 	children uint32
 }
 
+type layoutFrame struct {
+	entry           layoutEntry
+	remainingKids   uint32
+	sum             uint64
+	widest          uint32
+	firstSize       uint32
+	secondSize      uint32
+	firstChildren   uint32
+	firstKind       uint8
+	kidsAreVariants bool
+}
+
 type layoutCheck struct {
 	bytes []byte
 	count int32
-	why   string
-}
-
-func (c *layoutCheck) fail(why string) {
-	if c.why == "" {
-		c.why = why
-	}
 }
 
 func (c *layoutCheck) entryAt(i int32) layoutEntry {
@@ -59,185 +64,175 @@ func ValidateLayout(bytes []byte) string {
 		return "layout_count_mismatch"
 	}
 	c := layoutCheck{bytes: bytes, count: int32(count)}
-	// Root requirements: kind 13, size <= 65536
+	// Root requirements: kind 13, 0 < size <= 65536
 	root := c.entryAt(0)
 	if root.kind != 13 {
 		return "layout_kind_invalid"
 	}
-	if root.size > layoutRecordMaxBytes {
+	if root.size == 0 || root.size > layoutRecordMaxBytes {
 		return "layout_record_too_large"
 	}
-	// Walk the pre-order tree
-	used := c.checkEntry(0, 0)
-	if c.why != "" {
-		return c.why
+
+	var stack []layoutFrame
+
+	for cursor := int32(0); cursor < c.count; cursor++ {
+		depth := int32(len(stack))
+		if depth > layoutMaxDepth {
+			return "layout_too_deep"
+		}
+		e := c.entryAt(cursor)
+		if !layoutKindKnown(e.kind) {
+			return "layout_kind_unknown"
+		}
+		if e.size > layoutRecordMaxBytes {
+			return "layout_record_too_large"
+		}
+
+		if e.children > 0 {
+			stack = append(stack, layoutFrame{
+				entry:           e,
+				remainingKids:   e.children,
+				kidsAreVariants: true,
+			})
+			continue
+		}
+
+		// e.children == 0: check post-children rules
+		if reason := checkPostChildren(e, 0, 0, 0, 0, 0, 0, true); reason != "" {
+			return reason
+		}
+
+		completed := e
+		for len(stack) > 0 {
+			parent := &stack[len(stack)-1]
+			k := parent.entry.children - parent.remainingKids
+			if k == 0 {
+				parent.firstSize = completed.size
+				parent.firstKind = completed.kind
+				parent.firstChildren = completed.children
+			}
+			if k == 1 {
+				parent.secondSize = completed.size
+			}
+			if completed.kind != 32 {
+				parent.kidsAreVariants = false
+			}
+			parent.sum += uint64(completed.size)
+			if completed.size > parent.widest {
+				parent.widest = completed.size
+			}
+			if parent.sum > uint64(layoutRecordMaxBytes) {
+				return "layout_record_too_large"
+			}
+
+			parent.remainingKids--
+			if parent.remainingKids > 0 {
+				break
+			}
+
+			if reason := checkPostChildren(parent.entry, parent.sum, parent.widest, parent.firstSize, parent.secondSize, parent.firstChildren, parent.firstKind, parent.kidsAreVariants); reason != "" {
+				return reason
+			}
+			completed = parent.entry
+			stack = stack[:len(stack)-1]
+		}
+
+		if len(stack) == 0 && cursor+1 < c.count {
+			return "layout_tree_unclosed"
+		}
 	}
-	// Rule 5: walk consumes exactly count entries
-	if used != c.count {
+
+	if len(stack) > 0 {
 		return "layout_tree_unclosed"
 	}
+
 	return ""
 }
 
-func (c *layoutCheck) checkEntry(i, depth int32) int32 {
-	if c.why != "" {
-		return 0
-	}
-	if i < 0 || i >= c.count {
-		c.fail("layout_tree_unclosed")
-		return 0
-	}
-	if depth > layoutMaxDepth {
-		c.fail("layout_too_deep")
-		return 0
-	}
-	e := c.entryAt(i)
-	if !layoutKindKnown(e.kind) {
-		c.fail("layout_kind_unknown")
-		return 0
-	}
-	if e.size > layoutRecordMaxBytes {
-		c.fail("layout_record_too_large")
-		return 0
-	}
-
-	at := i + 1
-	var sum uint64
-	var widest, firstSize, secondSize, firstChildren uint32
-	var firstKind uint8
-	kidsAreVariants := true
-	for k := uint32(0); k < e.children; k++ {
-		child := at
-		used := c.checkEntry(child, depth+1)
-		if c.why != "" {
-			return 0
-		}
-		ce := c.entryAt(child)
-		if k == 0 {
-			firstSize, firstKind, firstChildren = ce.size, ce.kind, ce.children
-		}
-		if k == 1 {
-			secondSize = ce.size
-		}
-		if ce.kind != 32 {
-			kidsAreVariants = false
-		}
-		sum += uint64(ce.size)
-		if ce.size > widest {
-			widest = ce.size
-		}
-		if sum > uint64(layoutRecordMaxBytes) {
-			c.fail("layout_record_too_large")
-			return 0
-		}
-		at += used
-	}
-
+func checkPostChildren(e layoutEntry, sum uint64, widest, firstSize, secondSize, firstChildren uint32, firstKind uint8, kidsAreVariants bool) string {
 	admitted, leaf := layoutLeafSize(e.kind, e.size)
 	if !admitted {
-		c.fail("layout_size_mismatch")
-		return 0
+		return "layout_size_mismatch"
 	}
 	if leaf {
 		if e.children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
-		return at - i
+		return ""
 	}
 
 	switch e.kind {
 	case 13: // table: size is sum of fields
 		if uint64(e.size) != sum {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 35: // optional wrapper: 1 child, size == sum + 1
 		if e.children != 1 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if uint64(e.size) != sum+1 {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 14: // array: 1 child, element size != 0, bare or counted
 		if e.children != 1 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if firstSize == 0 {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 		bare := e.size%firstSize == 0
 		counted := e.size >= 4 && (e.size-4)%firstSize == 0
 		if !bare && !counted {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 16: // enum-keyed array: 2 children, first kind 30, element size != 0, slots >= variants
 		if e.children != 2 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if firstKind != 30 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if secondSize == 0 || e.size%secondSize != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 		if e.size/secondSize < firstChildren {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 15: // union: >= 1 child, size > widest, size - widest is ordinal width
 		if e.children == 0 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if e.size <= widest {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 		if !layoutOrdinalWidth(e.size - widest) {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 30: // enum: size is ordinal width, children are variants (kind 32)
 		if !layoutOrdinalWidth(e.size) {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 		if e.children != 0 && !kidsAreVariants {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 	case 12: // string(N): length + N bytes, size >= 4, no children
 		if e.children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if e.size < 4 {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	case 33: // wstring(N): length + 2N bytes, size >= 4 and size-4 even, no children
 		if e.children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
+			return "layout_kind_invalid"
 		}
 		if e.size < 4 || (e.size-4)%2 != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
+			return "layout_size_mismatch"
 		}
 	default:
-		c.fail("layout_kind_unknown")
-		return 0
+		return "layout_kind_unknown"
 	}
-	return at - i
+	return ""
 }
 
 func layoutKindKnown(kind uint8) bool {
