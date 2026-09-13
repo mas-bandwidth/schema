@@ -3,20 +3,33 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them. SPLIT 2026-09-13 (the law): the group measured 108 s as one job on run 34780321366, against a 120 s rule, so base-json-block now runs as its own row.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
         "projection-union-arm-order-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
+        "tables-clamp-limits-negative-control",
+        "tables-doctags-negative-controls",
+        "tables-float-nan-negative-control",
+        "tables-runtime-home-negative-control",
+        "tables-view-containment-negative-control",
+        "tables-view-negative-controls",
+        "tables-was-negative-control",
+        "tables-wasrows-negative-control",
+        "toolchain-negative-control"
+      ]
+    },
+    {
+      "name": "base-json-block",
+      "when": "pull-request",
+      "why": "The JSON, block and ordinal-slot halves of the base row, split off it. Split out of base on 2026-09-13, which measured 108 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
         "tables-c-ref-ordinal-negative-control",
-        "tables-clamp-limits-negative-control",
-        "tables-doctags-negative-controls",
-        "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
@@ -25,13 +38,7 @@
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-retain-message-form-negative-control",
-        "tables-runtime-home-negative-control",
-        "tables-view-containment-negative-control",
-        "tables-view-negative-controls",
-        "tables-was-negative-control",
-        "tables-wasrows-negative-control",
-        "tables-zero-cost-negative-control",
-        "toolchain-negative-control"
+        "tables-zero-cost-negative-control"
       ]
     },
     {
@@ -66,38 +73,52 @@
     {
       "name": "base-conformance",
       "when": "pull-request",
-      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566.",
+      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row.",
       "targets": [
         "conformance-negative-control",
         "conformance-negative-control-block-dump",
+        "conformance-negative-control-reference-surface"
+      ]
+    },
+    {
+      "name": "base-conformance-go",
+      "when": "pull-request",
+      "why": "The Go conformance sabotages and the Go wire fuzz, split off the shared harness row. Split out of base-conformance on 2026-09-13, which measured 160 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
-        "tables-go-wire-fuzz-negative-control",
-        "conformance-negative-control-reference-surface"
+        "tables-go-wire-fuzz-negative-control"
       ]
     },
     {
       "name": "base-c-conformance",
       "when": "pull-request",
-      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",
+      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds. SPLIT 2026-09-13 (the law): the group measured 141 s as one job on run 34780321366, against a 120 s rule, so base-c-probes now runs as its own row.",
       "targets": [
-        "conformance-negative-control-c",
+        "conformance-negative-control-c"
+      ]
+    },
+    {
+      "name": "base-c-probes",
+      "when": "pull-request",
+      "why": "The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
         "tables-c-message-negative-control",
         "tables-c-retain-negative-control"
       ]
     },
     {
       "name": "base-c-wire",
-      "when": "pull-request",
-      "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget.",
+      "when": "nightly",
+      "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 125 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-c-wire-fuzz-negative-control"
       ]
     },
     {
       "name": "base-c-foreign",
-      "when": "pull-request",
-      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
+      "when": "nightly",
+      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 129 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "conformance-negative-control-c-foreign"
       ]
@@ -112,8 +133,8 @@
     },
     {
       "name": "base-conformance-absence",
-      "when": "pull-request",
-      "why": "one control, and it is alone because it costs 47 s on the runner: it rebuilds the C++ reference driver under a sabotage the way the group above does, and the two together do not fit the owner's rule in one job. Measured 15 s over 1 control.",
+      "when": "nightly",
+      "why": "one control, and it is alone because it costs 47 s on the runner: it rebuilds the C++ reference driver under a sabotage the way the group above does, and the two together do not fit the owner's rule in one job. Measured 15 s over 1 control. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 128 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "conformance-negative-control-absent"
       ]
@@ -214,21 +235,28 @@
     {
       "name": "base-cook",
       "when": "pull-request",
-      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls. SPLIT 2026-09-13 (the law): the group measured 129 s as one job on run 34780321366, against a 120 s rule, so base-c-battery now runs as its own row.",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
         "tables-go-blob-span-negative-control",
-        "tables-c-fuzz-negative-control",
-        "tables-c-keyed-none-refusal-negative-control",
-        "tables-c-keyed-max-refusal-negative-control",
-        "tables-c-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",
         "tables-cook-open-walk-negative-control",
         "tables-cook-write-hooks-negative-control",
         "tables-cook-write-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-battery",
+      "when": "pull-request",
+      "why": "The C leg’s fuzz, soak and two keyed refusals, split off the cook row: they are the compile-heavy half of it. Split out of base-cook on 2026-09-13, which measured 129 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
+        "tables-c-fuzz-negative-control",
+        "tables-c-keyed-none-refusal-negative-control",
+        "tables-c-keyed-max-refusal-negative-control",
+        "tables-c-soak-negative-control"
       ]
     },
     {
@@ -289,10 +317,17 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls. SPLIT 2026-09-13 (the law): the group measured 154 s as one job on run 34780321366, against a 120 s rule, so wire-fuzz-node-type now runs as its own row.",
       "targets": [
-        "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-node-type",
+      "when": "pull-request",
+      "why": "The tolerant-wire node-type control, split off the oracle row. Split out of wire-fuzz on 2026-09-13, which measured 154 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
+        "tables-wire-fuzz-node-type-negative-control"
       ]
     },
     {
@@ -307,72 +342,72 @@
     },
     {
       "name": "wire-fuzz-length",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 123 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-length-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-index",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 24 s on the author's machine and 62 s on the runner.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 24 s on the author's machine and 62 s on the runner. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 107 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-index-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-arm-terminator",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 130 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-arm-terminator-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-arm-width",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine and 73 s on the runner, the longest of the family.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine and 73 s on the runner, the longest of the family. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 151 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-arm-width-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-blob-node",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine and 58 s on the runner.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine and 58 s on the runner. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 125 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-blob-node-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-wide-text",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 141 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-wide-text-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-message-text",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 128 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-message-text-leg-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-message-blob",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 123 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-message-blob-leg-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-retain-class",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine.",
+      "when": "nightly",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 125 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "tables-wire-fuzz-retain-class-negative-control"
       ]
@@ -400,12 +435,20 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. SPLIT 2026-09-13 (the law): the group measured 161 s as one job on run 34780321366, against a 120 s rule, so cs-packet now runs as its own row.",
       "targets": [
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
-        "tables-cs-message-blob-endian-negative-control",
+        "tables-cs-message-blob-endian-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "The C# port’s four packet families, split off the C# conformance row. Split out of cs on 2026-09-13, which measured 161 s as one job on run 34780321366 against a 120 s rule.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
