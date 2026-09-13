@@ -429,6 +429,100 @@ func TestLineageMerge(t *testing.T) {
 	}
 }
 
+// ---- the form header, before the file's length ------------------------------
+//
+// §5.3 STEP 1 READS THE FORM BYTE BEFORE THE FILE'S LENGTH, and each byte earns
+// its own name (docs/SPEC-TABLES.md §3.4): a committed form-1 file is TEN bytes
+// and a form-2 batch THREE, so a reader that measured first would answer
+// `malformed` for every real file of the two forms it is supposed to name. The
+// seven reserved bytes of §5.3 step 2 are REFUSED and not ignored. Form byte 0
+// is assigned by no form and is named by where the registry sits.
+//
+// THE FIVE CASES ARE THE MODEL'S (test/elixir-fixedform/main.exs): the empty
+// file, the two real short lengths, form 0 with a fixture's own tail, and a
+// valid form-3 fixture with reserved byte 3 set nonzero. THE SHORT CASES ARE
+// THE EXACT TEN- AND THREE-BYTE INPUTS, never a full-length buffer.
+//
+// EACH PROBE ASSERTS THE JOINT REPORT (§5.3's two answers — a named refusal sets
+// `refused` and its name and never `malformed`; a malformed read sets `malformed`
+// and names nothing) AND THAT REFUSE WROTE NOT ONE DESTINATION BYTE: the record
+// is pre-poisoned and compared unchanged.
+func TestFixedVersioningFormHeader(t *testing.T) {
+	corpus := fixedCorpus(t)
+	newer := readSchema(t, "VNEW_field_append")
+	older := readSchema(t, "VOLD_field_append")
+	table := fixedRootName(t, older)
+	fixture := filepath.Join(corpus, "new_field_append.bin")
+	src := fmt.Sprintf(`package probe
+
+import ("os"; "testing"; "unsafe")
+
+func poison(v *%[1]s) {
+	b := unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
+	for i := range b {
+		b[i] = 0xAB
+	}
+}
+
+func unchanged(v *%[1]s) bool {
+	b := unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
+	for i := range b {
+		if b[i] != 0xAB {
+			return false
+		}
+	}
+	return true
+}
+
+func TestFormHeader(t *testing.T) {
+	valid, err := os.ReadFile(%[2]q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(valid) < 20 || valid[0] != 3 {
+		t.Fatalf("the fixture is not a form-3 file: len=%%d byte0=%%d", len(valid), valid[0])
+	}
+	form0 := append([]byte(nil), valid...)
+	form0[0] = 0
+	reserved3 := append([]byte(nil), valid...)
+	reserved3[3] = 1
+	cases := []struct {
+		name string
+		in   []byte
+		want TableReport
+	}{
+		{"empty-file", []byte{}, TableReport{Malformed: true}},
+		{"short-form1", []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}, TableReport{Verdict: TableOpenRefused, Reason: "previous_form"}},
+		{"short-form2", []byte{2, 1, 0}, TableReport{Verdict: TableOpenRefused, Reason: "message_form_as_file"}},
+		{"unassigned-form0", form0, TableReport{Verdict: TableOpenRefused, Reason: "newer_form"}},
+		{"reserved-byte3", reserved3, TableReport{Malformed: true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			back := make([]%[1]s, 1)
+			poison(&back[0])
+			var r TableReport
+			plan := make([]TableFixedEntry, 4096)
+			n := %[1]sFixedLoad(back, c.in, plan, &r)
+			if n != -1 {
+				t.Fatalf("%%s: n=%%d, want -1 (%%+v)", c.name, n, r)
+			}
+			if r != c.want {
+				t.Fatalf("%%s: report %%+v, want %%+v", c.name, r, c.want)
+			}
+			if !unchanged(&back[0]) {
+				t.Fatalf("%%s: REFUSE wrote destination bytes", c.name)
+			}
+		})
+	}
+}
+`, table, fixture)
+	out, err := runVersionProbe(t, newer, []string{older}, src)
+	if err != nil {
+		t.Fatalf("form header: %v\n%s", err, out)
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func fixedCorpus(t *testing.T) string {
