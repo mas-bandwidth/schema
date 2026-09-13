@@ -34,10 +34,14 @@ package compiler
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -236,43 +240,224 @@ func probePattern(row string) *regexp.Regexp {
 	return regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(row) + `(_hostile)?(_case)?([^A-Za-z0-9_]|$)`)
 }
 
-// stripComments removes the harness languages' comment text so a row name in a
-// comment cannot earn coverage. // and /* */ cover Go, C++, C#, Java, Dart,
-// JavaScript and Rust; # covers Elixir. It is deliberately simple — it need not
-// preserve string literals, only never remove a registration.
-func stripComments(text string) string {
-	text = blockComment.ReplaceAllString(text, " ")
-	text = lineComment.ReplaceAllString(text, "")
-	return hashComment.ReplaceAllString(text, "")
-}
-
-var (
-	blockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	lineComment  = regexp.MustCompile(`//[^\n]*`)
-	hashComment  = regexp.MustCompile(`#[^\n]*`)
-)
-
-// registrationPattern matches the two ways this tree's harnesses register a row
-// so a test actually probes it:
+// rowRegistered reports whether the harness text registers `row` on an entry
+// point the leg actually EXECUTES. It is deliberately scoped to REGISTRATION
+// coverage, not to what the probe asserts.
 //
-//   - a struct-literal entry in a table the test iterates — `{row: "name"}` on
-//     every Go-driven leg, `{name: "name"}` on Java;
-//   - the C++ reference's INVOKED case, `<name>_case();`. Its definition
-//     (`void <name>_case()`) has no trailing semicolon, so an unused helper
-//     earns nothing.
-func registrationPattern(row string) *regexp.Regexp {
-	q := regexp.QuoteMeta(row)
-	return regexp.MustCompile(
-		`(?:^|[^A-Za-z0-9_])(?:row|name)\s*:\s*"` + q + `"` +
-			`|(?:^|[^A-Za-z0-9_])` + q + `(?:_hostile)?_case\s*\(\s*\)\s*;`)
+// A row name in text is not evidence, and this function refuses the three
+// false credits a bare regexp hands out for free:
+//
+//   - `void <row>_case();`, a DECLARATION, is not a call;
+//   - `<row>_case();` in a helper the runner never invokes is not a probe;
+//   - `{row: "<row>"}` in a table nobody ranges over is not a probe.
+//
+// So the two languages are read as STRUCTURE: a Go harness is parsed and the
+// entry must be an element of a package-level table the code ranges over, and
+// the C++ reference's call must sit inside the runner (`main` or a `<...>_cases`
+// function). Comments and strings fall out of the parsers/scanners — never a
+// blind strip of `//`, `/*` and `#`, which would corrupt string literals.
+func rowRegistered(text, row string) bool {
+	if goRowRegistered(text, row) {
+		return true
+	}
+	return cppRowRegistered(text, row)
 }
 
-// rowRegistered reports whether the harness text registers `row` in a way the
-// leg's test actually probes. Comments are removed first, so a row name in a
-// comment or an uncalled helper does not count. It is deliberately scoped to
-// REGISTRATION coverage, not to what the probe asserts.
-func rowRegistered(text, row string) bool {
-	return registrationPattern(row).MatchString(stripComments(text))
+// goRowRegistered parses a Go harness (every non-C++ leg is one) and reports
+// whether `row` is an entry of a package-level table the code ranges over. A
+// composite literal inside a function, or in a package var nothing iterates, is
+// not a probe.
+func goRowRegistered(text, row string) bool {
+	file, err := parser.ParseFile(token.NewFileSet(), "harness.go", text, 0)
+	if err != nil {
+		return false
+	}
+	ranged := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		if rs, ok := n.(*ast.RangeStmt); ok {
+			if id, ok := rs.X.(*ast.Ident); ok {
+				ranged[id.Name] = true
+			}
+		}
+		return true
+	})
+	for _, decl := range file.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if !ranged[name.Name] || i >= len(vs.Values) {
+					continue
+				}
+				cl, ok := vs.Values[i].(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				if compositeRegistersRow(cl, row) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// compositeRegistersRow reports whether a table literal carries a
+// `{row: "<row>"}` (Go/C/Rust/Dart/JS/C#/Elixir) or `{name: "<row>"}` (Java)
+// entry.
+func compositeRegistersRow(cl *ast.CompositeLit, row string) bool {
+	for _, elt := range cl.Elts {
+		switch e := elt.(type) {
+		case *ast.CompositeLit:
+			// A `[]versionRow{{row: "..."}}` element is its own (type-elided)
+			// composite literal; the key/value pair lives one level in.
+			if compositeRegistersRow(e, row) {
+				return true
+			}
+		case *ast.KeyValueExpr:
+			if keyValueRegistersRow(e, row) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// keyValueRegistersRow reports whether one `row: "<row>"` / `name: "<row>"` pair
+// names the row.
+func keyValueRegistersRow(kv *ast.KeyValueExpr, row string) bool {
+	key, ok := kv.Key.(*ast.Ident)
+	if !ok || (key.Name != "row" && key.Name != "name") {
+		return false
+	}
+	lit, ok := kv.Value.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return false
+	}
+	s, err := strconv.Unquote(lit.Value)
+	return err == nil && s == row
+}
+
+// cppRunnerCalls matches one row's C++ registration call in the two spellings
+// the reference uses, `<row>_case();` and `<row>_hostile_case();`. It is only
+// ever run over a runner body, so a declaration or an uncalled helper is not a
+// probe.
+func cppRunnerCalls(row string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:^|[^A-Za-z0-9_])` + regexp.QuoteMeta(row) + `(?:_hostile)?_case\s*\(\s*\)\s*;`)
+}
+
+// cppRunnerBodies returns the body of every C++ function the build invokes:
+// `main` itself and the reference's per-file `<...>_cases` runners (the two
+// `test/tables/versioning_*.cpp` files each expose one, and
+// `test/tables/fixedform_main.cpp` calls both). A `_case` function is not a
+// runner and an uncalled helper is neither.
+func cppRunnerBodies(text string) []string {
+	code := stripCppComments(text)
+	header := regexp.MustCompile(`(?m)([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{`)
+	var bodies []string
+	for _, m := range header.FindAllStringSubmatchIndex(code, -1) {
+		name := code[m[2]:m[3]]
+		if name != "main" && !strings.HasSuffix(name, "_cases") {
+			continue
+		}
+		open := strings.IndexByte(code[m[0]:], '{')
+		if open < 0 {
+			continue
+		}
+		if start := m[0] + open; start < len(code) {
+			if end := matchingBrace(code, start); end > start {
+				bodies = append(bodies, code[start:end+1])
+			}
+		}
+	}
+	return bodies
+}
+
+func cppRowRegistered(text, row string) bool {
+	pat := cppRunnerCalls(row)
+	for _, body := range cppRunnerBodies(text) {
+		if pat.MatchString(body) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchingBrace returns the index of the `}` matching the `{` at open, skipping
+// string and character literals so a brace inside one cannot miscount.
+func matchingBrace(code string, open int) int {
+	depth := 0
+	for i := open; i < len(code); i++ {
+		switch code[i] {
+		case '"', '\'':
+			quote := code[i]
+			for i++; i < len(code); i++ {
+				if code[i] == '\\' {
+					i++
+					continue
+				}
+				if code[i] == quote {
+					break
+				}
+			}
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// stripCppComments blanks the C++ harness's comment text, leaving string and
+// character literals intact. It is string-aware on purpose: deleting `//`, `/*`
+// and `#` blindly (as the old helper did) corrupts a literal that contains one.
+func stripCppComments(text string) string {
+	out := []byte(text)
+	for i := 0; i < len(out); {
+		switch {
+		case i+1 < len(out) && out[i] == '/' && out[i+1] == '/':
+			for i < len(out) && out[i] != '\n' {
+				out[i] = ' '
+				i++
+			}
+		case i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
+			out[i], out[i+1] = ' ', ' '
+			for i += 2; i+1 < len(out) && !(out[i] == '*' && out[i+1] == '/'); i++ {
+				if out[i] != '\n' {
+					out[i] = ' '
+				}
+			}
+			if i+1 < len(out) {
+				out[i], out[i+1] = ' ', ' '
+				i += 2
+			}
+		case out[i] == '"' || out[i] == '\'':
+			quote := out[i]
+			for i++; i < len(out); i++ {
+				if out[i] == '\\' {
+					i++
+					continue
+				}
+				if out[i] == quote {
+					i++
+					break
+				}
+			}
+		default:
+			i++
+		}
+	}
+	return string(out)
 }
 
 // probed reads every leg's harness once and reports, per leg, the set of rows
@@ -537,13 +722,20 @@ func corpusFileProblems(manifest, dir string, rows []docRow, inCorpus map[string
 		}
 		sides[row][side] = true
 		full := filepath.Join(dir, file)
-		fi, err := os.Stat(full)
+		// Lstat, NOT Stat: Stat follows a symlink, so `old_x.bin` pointing at a
+		// nonempty file outside the corpus dir used to pass the confinement
+		// check. The generated corpus needs no links, so every entry must be a
+		// regular file inside the corpus dir.
+		fi, err := os.Lstat(full)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s:%d: row %s side %s names %s, which does not exist: %v",
 				corpusManifest, n+1, row, side, file, err))
 			continue
 		}
-		if !fi.Mode().IsRegular() {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s is a symlink; corpus files must be regular files inside the corpus dir",
+				corpusManifest, n+1, file))
+		} else if !fi.Mode().IsRegular() {
 			problems = append(problems, fmt.Sprintf("%s:%d: %s is not a regular file", corpusManifest, n+1, file))
 		} else if fi.Size() == 0 {
 			problems = append(problems, fmt.Sprintf("%s:%d: %s is empty", corpusManifest, n+1, file))
@@ -561,6 +753,80 @@ func corpusFileProblems(manifest, dir string, rows []docRow, inCorpus map[string
 		}
 	}
 	return problems
+}
+
+// TestCorpusFileProblems is the confinement control for corpusFileProblems.
+// `os.Stat` FOLLOWS a symlink, so `old_x.bin` and `new_x.bin` pointing at a
+// nonempty file outside the corpus dir used to pass with no problem. The
+// generated corpus needs no links, so every manifest entry must be a regular
+// file INSIDE the corpus dir; this control stays in the suite so the
+// confinement cannot silently reopen.
+func TestCorpusFileProblems(t *testing.T) {
+	rows := []docRow{{name: "field_append"}}
+	inCorpus := map[string]bool{"field_append": true}
+	manifest := "file=old_field_append.bin row=field_append side=old\n" +
+		"file=new_field_append.bin row=field_append side=new\n"
+
+	write := func(t *testing.T, dir, name, data string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("regular nonempty files pass", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "old_field_append.bin", "old")
+		write(t, dir, "new_field_append.bin", "new")
+		if got := corpusFileProblems(manifest, dir, rows, inCorpus); len(got) != 0 {
+			t.Fatalf("two confined regular nonempty files produced problems: %v", got)
+		}
+	})
+
+	t.Run("links to an outside file are rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		outside := filepath.Join(t.TempDir(), "outside.bin")
+		if err := os.WriteFile(outside, []byte("not the corpus"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "old_field_append.bin")); err != nil {
+			t.Skipf("symlinks are unavailable here: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "new_field_append.bin")); err != nil {
+			t.Skipf("symlinks are unavailable here: %v", err)
+		}
+		got := corpusFileProblems(manifest, dir, rows, inCorpus)
+		if joined := strings.Join(got, "\n"); !strings.Contains(joined, "symlink") {
+			t.Fatalf("links to an outside nonempty file were confined; problems = %v", got)
+		}
+	})
+
+	t.Run("an empty side is rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "old_field_append.bin", "old")
+		write(t, dir, "new_field_append.bin", "")
+		if got := corpusFileProblems(manifest, dir, rows, inCorpus); len(got) == 0 {
+			t.Fatal("an empty side was accepted")
+		}
+	})
+
+	t.Run("a missing side is rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "old_field_append.bin", "old")
+		if got := corpusFileProblems(manifest, dir, rows, inCorpus); len(got) == 0 {
+			t.Fatal("a missing new_ side was accepted")
+		}
+	})
+
+	t.Run("an unconfined base name is rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		unconfined := "file=../outside.bin row=field_append side=old\n" +
+			"file=new_field_append.bin row=field_append side=new\n"
+		write(t, dir, "new_field_append.bin", "new")
+		if got := corpusFileProblems(unconfined, dir, rows, inCorpus); len(got) == 0 {
+			t.Fatal("a path outside the corpus dir was accepted")
+		}
+	})
 }
 
 // TestEveryRowProbeNameIsAnchored is the gate's own red: a probe pattern that
@@ -593,30 +859,67 @@ func TestEveryRowProbeNameIsAnchored(t *testing.T) {
 	}
 }
 
-// TestEveryRowProbedNeedsARegistration is repair (a)'s own red. A row name in a
-// comment, or in a helper nobody calls, is not a probe: the harness must
-// REGISTER the row (a `{row: "..."}` / `{name: "..."}` entry in a table the
-// test iterates) or actually INVOKE the reference's `<row>_case()`. This is a
-// registration-coverage check, not a proof of what the probe asserts.
+// TestEveryRowProbedNeedsARegistration is repair (a)'s own red. A row name is
+// not a probe: the harness must REGISTER the row on the entry point the leg
+// actually EXECUTES — a `{row: "..."}` / `{name: "..."}` entry in the
+// package-level table the test ranges over, or the reference's
+// `<row>_case();` invoked from the runner `main` calls. The HOLD named three
+// false credits a bare regexp hands out for free, and all three must be
+// refused:
+//
+//   - `void <row>_case();`, a DECLARATION, is not a call;
+//   - `<row>_case();` in a helper the runner never invokes is not a probe;
+//   - `{row: "<row>"}` in a table nobody ranges over is not a probe.
+//
+// The positive half reads every one of the nine REAL harnesses, so the control
+// cannot drift from the tree it guards.
 func TestEveryRowProbedNeedsARegistration(t *testing.T) {
-	cases := []struct {
-		name, text string
-		want       bool
+	negatives := []struct {
+		what, name, text string
 	}{
-		{"fixed_I_grow_element", "// {row: \"fixed_I_grow_element\"}\n", false},
-		{"fixed_I_grow_element", "// fixed_I_grow_element_case();\n", false},
-		{"fixed_I_grow_element", "/* {row: \"fixed_I_grow_element\"} */\n", false},
-		{"fixed_I_grow_element", "# {row: \"fixed_I_grow_element\"}\n", false},
-		{"fixed_I_grow_element", "void fixed_I_grow_element_case()\n{\n}\n", false},
-		{"fixed_I_grow_element", "{row: \"fixed_I_grow_element\", widens: true},\n", true},
-		{"fixed_I_grow_element", "{name: \"fixed_I_grow_element\", widen: true},\n", true},
-		{"fixed_I_grow_element", "    fixed_I_grow_element_case();\n", true},
-		{"string_grow", "{row: \"wstring_grow\"},\n", false},
-		{"fixed_I_grow", "{row: \"fixed_I_grow_element\"},\n", false},
+		{"a declaration", "field_append", "void field_append_case();"},
+		{"an uncalled helper", "field_append", "void unused() { field_append_case(); }"},
+		{"an un-iterated table", "field_append",
+			"package probe\nfunc unused() { _ = []struct{ row string }{{row: \"field_append\"}} }"},
 	}
-	for _, c := range cases {
-		if got := rowRegistered(c.text, c.name); got != c.want {
-			t.Errorf("rowRegistered(%q, %q) = %v, want %v", c.text, c.name, got, c.want)
+	for _, c := range negatives {
+		if rowRegistered(c.text, c.name) {
+			t.Errorf("rowRegistered(%q, %q) = true, want false: %s is not a registration on the executed test table or runner",
+				c.text, c.name, c.what)
+		}
+	}
+
+	positives := []struct {
+		what, name, text string
+	}{
+		{"a ranged Go table", "fixed_I_grow_element",
+			"package probe\nvar rows = []struct{ row string }{{row: \"fixed_I_grow_element\"}}\nfunc TestX(t *testing.T) { for _, r := range rows { _ = r } }\n"},
+		{"a ranged Java-style table", "fixed_I_grow_element",
+			"package probe\nvar rows = []struct{ name string }{{name: \"fixed_I_grow_element\"}}\nfunc TestX(t *testing.T) { for _, r := range rows { _ = r } }\n"},
+		{"a C++ runner call", "fixed_I_grow_element",
+			"int versioning_cases() {\n    fixed_I_grow_element_case();\n    return 0;\n}\nvoid fixed_I_grow_element_case() {}\n"},
+	}
+	for _, c := range positives {
+		if !rowRegistered(c.text, c.name) {
+			t.Errorf("rowRegistered(%q, %q) = false, want true: %s on the executed entry point", c.text, c.name, c.what)
+		}
+	}
+
+	// The nine real harnesses: each registers field_append, and the helper must
+	// see the registration rather than the harness's spelling.
+	for _, leg := range theNineLegs {
+		found := false
+		for _, path := range versioningHarnesses[leg] {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("%s: %v", path, err)
+			}
+			if rowRegistered(string(data), "field_append") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("leg %s registers field_append in %v, but rowRegistered does not see it", leg, versioningHarnesses[leg])
 		}
 	}
 }

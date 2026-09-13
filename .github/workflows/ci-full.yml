@@ -360,6 +360,7 @@ jobs:
       # corpus half runs for real instead of skipping. It also rides the plain
       # `go test ./...` above, where the corpus half skips by design.
       - name: every row of the versioning page is probed on every leg
+        if: matrix.group == 'versioning'
         run: SCHEMA_REQUIRE_CORPUS=1 go test ./compiler/ -run 'EveryRow|Owed'
 
       # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
