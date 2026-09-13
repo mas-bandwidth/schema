@@ -199,7 +199,11 @@ func (e LineageEntry) line() string {
 // parseLineage reads one lineage line. The REASON is the rest of the line, so a
 // sentence with spaces in it survives the round trip; every other token is a
 // single field.
-func parseLineage(line string) (LineageEntry, error) {
+//
+// table is the FIXED TABLE the line belongs to, carried in for ONE reason: §5.9
+// #26 says a wrong record size is refused NAMING THE TABLE AND THE ENTRY'S HASH,
+// and the caller is the only place the table's name is in scope.
+func parseLineage(line, table string) (LineageEntry, error) {
 	e := LineageEntry{}
 	body := strings.TrimSpace(line)
 	if at := strings.Index(body, " reason="); at >= 0 {
@@ -225,7 +229,7 @@ func parseLineage(line string) (LineageEntry, error) {
 			e.Wire = h
 		case key == "record":
 			n, err := strconv.ParseInt(val, 10, 64)
-			if err != nil || n < 0 {
+			if err != nil {
 				return LineageEntry{}, fmt.Errorf("%q is not a record size", tok)
 			}
 			e.Record = n
@@ -251,6 +255,57 @@ func parseLineage(line string) (LineageEntry, error) {
 	// THE ENTRY IS ONE STATEMENT MADE TWICE, like the layout= hash over the
 	// field lines: the wire hash IS fnv1a64 over these bytes and this digest,
 	// so a hand that moves either without the other is caught here.
+	// AND THE RECORD SIZE IS THE ENTRY'S LAYOUT'S, NOT A RANGE (§5.9 #26).
+	// Entry 0 of the layout bytes carries the ROOT's constant size — the record
+	// BODY — so `record=` is not a free number: a size that is not what this
+	// entry's own layout accounts for is a LOCK BUG and the build fails HERE,
+	// never as §5.3's arithmetic over a file's tail.
+	//
+	// THE OTHER HALF OF #26 IS THE SIZE THAT IS NOT A BODY AT ALL. `record=` is
+	// the ROOT entry's CONSTANT BODY LENGTH, so a number below one byte is not a
+	// size any layout could account for. The parse used to refuse only a NEGATIVE
+	// one, so `record=0` rode in, and a zero-length record reached §5.3's
+	// arithmetic over a file's tail — a LOCK BUG reported as a wire event, with
+	// `malformed` and no name. BOTH halves name THE TABLE AND THE ENTRY'S HASH.
+	//
+	// AND THE TWO HALVES ARE ONE LADDER, STRONGEST RUNG FIRST. Where the entry
+	// carries an entry 0 the layout's own number IS the answer and the range says
+	// nothing the comparison does not say better — a FIELDLESS fixed table's body
+	// is honestly ZERO, and a flat `record < 1` would fail the build over a lock
+	// that is right. The range is for the entry too short to carry an entry 0,
+	// where there is nothing to compare against and `record=0` used to ride in.
+	//
+	// AND THE LAYOUT'S OWN SHAPE IS NOT THIS LADDER'S BUSINESS. [ValidateLayout]
+	// (internal/lockfile/layout.go) owns §1.1's seven rules and names each one —
+	// `layout_malformed`, `layout_count_mismatch`, `layout_kind_unknown`,
+	// `layout_record_too_large` and the rest. Entry 0's size is only an ANSWER
+	// to compare `record=` against on a layout those rules ALREADY ACCEPT: over
+	// a layout they refuse, entry 0's number is itself untrusted, and the
+	// refusal the reader needs is the rule's own name, not a disagreement
+	// between two halves of a line that is broken further up. So this ladder
+	// runs BELOW the rules and never over them — a layout the rules refuse is
+	// named by the layout checks at the foot of this function and by
+	// diffLineage's own ValidateLayout pass. The RANGE rung is the exception and
+	// stands FIRST: a layout too short to carry an entry 0 has no number to be
+	// untrusted, so `record=0` is still refused there by name.
+	switch {
+	case len(e.Layout) < lineageEntry0SizeAt+4:
+		// Nothing to compare against: the RANGE rung, and the only place
+		// `record=0` ever rode in.
+		if e.Record < 1 {
+			return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout too short to carry an entry 0 — the record size IS the root entry's constant BODY length and is never less than one byte, so this entry is a LOCK BUG and the build fails here (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+				table, e.Wire, e.Record)
+		}
+	case ValidateLayout(e.Layout) != "":
+		// The layout carries an entry 0 but §1.1's rules refuse the layout
+		// itself, so entry 0's number is untrusted and the refusal belongs to
+		// the rule by its own name, downstream.
+	default:
+		if root := int64(le32(e.Layout[lineageEntry0SizeAt:])); root != e.Record {
+			return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout whose entry 0 accounts for %d bytes — the record size IS the root entry's size, so the two halves of this line disagree (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+				table, e.Wire, e.Record, root)
+		}
+	}
 	if got := lineageWireHash(e.Layout, e.Digest); got != e.Wire {
 		return LineageEntry{}, fmt.Errorf("this lineage entry records wire=0x%016x over bytes that hash to 0x%016x — the wire hash IS the hash of the layout bytes and the definitions digest, so the two halves of this line disagree",
 			e.Wire, got)
@@ -787,4 +842,13 @@ func carryRetired(locked, live *Unit) {
 		copy(live.Values[at+1:], live.Values[at:])
 		live.Values[at] = lk
 	}
+}
+
+// lineageEntry0SizeAt is where entry 0's `size` sits in the layout bytes: the
+// u32 entry count, then entry 0's id (8) and kind (1). Entry 0 is the ROOT
+// (algorithm §1.1, §2), so its size is the record's body.
+const lineageEntry0SizeAt = 4 + 8 + 1
+
+func le32(b []byte) uint32 {
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
 }

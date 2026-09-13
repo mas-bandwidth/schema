@@ -1115,6 +1115,58 @@ Leg.eq(
   :message_form_as_file
 )
 
+# THE FORM BYTE EARNS ITS NAME BEFORE THE FILE'S LENGTH IS MEASURED (§5.3 step
+# 1), so the REAL lengths of the two forms this reader names are the cases: a
+# committed form-1 file is TEN bytes and a form-2 batch THREE. A reader that
+# measured first would answer `malformed` for both and name neither.
+Leg.eq(
+  "a TEN-byte form-1 file is `previous_form`, not `malformed`",
+  Tblfx1.FX1Fixed.fx_root_fixed_load(<<1, 0, 0, 0, 0, 0, 0, 0, 0, 0>>) |> elem(1),
+  :previous_form
+)
+
+Leg.eq(
+  "a THREE-byte form-2 batch is `message_form_as_file`, not `malformed`",
+  Tblfx1.FX1Fixed.fx_root_fixed_load(<<2, 1, 0>>) |> elem(1),
+  :message_form_as_file
+)
+
+# A FILE WITH NO FIRST BYTE IS THE RESIDUE: `malformed`, with no name, because
+# there is no byte to earn one.
+Leg.eq(
+  "zero bytes is `malformed`",
+  Tblfx1.FX1Fixed.fx_root_fixed_load(<<>>) |> elem(1),
+  :malformed
+)
+
+# FORM BYTE 0 IS A BYTE NO FORM DEFINES, and the registry is ORDERED, so it is
+# named by where it sits and not by its value: `newer_form`.
+Leg.eq(
+  "form byte 0 is `newer_form`",
+  Tblfx1.FX1Fixed.fx_root_fixed_load(<<0, tail::binary>>) |> elem(1),
+  :newer_form
+)
+
+# THE SEVEN RESERVED BYTES ARE REFUSED AND NOT IGNORED (§3, §3.4, §5.3 step 2),
+# so that they stay spendable later. A success clause that bound them to a
+# wildcard matched FIRST and this read came back `{:ok, ...}`.
+<<form_byte, _res::binary-size(7), after_reserved::binary>> = read.("fx1.bin")
+
+Leg.eq(
+  "a nonzero RESERVED byte is `malformed`",
+  Tblfx1.FX1Fixed.fx_root_fixed_load(<<form_byte, 0, 0, 1, 0, 0, 0, 0, after_reserved::binary>>)
+  |> elem(1),
+  :malformed
+)
+
+Leg.eq(
+  "and the header read refuses it under its own name too",
+  Tblfx1.FixedRuntime.read_file_header(
+    <<form_byte, 0, 0, 1, 0, 0, 0, 0, after_reserved::binary>>
+  ),
+  {:error, :malformed}
+)
+
 # A LAYOUT WHOSE BYTES ARE NOT A LAYOUT, each rule under ITS OWN NAME.
 {:ok, stated, layout, records} = Tblfx1.FixedRuntime.read_file_header(read.("fx1.bin"))
 

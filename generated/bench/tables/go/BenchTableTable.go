@@ -10828,7 +10828,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -10840,6 +10840,16 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
@@ -11006,7 +11016,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -11018,6 +11028,16 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
@@ -11408,7 +11428,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -11420,6 +11440,16 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
