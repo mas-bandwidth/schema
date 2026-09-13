@@ -1,6 +1,6 @@
 ; Work data, not executable Lisp. Original reports remain linked.
 (:schema 1
-  :root "schema"
+  :root "schema/fixed-tables-goal"
   :inventory-status "initial grouped feature inventory; current cell evidence reconciliation in progress"
   :source-audit "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5647865348"
   :scope-note "Only NEW Fixed Tables is active here. Existing acceptance gates remain; Future work is outside these language denominators. Grouping is not a waiver of any underlying requirement."
@@ -24,10 +24,11 @@
       ("shared/S1"))
     ("C6"
       ("R31")))
-  :nodes ((:id "schema"
+  :nodes ((:id "schema/fixed-tables-goal"
       :type :work-set
       :children ("fixed-tables"
-        "shared"))
+        "shared"
+        "integration"))
     (:id "fixed-tables"
       :type :roadmap
       :title "NEW Fixed Tables"
@@ -8473,4 +8474,10 @@
       :state :done
       :evidence ("https://github.com/mas-bandwidth/schema/pull/999"
         "https://github.com/mas-bandwidth/schema/pull/1000")
-      :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")))
+      :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
+    (:id "integration"
+      :type :task
+      :title "Land and verify the completed fixed-form integration on main"
+      :state :todo
+      :evidence ("https://github.com/mas-bandwidth/schema/pull/836")
+      :note "PR836 remains draft/open at8ea5ed8e. Full CI34757393846 passed72/72 jobs, but that does not close semantic acceptance or constitute a main merge.")))
