@@ -40,6 +40,7 @@ static partial class Program
         TestFixedArmTextCase();
         TestFixedSlackCase();
         TestFixedNegativeControl();
+        TestFixedFormHeaderProbes();
         // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
         // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
         // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
@@ -355,6 +356,133 @@ static partial class Program
         // compiling: a deleted test is a coverage claim nobody can audit.
         Console.WriteLine("SKIPPED: TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness");
         skipped++;
+    }
+
+    // THE FIVE FORM-HEADER PROBES (card 411411, schema#876; the model is
+    // test/elixir-fixedform/main.exs). Each reads the reader's OWN path with the
+    // EXACT input docs/FIXED-FORM-ALGORITHM.md §5.3 names and SPEC-TABLES §3.4
+    // promises, asserts the report §5.3 fixes (a refusal by name is Refused with
+    // its Reason and never Malformed; the residue is Malformed and names
+    // nothing), and proves REFUSE is total: the destination is pre-poisoned and
+    // compared unchanged, so a refusal that wrote even one byte would show.
+    static void TestFixedFormHeaderProbes()
+    {
+        // A VALID FORM-3 FIXTURE, written by this reader's own writer, so the
+        // form-0 and reserved-byte cases carry "the otherwise valid fixture tail".
+        FX1.FxRoot fixture = new FX1.FxRoot();
+        FX1.Schema.TableReset(fixture);
+        fixture.Keep = 4242u;
+        fixture.Narrow = 40000;
+        fixture.Renamed = 321;
+        fixture.Gone = 654;
+        fixture.Nested.A = 111;
+        fixture.Nested.B = 222;
+        byte[] valid = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(fixture, valid) == valid.Length,
+              "header probes: a valid form-3 fixture writes");
+
+        // THE POISON: every field a read could land is off its declared default,
+        // so a refusal that wrote even one byte would move the fingerprint.
+        FX1.FxRoot Poison()
+        {
+            FX1.FxRoot p = new FX1.FxRoot();
+            FX1.Schema.TableReset(p);
+            p.Keep = 0xDEADBEEFu;
+            p.Narrow = 0xBEEF;
+            p.Renamed = -424242;
+            p.Gone = -999999;
+            p.Nested.A = 12345;
+            p.Nested.B = 67890;
+            p.MarksCount = 4;
+            p.Marks[0] = -7; p.Marks[1] = -8; p.Marks[2] = -9; p.Marks[3] = -10;
+            p.BlobLength = 3;
+            p.Blob[0] = 0xAA; p.Blob[1] = 0xBB; p.Blob[2] = 0xCC;
+            return p;
+        }
+
+        string Fp(FX1.FxRoot p) =>
+            p.Keep + "|" + p.Narrow + "|" + p.Renamed + "|" + p.Gone + "|" +
+            p.Nested.A + "|" + p.Nested.B + "|" + p.MarksCount + "|" +
+            string.Join(",", p.Marks) + "|" + p.BlobLength + "|" + Convert.ToHexString(p.Blob);
+
+        string Clean(FX1.TableReport r) =>
+            " counters=(" + r.Unknown + "," + r.KindMismatch + "," + r.Widened + "," +
+            r.Clamped + ") hash=" + r.LayoutHash;
+
+        FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+
+        // CASE empty-file: ZERO BYTES. There is no first byte, so no name can be
+        // earned; the residue is malformed and nothing else claims success.
+        {
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
+            Check(n == -1 && r.Malformed && !r.Refused && r.Reason == null &&
+                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+                  "empty-file: zero bytes is malformed and claims no success" + Clean(r));
+            Check(Fp(v) == before, "empty-file: no destination byte was written");
+        }
+
+        // CASE short-form1: THE REAL LENGTH OF A COMMITTED FORM-1 FILE — ten
+        // bytes, never a full-length buffer. The form byte is read BEFORE the
+        // twenty-byte minimum, so this is previous_form and NOT malformed.
+        {
+            byte[] form1 = new byte[10];
+            form1[0] = 1;
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, form1, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "previous_form" && !r.Malformed &&
+                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+                  "short-form1: a ten-byte form-1 file is previous_form, not malformed" + Clean(r));
+            Check(Fp(v) == before, "short-form1: no destination byte was written");
+        }
+
+        // CASE short-form2: THE REAL LENGTH OF A FORM-2 BATCH — three bytes,
+        // never a full-length buffer. message_form_as_file, not malformed.
+        {
+            byte[] form2 = new byte[] { 2, 1, 0 };
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, form2, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "message_form_as_file" && !r.Malformed &&
+                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+                  "short-form2: a three-byte form-2 batch is message_form_as_file, not malformed" + Clean(r));
+            Check(Fp(v) == before, "short-form2: no destination byte was written");
+        }
+
+        // CASE unassigned-form0: FORM BYTE 0 WITH THE OTHERWISE VALID FIXTURE
+        // TAIL. No form defines 0 and the registry is ordered, so it is newer_form.
+        {
+            byte[] form0 = (byte[])valid.Clone();
+            form0[0] = 0;
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, form0, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "newer_form" && !r.Malformed &&
+                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+                  "unassigned-form0: form byte 0 is newer_form, not malformed" + Clean(r));
+            Check(Fp(v) == before, "unassigned-form0: no destination byte was written");
+        }
+
+        // CASE reserved-byte3: A VALID FORM-3 FIXTURE WITH RESERVED BYTE 3 SET
+        // NONZERO. The seven reserved bytes are refused, not ignored.
+        {
+            byte[] reserved = (byte[])valid.Clone();
+            reserved[3] = 1;
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
+            Check(n == -1 && r.Malformed && !r.Refused && r.Reason == null &&
+                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+                  "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
+            Check(Fp(v) == before, "reserved-byte3: no destination byte was written");
+        }
     }
 
     // RETIRED BY §5.6 AND KEPT: the skip at its call site, above, says why and
