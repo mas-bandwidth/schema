@@ -58,7 +58,13 @@ func buildTreelock(t *testing.T) string {
 		// measure what treelock DOES, so the one-off is paid here, outside all
 		// of them, by running the full path once: lock, child, exit.
 		warm := exec.Command(bin, "-lock", filepath.Join(dir, "warm.lock"), "sh", "-c", "exit 0")
-		_ = warm.Run()
+		if out, err := warm.CombinedOutput(); err != nil {
+			// A warmup that fails is a treelock that cannot run its simplest
+			// path, and that fails the suite by name rather than being swallowed
+			// (Johnny Grok's read, 2026-09-13).
+			builtBinErr = fmt.Errorf("warm treelock: %w\n%s", err, out)
+			return
+		}
 
 		builtBinPath = bin
 	})
