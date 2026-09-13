@@ -354,7 +354,7 @@ func tableFixedLeafCount(u *Unit, st *Struct, normaliseBool bool) int {
 // run whatever the flat test says (see [tableFixedElementLoop]).
 func tableFixedFieldLeafCount(u *Unit, f *Field, normaliseBool bool) int {
 	per := tableFixedElementLeafCount(u, f, normaliseBool)
-	fold := TableFixedFlatElem(u, f) && !(normaliseBool && tableFixedContainsBool(f))
+	fold := TableFixedFlatElem(u, f) && (!normaliseBool || !tableFixedContainsBool(f))
 	boolRun := normaliseBool && f.Type.Kind == TBool
 	n := per
 	switch {
@@ -974,7 +974,7 @@ func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64,
 			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpBool, Note: f.Name + ", whole"})
 		return
 	}
-	if TableFixedFlatElem(u, f) && !(normaliseBool && tableFixedContainsBool(f)) {
+	if TableFixedFlatElem(u, f) && (!normaliseBool || !tableFixedContainsBool(f)) {
 		// THE WHOLE ARRAY IS ONE RUN: its storage image is its wire image, so
 		// the elements need no walk at all and the plan carries one entry
 		// however many of them there are. A struct that holds a bool (or a
