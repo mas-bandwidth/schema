@@ -12064,6 +12064,7 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_camera_fixed_plan;
@@ -12077,10 +12078,13 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12088,6 +12092,13 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -12329,6 +12340,7 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_ship_fixed_plan;
@@ -12342,10 +12354,13 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12353,6 +12368,13 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -12581,6 +12603,7 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_turret_fixed_plan;
@@ -12594,10 +12617,13 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12605,6 +12631,13 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -12839,6 +12872,7 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_missile_fixed_plan;
@@ -12852,10 +12886,13 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12863,6 +12900,13 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -13099,6 +13143,7 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_dynamic_prop_fixed_plan;
@@ -13112,10 +13157,13 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -13123,6 +13171,13 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -13359,6 +13414,7 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_static_prop_fixed_plan;
@@ -13372,10 +13428,13 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -13383,6 +13442,13 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -13621,6 +13687,7 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_cosmetic_prop_fixed_plan;
@@ -13634,10 +13701,13 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -13645,6 +13715,13 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -13875,6 +13952,7 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_laser_fixed_plan;
@@ -13888,10 +13966,13 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -13899,6 +13980,13 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
@@ -14133,6 +14221,7 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
     int32_t pick;
+    int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = render_explosion_fixed_plan;
@@ -14146,10 +14235,13 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
-    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
+    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }
+    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is
        ordered, so a byte this reader does not carry is named by where it sits
-       relative to this form and never by one word for both. */
+       relative to this form and never by one word for both. IT IS READ BEFORE
+       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2
+       batch THREE, so measuring first would answer malformed for every real
+       file of the two forms this reader is supposed to name. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -14157,6 +14249,13 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
                        : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
                        : SCHEMA_TABLE_NEWER_FORM;
         return -1;
+    }
+    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
+       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )
+    {
+        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }
     }
     /* 3. the layout's length, and the bytes behind it. */
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );

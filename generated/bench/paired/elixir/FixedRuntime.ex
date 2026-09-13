@@ -152,25 +152,42 @@ defmodule Bench.FixedRuntime do
   """
   def read_file_header(data)
 
+  # THE SUCCESS CLAUSE SPELLS THE SEVEN RESERVED ZEROS OUT. A wildcard here
+  # matched FIRST and swallowed every nonzero reserved byte, so the refusal
+  # below was unreachable except when the layout's length overran the file: the
+  # clause that says yes must say yes to nothing the clauses below refuse.
   def read_file_header(
-        <<@form, _reserved::binary-size(@file_hash_at - 1), hash::little-unsigned-64,
-          len::little-unsigned-32, rest::binary>>
+        <<@form, 0, 0, 0, 0, 0, 0, 0, hash::little-unsigned-64, len::little-unsigned-32,
+          rest::binary>>
       )
       when byte_size(rest) >= len do
     <<layout::binary-size(^len), records::binary>> = rest
     {:ok, hash, layout, records}
   end
 
-  # STEP 1 BEFORE STEP 2 (§5.3): a file with no header in it at all is the
-  # RESIDUE — malformed, with no name — and the FORM BYTE is read only once there
-  # are bytes enough to carry one.
+  # THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3, step 1). A file with
+  # NO FIRST BYTE is the RESIDUE — malformed, with no name — but a file that HAS
+  # one has its byte earn its name whatever the file's length: a committed form-1
+  # file is TEN bytes and a form-2 batch THREE, so measuring first would answer
+  # malformed for every real file of the two forms this reader names.
+  def read_file_header(<<>>), do: {:error, :malformed}
+  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
+  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
+  def read_file_header(<<form, _::binary>>) when form != @form, do: {:error, :newer_form}
+
+  # STEP 2: THE SEVEN RESERVED BYTES, which are REFUSED and not ignored so they
+  # stay spendable later (§3.4, §5.3), and then the twenty-byte minimum. The
+  # reserved clause stands BEFORE the length clause: both answer the same name,
+  # but a clause that can only be reached past the length check is a clause that
+  # never reads a header it was written to refuse.
+  def read_file_header(<<@form, reserved::binary-size(@file_hash_at - 1), _::binary>>)
+      when reserved != <<0::size((@file_hash_at - 1) * 8)>>,
+      do: {:error, :malformed}
+
   def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
     do: {:error, :malformed}
 
-  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
-  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
-  def read_file_header(<<_form, _::binary>>), do: {:error, :newer_form}
   def read_file_header(_), do: {:error, :layout_malformed}
 
   # ---------------------------------------------------------------------------

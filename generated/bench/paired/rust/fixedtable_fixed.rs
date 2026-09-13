@@ -338,19 +338,31 @@ pub fn fixed_table_fixed_load(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
-    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
+    if data.is_empty() {
         report.malformed = true;
         return None;
     }
     // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
     // the registry is ordered, so a byte this reader does not carry is named
     // by where it sits relative to this form and never by one word for both.
+    // AND IT IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed form-1 file
+    // is TEN bytes and a form-2 batch THREE, so a reader that measured first
+    // would answer `malformed` for every real file of the two forms it names.
     if data[0] != TABLE_FIXED_FORM {
         return report.refuse(match data[0] {
             1 => TableFixedReason::PreviousForm,      // the VARIABLE form, which is older
             2 => TableFixedReason::MessageFormAsFile, // a batch where a FILE was expected
             _ => TableFixedReason::NewerForm,         // a byte no form defines
         });
+    }
+    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
+        report.malformed = true;
+        return None;
+    }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {
+        report.malformed = true;
+        return None;
     }
     let block_bytes = u32::from_le_bytes(
         data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]

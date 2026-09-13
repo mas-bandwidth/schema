@@ -15002,7 +15002,7 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -15010,6 +15010,13 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -15334,7 +15341,7 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -15342,6 +15349,13 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -15643,7 +15657,7 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -15651,6 +15665,13 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -15961,7 +15982,7 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -15969,6 +15990,13 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -16282,7 +16310,7 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -16290,6 +16318,13 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -16603,7 +16638,7 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -16611,6 +16646,13 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -16927,7 +16969,7 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -16935,6 +16977,13 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -17239,7 +17288,7 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -17247,6 +17296,13 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -17557,7 +17613,7 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -17565,6 +17621,13 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
