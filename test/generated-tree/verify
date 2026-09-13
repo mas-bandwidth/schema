@@ -38,17 +38,18 @@
 # compiler emits into nothing, then the listing and bytes are compared both
 # ways. A SIGKILL cannot be trapped, so a run killed mid-emission leaves the
 # original tree in build/generated-tree/prev and a partial replacement in
-# generated/. THAT PREVIOUS-RUN TREE IS EVIDENCE, NEVER SCRATCH. Each run holds
-# build/generated-tree/lock — created atomically — and records its pid and a
-# nonce inside it, and each phase transition writes a small state marker (pid,
-# nonce, phase) to build/generated-tree/state. On start a run takes the lock
-# (refusing a live holder without touching anything), validates the marker
-# (an unrecognised or partial one is preserved unchanged and the run refuses
-# without touching either tree), and — BEFORE the `generated/` existence guard —
-# restores a preserved original from prev to generated/ whenever the marker owns
-# one, preserving any partial replacement in build/generated-tree/fresh. The
-# nonce, not the pid (which a new process can reuse), is the authority that a
-# dead run's lock and marker name one and the same run. What is promised is
+# generated/. THAT PREVIOUS-RUN TREE IS EVIDENCE, NEVER SCRATCH. Each run holds a kernel
+# advisory lock (tools/treelock) across itself and its generation children. When
+# a process dies (even under SIGKILL), the kernel automatically releases the
+# lock file descriptor — no rm -rf race. On start a run acquires the kernel lock
+# (refusing a live holder without touching anything), reads shared state only
+# once exclusive ownership is held, validates the marker (an unrecognised or
+# partial one is preserved unchanged and the run refuses without touching
+# either tree), and — BEFORE the `generated/` existence guard — restores a
+# preserved original from prev to generated/ whenever the marker owns one,
+# preserving any partial replacement in build/generated-tree/fresh. The nonce,
+# not the pid (which a new process can reuse), is the authority that a dead
+# run's lock and marker name one and the same run. What is promised is
 # recoverable originals: the next invocation cannot destroy a preserved
 # original. What is NOT promised is restoration under an uncatchable signal,
 # because no trap runs for SIGKILL.
@@ -77,49 +78,46 @@ mkdir -p "$out" "$run"
 
 mark() { printf '%s %s %s\n' "$$" "$nonce" "$1" > "$state"; }
 
-# A PREVIOUS RUN'S TREE IS EVIDENCE. Read its state marker before anything is
-# written: its pid, nonce and phase are what decide a recovery (a dead run's
-# leftover is restored) from a refusal (a live run, or a marker this script does
-# not recognise, is left exactly as it is).
+# EXCLUSIVE ACQUISITION — held across the verifier and its generation children
+# via a kernel advisory lock (treelock).
+if [ "${TREELOCK_HELD:-}" != "1" ]; then
+	treelock=build/treelock
+	if [ ! -x "$treelock" ]; then
+		top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+		if [ -n "$top" ] && [ -x "$top/build/treelock" ]; then
+			treelock="$top/build/treelock"
+		elif [ -n "$top" ] && [ -d "$top/tools/treelock" ]; then
+			mkdir -p "$top/build"
+			go build -o "$top/build/treelock" "$top/tools/treelock"
+			treelock="$top/build/treelock"
+		else
+			mkdir -p build
+			go build -o build/treelock ./tools/treelock
+			treelock=build/treelock
+		fi
+	fi
+	mkdir -p "$lock"
+	exec "$treelock" -lock "$lock/file" -owner-file "$lock/owner" -name "$lock" /bin/sh "$0" "$@"
+fi
+
+# A PREVIOUS RUN'S TREE IS EVIDENCE. Read its state marker and owner ONLY once
+# exclusive ownership is held.
+old_lpid=; old_lnonce=
+if [ -f "$lock/owner" ]; then
+	read -r old_lpid old_lnonce < "$lock/owner" 2>/dev/null || true
+fi
+
 spid=; snonce=; sphase=
 if [ -f "$state" ]; then
 	read -r spid snonce sphase < "$state" 2>/dev/null || true
 fi
 
-# EXCLUSIVE ACQUISITION — before any shared-state write. mkdir is atomic on one
-# filesystem, so exactly one caller creates $lock and records pid+nonce in it. A
-# loser refuses a live holder; a dead holder's lock is taken over only after it
-# is re-read unchanged, and the nonce (not the pid, which a new process can
-# reuse) is the authority that the lock and the state marker name one dead run.
-lock_held=0
-while ! mkdir "$lock" 2>/dev/null; do
-	read -r lpid lnonce < "$lock/owner" 2>/dev/null || true
-	if [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null; then
-		printf 'REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n' "$lpid" "$lock" >&2
-		exit 1
-	fi
-	read -r lpid2 lnonce2 < "$lock/owner" 2>/dev/null || true
-	if [ "$lpid2" != "$lpid" ] || [ "$lnonce2" != "$lnonce" ]; then
-		continue
-	fi
-	if [ -n "$lnonce" ] && [ -n "$snonce" ] && [ "$lnonce" != "$snonce" ]; then
-		printf 'REFUSED — %s and %s name different owners (%s vs %s); not touching either tree.\n' \
-			"$lock" "$state" "$lnonce" "$snonce" >&2
-		exit 1
-	fi
-	rm -rf "$lock"
-done
-printf '%s %s\n' "$$" "$nonce" > "$lock/owner"
-lock_held=1
-
-release() {
-	if [ "$lock_held" = 1 ]; then
-		rm -rf "$lock"
-		lock_held=0
-	fi
-	return 0
-}
-trap release EXIT HUP INT TERM
+# If a previous lock owner and state marker both exist, ensure they name the same run:
+if [ -n "$old_lnonce" ] && [ -n "$snonce" ] && [ "$old_lnonce" != "$snonce" ]; then
+	printf 'REFUSED — %s and %s name different owners (%s vs %s); not touching either tree.\n' \
+		"$lock" "$state" "$old_lnonce" "$snonce" >&2
+	exit 1
+fi
 
 # VALIDATE THE COMPLETE OWNED STATE TUPLE before writing mark start. A marker
 # must name a pid, a nonce and a phase this script recognises; an unrecognised
@@ -170,6 +168,7 @@ fi
 
 [ -d generated ] || { printf 'there is no generated/ tree in %s\n' "$(pwd)" >&2; exit 1; }
 
+printf '%s %s\n' "$$" "$nonce" > "$lock/owner"
 mark start
 
 fail=0
@@ -239,7 +238,11 @@ restore() {
 		}
 	fi
 }
-trap 'restore; release' EXIT HUP INT TERM
+cleanup() {
+	restore || true
+	rm -f "$state" "$lock/owner"
+}
+trap cleanup EXIT HUP INT TERM
 
 mark moved
 mv generated "$prev"
@@ -249,7 +252,7 @@ if ! make $stamps > "$run/regenerate.log" 2>&1; then
 	printf 'the regeneration itself failed — the last of %s is:\n' "$run/regenerate.log"
 	tail -40 "$run/regenerate.log" | sed 's|^|    |'
 	restore
-	rm -f "$state"
+	rm -f "$state" "$lock/owner"
 	exit 1
 fi
 
@@ -258,7 +261,7 @@ if ! GENERATED_TREE_WORK="$run/compare" test/generated-tree/compare generated "$
 fi
 
 restore
-rm -f "$state"
+rm -f "$state" "$lock/owner"
 
 if [ "$fail" -ne 0 ]; then
 	printf 'the emission that decided this is at %s; the tree on disk is untouched.\n' "$fresh"

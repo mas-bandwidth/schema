@@ -4535,7 +4535,7 @@ bench-fixedform-measure: build/schema_bench_fixedform
 # `generated` job in ci-full.yml and the certify workflow run that same script,
 # and it no longer needs the whole `make test` chain to get there: the emission
 # takes bin/schema and nothing else.
-generated-current: bin/schema
+generated-current: bin/schema build/treelock
 	@test/generated-tree/verify
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the

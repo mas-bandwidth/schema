@@ -29,11 +29,15 @@ generated-tree-negative-controls: $(GENERATED_TREE_CONTROLS:%=generated-tree-con
 # and never destroyed (even across a real SIGKILL of the whole verifier process
 # group), and that a staged edit does not pass as committed.
 
-GENERATED_TREE_VERIFY_CONTROLS := kill-retry kill-before-emission simultaneous-contender ambiguous-marker regeneration-fails second-invocation staged-difference
+build/treelock: tools/treelock/main.go
+	@mkdir -p build
+	@go build -o build/treelock ./tools/treelock
+
+GENERATED_TREE_VERIFY_CONTROLS := kill-retry kill-before-emission simultaneous-contender ambiguous-marker two-reclaimers acquisition-before-owner regeneration-fails second-invocation staged-difference
 
 .PHONY: generated-tree-verify-controls $(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%)
 
-$(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%): generated-tree-verify-control-%:
+$(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%): generated-tree-verify-control-%: build/treelock
 	@test/generated-tree/verify-control $*
 
 generated-tree-verify-controls: $(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%)

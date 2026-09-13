@@ -24,6 +24,13 @@
 #                       and the marker are byte-identical before and after.
 #   ambiguous-marker    a marker with an unrecognised phase plus a prev tree:
 #                       refusal, marker and both trees unchanged.
+#   two-reclaimers      two reclaimers attempt acquisition concurrently after a
+#                       holder dies: exactly one succeeds and recovers, the
+#                       second is serialized/refused cleanly.
+#   acquisition-before-owner
+#                       contenders during lock acquisition never delete the
+#                       lock or see an empty owner; kernel lock held before
+#                       reading state or writing owner.
 #   regeneration-fails  a normal failure: the original tree is restored and the
 #                       run exits non-zero.
 #   second-invocation   two normal invocations in a row; the second must not be
@@ -35,9 +42,14 @@ set -eu
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 
+if [ ! -x "$repo/build/treelock" ]; then
+	mkdir -p "$repo/build"
+	go build -o "$repo/build/treelock" "$repo/tools/treelock"
+fi
+
 mode=${1:?usage: verify-control <case>}
 case "$mode" in
-kill-retry|kill-before-emission|simultaneous-contender|ambiguous-marker|regeneration-fails|second-invocation|staged-difference) ;;
+kill-retry|kill-before-emission|simultaneous-contender|ambiguous-marker|two-reclaimers|acquisition-before-owner|regeneration-fails|second-invocation|staged-difference) ;;
 *) printf 'unknown control: %s\n' "$mode" >&2; exit 1 ;;
 esac
 
@@ -45,10 +57,12 @@ work=build/generated-tree/vc/$mode
 rm -rf "$work"
 mkdir -p "$work"
 fixture=$work/fixture
-mkdir -p "$fixture/generated/go" "$fixture/test/generated-tree" "$fixture/make" "$fixture/bin"
+mkdir -p "$fixture/generated/go" "$fixture/test/generated-tree" "$fixture/make" "$fixture/bin" "$fixture/build"
 cp "$repo/test/generated-tree/verify" "$fixture/test/generated-tree/verify"
 cp "$repo/test/generated-tree/compare" "$fixture/test/generated-tree/compare"
 chmod +x "$fixture/test/generated-tree/verify" "$fixture/test/generated-tree/compare"
+cp "$repo/build/treelock" "$fixture/build/treelock"
+chmod +x "$fixture/build/treelock"
 : > "$fixture/test/generated-tree/not-emitted"
 : > "$fixture/make/empty.mk"
 : > "$fixture/bin/schema"
@@ -101,6 +115,28 @@ ambiguous-marker)
 	cat > "$fixture/Makefile" <<'EOF'
 generated/go/.stamp:
 	@mkdir -p generated/go
+	@printf 'committed original bytes\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+two-reclaimers)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go build
+	@touch build/emission-started
+	@sleep 3
+	@printf 'synthetic emission\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+acquisition-before-owner)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go build
+	@touch build/emission-started
+	@sleep 3
 	@printf 'committed original bytes\n' > generated/go/ATable.go
 	@touch generated/go/.stamp
 EOF
@@ -316,6 +352,105 @@ ambiguous-marker)
 	[ "$prev_before" = "$prev_after" ] || { printf 'ASSERTION FAILED: prev was altered\n' >&2; fail=1; }
 	[ "$gen_before" = "$gen_after" ] || { printf 'ASSERTION FAILED: generated was altered\n' >&2; fail=1; }
 	printf 'verify-control ambiguous-marker: an unrecognised marker is refused, and the marker and both trees are unchanged\n'
+	;;
+
+two-reclaimers)
+	# Start a verifier that moves generated to prev and begins emission, then
+	# SIGKILL it while the original tree is in prev and state is emitting:
+	# this leaves one stale lock/state on disk.
+	( cd "$fixture" && exec python3 -c 'import os,sys; os.setpgrp(); os.execvp("sh", ["sh","test/generated-tree/verify"])' ) > "$work/run1.log" 2>&1 &
+	vpid=$!
+
+	wait_for build/generated-tree/prev/go/ATable.go 100 || { printf 'the original never reached prev\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	wait_for build/emission-started 100 || { printf 'the generation rule never started\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	kill -KILL -"$vpid"
+	wait "$vpid" 2>/dev/null || true
+
+	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
+
+	# Both reclaimers attempt acquisition concurrently after holder dies.
+	# The generation rule in Makefile sleeps 3s, so whichever reclaimer acquires
+	# the lock holds it across its recovery and emission.
+	run_verify > "$work/rec1.log" 2>&1 &
+	rpid1=$!
+	run_verify > "$work/rec2.log" 2>&1 &
+	rpid2=$!
+
+	rc1=0; wait "$rpid1" || rc1=$?
+	rc2=0; wait "$rpid2" || rc2=$?
+
+	rec1_recovered=0; grep -Fq 'RECOVERED' "$work/rec1.log" 2>/dev/null && rec1_recovered=1 || true
+	rec2_recovered=0; grep -Fq 'RECOVERED' "$work/rec2.log" 2>/dev/null && rec2_recovered=1 || true
+
+	rec1_refused=0; grep -Fq 'REFUSED' "$work/rec1.log" 2>/dev/null && rec1_refused=1 || true
+	rec2_refused=0; grep -Fq 'REFUSED' "$work/rec2.log" 2>/dev/null && rec2_refused=1 || true
+
+	if [ "$rec1_recovered" -eq 1 ] && [ "$rec2_refused" -eq 1 ]; then
+		[ "$rc2" -ne 0 ] || { printf 'ASSERTION FAILED: refused reclaimer exited 0\n' >&2; fail=1; }
+	elif [ "$rec2_recovered" -eq 1 ] && [ "$rec1_refused" -eq 1 ]; then
+		[ "$rc1" -ne 0 ] || { printf 'ASSERTION FAILED: refused reclaimer exited 0\n' >&2; fail=1; }
+	else
+		printf 'ASSERTION FAILED: expected exactly one RECOVERED and one REFUSED (rec1: recov=%d ref=%d rc=%d, rec2: recov=%d ref=%d rc=%d)\n' \
+			"$rec1_recovered" "$rec1_refused" "$rc1" "$rec2_recovered" "$rec2_refused" "$rc2" >&2
+		cat "$work/rec1.log" >&2
+		cat "$work/rec2.log" >&2
+		fail=1
+	fi
+
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	printf 'verify-control two-reclaimers: two concurrent reclaimers of one stale lock: exactly one recovers, the second is serialized/refused cleanly\n'
+	;;
+
+acquisition-before-owner)
+	# Plant a previous interrupted run's state (prev tree, state marker, owner file),
+	# with generated/ absent, to witness:
+	# 1. Holder holds kernel lock before reading state or writing owner, recovering prev.
+	# 2. Contenders running while holder is active are refused cleanly naming holder PID.
+	# 3. Contenders never observe an un-owned lock, never delete the lock, never steal lock.
+	# 4. Holder completes cleanly without disruption.
+	mkdir -p "$fixture/build/generated-tree/prev/go" "$fixture/build/generated-tree/lock"
+	printf 'committed original bytes\n' > "$fixture/build/generated-tree/prev/go/ATable.go"
+	printf '99999 99999.1000\n' > "$fixture/build/generated-tree/lock/owner"
+	printf '99999 99999.1000 emitting\n' > "$fixture/build/generated-tree/state"
+	rm -f "$fixture/generated/go/ATable.go"
+
+	( cd "$fixture" && exec python3 -c 'import os,sys; os.setpgrp(); os.execvp("sh", ["sh","test/generated-tree/verify"])' ) > "$work/holder.log" 2>&1 &
+	vpid=$!
+
+	# Wait until holder takes the lock and enters emission rule (sleeps 3s)
+	wait_for build/emission-started 100 || { printf 'holder never started emission\n' >&2; cat "$work/holder.log" >&2; exit 1; }
+
+	# Fire concurrent contenders while holder is in emission
+	for i in 1 2 3; do
+		run_verify > "$work/contender$i.log" 2>&1 &
+	done
+
+	# Wait for holder to finish
+	rch=0
+	wait "$vpid" || rch=$?
+	if [ "$rch" -ne 0 ]; then
+		printf 'ASSERTION FAILED: holder failed or had its lock stolen\n' >&2
+		cat "$work/holder.log" >&2
+		fail=1
+	fi
+
+	wait || true
+
+	# Every contender must have been refused with valid holder pid (never unknown or empty)
+	for i in 1 2 3; do
+		assert_contains contender$i.log 'REFUSED' || fail=1
+		if grep -Fq 'pid unknown' "$work/contender$i.log"; then
+			printf 'ASSERTION FAILED: contender%d saw pid unknown\n' "$i" >&2
+			cat "$work/contender$i.log" >&2
+			fail=1
+		fi
+	done
+
+	# Holder must have recovered the previous tree and completed
+	assert_contains holder.log 'RECOVERED' || fail=1
+	assert_contains holder.log 'the committed generated/ tree is what this compiler emits.' || fail=1
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	printf 'verify-control acquisition-before-owner: kernel lock held before reading state or writing owner; contenders never steal lock or observe empty owner\n'
 	;;
 
 regeneration-fails)
