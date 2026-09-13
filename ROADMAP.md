@@ -44,7 +44,7 @@ This matrix is generated from [recursive work data](docs/roadmap.sexp).
 The [feature survey](docs/FIXED-TABLES-SURVEY.md) records the full scope, including
 ordinary capabilities as well as the original audit families.
 
-Cells use three states: **empty — missing/not started**, **🟠 ↻ — in progress or
+Cells use three states: **empty — missing/not started**, **↻ — in progress or
 partial**, **✅ — verified**. Implementation that is built but still needs checks is
 in progress. Verification and evidence reconciliation are also unfinished work;
 nothing is complete until its required acceptance is verified.
@@ -63,63 +63,63 @@ gates. The total is a verified lower bound while audit reconciliation remains op
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|---|
-| File framing and layout announcements | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Bounded batches | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Select known layouts and refuse unsupported input | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Static plans, record sizes and caller capacity | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Layout and definition hashes | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Fixed closure and record limits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Retirement floors and supported versions | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Remove obsolete runtime and forward-read paths | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Numeric widening and backward-read landing rules | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Optional values and absent payloads | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Renaming, appending and deprecating fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Exact counters and report semantics | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Array counts and writer bounds | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Text lengths, code units and named refusals | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Scalar bounds and compressed floats | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Full-width enum and union ordinals | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Bool and present-byte normalization | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Live extents, read slack and prefill | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Fixed-image writes and zeroed slack | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Nested union guards and independent metadata | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Partitioned plans and identity-path equivalence | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Shared byte oracle and round-trip conformance | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Hostile-input checks and negative controls | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Boolean values | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Signed integers: 8, 16, 32 and 64 bits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Unsigned integers: 8, 16, 32 and 64 bits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Signed 128-bit integers | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Unsigned 128-bit integers | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Ranged integer fields | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| bits(N) fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| 32-bit floating-point fields | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| 64-bit floating-point fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Compressed-float declarations stored as float32 | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Signed fixed-point fields | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Unsigned fixed-point fields | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
-| Flags masks | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Enums and None | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ |
-| Bounded UTF-8 string fields | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bounded UTF-16 string fields | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |  |  |  | ✅ |  |
-| Bounded byte buffers | ✅ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Nested types by value | ✅ | ✅ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Nested fixed tables by value | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Fixed-length arrays | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bounded arrays with a live count | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Enum-keyed arrays | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ |
-| Nested enum-keyed arrays | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ |
-| Tagged unions with type or fixed-table payloads | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ |
-| Union arms holding scalar, text or array fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| File framing and layout announcements | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Bounded batches | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Select known layouts and refuse unsupported input | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Static plans, record sizes and caller capacity | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Layout and definition hashes | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Fixed closure and record limits | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Retirement floors and supported versions | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Remove obsolete runtime and forward-read paths | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Numeric widening and backward-read landing rules | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Optional values and absent payloads | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Renaming, appending and deprecating fields | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Exact counters and report semantics | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Array counts and writer bounds | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Text lengths, code units and named refusals | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Scalar bounds and compressed floats | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Full-width enum and union ordinals | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Bool and present-byte normalization | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Live extents, read slack and prefill | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Fixed-image writes and zeroed slack | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Nested union guards and independent metadata | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Partitioned plans and identity-path equivalence | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Shared byte oracle and round-trip conformance | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Hostile-input checks and negative controls | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Boolean values | ↻ | ✅ | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ↻ |
+| Signed integers: 8, 16, 32 and 64 bits | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Unsigned integers: 8, 16, 32 and 64 bits | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Signed 128-bit integers | ↻ | ↻ | ✅ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Unsigned 128-bit integers | ↻ | ↻ | ✅ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Ranged integer fields | ↻ | ✅ | ✅ | ↻ | ✅ | ↻ | ✅ | ✅ | ↻ |
+| bits(N) fields | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| 32-bit floating-point fields | ✅ | ↻ | ↻ | ↻ | ✅ | ↻ | ✅ | ✅ | ↻ |
+| 64-bit floating-point fields | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Compressed-float declarations stored as float32 | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Signed fixed-point fields | ↻ | ↻ | ✅ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Unsigned fixed-point fields | ↻ | ↻ | ✅ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ |
+| Flags masks | ✅ | ↻ | ↻ | ↻ | ↻ | ✅ | ↻ | ↻ | ↻ |
+| Enums and None | ↻ | ↻ | ✅ | ↻ | ↻ | ✅ | ✅ | ✅ | ✅ |
+| Bounded UTF-8 string fields | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bounded UTF-16 string fields | ✅ | ↻ | ↻ | ↻ |  |  |  | ✅ |  |
+| Bounded byte buffers | ✅ | ↻ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nested types by value | ✅ | ✅ | ↻ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nested fixed tables by value | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Fixed-length arrays | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bounded arrays with a live count | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Enum-keyed arrays | ✅ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ | ✅ | ✅ |
+| Nested enum-keyed arrays | ↻ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ | ✅ | ✅ |
+| Tagged unions with type or fixed-table payloads | ✅ | ✅ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ↻ |
+| Union arms holding scalar, text or array fields | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
 | Payload-free union arms |  |  |  |  |  |  |  |  |  |
-| Arrays of unions | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Optional scalar and enum fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | 🟠 ↻ |
-| Optional nested values | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Optional arrays | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| Scalar and enum defaults | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
-| String, byte-buffer and flags defaults | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Arrays of unions | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Optional scalar and enum fields | ↻ | ↻ | ↻ | ↻ | ↻ | ✅ | ✅ | ↻ | ↻ |
+| Optional nested values | ↻ | ↻ | ✅ | ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Optional arrays | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| Scalar and enum defaults | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
+| String, byte-buffer and flags defaults | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ | ↻ |
 | Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ |
+| Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ↻ |
 | complete | ≥ 13/57 (≥ 22%) | ≥ 10/57 (≥ 17%) | ≥ 16/57 (≥ 28%) | ≥ 3/57 (≥ 5%) | ≥ 15/57 (≥ 26%) | ≥ 15/57 (≥ 26%) | ≥ 22/57 (≥ 38%) | ≥ 24/57 (≥ 42%) | ≥ 11/57 (≥ 19%) |
 
 [Source data](docs/roadmap.sexp)

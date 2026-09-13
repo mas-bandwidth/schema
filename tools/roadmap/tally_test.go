@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-var generatedCellRx = regexp.MustCompile(`^(?:🟠 ↻|✅(?: 100%)?|❌|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
+var generatedCellRx = regexp.MustCompile(`^(?:↻|✅(?: 100%)?|❌|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
 
 func isValidCell(cell string, inGenerated bool) bool {
 	cell = strings.TrimSpace(cell)
@@ -105,7 +105,7 @@ func TestGeneratedCellGrammar(t *testing.T) {
 		"✅ 100%", "100%", "50%", "0%",
 		"?", "? (≥ 0%)", "? (≥ 50%)", "? (≥ 14%)",
 		"1/1", "3/3 (100%)", "≥ 1/3", "≥ 1/3 (≥ 33%)", "≥ 0/23 (≥ 0%)",
-		"✅", "❌", "", "🟠 ↻",
+		"✅", "❌", "", "↻",
 	}
 	for _, c := range validGenerated {
 		if !isValidCell(c, true) {

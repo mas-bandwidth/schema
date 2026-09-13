@@ -371,7 +371,7 @@
               (and (null (getf work :implementation)) leaf-ids table
                    (every (lambda (id) (eq (getf (gethash id table) :state) :todo)) leaf-ids)))
           ""
-          "🟠 ↻")))
+          "↻")))
 
 (defun render-table-string (roadmap table sexp-path)
   (let* ((rows (getf roadmap :rows))
@@ -523,7 +523,7 @@
       ;; Test 1: Shared leaf deduplication
       (test "implementation assessment cannot manufacture acceptance"
         (lambda ()
-          (dolist (pair '((:implemented "🟠 ↻") (:partial "🟠 ↻") (:unsupported "")))
+          (dolist (pair '((:implemented "↻") (:partial "↻") (:unsupported "")))
             (let ((eval (make-cell-eval :text "? (≥ 0%)" :is-green nil :has-unknown t)))
               (unless (string= (assessed-cell-text eval (list :implementation (first pair))) (second pair))
                 (error "Implementation status not rendered"))
@@ -670,9 +670,9 @@
 
             (unless (search "| Feature 1 | ✅ | ✅ |" rendered)
               (error "Feature 1 row missing or incorrect: ~s" rendered))
-            (unless (search "| Feature 2 | 🟠 ↻ | ✅ |" rendered)
+            (unless (search "| Feature 2 | ↻ | ✅ |" rendered)
               (error "Feature 2 row missing or incorrect: ~s" rendered))
-            (unless (search "| Feature 3 | 🟠 ↻ | ✅ |" rendered)
+            (unless (search "| Feature 3 | ↻ | ✅ |" rendered)
               (error "Feature 3 row missing or incorrect: ~s" rendered))
             (unless (search "| complete | ≥ 1/3 (≥ 33%) | 3/3 (100%) |" rendered)
               (error "Complete row missing or incorrect: ~s" rendered))
@@ -798,9 +798,9 @@
                  (rendered (render-table-string rm table "docs/roadmap.sexp")))
             (unless (search "| Feature 1 | ✅ | ✅ |" rendered)
               (error "valid_rollup Feature 1 failed"))
-            (unless (search "| Feature 2 | 🟠 ↻ | ✅ |" rendered)
+            (unless (search "| Feature 2 | ↻ | ✅ |" rendered)
               (error "valid_rollup Feature 2 failed"))
-            (unless (search "| Feature 3 | 🟠 ↻ | ✅ |" rendered)
+            (unless (search "| Feature 3 | ↻ | ✅ |" rendered)
               (error "valid_rollup Feature 3 failed"))
             (unless (search "| complete | ≥ 1/3 (≥ 33%) | 3/3 (100%) |" rendered)
               (error "valid_rollup complete row failed")))
