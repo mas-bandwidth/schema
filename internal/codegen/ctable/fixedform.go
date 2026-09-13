@@ -389,13 +389,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
-	g.pf("   then the arms: the entries that are nearly all of a plan never test a\n")
-	g.pf("   guard at all. */\n")
+	g.pf("   destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.pf("   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
+	g.pf("   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
+	g.pf("   test a guard at all. */\n")
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for _, e := range plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -716,6 +718,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedCount"
 	case ir.TableFixedOpText:
 		return "kTableFixedText"
+	case ir.TableFixedOpBool:
+		return "kTableFixedBool"
 	}
 	return "kTableFixedCopy"
 }
