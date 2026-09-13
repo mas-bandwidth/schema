@@ -134,7 +134,10 @@ values. `None` is one of those values, so an enum whose declared variant
 count is a power of two pays one bit for it: four declared variants are five
 wire values and cost 3 bits, not 2. An enum takes no `| max`: the width
 follows the variant count, and adding a variant that crosses a power of two
-widens the field.
+widens the field. Forward compatibility lives elsewhere: on the packet wire
+both peers share one schema, and on the table wire the field's width is
+recorded per version (the lock file's `width=` line, SPEC-TABLES.md), so a
+newer reader reads the older width.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
 schema expressions: the highest wire-legal value, and the
@@ -789,8 +792,9 @@ maximum, enum values outside the declared range, and reads that run past the
 end of the buffer.
 
 One precision worth having: an enum read is bounded by the enum's variant
-count. For `enum E { A, B, C }` the wire range is `[0, 3]`, `None` included,
-and a value of 4 or more fails the read. A value you have not named cannot
+count, not by the field's width. For `enum E { A, B, C, D }` the wire range
+is `[0, 4]`, `None` included, in 3 bits; 5, 6 and 7 fit the width and are
+refused. A value you have not named cannot
 survive a read, so a `switch` over an enum needs no default arm for one. The same VALIDATION rules hold in all nine languages, because
 the same compiler wrote all nine — the buffer-slack contract above is the one
 thing that differs per language.
