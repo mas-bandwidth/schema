@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A variable wide root used to fail C++'s Alloc<T> assertion (16 <= 8).
@@ -92,6 +94,7 @@ free(region); free(output); return 0;}
 // No replacement typedef can conceal the wide scalar alignment contract.
 func referenceCompileRun(t *testing.T, files map[string][]byte, source string) {
 	t.Helper()
+	slowtest.Gate(t, "the C++ compiler")
 	compiler, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skipf("c++ unavailable: %v", err)

@@ -1,0 +1,62 @@
+// FG1.schema — W16 of issue #876, the identity-plan half
+// (docs/FIXED-FORM-ALGORITHM.md §4.1).
+//
+//   W16  A UNION INSIDE A UNION. A union's guard is stamped over everything its
+//        arm produced, so an arm inside an arm answers to the OUTER tag — and a
+//        record whose outer tag selects the other arm must not run ONE of the
+//        inner arm's entries: the other arm reads back whole, and storage no
+//        entry of that read owns is left exactly as the caller handed it in,
+//        since the identity plan prefills nothing (§4.3). FU1/FU2 are the C
+//        leg's pair and are not this shape. FH1/FH2 on the tip are the compiled
+//        pair (owed 7); this file is the identity-plan fixture the reference
+//        PR carries, under a name that does not collide with that pair.
+//
+//   C11  an enum with `| max = K` HEADROOM is NOT in this schema: the compiler
+//        refuses the construct in a table closure by name.
+package tblfg1
+
+enum Tier
+{
+    Bronze
+    Silver
+}
+
+type Leaf
+{
+    n int32 = 0
+}
+
+type Other
+{
+    k int32 = 0
+}
+
+union Inner
+{
+    leaf  Leaf
+    other Other
+}
+
+type OuterA
+{
+    inner Inner
+    edge  int32 = 0
+}
+
+type OuterB
+{
+    m int32 = 0
+}
+
+union Outer
+{
+    a OuterA
+    b OuterB
+}
+
+fixed table FhRoot
+{
+    tier Tier
+    head int32 = 1
+    pick Outer
+}

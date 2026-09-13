@@ -1,0 +1,14 @@
+// VMID_floor.schema — lineage entry 1
+//
+// THE FLOOR'S LINEAGE (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b,
+// docs/FIXED-FORM-VERSIONING-TESTS.md "The floor and the hash"). Three layouts
+// of ONE table, each appending one field to the one before, so the reader built
+// from the newest has a lineage of three and a floor can sit at any of them.
+
+package vmid_floor
+
+fixed table Floored
+{
+    a int32 = 1
+    b int32 = 2
+}

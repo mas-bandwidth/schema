@@ -2,6 +2,6 @@
 # The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
 # Paths are repository-relative.
 
-names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
+names bench/tables/cs/src/Program.cs 7 shape-blind leg: `Benchtable.TableMixed`/`BenchMixed` as the BenchTable type argument, plus `FixedTable` at the FIXED form's storage declaration and its Load/Save call sites (docs/SPEC-TABLES.md §3.4) (callsite)
 timing test/cs-tables/src/RetainContractChecks.cs 1 hostile retention depth regression: absolute completion deadline, no throughput or benchmark result
 timing test/cs-tables/src/RetainPathChecks.cs 1 hostile zero-bit count regression: absolute completion deadline, no throughput or benchmark result

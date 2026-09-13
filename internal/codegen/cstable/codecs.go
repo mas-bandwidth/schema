@@ -132,15 +132,25 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // bound sitting ON that width's limit is a comparison no decoded value can
 // satisfy and the emitter drops it — the same "this check cannot fire" test
 // the bits(N) width clamp already applies when N is the storage width.
+// IT READS THE ENDS THE EMITTER SPELLS — ir.TableRawRange, so a fixed(I,F)
+// field's whole-unit bounds are shifted by F first, and the signedness is the
+// wire kind's (ir.TableKindSigned), which the signed fixed kinds share with
+// the signed integers. Testing the UNSHIFTED ends against an UNSIGNED range
+// is how a signed fixed field with min <= 0 lost its low clamp entirely: the
+// test said "0 cannot be beaten", the emitter had -min<<F to spell.
 // docs/SPEC-TABLES.md §4's semantics are untouched: an elided end is one
 // that could never have clamped or counted. C# raises no diagnostic for a
 // comparison that cannot fire the way the C++ compilers do (issue #342);
 // the emitted shape mirrors C++'s all the same, because one table codec in
 // two languages is the point.
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
 	lo, hi := tableStorageRange(signed, widthBytes*8)
-	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
 // fieldDefaultExpr renders the C# expression a field's default compares

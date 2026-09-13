@@ -97,6 +97,17 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
+		// THE FIXED FORM'S SPELLINGS (docs/SPEC-TABLES.md §3.4, §11), and the
+		// point of these two rows is the one the whole list rests on: the
+		// READ-SIDE BOUNDS are emitted only for a type that declares something
+		// bounded, and the names are claimed for a table that declares NOTHING
+		// bounded — because adding a `min`, a `max`, a union or an enum is an
+		// ordinary edit, and a name free before it must not become a collision
+		// after it.
+		{name: "a declaration colliding with the fixed form's read-side bounds", want: "generated TABLE-wire functions",
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedClamp { y int32 }\n"},
+		{name: "a declaration colliding with the fixed form's per-type bounds body", want: "generated TABLE-wire functions",
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedClampBody { y int32 }\n"},
 		// THE PER-ENUM IDENTITY PAIR (docs/SPEC-TABLES.md §5, §11). C++ and C#
 		// overload the pair on the enum's own type; JavaScript has no
 		// overloading and no nested scope to hide it in, so each enum brings

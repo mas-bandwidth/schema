@@ -236,22 +236,30 @@ func TestNewTableRefusedUntilLocked(t *testing.T) {
 	}
 }
 
-// TestNewFieldlessTableRefusedUntilLocked is the same finding with no entry to
-// name: a table with no fields is still a table the lock does not carry, and
-// the refusal names the table alone rather than inventing an entry for it.
-func TestNewFieldlessTableRefusedUntilLocked(t *testing.T) {
+// A fieldless table still has a named stale-lock finding, but cannot be
+// appended: the emitted fixed root violates the nonzero rule in §1.1.
+func TestNewFieldlessTableCannotBeLocked(t *testing.T) {
 	after := base + "\nfixed table Marker\n{\n}\n"
-	_, paths, errs := locked(t, after)
+	dir, paths, errs := locked(t, after)
 	refuses(t, errs, "fixed table Marker is in the declaration and not in the lock",
 		"write it with `schema lock`")
 	if strings.Contains(errs[0].Error(), "entry ") {
 		t.Errorf("there is no entry to name: %v", errs[0])
 	}
-	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+	file := filepath.Join(dir, lockfile.FileName)
+	before, err := os.ReadFile(file)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
-		t.Errorf("the written lock checks clean: %v", errs)
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote || !strings.Contains(err.Error(), "layout_record_too_large") {
+		t.Fatalf("emitted zero root must refuse before append: rewrote=%v err=%v", rewrote, err)
+	}
+	afterBytes, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterBytes) != string(before) {
+		t.Fatal("refused append changed the existing lock")
 	}
 }
 
@@ -379,20 +387,45 @@ func TestRemovalOfTheLastFieldRefused(t *testing.T) {
 	refuses(t, errs, "fixed table ShipConfig", "entry 3", "field armor", "gone from the declaration")
 }
 
-// TestWidenRefused grows a bound rather than swapping a scalar, so the KIND is
-// untouched and the width is the only fact that moved.
-func TestWidenRefused(t *testing.T) {
+// TestWidenTakenAsAChangeToRecord grows a capacity: under the monotone law
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, Glenn's ruling that the lock is
+// the law's home) a widening is not a break — every value an older writer
+// could write still lands — so it is a change the RECORD must carry, which is
+// the one refusal that names `schema lock`, and that command writes it.
+func TestWidenTakenAsAChangeToRecord(t *testing.T) {
 	after := strings.Replace(base, "    name    string(32)\n", "    name    string(64)\n", 1)
-	_, _, errs := locked(t, after)
-	refuses(t, errs, "fixed table ShipConfig", "entry 1", "field name", "40 bytes wide in the lock and 72", "walked by offset")
+	_, paths, errs := locked(t, after)
+	refuses(t, errs, "fixed table ShipConfig", "entry 1", "field name", "write it with `schema lock`")
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("`schema lock` writes a widening: rewrote=%v err=%v", rewrote, err)
+	}
 }
 
-// TestWidenScalarRefused is the same rule over a scalar swap, where the width
-// is still what is named: it is the fact that slides every field after it.
-func TestWidenScalarRefused(t *testing.T) {
-	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint32\n", 1)
+// TestNarrowRefused is the other half of the same fact: a capacity cut is a
+// break, and the refusal names the rule and BOTH VALUES.
+func TestNarrowRefused(t *testing.T) {
+	after := strings.Replace(base, "    name    string(32)\n", "    name    string(16)\n", 1)
 	_, _, errs := locked(t, after)
-	refuses(t, errs, "fixed table ShipConfig", "entry 3", "field armor", "1 bytes wide in the lock and 4")
+	refuses(t, errs, "fixed table ShipConfig", "entry 1", "field name", "capacity narrowed (32 -> 16)")
+}
+
+// TestWidenScalarTakenAsAChangeToRecord is the same rule over a scalar swap:
+// `uint8` to `uint32` is a read (the reader zero-extends), so the lock records
+// it rather than refusing it.
+func TestWidenScalarTakenAsAChangeToRecord(t *testing.T) {
+	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint32\n", 1)
+	_, paths, errs := locked(t, after)
+	refuses(t, errs, "fixed table ShipConfig", "entry 3", "field armor", "write it with `schema lock`")
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("`schema lock` writes a widening: rewrote=%v err=%v", rewrote, err)
+	}
+}
+
+// TestNarrowScalarRefused: the same swap the other way is refused by name.
+func TestNarrowScalarRefused(t *testing.T) {
+	before := strings.Replace(base, "    armor   uint8\n", "    armor   uint32\n", 1)
+	_, _, errs := lockedFrom(t, before, base)
+	refuses(t, errs, "fixed table ShipConfig", "entry 3", "field armor", "narrowed (uint32 -> uint8)")
 }
 
 // TestKindChangeRefused is the edit that moves no byte and still lies: float32
@@ -410,7 +443,12 @@ func TestInsertInTheMiddleRefused(t *testing.T) {
 	refuses(t, errs, "fixed table ShipConfig", "entry 2", "field speed", "is field hull", "added at the BOTTOM")
 }
 
-// TestUnDeprecateRefused: the marker goes on and never comes off.
+// TestUnDeprecateRefused: DEPRECATION IS ONE WAY
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, which restores this test's
+// original answer). Every writer that ran while the field was deprecated left
+// the DEFAULT in the slot, so "what would come back is not data" — and
+// `schema lock` will not write the flag off either, because the lock is not a
+// way to make the refusal go away.
 func TestUnDeprecateRefused(t *testing.T) {
 	dir, paths := fixture(t, strings.Replace(base, "    armor   uint8\n", "    armor   uint8 | deprecated\n", 1))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
@@ -420,7 +458,11 @@ func TestUnDeprecateRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"fixed table ShipConfig", "entry 3", "field armor", "deprecated in the lock and live in the declaration", "ONE-WAY")
+		"fixed table ShipConfig", "entry 3", "field armor",
+		"undeprecated", "deprecation is ONE WAY")
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote {
+		t.Fatalf("`schema lock` does not write the flag off: rewrote=%v err=%v", rewrote, err)
+	}
 }
 
 // TestTableGoneRefused: a fixed table's layout is a promise, and a promise is
@@ -479,13 +521,16 @@ func TestLockRefusesToWriteABreak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint32\n", 1)
+	// a NARROWING, since the monotone law took the widening
+	// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2): `armor uint8` grown to
+	// uint32 is a read, and a string capacity cut in half is not.
+	after := strings.Replace(base, "    name    string(32)\n", "    name    string(16)\n", 1)
 	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(after), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil {
-		t.Fatal("schema lock appends, and a widening is not an append")
+		t.Fatal("schema lock appends, and a narrowing is not an append")
 	}
 	if rewrote {
 		t.Error("a refused lock writes nothing")
@@ -554,7 +599,10 @@ func TestDriverRefusesOnLoad(t *testing.T) {
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
 	}
-	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint32\n", 1)
+	// a NARROWING, since the monotone law took the widening
+	// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2): `armor uint8` grown to
+	// uint32 is a read, and a string capacity cut in half is not.
+	after := strings.Replace(base, "    name    string(32)\n", "    name    string(16)\n", 1)
 	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(after), 0o644); err != nil {
 		t.Fatal(err)
 	}

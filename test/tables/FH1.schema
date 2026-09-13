@@ -1,0 +1,47 @@
+// FH1.schema — an arm inside an arm answers to the OUTER tag
+// (#876 card 13, owed 7). FU1/FU2 is text under an arm; this is a nested
+// union: Inner sits inside Wrap, Wrap is an arm of Outer, and Inner's own
+// arm selection must survive the outer stamp. A foreign outer arm must not
+// be decoded as this inner union.
+//
+// FH2 appends `extra` so a read of FH1's bytes is a COMPILED plan rather
+// than the identity one.
+package tblfh1
+
+type Leaf
+{
+    n int32 = 0
+}
+
+type Alt
+{
+    k int32 = 0
+}
+
+type Other
+{
+    m int32 = 0
+}
+
+union Inner
+{
+    leaf Leaf
+    alt  Alt
+}
+
+type Wrap
+{
+    inner Inner
+}
+
+union Outer
+{
+    wrap  Wrap
+    other Other
+}
+
+fixed table NestRoot
+{
+    pick Outer
+    tail int32 = 7
+}

@@ -793,8 +793,13 @@ tables-c-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/build/c-ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
-	@if go test -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/c-ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/c-ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: the rewind leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/c-ref-ordinal-nc/log; exit 1; \
 	fi
@@ -889,18 +894,33 @@ test-c tables-c: tables-c-view
 # test/c-tables/fixedform.h is the whole surface between them and names no
 # generated type at all, and the main links them — the shape the conformance
 # driver already uses for two generations of one schema.
-build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). UT1/UT2 is the two-lane / slid-arm
+# half of the same hole. C++ already generates the pair; this stamp did not.
+build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FU1.schema test/tables/FU2.schema
 	@mkdir -p build/tables-generated-c-fixed
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx1 test/tables/FX1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx2 test/tables/FX2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v1 test/tables/V1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v2 test/tables/V2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut1 test/tables/UT1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut2 test/tables/UT2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fu2 test/tables/FU2.schema
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c
+	test/c-tables/fixedform_layout.c \
+	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
+	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
-	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 -I$(SERIALIZE_C)
+	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 \
+	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 \
+	-Ibuild/tables-generated-c-fixed/fu1 -Ibuild/tables-generated-c-fixed/fu2 -I$(SERIALIZE_C)
 
 build/schema_test_c_fixedform: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
 	@mkdir -p build
@@ -919,6 +939,32 @@ tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_
 	./build/schema_test_c_fixedform
 	./build/schema_test_c_fixedform_asan
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE C LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/ctable/fixedversioning_test.go reads the C++ reference's byte
+# oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin` and
+# the floor, hash and lineage-merge files — and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3).
+#
+# EACH SIDE IS ITS OWN TRANSLATION UNIT AND ITS OWN BINARY. C has no namespace,
+# so two generations of one table name cannot share a TU (SPEC §6.1, the FX1/FX2
+# precedent above) — so the harness GENERATES a probe unit per row per column,
+# compiles it with $(CC) against the generated header, and runs it.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green. So the target BUILDS THE
+# ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+.PHONY: tables-c-versioning
+tables-c-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables C versioning: §5 read both columns of every row against the C++ reference bytes'
+
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
@@ -935,6 +981,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform
+	$(MAKE) tables-c-versioning
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.
@@ -1075,7 +1122,12 @@ tables-c-message-negative-control:
 	@mkdir -p build/c-message-negative
 	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
-	@if go test -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-message-negative/log || \
+				! grep -q -- '--- PASS' build/c-message-negative/log; then \
+			echo 'NEGATIVE CONTROL FAILED: the wire comparison did not run (skipped), so this control is watching nothing'; \
+			cat build/c-message-negative/log; exit 1; \
+		fi; \
 		echo 'NEGATIVE CONTROL FAILED: the message slot changed without failing the wire comparison'; exit 1; \
 	fi
 	@grep -q -- '--- FAIL: TestCTableMessageSave' build/c-message-negative/log
@@ -1086,7 +1138,9 @@ test-c tables-c: tables-c-message-negative-control
 
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	go test ./compiler -run '^TestCTableRetain' -count=1
+	sh test/slowgate/proof tables-c-retain \
+		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
@@ -1094,7 +1148,12 @@ tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
 	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
-	@if go test -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-retain-negative/log || \
+				! grep -q -- '--- PASS' build/c-retain-negative/log; then \
+			echo 'NEGATIVE CONTROL FAILED: the public round-trip report did not run (skipped), so this control is watching nothing'; \
+			cat build/c-retain-negative/log; exit 1; \
+		fi; \
 		echo 'NEGATIVE CONTROL FAILED: silently dropped C retained field passed'; exit 1; fi
 	@grep -q -- '--- FAIL: TestCTableRetainFile' build/c-retain-negative/log
 	@grep -q -- 'report.retained==13' build/c-retain-negative/log
@@ -1104,3 +1163,40 @@ test-c tables-c: tables-c-retain tables-c-retain-negative-control
 
 # Collection adapters belong to the common roster as well as their direct differential.
 build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan: test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
+
+# THE RUN COPY'S BOUND ON THE C LEG (docs/SPEC-TABLES.md §3.4,
+# test/tables/fixedform_runcopy.c). The driver above is the versioning
+# conformance set, and it checks the VALUES a read produces. The copy primitive
+# under it has one invariant those cases cannot state — every byte a copy of n
+# bytes reads or writes is inside [ start, start + n ) — because a move
+# anchored outside the run still copies the run correctly and merely takes a
+# neighbour with it. Exact-size heap blocks over every length from 0 to 96 make
+# the sanitized twin the assertion, and the same file runs on the C++ leg.
+#
+# ITS OWN GENERATED DIRECTORY, for the reason every C table unit has one: two
+# emitters write <Base>Table.h and one directory would have them overwrite each
+# other. One schema is enough — the runtime is package-scoped and identical in
+# every unit this emitter writes.
+build/runcopy-c/.stamp: bin/schema tables/scalars/Scalars.schema
+	@mkdir -p build/runcopy-c
+	./bin/schema generate --lang c --out build/runcopy-c tables/scalars
+	@touch $@
+
+build/schema_test_c_runcopy: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
+		test/tables/fixedform_runcopy.c -o $@ -lm
+
+build/schema_test_c_runcopy_asan: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
+		test/tables/fixedform_runcopy.c -o $@ -lm
+
+.PHONY: tables-c-runcopy
+tables-c-runcopy: build/schema_test_c_runcopy build/schema_test_c_runcopy_asan
+	./build/schema_test_c_runcopy
+	./build/schema_test_c_runcopy_asan
+
+# It rides the leg's own fixed-form target rather than a target of its own that
+# somebody has to remember: one name for "check the C fixed form".
+tables-c-fixedform: tables-c-runcopy

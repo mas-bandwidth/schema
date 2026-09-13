@@ -82,5 +82,19 @@ func init() {
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+		// the FIXED form's C# half (docs/SPEC-TABLES.md §3.4).
+		Name{Name: "TableFixedLayoutEntry", What: "one fixed-table layout entry"},
+		Name{Name: "TableFixedLayoutView", What: "borrowed fixed-table layout span"},
+		Name{Name: "TableFixedDst", What: "destination mapping row for fixed table compilation"},
+		Name{Name: "TableFixedEntry", What: "one compiled fixed-table execution entry"},
+		Name{Name: "TableFixedPlan", What: "compiled fixed-table execution plan"},
+		Name{Name: "TableFixedRun", What: "execute a fixed-table plan against a target record"},
+		Name{Name: "TableFixedSetBytes", What: "byte setter delegate for fixed-table plan execution"},
+		Name{Name: "TableFixedSlot", What: "typed destination slot for fixed-table plan execution"},
+		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the slots a plan does not land"},
+		Name{Name: "TableFixedWire", What: "the fixed-table wire walk nested in Schema"},
+		// THE LINEAGE, as static data (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #19).
+		Name{Name: "TableFixedKnownLayout", What: "the fixed form: one locked layout of a lineage entry, its hash, its bytes and its record size (§5.2)"},
+		Name{Name: "TableFixedLineagePlan", What: "the fixed form: one precompiled plan per lineage entry (§5.2)"},
 	)
 }

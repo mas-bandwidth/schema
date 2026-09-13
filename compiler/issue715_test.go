@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #715: Table JSON Base64 reader wipes declared defaults on malformed input
@@ -208,6 +210,7 @@ func TestIssue715(t *testing.T) {
 	})
 
 	t.Run("cs", func(t *testing.T) {
+		slowtest.Gate(t, "dotnet")
 		dotnet := findDotnet()
 		if dotnet == "" {
 			// Without dotnet on PATH, this behavioral test covers C++, C, and Go (3 languages); CI runs all 4.
@@ -321,6 +324,7 @@ func findDotnet() string {
 
 func issue715CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
+	slowtest.Gate(t, "a C/C++ compiler")
 	if _, err := exec.LookPath(compiler); err != nil {
 		t.Skipf("%s unavailable: %v", compiler, err)
 	}
