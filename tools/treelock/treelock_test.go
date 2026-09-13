@@ -47,6 +47,25 @@ func buildTreelock(t *testing.T) string {
 			builtBinErr = fmt.Errorf("build treelock: %w\n%s", err, out)
 			return
 		}
+
+		// THE FIRST EXEC OF A FRESHLY BUILT BINARY IS NOT TREELOCK'S COST, and
+		// until it is paid it is charged to whichever test runs first. darwin
+		// validates a new Mach-O's ad-hoc signature and faults its pages in
+		// from a file written moments ago; measured on this host a fresh
+		// binary's first exec is 20x a warm one (21 ms -> 396 ms idle,
+		// 44 ms -> 1.56 s under a loaded lane) while a warm one never passed
+		// 280 ms in 45,000 runs. Every deadline in this package is there to
+		// measure what treelock DOES, so the one-off is paid here, outside all
+		// of them, by running the full path once: lock, child, exit.
+		warm := exec.Command(bin, "-lock", filepath.Join(dir, "warm.lock"), "sh", "-c", "exit 0")
+		if out, err := warm.CombinedOutput(); err != nil {
+			// A warmup that fails is a treelock that cannot run its simplest
+			// path, and that fails the suite by name rather than being swallowed
+			// (Johnny Grok's read, 2026-09-13).
+			builtBinErr = fmt.Errorf("warm treelock: %w\n%s", err, out)
+			return
+		}
+
 		builtBinPath = bin
 	})
 	if builtBinErr != nil {
