@@ -205,7 +205,7 @@ void compiled_plan_normalises_case()
     check( byte_of( &back.link_present ) == 1,
            "compiled_norm: a forged present byte lands as true (1) on the COMPILED plan" );
     bool run_ok = true;
-    for ( size_t i = 0; i < 8; ++i ) { if ( byte_of( &back.flags[i] ) > 1 ) { run_ok = false; } }
+    for ( size_t i = 0; i < 8; ++i ) { if ( byte_of( &back.flags[i] ) != (uint8_t) ( kStorm[i] != 0 ) ) { run_ok = false; } }
     check( run_ok, "compiled_norm: every byte of the compiled plan's bool run lands as 0 or 1" );
     check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
            "compiled_norm: the non-bool bytes beside the run land from the wire, untouched" );
@@ -236,7 +236,7 @@ void bool_run_sentinels_case()
                                                        plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed, "bool_run: the record reads" );
     bool run_ok = true;
-    for ( size_t i = 0; i < 8; ++i ) { if ( byte_of( &back.flags[i] ) > 1 ) { run_ok = false; } }
+    for ( size_t i = 0; i < 8; ++i ) { if ( byte_of( &back.flags[i] ) != (uint8_t) ( kStorm[i] != 0 ) ) { run_ok = false; } }
     check( run_ok, "bool_run: the normalised [N]bool run lands every byte as 0 or 1" );
     check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
            "bool_run: the non-bool sentinels ADJACENT to the run land from the wire, untouched" );
