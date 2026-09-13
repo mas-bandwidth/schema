@@ -126,7 +126,7 @@ zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
 ```cpp
-enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Count = 3, Max = 3 };
+enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
 ```
 
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
@@ -150,15 +150,10 @@ carries it too, so ranges and asserts reference the enum directly instead of
 a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
-The `Count` member beside it is the **declared variant count**, `None`
-excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
-(Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
-`ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
-`E.Count` in schema expressions. On an enum `Count` and `Max` are always the
-same number; both are exported so an enum and a flags declaration, which has
-a `Count` and no `Max`, present one surface. `Count` is a reserved variant name too, and every
-union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
-on every union for the same reason.
+`Max` is the enum's only exported number. An enum has no `Count`: its
+declared variant count is `Max`, and one number gets one name. A flags
+declaration exports `Count` instead, since it has no `Max`. `Count` is not a
+reserved variant name on an enum, and not a reserved arm name on a union.
 
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
@@ -166,7 +161,7 @@ call either way.
 
 **Two loop rules, and they are the whole story:**
 
-- A loop over the **declared variants** runs from `1` to `Count` inclusive.
+- A loop over the **declared variants** runs from `1` to `Max` inclusive.
 - A loop over **every ordinal**, `None` included, runs from `0` to `Max`
   inclusive.
 - **Size storage and keyed arrays by `Max`** — the extent is what has to fit.
@@ -196,8 +191,8 @@ inline constexpr int64_t CapabilitiesCount = 3;
 ```
 
 The declared variant count is exported as `Count` and usable in schema
-expressions as `Capabilities.Count` — the same word an enum carries, meaning
-the same thing. Flags have no `.Max` — the variants are
+expressions as `Capabilities.Count`; an enum's count is its `Max` and it
+carries no `Count`. Flags have no `.Max` — the variants are
 independent bits, not a range with a top; the compiler refuses `.Max` on a
 flags type and names `.Count` instead.
 
@@ -248,11 +243,11 @@ type Collider
 **Every union has an implicit `None = 0`** — the empty union, in band, so a
 default-constructed union carries "no shape" without a has-flag. The
 compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
-declared order, then `Count` and `Max`), and the wire is the tag in minimal
+declared order, then `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
 
 ```cpp
-enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Count = 4, Max = 4 };
+enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
 
 struct ColliderShape
 {
@@ -1853,8 +1848,8 @@ Only the table wire keys the slots.
 
 **And a positional array whose bound comes from an enum is REFUSED in a table
 body and a union arm, by name**, with `[E]T` named as the fix. The refusal
-follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it, at any depth of
+follows where the bound comes from and not how it is spelled, so `[E.Max]T`
+and `[N]T` under a `const N = E.Max` all take it, at any depth of
 constant arithmetic. The diagnostic names the constant where the bound reaches
 the enum through one, and an arm's names the arm and the table that reaches
 the union.
