@@ -764,6 +764,8 @@ func TestLockDepthRefusesUnderSchemaLock(t *testing.T) {
 	if !named {
 		t.Fatalf("one refusal must be the depth bound's: %v", errs)
 	}
+}
+
 // ---- the record size is the entry's layout's ----
 
 // TestLockLineageRecordIsTheEntrysLayout is §5.9 #26 AT THE LOCK: the lineage
