@@ -129,47 +129,14 @@ func fixedElementBytes(f *ir.Field) int64 {
 // fixedUnionTagBytes is the storage width of a union's tag ordinal.
 func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Max) / 8) }
 
-// fixedSupported reports whether a type's whole closure is one this backend
-// carries. A pointer, a map and an unbounded array make their holder VARIABLE
-// and never reach here; a GUARDED BRANCH §3.4 refuses outright, for the
-// owner's own reason — the lookback conditional exists to make a body variable,
-// which disqualifies a fixed table.
-//
-// The union-arm restriction is the C++ reference's and this port keeps it, so
-// that the two lay out the same closure or neither does.
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false // a void arm has no storage this walk can name
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
+// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// used to carry a private copy — the same function byte for byte, with its own
+// `16` where ir holds `ir.TableFixedMaxDepth` — and the private copy is what
+// SELECTED THE EMITTED FORM. The red-team read of 2026-09-11 found what that
+// costs: a fixed table nested 17 to 64 deep rode form 3 out of C++, C, C# and
+// Rust and form 1 out of this leg, under a refusal line that blamed the closure
+// for a bound it had nothing to do with. A bound a port can hold for itself is a
+// bound the ports can disagree about, so the copy is gone.
 
 // ---------------------------------------------------------------------------
 // THE VOCABULARY BLOCK, and MY SIDE of it

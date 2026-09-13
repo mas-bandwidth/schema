@@ -119,39 +119,14 @@ func fixedElementBytes(f *ir.Field) int64 {
 	return fixedStorageBytes(f.Type)
 }
 
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
+// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// used to carry a private copy — the same function byte for byte, with its own
+// `16` where ir holds `ir.TableFixedMaxDepth` — and the private copy is what
+// SELECTED THE EMITTED FORM. The red-team read of 2026-09-11 found what that
+// costs: a fixed table nested 17 to 64 deep rode form 3 out of C++, C, C# and
+// Rust and form 1 out of this leg, the same declaration on two incompatible
+// wires. A bound a port can hold for itself is a bound the ports can disagree
+// about, so the copy is gone and the question is asked where the answer lives.
 
 type fixedLayoutEntry struct {
 	id       uint64
@@ -309,7 +284,15 @@ func (g *tableGen) isVarTable(name string) bool {
 // unit skips the form entirely, so a mixed unit's fixed-size tables keep
 // form-1 Load.
 func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
-	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !fixedSupported(st, 0) {
+	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
+		return false
+	}
+	// AND THE WALK'S DEPTH BOUND, asked where the answer lives
+	// (ir.TableFixedWithinDepth). This leg does not build its roots from
+	// ir.TableFixedFormRoots, so the bound has to be named here or it is not
+	// applied at all — which is what the red team found: a table nested 17 deep
+	// rode form 3 out of C++ and form 1 out of here, silently.
+	if !ir.TableFixedWithinDepth(st) {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap

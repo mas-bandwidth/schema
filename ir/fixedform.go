@@ -104,6 +104,20 @@ const (
 // because a `fixed table` never silently falls back to form 1.
 const TableFixedLeafCap = 4096
 
+// TableFixedMaxDepth is THE NESTING BOUND, AND THERE IS ONE OF IT: 64 nested
+// layout entries, the LAYOUT's own number (docs/FIXED-FORM-ALGORITHM.md §5.2's
+// `if depth > 64: REFUSE layout_malformed`, §6, docs/SPEC-TABLES.md §3.4's
+// *"The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*).
+//
+// EVERY RUNTIME ALREADY HOLDS THE WIRE TO IT — `kTableFixedMaxDepth = 64` in the
+// C and C++ legs, `tableFixedMaxDepth` in Go — and the compiler used to hold the
+// CLOSURE to 16 here, with no reason written beside the number and none in its
+// history (f144cd9b, the commit that brought this file into being, says nothing
+// about it). Two numbers for one fact is a compiler that drops a form the wire
+// would have carried, silently, at a depth no document names. So the compile
+// bound IS the layout's bound, and a table past it is NAMED ([TableFixedDepthBounds]).
+const TableFixedMaxDepth = 64
+
 const (
 	// TableFixedCountBytes and TableFixedPresentBytes: a count and a length are the
 	// int32 their storage already is, and a presence flag is one byte.
@@ -221,7 +235,13 @@ func TableFixedUnionTagBytes(un *Union) int64 {
 // not yet lay out — a union arm carrying text or an array, and a guarded
 // branch, which §3.4 refuses outright.
 func TableFixedSupported(st *Struct, depth int) bool {
-	if depth > 16 {
+	// THE STRUCT NESTING, AT THE LAYOUT'S OWN BOUND ([TableFixedMaxDepth]). A
+	// by-value cycle is refused upstream (§2), so this is a bound and not a
+	// cycle guard; what it must not be is a DIFFERENT number from the one the
+	// layout and every runtime hold. The layout's nesting is never shallower
+	// than the struct nesting it comes from, so a closure past this is past the
+	// layout's bound too, and [TableFixedDepthBounds] names it either way.
+	if depth > TableFixedMaxDepth {
 		return false
 	}
 	for _, f := range st.Fields {
@@ -1082,6 +1102,15 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 		if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
 			continue // TableFixedRecordBounds has already named it
 		}
+		// AND THE WALK'S DEPTH BOUND, for the ceiling's own reason (§5.2). Past
+		// [TableFixedMaxDepth] no conforming reader takes the walk, so a writer
+		// emitted here produces bytes nobody decodes — the same sentence as the
+		// ceiling's, about the other bound. Every leg that builds its roots from
+		// this function inherits it, which is the point: the bound cannot be
+		// somewhere a port forgot to look. [TableFixedDepthBounds] names it.
+		if !TableFixedWithinDepth(st) {
+			continue
+		}
 		out = append(out, st)
 	}
 	return out
@@ -1186,6 +1215,179 @@ func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
 	return warnings, errs
 }
 
+// TableFixedLayoutDepth is THE NESTING DEPTH OF A LAYOUT AS IT RIDES, read the
+// way a reader reads it: the entry count, then a pre-order run of entries each
+// carrying its child count, so the depth is the deepest the child counts open
+// the walk. The ROOT IS DEPTH 0, which is how §5.2's EMIT counts it.
+//
+// It takes the BYTES and not the entries, because the bytes are what a lock
+// holds for a layout that shipped and what LOAD compares (§6b): the depth of a
+// layout already in the field is a fact about the record, recoverable from the
+// record, and never a re-derivation from today's declaration.
+func TableFixedLayoutDepth(layout []byte) int {
+	if len(layout) < TableFixedLayoutHeaderBytes {
+		return 0
+	}
+	n := int(tableFixedU32(layout))
+	best := 0
+	var open []int // the children still owed by each entry the walk has open
+	for i := range n {
+		at := TableFixedLayoutHeaderBytes + i*TableFixedEntryBytes
+		if at+TableFixedEntryBytes > len(layout) {
+			break // a truncated layout is not this function's refusal to make
+		}
+		if len(open) > best {
+			best = len(open)
+		}
+		if len(open) > 0 {
+			open[len(open)-1]--
+		}
+		if children := int(tableFixedU32(layout[at+13:])); children > 0 {
+			open = append(open, children)
+		}
+		for len(open) > 0 && open[len(open)-1] == 0 {
+			open = open[:len(open)-1]
+		}
+	}
+	return best
+}
+
+func tableFixedU32(b []byte) uint32 {
+	if len(b) < 4 {
+		return 0
+	}
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
+}
+
+// TableFixedTypeDepth is [TableFixedLayoutDepth] of the layout this declaration
+// would ride, which is the number the compiler holds to the bound.
+func TableFixedTypeDepth(st *Struct) int {
+	return TableFixedLayoutDepth(TableFixedLayoutBytes(TableFixedWalkRoot(st)))
+}
+
+// TableFixedWithinDepth is THE DEPTH QUESTION, ASKED IN ONE PLACE. Every leg
+// that decides which form a table rides asks it here and nowhere else.
+//
+// THE REASON IS THE ONE THE RED TEAM FOUND. Five backends carried a PRIVATE copy
+// of the closure test — the same function, byte for byte, with its own `16`
+// written into it — and the private copy is what SELECTED THE EMITTED FORM. So a
+// fixed table nested 17 deep rode form 3 out of C++, C, C# and Rust and form 1
+// out of Go, Java, Elixir, JS and Dart: the same declaration, two wires, and
+// three of those five said nothing at all. A number a port can hold for itself
+// is a number the ports can disagree about, and on a WIRE fact that is not a
+// style difference but two incompatible fleets.
+//
+// So the bound is [TableFixedMaxDepth], there is one of it, and it is read
+// through here: a port that wants the answer calls this, and a port that cannot
+// call this (a generated runtime) gets the number handed to it by the emitter.
+// The depth is the LAYOUT's and not the closure's, because the layout's nesting
+// is never the shallower of the two — [TableFixedTypeDepth] is the number every
+// runtime's `kTableFixedMaxDepth` holds the wire to (§5.2's
+// `layout_malformed`).
+func TableFixedWithinDepth(st *Struct) bool {
+	// THE CLOSURE'S OWN COUNT FIRST, AND IT IS WHY THIS FUNCTION EXISTS RATHER
+	// THAN THE COMPARISON WRITTEN OUT. The layout walk has NO CYCLE GUARD — it
+	// does not need one, because a by-value cycle is refused upstream (§2) and a
+	// BY-POINTER cycle is legal and never reaches the walk. But this question is
+	// asked of tables that have not been filtered yet (a backend naming what it
+	// refuses asks it of every table in the file), and `Graph.schema`'s pointered
+	// closure walked forever the first time it was. So the by-value nesting is
+	// counted here first, cycle-safe, and it is never DEEPER than the layout it
+	// produces: past the bound by this count is past the bound.
+	if tableFixedValueDepth(st, map[*Struct]bool{}) > TableFixedMaxDepth {
+		return false
+	}
+	// AND A CLOSURE THIS FORM DOES NOT LAY OUT IS NOT A DEPTH QUESTION. It is
+	// turned away under its own name — a pointer, a map, an unbounded array, a
+	// guarded branch — and answering "too deep" about it would be this function
+	// taking the blame for a construct it has nothing to say about.
+	if !TableFixedSupported(st, 0) {
+		return true
+	}
+	return TableFixedTypeDepth(st) <= TableFixedMaxDepth
+}
+
+// tableFixedValueDepth is the BY-VALUE nesting depth of a closure, counted the
+// way [TableFixedSupported] counts it: a pointer or a map does not nest BY VALUE,
+// so it is a leaf here, which is exactly what makes a legal by-pointer cycle a
+// walk that ends. `seen` closes the cycle a declaration is allowed to have.
+func tableFixedValueDepth(st *Struct, seen map[*Struct]bool) int {
+	if seen[st] {
+		return 0
+	}
+	seen[st] = true
+	defer delete(seen, st)
+	deepest := 0
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.IsMap() || f.Type.Kind != TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			if n := 1 + tableFixedValueDepth(r, seen); n > deepest {
+				deepest = n
+			}
+		case *Union:
+			for _, v := range r.Variants {
+				if v.F == nil || v.F.Type.Pointer || v.F.Type.Kind != TNamed {
+					continue
+				}
+				if s, ok := v.F.Type.Ref.(*Struct); ok {
+					if n := 1 + tableFixedValueDepth(s, seen); n > deepest {
+						deepest = n
+					}
+				}
+			}
+		}
+	}
+	return deepest
+}
+
+// TableFixedDepthBounds holds every fixed table of the unit to
+// [TableFixedMaxDepth], and it is the depth's half of what
+// [TableFixedRecordBounds] does for the two size bounds: NOTHING HERE IS SILENT.
+//
+// THE TREATMENT IS THE 65536 CEILING'S, for the ceiling's own stated reason. A
+// nesting past the bound is a fact about THE FORM'S WALK and not about the
+// class: *"a nesting depth past what this reader walks (§3.4). A bound on the
+// WALK and not on the wire"* — no conforming reader takes the walk (§5.2 refuses
+// `layout_malformed`), so the fixed form IS NOT EMITTED for the table and it
+// keeps form 1, which it never lost, while the `fixed` keyword still buys it the
+// CLASS: a by-value storage, a cook, a block form (§19). That is exactly what
+// [TableFixedRecordBounds] does past the ceiling, and the sentence there is the
+// reason here too: *"the surprise the owner named is a SILENT change of wire,
+// and this one is not silent"*. A DECLARED table is named the more loudly — the
+// keyword is a request, and a request this form cannot serve is said out loud —
+// but either way the table and its depth are in the message, at compile time,
+// always on. What this replaces is the silence: the bound used to be 16, inside
+// the wire's 64, and a declared `fixed table` nested past it lost the form with
+// no word said about it at any depth, to 101 and beyond.
+func TableFixedDepthBounds(u *Unit) (warnings []string) {
+	for _, st := range TableFixedRoots(u) {
+		// A TABLE THIS FORM WOULD OTHERWISE LAY OUT, as the leaf cap reads it: a
+		// closure the form refuses for another reason, or a record past the
+		// wire's ceiling, is already answered under its own name, and a second
+		// sentence about the same table is noise.
+		if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+			continue
+		}
+		if TableFixedWithinDepth(st) {
+			continue
+		}
+		n := TableFixedTypeDepth(st)
+		if st.FixedDeclared {
+			warnings = append(warnings, fmt.Sprintf(
+				"table %s: a DECLARED fixed table's layout nests %d deep, past the %d-entry depth bound (docs/FIXED-FORM-ALGORITHM.md §5.2, §6, docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader takes a walk that deep (`layout_malformed`, and every runtime holds the wire to the same %d); it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form). Flatten the nesting to bring it back inside the bound",
+				st.Name, n, TableFixedMaxDepth, TableFixedMaxDepth))
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"table %s: a fixed table's layout nests %d deep, past the %d-entry depth bound (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT; it keeps form 1",
+			st.Name, n, TableFixedMaxDepth))
+	}
+	return warnings
+}
+
 // TableFixedEmitted answers whether a BACKEND emits the fixed form for one
 // type, and it is the ONE place that answer is computed: a port that asked the
 // question for itself would be a port that could disagree about which types
@@ -1200,6 +1402,8 @@ func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
 //   - THE PLAN'S LEAF CAP is the REFERENCE's: a plan is laid down as static
 //     data in an array the compiler sizes, and past [TableFixedLeafCap] that
 //     array is a build-time cost nobody asked for.
+//   - THE LAYOUT'S DEPTH is the WALK's: past [TableFixedMaxDepth] no conforming
+//     reader takes the walk (`layout_malformed`, §5.2).
 //
 // Nothing here is silent. [TableFixedRecordBounds] names every table the two
 // size bounds touch, and a table the leaf cap turns away is named by
@@ -1212,6 +1416,13 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 		return false
 	}
 	if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+		return false
+	}
+	// THE LAYOUT'S NESTING BOUND, on the layout and not on the closure: the
+	// struct nesting [TableFixedSupported] counts is never the deeper of the
+	// two, so this is the question asked where the answer lives.
+	// [TableFixedDepthBounds] names every table it turns away.
+	if !TableFixedWithinDepth(st) {
 		return false
 	}
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap

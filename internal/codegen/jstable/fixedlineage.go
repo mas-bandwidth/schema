@@ -217,9 +217,13 @@ type fixedLayoutWalk struct {
 	count int
 }
 
+// THE TWO WIRE BOUNDS, READ FROM ir AND NOT RE-TYPED HERE. A literal that
+// happens to agree today is a literal that can stop agreeing, which is the whole
+// of the red-team finding this file's neighbour carried: a private `16` beside
+// ir's 64, and a wire that forked on it.
 const (
-	fixedLayoutRecordMaxBytes = 65536 // TableFixedRecordMaxBytes
-	fixedLayoutMaxDepth       = 64    // TableFixedMaxDepth
+	fixedLayoutRecordMaxBytes = ir.TableFixedRecordMaxBytes
+	fixedLayoutMaxDepth       = ir.TableFixedMaxDepth
 )
 
 func (v fixedLayoutWalk) at(i int) int   { return 4 + i*fixedEntryBytes }
