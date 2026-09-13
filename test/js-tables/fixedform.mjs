@@ -111,6 +111,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  formHeaderProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
@@ -524,8 +525,113 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
     const compiled = plan.count;
     const r2 = new fx2home.TableFixedReport();
     check(fx2.FxRootFixedLoad(back, 4, buf, buf.length, plan, r2) === 4, "cached plan: read again on the same plan");
-    check(plan.count === compiled, "cached plan: the second read compiled nothing new");
-    check(r2.widened === 4, `cached plan: one widened per record (got ${r2.widened})`);
+  check(plan.count === compiled, "cached plan: the second read compiled nothing new");
+  check(r2.widened === 4, `cached plan: one widened per record (got ${r2.widened})`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE FORM HEADER, READ BEFORE THE FILE'S LENGTH (§5.3 STEPS 1 AND 2)
+// ---------------------------------------------------------------------------
+//
+// §5.3 step 1 reads the FORM BYTE BEFORE THE FILE'S LENGTH: a committed form-1
+// file is TEN bytes and a form-2 batch THREE, so a reader that measured first
+// would answer `malformed` for every real file of the two forms it is supposed
+// to name, and SPEC-TABLES §3.4's promise ("a fixed reader given 1 answers
+// `previous_form`, given 2 answers `message_form_as_file`") would hold for no
+// file anyone has. Step 2 is the twenty-byte minimum and then the seven
+// reserved bytes, REFUSED and not ignored.
+//
+// THESE ARE THE FIVE CASES THE ELIXIR MODEL CARRIES (test/elixir-fixedform/
+// main.exs, the `form byte` block of its negative controls) and this leg did
+// not. THIS IS NOT THE RETIRED `negativeControls` BLOCK: every case there read
+// a stranger's layout through a compiled plan, and every case here is answered
+// at the header, before a hash is looked up, so none of it is owed to the
+// lineage harness. THE PROBES RUN THE READER, and each asserts three things:
+// the refusal by name (or `malformed`, which has no name), that the joint
+// answer holds (§5.3: a refusal by name never ALSO sets `malformed`), and that
+// not one destination field was written — REFUSE is total.
+function formHeaderProbes(check, fx1, fx1home) {
+  const R = fx1home.TableFixedRefusal;
+
+  // A VALID FORM-3 FILE, one record of this leg's own FX1, to carry the
+  // otherwise-good tail for the form-0 and reserved-byte cases.
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
+    "form header: the valid form-3 fixture saves its own length");
+
+  // THE DESTINATION IS POISONED, NOT RESET. A read that wrote a default would
+  // look exactly like a read that wrote nothing if the destination started at
+  // its construction values, so every field takes a sentinel a lawful read
+  // never lands (0x5A) and the whole surface is compared after the refusal.
+  const poison = (v) => {
+    v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
+    v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
+    v.Label.fill(0x5A); v.LabelLength = 0x5A;
+    v.Marks.fill(0x5A); v.MarksCount = 0x5A;
+    v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+  };
+  const untouched = (v) =>
+    v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
+    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
+    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
+    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
+    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A;
+
+  const refusedByName = (what, bytes, reason) => {
+    const values = [new fx1home.FxRoot()];
+    poison(values[0]);
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.refused === reason && !r.malformed,
+      `form header: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and malformed does not fire`);
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0,
+      `form header: ${what} moves no counter`);
+    check(untouched(values[0]),
+      `form header: ${what} writes no destination field (REFUSE is total)`);
+  };
+
+  const malformedFile = (what, bytes) => {
+    const values = [new fx1home.FxRoot()];
+    poison(values[0]);
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.malformed && r.refused === R.None,
+      `form header: ${what} is malformed, with no other answer claiming success`);
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0,
+      `form header: ${what} moves no counter`);
+    check(untouched(values[0]),
+      `form header: ${what} writes no destination field (REFUSE is total)`);
+  };
+
+  // 1. ZERO BYTES: there is no first byte to earn a name, so the residue is
+  //    `malformed` and no reason is claimed.
+  malformedFile("zero bytes", new Uint8Array(0));
+
+  // 2. A TEN-byte form-1 file: the form byte earns `previous_form` BEFORE the
+  //    length is measured. Measured first it would be `malformed`.
+  refusedByName("a ten-byte form-1 file", new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), R.PreviousForm);
+
+  // 3. A THREE-byte form-2 batch: `message_form_as_file`, not `malformed`.
+  refusedByName("a three-byte form-2 batch", new Uint8Array([2, 1, 0]), R.MessageFormAsFile);
+
+  // 4. FORM BYTE 0 with the otherwise-valid fixture tail: no form defines it,
+  //    and the ordered registry names it by where it sits, `newer_form`.
+  {
+    const bad = Uint8Array.from(w1);
+    bad[0] = 0;
+    refusedByName("form byte 0 with a valid tail", bad, R.NewerForm);
+  }
+
+  // 5. A RESERVED BYTE NONZERO on an otherwise-valid form-3 file: the seven
+  //    reserved bytes are REFUSED, not ignored — `malformed`, no name.
+  {
+    const bad = Uint8Array.from(w1);
+    bad[3] = 1;
+    malformedFile("reserved byte 3 set nonzero", bad);
   }
 }
 
