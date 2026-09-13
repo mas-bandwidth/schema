@@ -422,9 +422,11 @@ jobs:
       # to build. The ../serialize.cs checkout this job already makes is the only
       # other thing the probes need. Under SCHEMA_REQUIRE_CORPUS a missing oracle is
       # a failure here, never a quiet skip.
-      - name: the fixed form's versioning suite on the C# leg
+      # Fast CI keeps Debug on its short path; this full tier retains both
+      # configurations alongside the required versioning oracle.
+      - name: the C# leg in Debug and Release, and its versioning suite
         if: matrix.group == 'versioning'
-        run: make tables-cs-versioning
+        run: make tables-cs-leg tables-cs-versioning
 
       # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
       # Elixir, one per row per column, run with the leg's own toolchain: the
