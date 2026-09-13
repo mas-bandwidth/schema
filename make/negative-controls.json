@@ -80,9 +80,16 @@
     {
       "name": "base-conformance",
       "when": "pull-request",
-      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row. SPLIT AGAIN 2026-09-13: 108 s on both runs 34781248523 and 34781410031, the only row that missed 90 s on either, so the reference-surface control runs as its own row.",
+      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row. SPLIT AGAIN 2026-09-13: 108 s on both runs 34781248523 and 34781410031, the only row that missed 90 s on either, so the reference-surface control runs as its own row. SPLIT ONCE MORE 2026-09-13: still 112 s on run 34781563559 after the reference-surface control left it, so the block-dump sabotage runs as its own row too.",
       "targets": [
-        "conformance-negative-control",
+        "conformance-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-block-dump",
+      "when": "pull-request",
+      "why": "The conformance harness's block-dump sabotage, on its own. Split out of base-conformance on 2026-09-13, which measured 108 s and 112 s as one job (runs 34781248523, 34781563559) against a 90 s aim.",
+      "targets": [
         "conformance-negative-control-block-dump"
       ]
     },
@@ -173,15 +180,22 @@
       ]
     },
     {
-      "name": "base-maps-order-and-probes",
+      "name": "base-maps-order",
       "when": "pull-request",
-      "why": "the map ORDER controls, the C little-endian trailer, the C message and retention probes, the Go view control and the table-distinctness one, PACKED 2026-09-13: 65, 39, 27, 31 and 21 s as five jobs on run 34780754076, with about 25 s of that each being the checkout, the six sibling clones and the one build they all repeat. It carries what those rows carried: the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls. | the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine. | The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule. | the compiled Go unit registry and packet descriptor boundary controls | the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
+      "why": "the map ORDER controls, the C little-endian trailer, the C message and retention probes, the Go view control and the table-distinctness one, PACKED 2026-09-13: 65, 39, 27, 31 and 21 s as five jobs on run 34780754076, with about 25 s of that each being the checkout, the six sibling clones and the one build they all repeat. It carries what those rows carried: the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls. | the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine. | The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule. | the compiled Go unit registry and packet descriptor boundary controls | the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine. UNPACKED 2026-09-13: the pack measured 106 s and 116 s (runs 34781248523, 34781563559), so the five map ORDER controls keep this row and the five short ones beside them run as base-c-probes-and-view.",
       "targets": [
         "tables-maps-place-failure-negative-control",
         "tables-maps-sort-negative-control",
         "tables-maps-text-order-negative-control",
         "tables-maps-unreached-negative-control",
-        "tables-maps-value-reset-negative-control",
+        "tables-maps-value-reset-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-probes-and-view",
+      "when": "pull-request",
+      "why": "The C little-endian trailer soak, the C message and retention probes, the Go view controls and the table-distinctness one: the short controls that were packed onto the map-order row, which measured 106 s and 116 s with them (runs 34781248523, 34781563559). They measured 39, 27, 31 and 21 s as separate rows before the pack, about 25 s of each being the floor every row pays.",
+      "targets": [
         "tables-c-little-endian-negative-control",
         "tables-c-message-negative-control",
         "tables-c-retain-negative-control",
