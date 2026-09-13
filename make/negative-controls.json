@@ -80,11 +80,10 @@
     {
       "name": "base-conformance",
       "when": "pull-request",
-      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row.",
+      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row. REBALANCED 2026-09-13 on run 34781248523's numbers: the row measured 108 s, so the reference-surface control moved to base-hostile, which measured 64 s.",
       "targets": [
         "conformance-negative-control",
-        "conformance-negative-control-block-dump",
-        "conformance-negative-control-reference-surface"
+        "conformance-negative-control-block-dump"
       ]
     },
     {
@@ -168,18 +167,15 @@
     {
       "name": "base-maps-order-and-probes",
       "when": "pull-request",
-      "why": "the map ORDER controls, the C little-endian trailer, the C message and retention probes, the Go view control and the table-distinctness one, PACKED 2026-09-13: 65, 39, 27, 31 and 21 s as five jobs on run 34780754076, with about 25 s of that each being the checkout, the six sibling clones and the one build they all repeat. It carries what those rows carried: the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls. | the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine. | The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule. | the compiled Go unit registry and packet descriptor boundary controls | the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
+      "why": "the map ORDER controls, the C little-endian trailer, the C message and retention probes, the Go view control and the table-distinctness one, PACKED 2026-09-13: 65, 39, 27, 31 and 21 s as five jobs on run 34780754076, with about 25 s of that each being the checkout, the six sibling clones and the one build they all repeat. It carries what those rows carried: the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls. | the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine. | The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule. | the compiled Go unit registry and packet descriptor boundary controls | the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine. REBALANCED 2026-09-13 on run 34781248523's numbers: the row measured 106 s, so the C little-endian trailer, the Go view controls and the table-distinctness one moved to block-fuzz, which measured 59 s.",
       "targets": [
         "tables-maps-place-failure-negative-control",
         "tables-maps-sort-negative-control",
         "tables-maps-text-order-negative-control",
         "tables-maps-unreached-negative-control",
         "tables-maps-value-reset-negative-control",
-        "tables-c-little-endian-negative-control",
         "tables-c-message-negative-control",
-        "tables-c-retain-negative-control",
-        "tables-go-view-negative-controls",
-        "tables-distinctness-negative-control"
+        "tables-c-retain-negative-control"
       ]
     },
     {
@@ -275,9 +271,10 @@
     {
       "name": "base-hostile",
       "when": "pull-request",
-      "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build.",
+      "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build. REBALANCED 2026-09-13 on run 34781248523's numbers: it measured 64 s and took the reference-surface control off base-conformance, which was at 108 s.",
       "targets": [
-        "tables-hostile-negative-control"
+        "tables-hostile-negative-control",
+        "conformance-negative-control-reference-surface"
       ]
     },
     {
@@ -381,10 +378,13 @@
     {
       "name": "block-fuzz",
       "when": "pull-request",
-      "why": "PACKED 2026-09-13 with the maximum-size block fuzz: 59 and 49 s as two jobs on run 34780754076, and they build the same driver. It carries what those rows carried: the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner. | the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
+      "why": "PACKED 2026-09-13 with the maximum-size block fuzz: 59 and 49 s as two jobs on run 34780754076, and they build the same driver. It carries what those rows carried: the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner. | the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner. REBALANCED 2026-09-13 on run 34781248523's numbers: it measured 59 s and took the three short controls base-maps-order-and-probes could not hold under 90 s.",
       "targets": [
         "tables-block-fuzz-extent-negative-control",
-        "tables-block-fuzz-maximum-negative-control"
+        "tables-block-fuzz-maximum-negative-control",
+        "tables-c-little-endian-negative-control",
+        "tables-go-view-negative-controls",
+        "tables-distinctness-negative-control"
       ],
       "rust": "stable",
       "dotnet": "pin"
