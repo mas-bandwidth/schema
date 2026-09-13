@@ -92,8 +92,8 @@
     },
     {
       "name": "base-c-conformance",
-      "when": "pull-request",
-      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds. SPLIT 2026-09-13 (the law): the group measured 141 s as one job on run 34780321366, against a 120 s rule, so base-c-probes now runs as its own row.",
+      "when": "nightly",
+      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds. SPLIT 2026-09-13 (the law): the group measured 141 s as one job on run 34780321366, against a 120 s rule, so base-c-probes now runs as its own row. MOVED NIGHTLY 2026-09-13 (the law): still 136 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "conformance-negative-control-c"
       ]
@@ -316,24 +316,24 @@
     },
     {
       "name": "wire-fuzz",
-      "when": "pull-request",
-      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls. SPLIT 2026-09-13 (the law): the group measured 154 s as one job on run 34780321366, against a 120 s rule, so wire-fuzz-node-type now runs as its own row.",
+      "when": "nightly",
+      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls. SPLIT 2026-09-13 (the law): the group measured 154 s as one job on run 34780321366, against a 120 s rule, so wire-fuzz-node-type now runs as its own row. MOVED NIGHTLY 2026-09-13 (the law): still 145 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "tables-wire-fuzz-oracle-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-node-type",
-      "when": "pull-request",
-      "why": "The tolerant-wire node-type control, split off the oracle row. Split out of wire-fuzz on 2026-09-13, which measured 154 s as one job on run 34780321366 against a 120 s rule.",
+      "when": "nightly",
+      "why": "The tolerant-wire node-type control, split off the oracle row. Split out of wire-fuzz on 2026-09-13, which measured 154 s as one job on run 34780321366 against a 120 s rule. MOVED NIGHTLY 2026-09-13 (the law): still 119 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "tables-wire-fuzz-node-type-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-message-oracle",
-      "when": "pull-request",
-      "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",
+      "when": "nightly",
+      "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls. MOVED NIGHTLY 2026-09-13 (the law): still 126 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "tables-wire-fuzz-message-blob-oracle-negative-control",
         "tables-wire-fuzz-message-text-oracle-negative-control",
@@ -434,8 +434,8 @@
     },
     {
       "name": "cs",
-      "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. SPLIT 2026-09-13 (the law): the group measured 161 s as one job on run 34780321366, against a 120 s rule, so cs-packet now runs as its own row.",
+      "when": "nightly",
+      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. SPLIT 2026-09-13 (the law): the group measured 161 s as one job on run 34780321366, against a 120 s rule, so cs-packet now runs as its own row. MOVED NIGHTLY 2026-09-13 (the law): still 129 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
