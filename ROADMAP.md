@@ -62,6 +62,16 @@ partial-cell percentages. Ordinary valid-data checks do not close the separate
 hostile-input, evolution, performance, platform, compiler, lock or integration
 gates. The total is a verified lower bound while audit reconciliation remains open.
 
+The source work set also retains acceptance gates outside these feature counts:
+
+- Corpus and per-row/per-language coverage, including explicitly owed cases ([#970](https://github.com/mas-bandwidth/schema/pull/970)). A named probe alone is not proof of its assertions.
+- Paired fixed-read versus packet-read measurements, separately for each language and each identity/compiled-plan lane ([#967](https://github.com/mas-bandwidth/schema/pull/967)).
+- The independent C++ straight-line reference comparison, plus the shared compiler/lock and final integration gates.
+
+These are existing obligations made explicit, not new capability rows. The two union-arm
+capabilities remain unverified while their precise scope is sourced; any removal requires
+a recorded scope change. Message Form and packet-wire work remain outside this active view.
+
 <!-- nova-work:fixed-tables:start -->
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir |

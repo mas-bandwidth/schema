@@ -7,7 +7,7 @@
  (("L1-L7" ("shared/lock-rules" "R9")) ("F5" ("R8" "R9" "R10")) ("F6" ("R8" "R9" "R10")) ("E2" ("R8" "R15"))
   ("E4" ("shared/S1")) ("E7" ("shared/S1")) ("C6" ("R31")))
  :nodes
- ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "integration"))
+ ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "acceptance-gates" "integration"))
   (:id "fixed-tables" :type :roadmap :title "NEW Fixed Tables" :scope-revision 2 :source-revision
    "8ea5ed8e4656875088250f564e88a965a7135e7c" :rows
    (("file-envelope" "File framing and layout announcements") ("batch-capacity" "Bounded batches")
@@ -3976,6 +3976,97 @@
    :evidence
    ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
    :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
+  (:id "acceptance-gates" :type :work-set :title "Existing acceptance gates outside capability percentages"
+   :children ("gates/row-coverage" "gates/packet-read" "gates/reference-cost")
+   :category "acceptance-gates" :scope-event "2026-09-13: expose previously retained gates; no new feature rows")
+  (:id "gates/row-coverage" :type :work-set :title "Every applicable row has corpus bytes and a probe on every required leg"
+   :children ("gates/row-coverage/pairs" "gates/row-coverage/corpus"))
+  (:id "gates/row-coverage/pairs" :type :task :title "Every applicable row/leg pair is covered or explicitly owed"
+   :state :unknown :evidence nil :contract "Check current row tables against all nine native harnesses; exclude lock-only rows by their contract. Reject stale, unknown, duplicate or wrongly exempted ledger entries. Probe-name presence alone is not semantic completion."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/970"
+   :note "PR970 is still draft/open at769bb52b as checked2026-09-13. Current-lane reconciliation and executed acceptance remain owed.")
+  (:id "gates/row-coverage/corpus" :type :task :title "Every row requiring a read has actual corpus bytes"
+   :state :unknown :evidence nil :contract "Run corpus coverage with SCHEMA_REQUIRE_CORPUS=1 after generating current corpus. Missing corpus must fail, not skip. Retain named obligations; no ledger exception counts as completion."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/970"
+   :note "PR970 is still draft/open at769bb52b as checked2026-09-13. Current-lane reconciliation and executed acceptance remain owed.")
+  (:id "gates/packet-read" :type :work-set :title "Paired fixed read versus packet read, separately for each language and lane"
+   :children ("gates/packet-read/cpp/identity" "gates/packet-read/cpp/plan" "gates/packet-read/c/identity" "gates/packet-read/c/plan" "gates/packet-read/cs/identity" "gates/packet-read/cs/plan" "gates/packet-read/go/identity" "gates/packet-read/go/plan" "gates/packet-read/rust/identity" "gates/packet-read/rust/plan" "gates/packet-read/java/identity" "gates/packet-read/java/plan" "gates/packet-read/js/identity" "gates/packet-read/js/plan" "gates/packet-read/dart/identity" "gates/packet-read/dart/plan" "gates/packet-read/elixir/identity" "gates/packet-read/elixir/plan"))
+  (:id "gates/packet-read/cpp/identity" :type :task :title "cpp: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/cpp/plan" :type :task :title "cpp: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/c/identity" :type :task :title "c: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/c/plan" :type :task :title "c: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/cs/identity" :type :task :title "cs: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/cs/plan" :type :task :title "cs: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/go/identity" :type :task :title "go: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/go/plan" :type :task :title "go: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/rust/identity" :type :task :title "rust: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/rust/plan" :type :task :title "rust: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/java/identity" :type :task :title "java: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/java/plan" :type :task :title "java: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/js/identity" :type :task :title "js: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/js/plan" :type :task :title "js: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/dart/identity" :type :task :title "dart: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/dart/plan" :type :task :title "dart: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/elixir/identity" :type :task :title "elixir: identity fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/packet-read/elixir/plan" :type :task :title "elixir: plan fixed read versus its own packet read"
+   :state :unknown :evidence nil :contract "Measure both wires reading the same logical records in one sitting, with declared corpus, revisions, bench, iterations and uncertainty. Fixed read must be faster than that language packet read; identity and compiled-plan lanes are judged separately. Report plan/identity without imposing the withdrawn2.0x threshold."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/pull/967"
+   :note "Existing gate reaffirmed in scope reconciliation2026-09-13. PR967 doc correction remains draft/open at6127c9ab; no current performance receipt credited. Do not derive packet read by subtracting round-trip and write timings.")
+  (:id "gates/reference-cost" :type :task :title "C++ identity plan versus independent straight-line reference"
+   :state :unknown :evidence nil :contract "Compare plan-driven identity read with independent hand-written constant-offset reads over the same records on one host; retain the ratified1.5x reference bound and named measurement receipt. This is separate from the per-language packet comparison."
+   :acceptance-source "https://github.com/mas-bandwidth/schema/blob/4f0dde8a8186a0306919ab119c8ae1ebdb0499e2/bench/BENCH-STANDARD.md#the-two-ratios-and-their-bounds"
+   :note "Existing reference gate, not a new feature and not the withdrawn proposed plan/identity ratio. Verify current measurement before marking complete.")
   (:id "integration" :type :task :title "Land and verify the completed fixed-form integration on main" :state
    :todo :evidence ("https://github.com/mas-bandwidth/schema/pull/836") :note
    "PR836 remains draft/open at8ea5ed8e. Full CI34757393846 passed72/72 jobs, but that does not close semantic acceptance or constitute a main merge.")
