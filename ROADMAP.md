@@ -33,7 +33,30 @@
 | string, bytes and flags defaults (#396) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the protocol id | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-### Table wire
+### NEW Fixed Tables
+
+The active work is [#898](https://github.com/mas-bandwidth/schema/issues/898),
+on [`fixed-table-form`](https://github.com/mas-bandwidth/schema/tree/fixed-table-form)
+([integration PR #836](https://github.com/mas-bandwidth/schema/pull/836)).
+It is not yet released on `main`.
+
+This matrix is generated from [recursive work data](docs/roadmap.sexp).
+Each feature/language cell contains required subtasks. A cell is green only when
+all are verified; language completion is green features divided by total features,
+not an average of partial-cell percentages. `?` means current evidence remains
+unreconciled, not that implementation is absent. Any numeric lower bound counts
+only verified work. Shared compiler, lock and final integration gates remain
+required outside the per-language percentages; passing CI alone does not close them.
+
+<!-- nova-work:fixed-tables:start -->
+<!-- The Lisp renderer fills this region from docs/roadmap.sexp. -->
+<!-- nova-work:fixed-tables:end -->
+
+### Future
+
+These capabilities are outside the active NEW Fixed Tables work set. Existing
+marks below describe the earlier table implementation; they do not certify the
+new fixed form. Save games is an additional future product feature.
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -68,6 +91,7 @@
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| save games | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ## How the work is done
 
