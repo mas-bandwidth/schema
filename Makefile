@@ -221,6 +221,8 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VNEW_fixed_I_grow.schema \
 	test/tables/VNEW_fixed_I_grow_element.schema \
 	test/tables/VNEW_optional_add.schema \
+	test/tables/VOLD_hostile_bool.schema \
+	test/tables/VNEW_hostile_bool.schema \
 	test/tables/VOLD_floor.schema \
 	test/tables/VMID_floor.schema \
 	test/tables/VNEW_floor.schema \
@@ -5896,13 +5898,13 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 # instead of being the crash, and it is RED by name against fix 2.
 build/schema_test_fixedform_hostile_bytes: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/hb \
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/hb -Ibuild/tables-generated/vnum \
 	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
 
 build/schema_test_fixedform_hostile_bytes_asan: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/hb \
+	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/hb -Ibuild/tables-generated/vnum \
 	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
 
 build/schema_test_fixedform_runcopy: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp

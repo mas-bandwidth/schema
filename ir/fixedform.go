@@ -327,34 +327,50 @@ func TableFixedKeyedSlots(owner *Struct, f *Field) string {
 }
 
 // TableFixedLeafCount bounds the entries a type's leaf walk writes, which sizes a
-// plan array. It counts leaves BEFORE coalescing.
+// plan array. It counts leaves BEFORE coalescing, and it counts THE WALK THE
+// REFERENCE EMITS: a bool or a present flag normalises through
+// [TableFixedOpBool] (byte != 0) rather than a flat copy, so an array whose
+// element holds one is walked element by element where the plain walk would have
+// folded it into one run. The cap is the reference's plan, so the count is the
+// reference's plan: otherwise the normalised walk bypasses a cap that still
+// counts the old flat fold. A flat array that carries no bool still costs one
+// run, exactly as [tableFixedElementLoop] folds it.
 func TableFixedLeafCount(u *Unit, st *Struct) int {
+	return tableFixedLeafCount(u, st, true)
+}
+
+func tableFixedLeafCount(u *Unit, st *Struct, normaliseBool bool) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += TableFixedFieldLeafCount(u, f)
+		n += tableFixedFieldLeafCount(u, f, normaliseBool)
 	}
 	return n
 }
 
-// TableFixedFieldLeafCount is one field's share of the count above.
-func TableFixedFieldLeafCount(u *Unit, f *Field) int {
-	per := TableFixedElementLeafCount(u, f)
-	flat := TableFixedFlatElem(u, f)
+// tableFixedFieldLeafCount is one field's share of the count above, over the
+// same walk [tableFixedBuildPlan] emits with normaliseBool. It is the plan's
+// own fold predicate: a flat element folds into one run unless normalisation
+// has to walk every element for a bool, and an array of bool is one normalised
+// run whatever the flat test says (see [tableFixedElementLoop]).
+func tableFixedFieldLeafCount(u *Unit, f *Field, normaliseBool bool) int {
+	per := tableFixedElementLeafCount(u, f, normaliseBool)
+	fold := TableFixedFlatElem(u, f) && !(normaliseBool && tableFixedContainsBool(f))
+	boolRun := normaliseBool && f.Type.Kind == TBool
 	n := per
 	switch {
 	case f.KeyEnum != "":
 		n = int(f.KeyEnumRef.Max) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayFixed:
 		n = int(f.ArrayBound) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
-		if flat {
+		if fold || boolRun {
 			n = 2
 		}
 	case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
@@ -366,12 +382,12 @@ func TableFixedFieldLeafCount(u *Unit, f *Field) int {
 	return n
 }
 
-// TableFixedElementLeafCount is the same question about ONE element.
-func TableFixedElementLeafCount(u *Unit, f *Field) int {
+// tableFixedElementLeafCount is the same question about ONE element.
+func tableFixedElementLeafCount(u *Unit, f *Field, normaliseBool bool) int {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			return TableFixedLeafCount(u, r)
+			return tableFixedLeafCount(u, r, normaliseBool)
 		case *Union:
 			n := 1 // the tag
 			for _, v := range r.Variants {
@@ -380,7 +396,7 @@ func TableFixedElementLeafCount(u *Unit, f *Field) int {
 				if v.F == nil {
 					continue
 				}
-				n += TableFixedFieldLeafCount(u, v.F)
+				n += tableFixedFieldLeafCount(u, v.F, normaliseBool)
 			}
 			return n
 		}
@@ -850,13 +866,18 @@ func TableFixedStrideBytes(u *Unit, f *Field) int64 {
 // TableFixedNoGuard is the guard of an entry that belongs to no union arm.
 const TableFixedNoGuard = int64(-1)
 
-// The three ops an IDENTITY plan can carry. The other four are a compiled
-// plan's, and a plan compiled from another writer's block is built at run time
-// by the runtime each backend carries.
+// The ops an IDENTITY plan can carry. Copy, count and text are the original
+// three; bool is the same loop's normalise (byte != 0), so a forged 0x02 in a
+// bool slot or a present flag lands as the language's own true and never as the
+// raw byte. It is not a compiled-plan op — the runtimes assign their own value
+// for that — and only a backend that asks for the normalised walk (the C++
+// reference today) puts it in a plan. The C++ runtime spells it
+// kTableFixedBool = 8; the compiled ops take 3..7 and must not be borrowed.
 const (
 	TableFixedOpCopy  = 0
 	TableFixedOpCount = 1
 	TableFixedOpText  = 2
+	TableFixedOpBool  = 8
 )
 
 // TableFixedLeaf is one entry of a plan: byte offsets into the record's body and
@@ -892,31 +913,39 @@ type TableFixedLeaf struct {
 }
 
 // tableFixedLeaves writes one type's leaves at a base the caller gives — the C twin
-// of <Name>FixedLeaves.
-func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, out *[]TableFixedLeaf) {
+// of <Name>FixedLeaves. normaliseBool lands a bool or a present flag through
+// TableFixedOpBool (byte != 0) instead of a plain copy; it is false for every
+// backend but the C++ reference.
+func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	off := int64(0)
 	for _, f := range st.Fields {
-		tableFixedFieldLeaves(u, st, f, src+off, dst, out)
+		tableFixedFieldLeaves(u, st, f, src+off, dst, normaliseBool, out)
 		off += TableFixedFieldBytes(f)
 	}
 }
 
-func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[]TableFixedLeaf) {
+func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	base := src
 	if f.Type.Optional {
+		// THE PRESENT BYTE IS A BOOL ON THE WIRE: 0 or 1 and nothing else, so a
+		// forged 0x02 must land normalised, the same as a bool field.
+		op := TableFixedOpCopy
+		if normaliseBool {
+			op = TableFixedOpBool
+		}
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_present"),
-			Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + " present"})
+			Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: f.Name + " present"})
 		base += TableFixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
-		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, normaliseBool, out)
 	case f.Array == ArrayFixed:
-		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, normaliseBool, out)
 	case f.Array == ArrayCounted:
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_count"),
 			Size: f.ArrayBound, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
-		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, out)
+		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, out)
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
 	case f.Type.Kind == TWString:
@@ -924,7 +953,7 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 	case f.Type.Kind == TBytes:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 3, out)
 	default:
-		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, out)
+		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, normaliseBool, out)
 	}
 }
 
@@ -934,29 +963,39 @@ func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, fl
 		Op: TableFixedOpText, Meta: flavour, Note: f.Name})
 }
 
-func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, out *[]TableFixedLeaf) {
+func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	elem := TableFixedElementBytes(f)
 	at := dst + TableFixedMemberOffset(u, st, f.Name)
-	if TableFixedFlatElem(u, f) {
+	if normaliseBool && f.Type.Kind == TBool {
+		// [N]bool is ONE normalised run: a flat copy of N bytes would land a
+		// 0x02 as 2. The coalescer folds adjacent bool bytes, never a bool
+		// into a copy.
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: at, Size: count * elem,
+			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpBool, Note: f.Name + ", whole"})
+		return
+	}
+	if TableFixedFlatElem(u, f) && !(normaliseBool && tableFixedContainsBool(f)) {
 		// THE WHOLE ARRAY IS ONE RUN: its storage image is its wire image, so
 		// the elements need no walk at all and the plan carries one entry
-		// however many of them there are.
+		// however many of them there are. A struct that holds a bool (or a
+		// present flag) is NOT this: a flat copy would land its byte
+		// verbatim, so it is walked one element at a time.
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: at, Size: count * elem,
 			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + ", whole"})
 		return
 	}
 	stride := TableFixedStrideBytes(u, f)
 	for i := range count {
-		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", out)
+		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", normaliseBool, out)
 	}
 }
 
 // tableFixedElementLeavesAt is ONE element's leaves at the bases given.
-func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, out *[]TableFixedLeaf) {
+func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, normaliseBool bool, out *[]TableFixedLeaf) {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			tableFixedLeaves(u, r, src, dst, out)
+			tableFixedLeaves(u, r, src, dst, normaliseBool, out)
 			return
 		case *Union:
 			tag := int64(StorageBitsFor(r.Max) / 8)
@@ -971,7 +1010,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 				// the two tags are CONJOINED on the second lane rather than the
 				// outer one replacing the inner (§4.1, §5.8 row 6).
 				at := len(*out)
-				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, out)
+				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
 				for q := at; q < len(*out); q++ {
 					if (*out)[q].Guard == TableFixedNoGuard {
 						(*out)[q].Guard = src
@@ -994,8 +1033,41 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 			return
 		}
 	}
+	op := TableFixedOpCopy
+	if normaliseBool && f.Type.Kind == TBool {
+		op = TableFixedOpBool
+	}
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: TableFixedElementBytes(f),
-		Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note})
+		Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: note})
+}
+
+// tableFixedContainsBool is whether a field's storage holds a bool or a present
+// flag, so a flat memcpy of it would land a hostile byte as a bool.
+func tableFixedContainsBool(f *Field) bool {
+	return tableFixedContainsBoolField(f, map[string]bool{})
+}
+
+func tableFixedContainsBoolField(f *Field, seen map[string]bool) bool {
+	if f.Type.Kind == TBool || f.Type.Optional {
+		return true
+	}
+	if f.Type.Kind != TNamed {
+		return false
+	}
+	st, ok := f.Type.Ref.(*Struct)
+	if !ok {
+		return false
+	}
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, sf := range st.Fields {
+		if tableFixedContainsBoolField(sf, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // TableFixedBuildPlan is the leaf walk and the coalescer together: one type's
@@ -1004,8 +1076,22 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 // adjacent COPY entries whose source and destination both advance together are
 // one entry. Neighbours are never merged across the split.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
+	return tableFixedBuildPlan(u, st, false)
+}
+
+// TableFixedBuildPlanNormalised is TableFixedBuildPlan with a bool field and a
+// present flag landing through TableFixedOpBool (byte != 0) instead of a plain
+// copy. It is the SAME walk and the same coalescer, so a port that reads the
+// normalised plan and one that reads the plain one cannot disagree about byte
+// positions; only the op on the two bool bytes differs. The C++ reference is
+// the consumer today (fix 2); a copy into a C++ bool is the UB it clears.
+func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
+	return tableFixedBuildPlan(u, st, true)
+}
+
+func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool bool) (plan []TableFixedLeaf, guarded int) {
 	var raw []TableFixedLeaf
-	tableFixedLeaves(u, st, 0, 0, &raw)
+	tableFixedLeaves(u, st, 0, 0, normaliseBool, &raw)
 	return tableFixedCoalesce(raw)
 }
 
@@ -1017,7 +1103,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			}
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
-				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
+				if last.Op == e.Op && tableFixedRuns(e.Op) &&
 					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
 					last.Guard2 == e.Guard2 && last.Arg2 == e.Arg2 && last.ArgW2 == e.ArgW2 &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
@@ -1032,6 +1118,14 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 		}
 	}
 	return plan, guarded
+}
+
+// tableFixedRuns is whether an op advances src and dst together one byte at a
+// time, which is the whole of what lets two adjacent entries become one. Copy
+// and bool both do; they never merge with EACH OTHER, or a forged 0x02 in a
+// bool slot would ride inside a memcpy.
+func tableFixedRuns(op int) bool {
+	return op == TableFixedOpCopy || op == TableFixedOpBool
 }
 
 // ---------------------------------------------------------------------------
@@ -1536,7 +1630,7 @@ func TableFixedIdentityCoverage(u *Unit, st *Struct) []TableFixedRange {
 	var raw []TableFixedRange
 	for _, e := range plan {
 		switch e.Op {
-		case TableFixedOpCopy:
+		case TableFixedOpCopy, TableFixedOpBool:
 			raw = append(raw, TableFixedRange{Dst: e.Dst, Size: e.Size})
 		case TableFixedOpCount:
 			// THE ENTRY'S SIZE IS THE BOUND, NOT THE MOVE: a count lands as the

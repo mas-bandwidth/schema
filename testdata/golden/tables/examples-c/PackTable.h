@@ -698,8 +698,8 @@ enum { kTableFixedForm = 3 };
    was stamped by. */
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
-/* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other four are what a plan compiled from another writer's layout adds.
+/* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
+   bool; the rest are what a plan compiled from another writer's layout adds.
    NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
    after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 
@@ -715,7 +715,8 @@ enum
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
-    kTableFixedPresent = 7  /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
+    kTableFixedPresent = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
+    kTableFixedBool    = 8  /* a bool or a present flag: land byte != 0 as 1, never verbatim (fix 2) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1075,6 +1076,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         case kTableFixedCopy:
         {
             table_fixed_copy_run( dst + p->dst, src + p->src, p->size );
+            break;
+        }
+        case kTableFixedBool:
+        {
+            /* A BOOL LANDS AS byte != 0. A plain copy would let a forged 0x02
+               ride into a bool, which is a value the language does not promise
+               holds a 0 or 1 (docs/FIXED-FORM-ALGORITHM.md §4.5). */
+            uint8_t * d = dst + p->dst;
+            const uint8_t * s = src + p->src;
+            uint32_t i;
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case kTableFixedCount:
@@ -1912,7 +1924,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
                 TableFixedEntry e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
                 table_fixed_push( c, e );
                 table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
                 break;
@@ -2096,7 +2108,8 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
                 if ( te.size == me.size )
                 {
-                    e.size = me.size; e.op = kTableFixedCopy;
+                    e.size = me.size;
+                    e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
                     table_fixed_push( c, e );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
@@ -2160,7 +2173,8 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     for ( i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( out > split && plan[out-1].op == plan[i].op &&
+             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
@@ -7206,15 +7220,18 @@ static SCHEMA_UNUSED const TableFixedDst gunner_settings_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 3 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. A bool field and a present
+   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
+   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   FIRST, then the arms: the entries that are nearly all of a plan never
+   test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry gunner_settings_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 4u, 4u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 5u, 32u, 24u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
 };
-static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_count = 3;
+static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_guarded = 3;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -7456,20 +7473,23 @@ static SCHEMA_UNUSED const TableFixedDst ship_entry_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. A bool field and a present
+   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
+   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   FIRST, then the arms: the entries that are nearly all of a plan never
+   test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ship_entry_fixed_plan[] = {
     { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* display_name */
     { 36u, 40u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 44u, 64u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 48u, 48u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 64u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 65u, 68u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 64u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 65u, 68u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 69u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 70u, 100u, 24u, 73u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
 };
-static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_count = 7;
-static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_guarded = 7;
+static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_count = 8;
+static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_guarded = 8;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -7708,9 +7728,11 @@ static SCHEMA_UNUSED const TableFixedDst global_settings_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. A bool field and a present
+   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
+   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   FIRST, then the arms: the entries that are nearly all of a plan never
+   test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry global_settings_fixed_plan[] = {
     { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tick_rate */
     { 5u, 56u, 48u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* build_note */
@@ -8030,9 +8052,11 @@ static SCHEMA_UNUSED const TableFixedDst pack_config_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 61 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. A bool field and a present
+   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
+   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   FIRST, then the arms: the entries that are nearly all of a plan never
+   test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
     { 0u, 0u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* version */
     { 9u, 60u, 48u, 9u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* build_note */
@@ -8041,22 +8065,25 @@ static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
     { 109u, 116u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 117u, 140u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 121u, 124u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 137u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 138u, 144u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 137u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 138u, 144u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 142u, 148u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 143u, 176u, 24u, 149u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
     { 171u, 220u, 32u, 184u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* display_name */
     { 207u, 224u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 215u, 248u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 219u, 232u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 235u, 288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 236u, 252u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 235u, 288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 236u, 252u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 240u, 256u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 241u, 284u, 24u, 257u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
     { 269u, 328u, 32u, 292u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* display_name */
     { 305u, 332u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 313u, 356u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 317u, 340u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 333u, 396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 334u, 360u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 333u, 396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 334u, 360u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 338u, 364u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 339u, 392u, 24u, 365u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
     { 367u, 400u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* thresholds, whole */
     { 379u, 736u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reserves count */
@@ -8064,26 +8091,29 @@ static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
     { 419u, 452u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 427u, 476u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 431u, 460u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 447u, 516u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 448u, 480u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 447u, 516u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 448u, 480u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 452u, 484u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 453u, 512u, 24u, 485u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
     { 481u, 556u, 32u, 520u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* display_name */
     { 517u, 560u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 525u, 584u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 529u, 568u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 545u, 624u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 546u, 588u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 545u, 624u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 546u, 588u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 550u, 592u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 551u, 620u, 24u, 593u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
     { 579u, 664u, 32u, 628u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* display_name */
     { 615u, 668u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* health */
     { 623u, 692u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints count */
     { 627u, 676u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* hardpoints, whole */
-    { 643u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
-    { 644u, 696u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 643u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* gunner present */
+    { 644u, 696u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* reaction */
+    { 648u, 700u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* tracking */
     { 649u, 728u, 24u, 701u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 }, /* callsign */
 };
-static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_count = 47;
-static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_guarded = 47;
+static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_count = 53;
+static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_guarded = 53;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between

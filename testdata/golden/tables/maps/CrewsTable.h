@@ -2391,10 +2391,13 @@ constexpr uint8_t kTableFixedForm = 3;
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
-// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other four are what a plan compiled from another writer's layout adds.
+// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
+// bool; the rest are what a plan compiled from another writer's layout adds.
+// kTableFixedPresent is T into ?T and keeps its opcode 7; bool is 8, never 7.
 // NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
 // after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
+// Bool is not a range: it is byte != 0, in this loop, on BOTH plans, so a
+// memcpy into a C++ bool never lands 0x02 as an object holding 2 (fix 2).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2405,6 +2408,7 @@ enum : uint8_t
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
+    kTableFixedBool    = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
 };
 
 // meta on a kTableFixedText entry
@@ -2640,6 +2644,16 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
             break;
         }
+        case kTableFixedBool:
+        {
+            // A BOOL LANDS AS byte != 0. A memcpy into a C++ bool is the bug:
+            // 0x02 is not a value the object may hold, and a later load of it
+            // is undefined behaviour (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            uint8_t * d = dst + p.dst;
+            const uint8_t * s = src + p.src;
+            for ( uint32_t i = 0; i < p.size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+            break;
+        }
         case kTableFixedCount:
         {
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
@@ -2829,7 +2843,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
-        default: lands[1] = e.dst + e.size; break; // copy, const
+        default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
 
@@ -3399,7 +3413,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
             TableFixedPush( c, e );
             TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
             break;
@@ -3580,7 +3594,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
             if ( te.size == me.size )
             {
-                e.size = me.size; e.op = kTableFixedCopy;
+                e.size = me.size;
+                e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -3634,7 +3649,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     for ( int32_t i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( out > split && plan[out-1].op == plan[i].op &&
+             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&

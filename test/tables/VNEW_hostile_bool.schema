@@ -1,0 +1,18 @@
+// VNEW_hostile_bool.schema — NEW side of the hostile-bytes pair. It differs
+// from VOLD_hostile_bool.schema by EXACTLY one appended field, so a NEW reader
+// given an OLD record finds a hash that is not its identity and COMPILES a plan
+// from the old layout (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3). Every bool and
+// present byte in that plan must still land normalised.
+package vnew_hostile_bool
+
+type Pay { n int32 = 5 }
+
+fixed table Hbb
+{
+    flag  bool
+    link  ?Pay
+    lead  uint32 = 1
+    flags [8]bool
+    trail uint32 = 2
+    extra uint32 = 9
+}
