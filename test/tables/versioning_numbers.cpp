@@ -1149,8 +1149,10 @@ void hash_cases()
                 else if ( breaks[k].field == 2 ) { vnew_floor::TableFixedPut32( e + 9, breaks[k].value ); }
                 else { vnew_floor::TableFixedPut32( e + 13, breaks[k].value ); }
             }
-            vnew_floor::Floored back;  std::memset( &back, 0, sizeof( back ) );  vnew_floor::FlooredReset( back );
-            vnew_floor::Floored fresh; std::memset( &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
+            // Distinct from reset defaults: even an accidental prefill must be visible.
+            vnew_floor::Floored back; std::memset( &back, 0xA5, sizeof( back ) );
+            back.a = 101; back.b = 202; back.c = 303;
+            vnew_floor::Floored fresh; std::memcpy( &fresh, &back, sizeof( fresh ) );
             vnew_floor::TableReport r;
             std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
             const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, f.data(), (int64_t) f.size(),
@@ -1159,8 +1161,10 @@ void hash_cases()
             std::snprintf( what, sizeof( what ),
                            "hash_known_bytes_differ: §1.1 case %s, under a KNOWN hash, is layout_malformed",
                            breaks[k].what );
-            check( n < 0 && r.refused && r.reason == vnew_floor::layout_malformed, what );
-            check( n < 0 && r.refused, "hash_known_bytes_differ: broken layout bytes are refused, whatever the name" );
+            check( n == -1 && r.refused && !r.malformed && r.reason == vnew_floor::layout_malformed, what );
+            check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
+                   r.duplicate == 0 && r.retained == 0 && r.retain_lost == 0 && r.layout_hash == 0,
+                   "hash_known_bytes_differ: a named refusal moves no counter and reports no hash" );
             check( std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
                    "hash_known_bytes_differ: nothing decoded" );
         }
