@@ -531,7 +531,7 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		// THE ONE LAYOUT A RENDERING KNOWS (lineage.go): the declaration's own.
 		// [Update] carries the committed history forward onto it.
 		t.Lineage = renderLineage(r.u, st)
-		t.FixedEmitted = ir.TableFixedEmitted(r.u, st) && ir.TableFixedTypeBytes(st) > 0
+		t.FixedEmitted = ir.TableFixedEmitted(r.u, st)
 	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
