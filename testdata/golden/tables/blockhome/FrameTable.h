@@ -5068,7 +5068,7 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -5076,6 +5076,13 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
@@ -5773,7 +5780,7 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -5781,6 +5788,13 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
                        : data[0] == kTableWireMessageForm ? message_form_as_file
                        : newer_form;
         return -1;
+    }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
+    // one is `malformed`, which is what keeps them spendable later.
+    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
+    {
+        if ( data[i] != 0 ) { report->malformed = true; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
