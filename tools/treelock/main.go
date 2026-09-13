@@ -8,20 +8,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
-
-func isAlive(pidStr string) bool {
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil || pid <= 0 {
-		return false
-	}
-	err = syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
-}
 
 func readOwnerPid(ownerFile, lockPath string) string {
 	deadline := time.Now().Add(100 * time.Millisecond)
@@ -104,8 +94,8 @@ func main() {
 	}
 	defer f.Close()
 
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+	if err := acquireFlock(f.Fd()); err != nil {
+		if isLockBlocked(err) {
 			ownerPid := readOwnerPid(*ownerFile, *lockPath)
 			fmt.Fprintf(os.Stderr, "REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n", ownerPid, name)
 			os.Exit(1)
@@ -125,6 +115,10 @@ func main() {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Pass the open lock file description to the child process so that the child
+	// inherits the lock descriptor without O_CLOEXEC. Under Unix/Darwin/Linux semantics,
+	// the flock remains held as long as any alive process references that open file description.
+	cmd.ExtraFiles = []*os.File{f}
 	cmd.Env = append(os.Environ(), "TREELOCK_HELD=1")
 
 	sigChan := make(chan os.Signal, 8)
