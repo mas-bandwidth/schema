@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them. SPLIT 2026-09-13 (the law): the group measured 108 s as one job on run 34780321366, against a 120 s rule, so base-json-block now runs as its own row.",
+      "why": "PACKED 2026-09-13 with the keyed-shift controls: 42 and 60 s as two jobs on run 34780754076, about 25 s of each being the setup and the build they share. It carries what those rows carried: the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them. SPLIT 2026-09-13 (the law): the group measured 108 s as one job on run 34780321366, against a 120 s rule, so base-json-block now runs as its own row. | the keyed shift control and the flat-wire one, which are 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -18,7 +18,9 @@
         "tables-view-negative-controls",
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
-        "toolchain-negative-control"
+        "toolchain-negative-control",
+        "tables-flat-wire-negative-control",
+        "tables-keyed-shift-negative-control"
       ]
     },
     {
@@ -44,7 +46,7 @@
     {
       "name": "base-packet",
       "when": "pull-request",
-      "why": "the four packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls.",
+      "why": "PACKED 2026-09-13 with the message form's four blades: 62 and 39 s as two jobs on run 34780754076, about 25 s of each being the setup and the build they share. It carries what those rows carried: the four packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls. | the message form's blades: the count, the emitter, the text content rule, the blob one, and the form-2 retain capture. The one control of this family that drives 49 sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured 16 s over 5 controls.",
       "targets": [
         "packet-arm-defaults-c-negative-control",
         "packet-arm-defaults-cpp-negative-control",
@@ -67,7 +69,12 @@
         "wide-table-surrogate-negative-control",
         "wide-table-zero-unit-negative-control",
         "wide-terminator-negative-control",
-        "wide-utf8-read-negative-control"
+        "wide-utf8-read-negative-control",
+        "tables-message-form-blob-negative-control",
+        "tables-message-form-count-negative-control",
+        "tables-message-form-emitter-negative-control",
+        "tables-message-form-retain-negative-control",
+        "tables-message-form-text-negative-control"
       ]
     },
     {
@@ -81,13 +88,14 @@
       ]
     },
     {
-      "name": "base-conformance-go",
+      "name": "base-conformance-go-and-pack",
       "when": "pull-request",
-      "why": "The Go conformance sabotages and the Go wire fuzz, split off the shared harness row. Split out of base-conformance on 2026-09-13, which measured 160 s as one job on run 34780321366 against a 120 s rule.",
+      "why": "The Go conformance sabotages, the Go wire fuzz and the pack control, PACKED 2026-09-13: 55 and 46 s as two jobs on run 34780754076. It carries what those rows carried: The Go conformance sabotages and the Go wire fuzz, split off the shared harness row. Split out of base-conformance on 2026-09-13, which measured 160 s as one job on run 34780321366 against a 120 s rule. | the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
-        "tables-go-wire-fuzz-negative-control"
+        "tables-go-wire-fuzz-negative-control",
+        "tables-pack-negative-control"
       ]
     },
     {
@@ -96,15 +104,6 @@
       "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds. SPLIT 2026-09-13 (the law): the group measured 141 s as one job on run 34780321366, against a 120 s rule, so base-c-probes now runs as its own row. MOVED NIGHTLY 2026-09-13 (the law): still 136 s as a job after the split, on run 34780578734, against a 120 s rule — what is left is the control's own time, not a group that is too big. It runs whole on the nightly tier under this same group name.",
       "targets": [
         "conformance-negative-control-c"
-      ]
-    },
-    {
-      "name": "base-c-probes",
-      "when": "pull-request",
-      "why": "The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule.",
-      "targets": [
-        "tables-c-message-negative-control",
-        "tables-c-retain-negative-control"
       ]
     },
     {
@@ -121,14 +120,6 @@
       "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout. MOVED NIGHTLY 2026-09-13 (the law): one control, measured 129 s as a whole job on run 34780321366 against a 120 s rule, and a one-target group cannot be split. Its cost is the compiler and generated-tree build it cannot share, not the control.",
       "targets": [
         "conformance-negative-control-c-foreign"
-      ]
-    },
-    {
-      "name": "base-c-le-trailer",
-      "when": "pull-request",
-      "why": "the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine.",
-      "targets": [
-        "tables-c-little-endian-negative-control"
       ]
     },
     {
@@ -175,15 +166,20 @@
       ]
     },
     {
-      "name": "base-maps-order",
+      "name": "base-maps-order-and-probes",
       "when": "pull-request",
-      "why": "the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls.",
+      "why": "the map ORDER controls, the C little-endian trailer, the C message and retention probes, the Go view control and the table-distinctness one, PACKED 2026-09-13: 65, 39, 27, 31 and 21 s as five jobs on run 34780754076, with about 25 s of that each being the checkout, the six sibling clones and the one build they all repeat. It carries what those rows carried: the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls. | the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine. | The small C message and retention compiler probes, split off the C driver sabotage. Split out of base-c-conformance on 2026-09-13, which measured 141 s as one job on run 34780321366 against a 120 s rule. | the compiled Go unit registry and packet descriptor boundary controls | the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
       "targets": [
         "tables-maps-place-failure-negative-control",
         "tables-maps-sort-negative-control",
         "tables-maps-text-order-negative-control",
         "tables-maps-unreached-negative-control",
-        "tables-maps-value-reset-negative-control"
+        "tables-maps-value-reset-negative-control",
+        "tables-c-little-endian-negative-control",
+        "tables-c-message-negative-control",
+        "tables-c-retain-negative-control",
+        "tables-go-view-negative-controls",
+        "tables-distinctness-negative-control"
       ]
     },
     {
@@ -208,9 +204,9 @@
       ]
     },
     {
-      "name": "base-arms",
+      "name": "base-arms-and-reference-review",
       "when": "pull-request",
-      "why": "the union-arm traversal gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 16 s over 8 controls.",
+      "why": "The arm controls and the reference-surface review, PACKED 2026-09-13: 58 and 50 s as two jobs on run 34780754076, about 25 s of each being the setup and the build they share. It carries what those rows carried: the union-arm traversal gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 16 s over 8 controls. | compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; seven bounded emitter controls",
       "targets": [
         "tables-arms-array-framing-negative-control",
         "tables-arms-cook-arm-negative-control",
@@ -219,7 +215,14 @@
         "tables-arms-negative-controls",
         "tables-arms-nested-union-negative-control",
         "tables-arms-reachable-negative-control",
-        "tables-arms-slot-index-negative-control"
+        "tables-arms-slot-index-negative-control",
+        "tables-reference-list-negative-control",
+        "tables-reference-map-negative-control",
+        "tables-reference-flags-negative-control",
+        "tables-reference-alignment-negative-control",
+        "tables-reference-include-negative-control",
+        "tables-reference-hidden-union-negative-control",
+        "tables-reference-counted-tail-negative-control"
       ]
     },
     {
@@ -270,48 +273,11 @@
       ]
     },
     {
-      "name": "base-keyed-shift",
-      "when": "pull-request",
-      "why": "the keyed shift control and the flat-wire one, which are 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
-      "targets": [
-        "tables-flat-wire-negative-control",
-        "tables-keyed-shift-negative-control"
-      ]
-    },
-    {
-      "name": "base-pack",
-      "when": "pull-request",
-      "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
-      "targets": [
-        "tables-pack-negative-control"
-      ]
-    },
-    {
       "name": "base-hostile",
       "when": "pull-request",
       "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build.",
       "targets": [
         "tables-hostile-negative-control"
-      ]
-    },
-    {
-      "name": "message-form",
-      "when": "pull-request",
-      "why": "the message form's blades: the count, the emitter, the text content rule, the blob one, and the form-2 retain capture. The one control of this family that drives 49 sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured 16 s over 5 controls.",
-      "targets": [
-        "tables-message-form-blob-negative-control",
-        "tables-message-form-count-negative-control",
-        "tables-message-form-emitter-negative-control",
-        "tables-message-form-retain-negative-control",
-        "tables-message-form-text-negative-control"
-      ]
-    },
-    {
-      "name": "table-distinctness",
-      "when": "pull-request",
-      "why": "the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
-      "targets": [
-        "tables-distinctness-negative-control"
       ]
     },
     {
@@ -415,18 +381,9 @@
     {
       "name": "block-fuzz",
       "when": "pull-request",
-      "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",
+      "why": "PACKED 2026-09-13 with the maximum-size block fuzz: 59 and 49 s as two jobs on run 34780754076, and they build the same driver. It carries what those rows carried: the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner. | the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
       "targets": [
-        "tables-block-fuzz-extent-negative-control"
-      ],
-      "rust": "stable",
-      "dotnet": "pin"
-    },
-    {
-      "name": "block-fuzz-maximum",
-      "when": "pull-request",
-      "why": "the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
-      "targets": [
+        "tables-block-fuzz-extent-negative-control",
         "tables-block-fuzz-maximum-negative-control"
       ],
       "rust": "stable",
@@ -445,66 +402,37 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-packet",
+      "name": "cs-packet-and-block-pitch",
       "when": "pull-request",
-      "why": "The C# port’s four packet families, split off the C# conformance row. Split out of cs on 2026-09-13, which measured 161 s as one job on run 34780321366 against a 120 s rule.",
+      "why": "The C# packet families and the block-pitch controls, PACKED 2026-09-13: 55 and 36 s as two jobs on run 34780754076, each paying the same .NET SDK install. It carries what those rows carried: The C# port’s four packet families, split off the C# conformance row. Split out of cs on 2026-09-13, which measured 161 s as one job on run 34780321366 against a 120 s rule. | the block padding and pitch controls, whose instrument is the same C# layout check as the group above and which cost 31 s and 29 s on the runner.",
       "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
-      ],
-      "dotnet": "pin"
-    },
-    {
-      "name": "cs-cook",
-      "when": "pull-request",
-      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner.",
-      "targets": [
-        "tables-block-home-negative-control",
-        "tables-block-inline-array-negative-control",
-        "tables-cook-open-cs-lengths-negative-control",
-        "tables-cook-open-cs-root-negative-control",
-        "tables-cook-open-cs-walk-negative-control"
-      ],
-      "dotnet": "pin"
-    },
-    {
-      "name": "cs-block-layout",
-      "when": "pull-request",
-      "why": "the block layout model control, alone: it moves an offset in the compiler's model and requires both the C++ static_asserts and the C# once-run layout check to go red, which is 39 s on the runner.",
-      "targets": [
-        "tables-block-layout-model-negative-control"
-      ],
-      "dotnet": "pin"
-    },
-    {
-      "name": "cs-block-pitch",
-      "when": "pull-request",
-      "why": "the block padding and pitch controls, whose instrument is the same C# layout check as the group above and which cost 31 s and 29 s on the runner.",
-      "targets": [
+        "packet-wide-cs-negative-control",
         "tables-block-padding-negative-control",
         "tables-block-pitch-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "rust",
+      "name": "cs-cook-and-block-layout",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "The C# cook controls and the block-layout one, PACKED 2026-09-13: 55 and 51 s as two jobs on run 34780754076, each paying the same .NET SDK install. It carries what those rows carried: the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner. | the block layout model control, alone: it moves an offset in the compiler's model and requires both the C++ static_asserts and the C# once-run layout check to go red, which is 39 s on the runner.",
       "targets": [
-        "packet-arm-defaults-rust-negative-control",
-        "packet-defaults-rust-negative-control",
-        "packet-utf8-rust-negative-control",
-        "packet-wide-rust-negative-control",
-        "tables-rust-names-negative-control"
+        "tables-block-home-negative-control",
+        "tables-block-inline-array-negative-control",
+        "tables-cook-open-cs-lengths-negative-control",
+        "tables-cook-open-cs-root-negative-control",
+        "tables-cook-open-cs-walk-negative-control",
+        "tables-block-layout-model-negative-control"
       ],
-      "rust": "stable"
+      "dotnet": "pin"
     },
     {
-      "name": "js",
+      "name": "ports-js-java-rust",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "The JavaScript, Java and Rust ports' controls in one job, PACKED 2026-09-13: 46, 44 and 33 s as three jobs on run 34780754076, of which about 25 s each was the setup and the build; their three toolchain steps together cost less than the two builds the pack removes. It carries what those rows carried: the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
@@ -515,14 +443,28 @@
         "tables-js-alloc-negative-control",
         "tables-js-fuzz-negative-control",
         "tables-js-runtime-home-negative-control",
-        "tables-js-slot-negative-control"
+        "tables-js-slot-negative-control",
+        "conformance-negative-control-java-block",
+        "packet-arm-defaults-java-negative-control",
+        "packet-defaults-java-negative-control",
+        "packet-utf8-java-negative-control",
+        "packet-wide-java-negative-control",
+        "tables-java-cook-extent-negative-control",
+        "tables-java-fuzz-negative-control",
+        "packet-arm-defaults-rust-negative-control",
+        "packet-defaults-rust-negative-control",
+        "packet-utf8-rust-negative-control",
+        "packet-wide-rust-negative-control",
+        "tables-rust-names-negative-control"
       ],
-      "node": "26"
+      "node": "26",
+      "java": "21",
+      "rust": "stable"
     },
     {
-      "name": "dart",
+      "name": "ports-dart-elixir",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 5 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "The Dart and Elixir ports' controls in one job, PACKED 2026-09-13: 59 and 52 s as two jobs on run 34780754076. It carries what those rows carried: the Dart port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 5 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
@@ -530,36 +472,14 @@
         "packet-wide-dart-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-standalone-negative-control"
-      ],
-      "dart": "3.13.2"
-    },
-    {
-      "name": "java",
-      "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
-      "targets": [
-        "conformance-negative-control-java-block",
-        "packet-arm-defaults-java-negative-control",
-        "packet-defaults-java-negative-control",
-        "packet-utf8-java-negative-control",
-        "packet-wide-java-negative-control",
-        "tables-java-cook-extent-negative-control",
-        "tables-java-fuzz-negative-control"
-      ],
-      "java": "21"
-    },
-    {
-      "name": "elixir",
-      "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
-      "targets": [
+        "tables-dart-standalone-negative-control",
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fuzz-negative-control"
       ],
+      "dart": "3.13.2",
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
@@ -584,28 +504,6 @@
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control",
         "tables-go-measure-negative-controls"
-      ]
-    },
-    {
-      "name": "base-reference-review",
-      "when": "pull-request",
-      "why": "compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; seven bounded emitter controls",
-      "targets": [
-        "tables-reference-list-negative-control",
-        "tables-reference-map-negative-control",
-        "tables-reference-flags-negative-control",
-        "tables-reference-alignment-negative-control",
-        "tables-reference-include-negative-control",
-        "tables-reference-hidden-union-negative-control",
-        "tables-reference-counted-tail-negative-control"
-      ]
-    },
-    {
-      "name": "go-view",
-      "when": "pull-request",
-      "why": "the compiled Go unit registry and packet descriptor boundary controls",
-      "targets": [
-        "tables-go-view-negative-controls"
       ]
     }
   ],

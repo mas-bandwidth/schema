@@ -54,9 +54,13 @@ func usage() {
              per-language matrix. Exits nonzero if any registered surface
              fails.
 
-  matrix     print the CI matrix as JSON: one row per registered driver, from
-             test/conformance/<lang>/ci.json (README.md, "Registering a
-             language").
+  matrix     print the CI matrix as JSON: one row per registered driver in
+             the named tier, from test/conformance/<lang>/ci.json (README.md,
+             "Registering a language").
+
+               matrix [pull-request|nightly]   the per-commit tier by default
+
+             A leg whose ci.json names no tier is a per-commit leg.
 
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
              language's leg on a pipe (--driver) and to the compiler's own
@@ -116,7 +120,14 @@ func main() {
 	}
 
 	if command == "matrix" {
-		out, err := matrix(*drivers)
+		// `matrix [pull-request|nightly]`, the per-commit tier when no tier is
+		// named — the same shape `tools/negativecontrols matrix` takes, because
+		// it answers the same question about the same law.
+		tier := tierPullRequest
+		if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "-") {
+			tier = os.Args[2]
+		}
+		out, err := matrixFor(*drivers, tier)
 		if err != nil {
 			fatalf("%v", err)
 		}

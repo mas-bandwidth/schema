@@ -961,3 +961,159 @@ jobs:
 
       - name: the Go table leg, big-endian
         run: make conformance-big-endian
+
+  # ————————————————————————————————————————————————————————————————————————
+  # THE CONFORMANCE LEGS ON THE NIGHTLY TIER (the law, 2026-09-13).
+  #
+  # One job per registered driver whose test/conformance/<lang>/ci.json names
+  # `"tier": "nightly"`, discovered exactly the way ci.yml discovers the
+  # per-commit ones — `harness matrix nightly` against the same registry, so a
+  # leg changes tier by one line in its own file and no edit to either
+  # workflow. THE JOB NAME IS THE SAME, `conformance (<lang>)`, because it is
+  # the same check.
+  #
+  # The C leg is what put this here: it measured 2:30 and 1:51 as one job (runs
+  # 34774357668 and 34780754076) against a 120 s rule, and its cost is the C
+  # driver's own build. Splitting the leg would mean splitting the driver; the
+  # tier is the smaller change, and `make test` in the job above still runs
+  # every leg including this one on both OSes.
+  # ————————————————————————————————————————————————————————————————————————
+
+  conformance-matrix-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.8'
+          cache: false
+
+      # The Go build cache, restore only — `conformance-matrix` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - id: discover
+        name: the registry's nightly tier, as a matrix
+        run: |
+          matrix=$(go run ./test/conformance/harness matrix nightly)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+
+  conformance:
+    name: conformance (${{ matrix.lang }})
+    needs: conformance-matrix-nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.conformance-matrix-nightly.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Siblings cloned exactly where README.md tells a newcomer to put them —
+      # CI exercises the documented path rather than a special one. The
+      # Makefile's SERIALIZE* defaults already point here, and the generated
+      # go.mod / Cargo.toml and the C# driver's project embed relative paths
+      # that only resolve under this layout. The row names the checkout and
+      # the workflow variable that pins it; a leg whose generated code names no
+      # runtime leaves both empty and clones nothing.
+      - name: Check out the sibling runtime this leg needs (pinned release)
+        if: matrix.runtime != ''
+        run: |
+          tag=$(printenv "${{ matrix.runtime_tag }}")
+          git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
+
+      # bin/schema and the generated table units come out of Go in every leg.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.8'
+          cache: false
+
+      # The Go build cache, restore only — `conformance-matrix` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # One step per toolchain, each keyed on the row's field for it. The
+      # version is the leg's to name, and it is the same pin the leg's
+      # make/<lang>.mk documents for the repo-local dist/.
+      #
+      # .NET IS THE ONE VERSION THAT IS NOT THE LEG'S ALONE: nine csproj files
+      # under test/ and bench/ name the same TargetFramework, and certify.yml
+      # builds all of them. So the row names WHERE the pin lives and
+      # .github/dotnet-version holds it, read by both files; internal/ci's gate
+      # fails when a csproj and that pin disagree (issue #470).
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      # The BEAM is two versions and one step. No ELIXIRC override is needed:
+      # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
+      # falls through to the toolchain this step installed.
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # Its own step so the run log carries the build cost and the run cost
+      # separately — the two halves answer different questions when a leg
+      # stops fitting. The row's env is the make overrides CI needs: a JDK on
+      # PATH rather than in dist/, cargo not in a homebrew keg.
+      # -j, for the same reason big-endian took it: a leg's build is several
+      # independent binaries off one generated tree, and the C leg measured
+      # 2:30 building them one at a time on a four-core runner (run
+      # 34774357668), which is outside the rule on its own.
+      - name: build the harness and the ${{ matrix.lang }} driver
+        run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
+
+      - name: the ${{ matrix.lang }} leg over every surface
+        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}

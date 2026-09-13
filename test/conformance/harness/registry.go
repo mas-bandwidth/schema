@@ -107,7 +107,58 @@ func loadDrivers(path string) (drivers []driver, discovered bool, err error) {
 // A driver with no ci.json is an error: a leg the harness runs locally and CI
 // never sees is the gap this registry exists to close. So is a ci.json with no
 // driver: a row CI would run for a leg that does not exist.
+// The tiers a leg's CI row may name, and the rule that puts it in one. The
+// owner's law is that CI running on every commit finishes in one to two
+// minutes, so a leg rides the per-commit tier exactly when it fits that
+// budget, and one that cannot runs nightly instead, whole and under the same
+// job name. A row that names no tier is a PER-COMMIT row: the tier is the
+// exception, so registering a port is still its driver and its ci.json.
+const (
+	tierPullRequest = "pull-request"
+	tierNightly     = "nightly"
+)
+
+// matrixFor is `matrix` for ONE tier: the same rows, filtered by each leg's
+// "tier". An empty tier on a row means the per-commit one. An empty RESULT is
+// an error rather than an empty matrix, because a workflow whose matrix
+// expands to no job is a gate over nothing dressed as a green.
+func matrixFor(dir, tier string) ([]byte, error) {
+	if tier != tierPullRequest && tier != tierNightly {
+		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", tier, tierPullRequest, tierNightly)
+	}
+	rows, err := matrixRows(dir)
+	if err != nil {
+		return nil, err
+	}
+	var kept []map[string]string
+	for _, row := range rows {
+		at := strings.TrimSpace(row["tier"])
+		if at == "" {
+			at = tierPullRequest
+		}
+		if at != tierPullRequest && at != tierNightly {
+			return nil, fmt.Errorf("%s/%s/ci.json: %q is not a tier: the tiers are %s and %s", dir, row["lang"], at, tierPullRequest, tierNightly)
+		}
+		if at == tier {
+			kept = append(kept, row)
+		}
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("%s: the %s matrix is empty, so its workflow expands to no job", dir, tier)
+	}
+	return json.Marshal(map[string]any{"include": kept})
+}
+
 func matrix(dir string) ([]byte, error) {
+	rows, err := matrixRows(dir)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"include": rows})
+}
+
+// matrixRows is the registry as rows, every tier of it.
+func matrixRows(dir string) ([]map[string]string, error) {
 	drivers, err := discoverDrivers(dir)
 	if err != nil {
 		return nil, err
@@ -148,6 +199,7 @@ func matrix(dir string) ([]byte, error) {
 		}
 		rows = append(rows, row)
 	}
+	keys["tier"] = true // every row carries it, so a workflow can read it on any leg
 	for _, row := range rows {
 		for k := range keys {
 			if _, ok := row[k]; !ok {
@@ -155,5 +207,5 @@ func matrix(dir string) ([]byte, error) {
 			}
 		}
 	}
-	return json.Marshal(map[string]any{"include": rows})
+	return rows, nil
 }

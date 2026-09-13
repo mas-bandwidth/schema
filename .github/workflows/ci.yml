@@ -184,9 +184,15 @@ jobs:
   # each leg's cost stays visible — a leg that stops fitting is named by the
   # job that missed, not buried in a total.
   #
-  # THE MATRIX IS DISCOVERED, NOT TYPED. `conformance-matrix` runs the harness's
-  # `matrix` command, which reads every test/conformance/<lang>/ci.json beside a
-  # driver and prints one row per leg; `conformance` fans out over that. A row
+  # THE MATRIX IS DISCOVERED, NOT TYPED, AND IT IS TIERED. `conformance-matrix`
+  # runs the harness's `matrix` command, which reads every
+  # test/conformance/<lang>/ci.json beside a driver and prints one row per leg
+  # IN THE PER-COMMIT TIER; `conformance` fans out over that. A leg whose
+  # ci.json names `"tier": "nightly"` runs in certify.yml instead, under the
+  # same job name, off `matrix nightly` against the same registry — which is
+  # where the C leg went on 2026-09-13, at 2:30 and 1:51 as one job against a
+  # 120 s rule. A leg that names no tier is a per-commit leg, so registering a
+  # port is unchanged. A row
   # names the make targets that build the leg, the sibling runtime it clones,
   # the toolchain step it needs and the make overrides CI passes, and every
   # step below is conditioned on a row's field rather than on a language.
