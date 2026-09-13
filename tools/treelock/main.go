@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -58,6 +59,10 @@ func readOwnerPid(ownerFile, lockPath string) string {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() (code int) {
 	var (
 		lockPath  = flag.String("lock", "", "path to lock file")
 		ownerFile = flag.String("owner-file", "", "path to owner file to inspect on contention")
@@ -67,13 +72,13 @@ func main() {
 
 	if *lockPath == "" {
 		fmt.Fprintf(os.Stderr, "usage: treelock -lock <lockfile> [-owner-file <ownerfile>] [-name <name>] <command> [args...]\n")
-		os.Exit(2)
+		return 2
 	}
 
 	cmdArgs := flag.Args()
 	if len(cmdArgs) == 0 {
 		fmt.Fprintf(os.Stderr, "treelock: no command specified\n")
-		os.Exit(2)
+		return 2
 	}
 
 	name := *lockName
@@ -84,28 +89,35 @@ func main() {
 	lockDir := filepath.Dir(*lockPath)
 	if err := os.MkdirAll(lockDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "treelock: mkdir %s: %v\n", lockDir, err)
-		os.Exit(1)
+		return 1
 	}
 
 	f, err := os.OpenFile(*lockPath, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "treelock: open %s: %v\n", *lockPath, err)
-		os.Exit(1)
+		return 1
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "treelock: close lock: %v\n", err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
 
 	if err := acquireFlock(f.Fd()); err != nil {
 		if isLockBlocked(err) {
 			ownerPid := readOwnerPid(*ownerFile, *lockPath)
 			fmt.Fprintf(os.Stderr, "REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n", ownerPid, name)
-			os.Exit(1)
+			return 1
 		}
 		if strings.HasPrefix(err.Error(), "treelock:") {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 		} else {
 			fmt.Fprintf(os.Stderr, "treelock: flock %s: %v\n", *lockPath, err)
 		}
-		os.Exit(1)
+		return 1
 	}
 
 	// We now hold the exclusive kernel advisory lock.
@@ -130,7 +142,7 @@ func main() {
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "treelock: start %s: %v\n", cmdArgs[0], err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Update lock file with child's PID as well.
@@ -152,16 +164,17 @@ func main() {
 	close(sigChan)
 
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
 			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 				if status.Signaled() {
-					os.Exit(128 + int(status.Signal()))
+					return 128 + int(status.Signal())
 				}
-				os.Exit(status.ExitStatus())
+				return status.ExitStatus()
 			}
-			os.Exit(exitErr.ExitCode())
+			return exitErr.ExitCode()
 		}
-		os.Exit(1)
+		return 1
 	}
-	os.Exit(0)
+	return 0
 }

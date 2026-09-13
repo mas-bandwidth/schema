@@ -299,11 +299,12 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			inRun = false
 			inEnv = false
 			lineAfterDash := strings.TrimSpace(trimmed[2:])
-			if strings.HasPrefix(lineAfterDash, "name:") {
+			switch {
+			case strings.HasPrefix(lineAfterDash, "name:"):
 				cur.name = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "name:"))
-			} else if strings.HasPrefix(lineAfterDash, "if:") {
+			case strings.HasPrefix(lineAfterDash, "if:"):
 				cur.ifCond = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "if:"))
-			} else if strings.HasPrefix(lineAfterDash, "run:") {
+			case strings.HasPrefix(lineAfterDash, "run:"):
 				cur.runLine = lineNo
 				runRest := strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "run:"))
 				if runRest != "" && runRest != "|" {
@@ -750,7 +751,7 @@ func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }() // Read-only input; Scanner reports read errors.
 	rel, _ := filepath.Rel(root, path)
 	var out []recipe
 	target := "(no target)"
@@ -912,7 +913,7 @@ func gateSkips(path string) ([]gatedTest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }() // Read-only input; Scanner reports read errors.
 
 	var results []gatedTest
 	seen := map[string]bool{}

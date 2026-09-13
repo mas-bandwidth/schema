@@ -201,3 +201,7 @@ paths test/elixir-fixedform/bench.exs 1 the Elixir leg's byte-for-byte check of 
 # the bench-shaped PATH trip a check, exactly as its two neighbours' do.
 timing test/bench/fixedform_wires.cpp 2 the third row's clock: form 3 beside the packet wire and form 1, over the committed corpus, one process, median of N beside min and max
 paths test/bench/fixedform_wires.cpp 1 the same file: its path names a benchmark because it IS one, and it lives beside the corpus it measures rather than in a runner directory
+
+# Generated-tree exclusion uses wall-clock deadlines, not schema measurements.
+timing tools/treelock/main.go 2 Bounded lock-owner diagnostic retry; no benchmark or schema-shape timing.
+timing tools/treelock/treelock_test.go 7 Bounded subprocess readiness/release and contention controls; no benchmark measurement.
