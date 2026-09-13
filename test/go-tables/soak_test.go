@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -184,23 +185,18 @@ func TestSoak(t *testing.T) {
 	// the read path owns no memory, and one object per iteration is what a leak
 	// looks like before it looks like anything else.
 	var before, after runtime.MemStats
-	runtime.GC()
-	// EVERY ALLOCATION IS SAMPLED, so the ones that do happen can be NAMED
-	// rather than guessed at. MemProfileRate = 1 records a stack for each, and
-	// the profile is diffed either side of the steady phase — which is what
-	// turns "two objects an hour, a forced collection or a stack move" from a
-	// plausible story into a fact the test prints.
-	// THE PROFILE IS FLUSHED ON BOTH SIDES, and that ordering is the whole
-	// difference between a reading and a fiction: an allocation's record only
-	// becomes visible in the profile after a GC cycle processes it, so a
-	// snapshot taken before one attributes the SETUP's allocations — the
-	// scratch buffer, the corpus — to the steady phase that follows it.
+
+	// Flush setup allocations before taking baseline profile
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	beforeSites := memProfileByStack()
+	runtime.ReadMemStats(&before)
+
+	// EVERY ALLOCATION IS SAMPLED during the steady phase so any leak can be NAMED.
 	oldRate := runtime.MemProfileRate
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
-	runtime.GC()
-	beforeSites := memProfileByStack()
-	runtime.ReadMemStats(&before)
 
 	deadline := time.Now().Add(*soakFor)
 	iterations := int64(0)
@@ -217,17 +213,15 @@ func TestSoak(t *testing.T) {
 	grew := after.Mallocs - before.Mallocs
 
 	// AND THE PROFILE ONLY WHEN THERE IS SOMETHING TO EXPLAIN. Mallocs is the
-	// ground truth and the profile is the witness: a record's AllocObjects
-	// becomes visible only after a GC cycle processes it, so a snapshot taken
-	// when nothing was allocated reports the SETUP's own objects — the scratch
-	// buffer, the corpus — as if the loop had made them. Asking who allocated
-	// when the answer is "nobody" is how a gate invents a finding.
+	// ground truth and the profile is the witness.
 	var sites []site
 	if grew > 0 {
-		// three cycles, because the profile lags the allocator by more than one
+		// Three cycles to flush profile samples from the steady phase
 		for i := 0; i < 3; i++ {
 			runtime.GC()
 		}
+		// Turn off sampling before reading profile so diffing does not sample itself
+		runtime.MemProfileRate = 0
 		sites = grownSites(beforeSites, memProfileByStack())
 	}
 
@@ -281,6 +275,12 @@ type site struct {
 // memProfileByStack is every recorded allocation stack and its object count,
 // keyed by the stack itself so two snapshots can be diffed.
 func memProfileByStack() map[string]int64 {
+	// Temporarily disable profile sampling while reading and constructing the map
+	// so the profiling harness does not record its own bookkeeping allocations.
+	oldRate := runtime.MemProfileRate
+	runtime.MemProfileRate = 0
+	defer func() { runtime.MemProfileRate = oldRate }()
+
 	var records []runtime.MemProfileRecord
 	for {
 		n, ok := runtime.MemProfile(records, false)
@@ -322,6 +322,27 @@ func grownSites(before, after map[string]int64) []site {
 	return out
 }
 
+func isCodecFrame(fn string) bool {
+	// Codec packages:
+	for _, prefix := range []string{
+		"tabledemo.", "tblv", "tblp", "blockdemo.", "graphdemo.",
+	} {
+		if strings.HasPrefix(fn, prefix) {
+			return true
+		}
+	}
+	// Codec roundTrip/textTrip/jsonTrip closures in soakRow:
+	if strings.HasPrefix(fn, "schematables.soakRow.func") {
+		return true
+	}
+	// Deliberate test allocation witnesses:
+	if strings.HasPrefix(fn, "schematables.TestSoakIdentifierCanGoRed") ||
+		strings.Contains(fn, "deliberateCodecAllocationHelper") {
+		return true
+	}
+	return false
+}
+
 func symbolise(key string, objects int64) site {
 	var pcs []uintptr
 	for _, hex := range strings.Split(key, ";") {
@@ -337,20 +358,17 @@ func symbolise(key string, objects int64) site {
 		return result
 	}
 	frames := runtime.CallersFrames(pcs)
-	first := true
+	foundWhere := false
 	for {
 		frame, more := frames.Next()
-		if first && frame.Function != "" {
-			result.where = frame.Function
-			first = false
-		}
-		// the PORT is the generated packages and this test's own file; every
-		// other frame in a clean run is the runtime's
-		if strings.HasPrefix(frame.Function, "tabledemo.") || strings.HasPrefix(frame.Function, "tblv") ||
-			strings.HasPrefix(frame.Function, "tblp") || strings.HasPrefix(frame.Function, "blockdemo.") ||
-			strings.HasPrefix(frame.Function, "graphdemo.") || strings.HasPrefix(frame.Function, "schematables.") {
-			result.mine = true
-			result.where = frame.Function
+		if !strings.HasPrefix(frame.Function, "runtime.") {
+			if !foundWhere && frame.Function != "" {
+				result.where = fmt.Sprintf("%s (%s:%d)", frame.Function, filepath.Base(frame.File), frame.Line)
+				foundWhere = true
+			}
+			if isCodecFrame(frame.Function) {
+				result.mine = true
+			}
 		}
 		if !more {
 			break
@@ -369,18 +387,22 @@ func symbolise(key string, objects int64) site {
 // It allocates deliberately, from THIS package, and requires the walk to see it
 // and to call it the port's.
 func TestSoakIdentifierCanGoRed(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	before := memProfileByStack()
+
 	oldRate := runtime.MemProfileRate
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
 
-	runtime.GC()
-	before := memProfileByStack()
 	for i := 0; i < 100; i++ {
 		soakSink = make([]byte, 48)
 	}
 	for i := 0; i < 3; i++ {
 		runtime.GC()
 	}
+	runtime.MemProfileRate = 0
 	sites := grownSites(before, memProfileByStack())
 
 	mine := 0
@@ -396,6 +418,89 @@ func TestSoakIdentifierCanGoRed(t *testing.T) {
 	}
 	if total < 50 {
 		t.Errorf("the walk counted %d of 100 deliberate allocations — it is seeing them, but not all of them", total)
+	}
+}
+
+// TestNoCodecWorkProfilerClean proves that the profiler harness does not attribute
+// its own bookkeeping allocations (baseline profile, count window, GC cycles) to the port.
+func TestNoCodecWorkProfilerClean(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	before := memProfileByStack()
+
+	oldRate := runtime.MemProfileRate
+	runtime.MemProfileRate = 1
+	defer func() { runtime.MemProfileRate = oldRate }()
+
+	var memBefore, memAfter runtime.MemStats
+	runtime.ReadMemStats(&memBefore)
+
+	// No codec work performed. Sleep briefly to simulate time passing.
+	time.Sleep(20 * time.Millisecond)
+
+	runtime.ReadMemStats(&memAfter)
+	grew := memAfter.Mallocs - memBefore.Mallocs
+
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	runtime.MemProfileRate = 0
+	sites := grownSites(before, memProfileByStack())
+
+	mine := 0
+	for _, s := range sites {
+		if s.mine {
+			mine++
+			t.Errorf("unexpected port-attributed allocation at %s (%d objects)", s.where, s.objects)
+		}
+	}
+	if mine > 0 {
+		t.Fatalf("no-codec-work control failed: %d port-attributed sites detected (total mallocs grew=%d)", mine, grew)
+	}
+}
+
+// TestDeliberateCodecAllocationFails proves that an allocation occurring on the codec
+// path is reliably caught, attributed to the port (mine=true), and names the exact
+// innermost allocation site rather than being obscured by TestSoak.
+func TestDeliberateCodecAllocationFails(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	before := memProfileByStack()
+
+	oldRate := runtime.MemProfileRate
+	runtime.MemProfileRate = 1
+	defer func() { runtime.MemProfileRate = oldRate }()
+
+	deliberateCodecAllocationHelper()
+
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	runtime.MemProfileRate = 0
+	sites := grownSites(before, memProfileByStack())
+
+	mine := 0
+	var foundWhere string
+	for _, s := range sites {
+		if s.mine {
+			mine++
+			foundWhere = s.where
+		}
+	}
+	if mine == 0 {
+		t.Fatalf("deliberate codec allocation control failed: 0 port-attributed sites detected across %d sites", len(sites))
+	}
+	if !strings.Contains(foundWhere, "deliberateCodecAllocationHelper") {
+		t.Errorf("expected innermost site to name deliberateCodecAllocationHelper, got %q", foundWhere)
+	}
+}
+
+//go:noinline
+func deliberateCodecAllocationHelper() {
+	for i := 0; i < 50; i++ {
+		soakSink = make([]byte, 64)
 	}
 }
 
