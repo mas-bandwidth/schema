@@ -22,7 +22,8 @@
 # listing and the bytes are compared both ways. Two halves, both loud, and
 # every failing file named:
 #
-#   (a) the tree on disk IS the committed tree (git, as before);
+#   (a) the tree on disk IS the committed tree (git, against HEAD, not the
+#       index — a staged edit is not yet committed and may not pass);
 #   (b) the tree on disk IS a clean emission (test/generated-tree/compare).
 #
 # Together: emission == disk == committed.
@@ -33,10 +34,25 @@
 # that adds generated/<lang>/.stamp in its make/<lang>.mk is covered the moment
 # it rebases, with no edit here.
 #
-# THE TREE IS ALWAYS PUT BACK, on any exit, including a failed regeneration and
-# a signal: the emission goes to build/generated-tree/fresh for reading, and
-# the tree that was on disk goes back where it was. Nothing else may build
-# while this runs — for that window generated/ is not there.
+# RECOVERY. The tree on disk is moved aside to build/generated-tree/prev and the
+# compiler emits into nothing, then the listing and bytes are compared both
+# ways. A SIGKILL cannot be trapped, so a run killed mid-emission leaves the
+# original tree in build/generated-tree/prev and a partial replacement in
+# generated/. THAT PREVIOUS-RUN TREE IS EVIDENCE, NEVER SCRATCH. On start, when
+# build/generated-tree/prev exists, this script restores it to generated/ —
+# preserving any partial replacement in build/generated-tree/fresh — when
+# generated/ is absent or provably the partial replacement, and refuses (deleting
+# neither tree) when ownership is ambiguous. Ownership is recorded in a small
+# state marker written at each phase transition (pid, a nonce, and the phase),
+# and each invocation's scratch lives under a nonce-unique path, so concurrent
+# runs cannot collide and a dead run's state is told from a live run's by its
+# pid. What is promised is recoverable originals: the next invocation cannot
+# destroy a preserved original. What is NOT promised is restoration under an
+# uncatchable signal, because no trap runs for SIGKILL.
+#
+# --staged is a separately named mode that compares the on-disk tree against the
+# index instead of HEAD; it never prints the committed-emission sentence, because
+# a staged tree is not the committed one.
 set -eu
 
 cd "$(git rev-parse --show-toplevel)"
@@ -45,8 +61,52 @@ out=build/generated-tree
 prev=$out/prev
 fresh=$out/fresh
 exceptions=test/generated-tree/not-emitted
+state=$out/state
+
+mode=committed
+[ "${1:-}" = "--staged" ] && mode=staged
+
+nonce="$$.$(date +%s)"
+run=$out/run.$nonce
+
+mkdir -p "$out" "$run"
+
+mark() { printf '%s %s %s\n' "$$" "$nonce" "$1" > "$state"; }
 
 [ -d generated ] || { printf 'there is no generated/ tree in %s\n' "$(pwd)" >&2; exit 1; }
+
+# A PREVIOUS RUN'S TREE IS EVIDENCE. Read its state marker first, then decide:
+# a live run holds the tree (refuse); a dead run left the original in prev
+# (recover, preserving any partial replacement); an unreadable marker with a
+# prev present is ambiguous (refuse, deleting neither tree).
+spid=; snonce=; sphase=
+if [ -f "$state" ]; then
+	read -r spid snonce sphase < "$state" 2>/dev/null || true
+fi
+if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+	printf 'REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n' "$spid" "$prev" >&2
+	exit 1
+fi
+mark start
+if [ -d "$prev" ]; then
+	case "$sphase" in
+	moved|emitting|restoring)
+		if [ -d generated ]; then
+			[ -e "$fresh" ] && mv "$fresh" "$run/fresh.before-recovery" 2>/dev/null || true
+			mv generated "$fresh"
+		fi
+		mv "$prev" generated
+		printf 'RECOVERED — a previous verification (pid %s, state %s) left the original tree in %s; it is restored, and any partial replacement is preserved in %s.\n' \
+			"${spid:-unknown}" "$sphase" "$prev" "$fresh"
+		;;
+	*)
+		rm -f "$state"
+		printf 'REFUSED — %s exists from a previous run, but %s names no state this script recognises (%s); deleting neither tree.\n' \
+			"$prev" "$state" "${sphase:-none}" >&2
+		exit 1
+		;;
+	esac
+fi
 
 fail=0
 
@@ -59,14 +119,25 @@ if [ -z "$stamps" ]; then
 fi
 printf 'generated-tree: %s generation rule(s)\n' "$(printf '%s\n' "$stamps" | wc -l | tr -d ' ')"
 
-# (a) THE TREE ON DISK IS THE COMMITTED TREE. Staged counts as committed here,
-# the way `git diff` has always read it, so `git add` is enough to go green on
-# a regeneration you are about to commit.
-if ! git diff --quiet -- generated/; then
-	fail=1
-	printf 'NOT COMMITTED — the generated/ tree on disk differs from the committed tree:\n'
-	git diff --name-status -- generated/ | sed 's|^|    |'
-	printf '  commit the regenerated files.\n'
+# (a) THE TREE ON DISK IS THE COMMITTED TREE, judged against HEAD. A staged
+# edit is a different state from a committed one, so `git diff` against the
+# index is not enough to green a regeneration that is not yet committed; the
+# --staged mode is the separately named escape hatch for that, and it never
+# claims the committed emission is current.
+if [ "$mode" = staged ]; then
+	if ! git diff --quiet -- generated/; then
+		fail=1
+		printf 'NOT STAGED — the generated/ tree on disk differs from the index:\n'
+		git diff --name-status -- generated/ | sed 's|^|    |'
+		printf '  stage the regenerated files (staged mode compares the index, not the committed tree).\n'
+	fi
+else
+	if ! git diff --quiet HEAD -- generated/; then
+		fail=1
+		printf 'NOT COMMITTED — the generated/ tree on disk differs from HEAD:\n'
+		git diff --name-status HEAD -- generated/ | sed 's|^|    |'
+		printf '  commit the regenerated files.\n'
+	fi
 fi
 untracked=$(git ls-files --others --exclude-standard -- generated/)
 if [ -n "$untracked" ]; then
@@ -76,14 +147,18 @@ if [ -n "$untracked" ]; then
 	printf '  add them.\n'
 fi
 
-# (b) THE TREE ON DISK IS A CLEAN EMISSION.
-mkdir -p "$out"
-rm -rf "$prev" "$fresh"
-
+# (b) THE TREE ON DISK IS A CLEAN EMISSION. The original is moved aside to prev
+# and restored on every exit that can be trapped; each invocation's scratch and
+# log live under the nonce path, and neither prev nor fresh is ever deleted here
+# (a leftover is moved into this run's scratch, not removed).
+restored=0
 restore() {
+	[ "$restored" = 1 ] && return 0
+	restored=1
+	mark restoring
 	if [ -d "$prev" ]; then
 		if [ -d generated ]; then
-			rm -rf "$fresh"
+			[ -e "$fresh" ] && mv "$fresh" "$run/fresh.previous" 2>/dev/null || true
 			mv generated "$fresh"
 		fi
 		mv "$prev" generated
@@ -91,23 +166,32 @@ restore() {
 }
 trap restore EXIT HUP INT TERM
 
+mark moved
 mv generated "$prev"
+mark emitting
 # shellcheck disable=SC2086
-if ! make $stamps > "$out/regenerate.log" 2>&1; then
-	printf 'the regeneration itself failed — the last of %s is:\n' "$out/regenerate.log"
-	tail -40 "$out/regenerate.log" | sed 's|^|    |'
+if ! make $stamps > "$run/regenerate.log" 2>&1; then
+	printf 'the regeneration itself failed — the last of %s is:\n' "$run/regenerate.log"
+	tail -40 "$run/regenerate.log" | sed 's|^|    |'
+	restore
+	rm -f "$state"
 	exit 1
 fi
 
-if ! test/generated-tree/compare generated "$prev" "$exceptions"; then
+if ! GENERATED_TREE_WORK="$run/compare" test/generated-tree/compare generated "$prev" "$exceptions"; then
 	fail=1
 fi
 
 restore
+rm -f "$state"
 
 if [ "$fail" -ne 0 ]; then
 	printf 'the emission that decided this is at %s; the tree on disk is untouched.\n' "$fresh"
 	exit 1
 fi
 
-printf 'the committed generated/ tree is what this compiler emits.\n'
+if [ "$mode" = staged ]; then
+	printf 'the staged generated/ tree matches this compiler emission (staged mode; run without --staged to assert the committed tree).\n'
+else
+	printf 'the committed generated/ tree is what this compiler emits.\n'
+fi
