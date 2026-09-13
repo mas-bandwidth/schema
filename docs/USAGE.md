@@ -132,13 +132,12 @@ enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3,
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
 values. `None` is one of those values, so an enum whose declared variant
 count is a power of two pays one bit for it: four declared variants are five
-wire values and cost 3 bits, not 2. Declaring `enum E | max = 15` (its variant
-list on the next line) reserves
-headroom so you can
-add variants later without moving the field width.
+wire values and cost 3 bits, not 2. An enum takes no `| max`: the width
+follows the variant count, and adding a variant that crosses a power of two
+widens the field.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
-schema expressions: the highest wire-legal value, and (headroom aside) the
+schema expressions: the highest wire-legal value, and the
 count of real variants under the sentinel-zero convention. All nine targets
 spell it their own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 `ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
@@ -152,9 +151,9 @@ The `Count` member beside it is the **declared variant count**, `None`
 excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
 (Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
 `ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
-`E.Count` in schema expressions. Without headroom `Count` and `Max` are the
-same number. Under `| max = 15` they are 3 and 15, and that difference is
-what the two words are for. `Count` is a reserved variant name too, and every
+`E.Count` in schema expressions. On an enum `Count` and `Max` are always the
+same number; both are exported so an enum and a flags declaration, which has
+a `Count` and no `Max`, present one surface. `Count` is a reserved variant name too, and every
 union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
 on every union for the same reason.
 
@@ -167,8 +166,7 @@ call either way.
 - A loop over the **declared variants** runs from `1` to `Count` inclusive.
 - A loop over **every ordinal**, `None` included, runs from `0` to `Max`
   inclusive.
-- **Size storage and keyed arrays by `Max`** — the extent is what has to fit,
-  headroom and all.
+- **Size storage and keyed arrays by `Max`** — the extent is what has to fit.
 
 Every target also generates a **debug/log name function**, and the spelling is
 each target's own: `EnumName(value)` in C++ (overloaded per enum),
@@ -790,14 +788,10 @@ That covers ranges, counts past an array bound, string lengths past their
 maximum, enum values outside the declared range, and reads that run past the
 end of the buffer.
 
-One precision worth having: an enum read is bounded by the enum's declared
-**max**, not by its variant count. For a plain `enum E { A, B, C }` those are
-the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
-(variants `{ A, B }` on the next line) deliberately reserves headroom so
-variants can be added later without
-moving the field width — and a read of that enum accepts anything in `[0, 15]`.
-That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all nine languages, because
+One precision worth having: an enum read is bounded by the enum's variant
+count. For `enum E { A, B, C }` the wire range is `[0, 3]`, `None` included,
+and a value of 4 or more fails the read. A value you have not named cannot
+survive a read, so a `switch` over an enum needs no default arm for one. The same VALIDATION rules hold in all nine languages, because
 the same compiler wrote all nine — the buffer-slack contract above is the one
 thing that differs per language.
 
@@ -1872,8 +1866,8 @@ open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
 today.*
 
 A key enum counts as part of the table closure: it rides by variant name, so
-`| max` headroom and colliding variant names are refused for it too, with the
-diagnostic naming the field that keys on it.
+colliding variant names are refused for it too, with the diagnostic naming
+the field that keys on it.
 
 **On the TABLE wire the two spellings are different encodings**, and changing
 a table field from one to the other is a wire break, not a refactor: the keyed
