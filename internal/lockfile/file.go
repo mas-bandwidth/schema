@@ -128,6 +128,16 @@ func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 	path = filepath.Join(dir, FileName)
 
 	live := Render(u)
+	// Validate newly rendered fixed roots before either a first write or an
+	// append. Comparing only the old lock cannot validate a newly added table.
+	for i := range live.Tables {
+		table := &live.Tables[i]
+		if table.Decl == DeclFixedTable && table.FixedEmitted {
+			if err := diffLineage(table, table, Current); err != nil {
+				return "", false, fmt.Errorf("%s: %w", path, err)
+			}
+		}
+	}
 	data, readErr := os.ReadFile(path)
 	switch {
 	case readErr == nil:

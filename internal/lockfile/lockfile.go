@@ -196,6 +196,10 @@ type Table struct {
 	// the check stays silent, which is the bill's sentence for every older
 	// rendering of this file.
 	rollupWritten bool
+
+	// FixedEmitted reports whether the fixed form is emitted for this table
+	// (ir.TableFixedEmitted): the closure is supported and within the ceiling.
+	FixedEmitted bool
 }
 
 // An Entry is one field of a locked record, and it is the unit the check
@@ -527,6 +531,7 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		// THE ONE LAYOUT A RENDERING KNOWS (lineage.go): the declaration's own.
 		// [Update] carries the committed history forward onto it.
 		t.Lineage = renderLineage(r.u, st)
+		t.FixedEmitted = ir.TableFixedEmitted(r.u, st)
 	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
