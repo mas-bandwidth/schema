@@ -1138,7 +1138,9 @@ test-c tables-c: tables-c-message-negative-control
 
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	go test ./compiler -run '^TestCTableRetain' -count=1
+	sh test/slowgate/proof tables-c-retain \
+		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
