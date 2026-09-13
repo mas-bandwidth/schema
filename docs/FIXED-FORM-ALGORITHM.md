@@ -580,7 +580,7 @@ once — and append, per field:
 | an INTEGER range | `'R'`, then min and max, each as an i64 LE |
 | a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
 | a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
-| a COMPRESSED FLOAT's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, beside the `'R'` its min and max went into. It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
+| a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -593,12 +593,12 @@ carrying none of these facts does not move the day the digest lands.
 
 **THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
 way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — `'Q'`
-for every compressed float's resolution, and
+for every float range's resolution (including zero for an uncompressed range), and
 `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
 unions share one `seen` map keyed by bare name.**
 
 **The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
-that range is a compressed float's, then the KIND TAG — `'B'`
+that range is a float's, including an uncompressed float's zero resolution, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
