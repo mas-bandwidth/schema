@@ -36,7 +36,3 @@ func acquireFlock(fd uintptr) error {
 func isLockBlocked(err error) bool {
 	return false
 }
-
-func checkWindowsFlockRefusal() error {
-	return ErrWindowsUnsupported
-}

@@ -29,7 +29,9 @@ generated-tree-negative-controls: $(GENERATED_TREE_CONTROLS:%=generated-tree-con
 # and never destroyed (even across a real SIGKILL of the whole verifier process
 # group), and that a staged edit does not pass as committed.
 
-build/treelock: tools/treelock/main.go
+TREELOCK_SRCS := tools/treelock/main.go tools/treelock/lock_unix.go tools/treelock/lock_windows.go go.mod
+
+build/treelock: $(TREELOCK_SRCS)
 	@mkdir -p build
 	@go build -o build/treelock ./tools/treelock
 
