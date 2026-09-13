@@ -3,10 +3,11 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories — no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
+        "generated-tree-negative-controls",
         "projection-union-arm-order-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
