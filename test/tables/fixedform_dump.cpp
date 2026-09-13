@@ -61,6 +61,8 @@
 #include "VNEW_bits_growTable.h"
 #include "VOLD_fixed_I_growTable.h"
 #include "VNEW_fixed_I_growTable.h"
+#include "VOLD_fixed_I_grow_elementTable.h"
+#include "VNEW_fixed_I_grow_elementTable.h"
 #include "VOLD_optional_addTable.h"
 #include "VNEW_optional_addTable.h"
 #include "VOLD_floorTable.h"
@@ -800,6 +802,14 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, -1 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_fixed_i_grow, FixedIGrow, "new_fixed_I_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 1000 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // THE ARRAY-ELEMENT PORT, per slot: the OLD element's raw floor, -1 (the
+    // value a zero-extension gets wrong), zero, and its raw ceiling.
+    VROW( vold_fixed_i_grow_element, FixedIGrowElement, "old_fixed_I_grow_element.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSI( v[0].vals[0], -1, 0 ); MSI( v[0].vals[1], -128, 1 );
+          MSI( v[0].vals[2], 0, 2 ); MSI( v[0].vals[3], 112, 3 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vnew_fixed_i_grow_element, FixedIGrowElement, "new_fixed_I_grow_element.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSI( v[0].vals[0], 1000, 0 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_optional_add, OptionalAdd, "old_optional_add.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].link.value, 777 ); MS( v[0].trail, 0xBBBBBBBBu ); );
