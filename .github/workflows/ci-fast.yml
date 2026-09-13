@@ -154,9 +154,9 @@ jobs:
           # THE BROAD RULE. These paths can change what EVERY leg emits or what
           # every package compiles, so a diff that touches one of them gets the
           # whole of both selections. The direction of the error is deliberate:
-          # a path nobody classified lands here, never in "skip it".
+          # shared schema fixtures select every leg that consumes them.
           broad=no
-          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|\.github/workflows/ci-fast\.yml$)'; then
+          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)'; then
             broad=yes
           fi
 
@@ -175,7 +175,7 @@ jobs:
               internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
             esac
             case "$f" in
-              internal/codegen/cpptable/*|test/cpp-tables/*) add_leg cpp ;;
+              internal/codegen/cpptable/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h) add_leg cpp ;;
             esac
             case "$f" in
               internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
