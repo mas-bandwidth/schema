@@ -445,9 +445,8 @@ func isStepConditionEnabled(ifCond string) bool {
 	return false
 }
 
-var reInlineSlow = regexp.MustCompile(`(?:^|\s)SCHEMA_SLOW=([^\s]+)`)
-
 func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test string) bool, bool) {
+	// First check: any compound/unresolved shell feature across lines causes immediate refusal
 	for _, l := range lines {
 		if strings.Contains(l, "cd ") || strings.Contains(l, "cd\t") || strings.TrimSpace(l) == "cd" {
 			return nil, false
@@ -470,36 +469,24 @@ func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test strin
 		}
 	}
 
+	// Second check: EVERY active line must be an explicitly supported command form.
+	// Stella: "exact supported command grammar starting at command position, and refuse unsupported active lines for the whole block."
 	var selectors []func(pkg, test string) bool
-	anyEnabled := false
+	allSlow := true
 
 	for _, l := range lines {
-		if !strings.Contains(l, "go test") {
-			continue
+		sel, isSlow, ok := parseSupportedCommandLine(l, stepEnvSlow)
+		if !ok {
+			// Unsupported command on an active line (e.g. echo, unset, etc.): refuse whole block!
+			return nil, false
 		}
-
-		lineSlow := stepEnvSlow
-		if m := reInlineSlow.FindStringSubmatch(l); m != nil {
-			val := strings.Trim(m[1], `"'`)
-			if val == "1" {
-				lineSlow = true
-			} else {
-				lineSlow = false
-			}
+		if !isSlow {
+			allSlow = false
 		}
-
-		if !lineSlow {
-			continue
-		}
-
-		sel := parseSingleSupportedCommand(l)
-		if sel != nil {
-			selectors = append(selectors, sel)
-			anyEnabled = true
-		}
+		selectors = append(selectors, sel)
 	}
 
-	if !anyEnabled || len(selectors) == 0 {
+	if !allSlow || len(selectors) == 0 {
 		return nil, false
 	}
 
@@ -517,10 +504,52 @@ func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test strin
 	}, true
 }
 
-func parseSingleSupportedCommand(cmd string) func(pkg, test string) bool {
-	runPat := runPattern(cmd)
+func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test string) bool, bool, bool) {
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return nil, false, false
+	}
 
+	idx := 0
+	lineSlow := stepEnvSlow
+
+	// Optional leading 'env'
+	if fields[idx] == "env" {
+		idx++
+		if idx >= len(fields) {
+			return nil, false, false
+		}
+	}
+
+	// Optional leading env assignments like SCHEMA_SLOW=1 or SCHEMA_SLOW=10
+	for idx < len(fields) && strings.Contains(fields[idx], "=") {
+		pair := strings.SplitN(fields[idx], "=", 2)
+		if pair[0] == "SCHEMA_SLOW" {
+			val := strings.Trim(pair[1], `"'`)
+			if val == "1" {
+				lineSlow = true
+			} else {
+				lineSlow = false
+			}
+		}
+		idx++
+	}
+
+	// At command position, we MUST have "go" followed by "test"
+	if idx+1 >= len(fields) || fields[idx] != "go" || fields[idx+1] != "test" {
+		// Not a go test command at command position (e.g. echo, unset, etc.)
+		return nil, false, false
+	}
+	idx += 2 // skip "go", "test"
+
+	restCmd := strings.Join(fields[idx:], " ")
+
+	// Form 1: Full-CI complement
 	if strings.Contains(cmd, "grep -v '/internal/codegen/'") || strings.Contains(cmd, `grep -v "/internal/codegen/"`) {
+		if !strings.Contains(cmd, "$(go list ./... | grep -v '/internal/codegen/')") && !strings.Contains(cmd, `$(go list ./... | grep -v "/internal/codegen/")`) {
+			return nil, false, false
+		}
+		runPat := runPattern(cmd)
 		return func(pkg, test string) bool {
 			if pkg == "./internal/codegen" || strings.HasPrefix(pkg, "./internal/codegen/") {
 				return false
@@ -529,10 +558,12 @@ func parseSingleSupportedCommand(cmd string) func(pkg, test string) bool {
 				return false
 			}
 			return true
-		}
+		}, lineSlow, true
 	}
 
-	if strings.Contains(cmd, "./internal/codegen/...") {
+	// Form 2: Full-CI codegen emitter packages
+	if strings.Contains(restCmd, "./internal/codegen/...") {
+		runPat := runPattern(cmd)
 		return func(pkg, test string) bool {
 			if pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/") {
 				return false
@@ -541,38 +572,32 @@ func parseSingleSupportedCommand(cmd string) func(pkg, test string) bool {
 				return false
 			}
 			return true
-		}
+		}, lineSlow, true
 	}
 
-	if strings.Contains(cmd, "go test ./...") || strings.Contains(cmd, `go test "./..."`) {
+	// Form 3: Umbrella selector ./...
+	if strings.Contains(restCmd, "./...") {
+		runPat := runPattern(cmd)
 		return func(pkg, test string) bool {
 			if runPat != "" && !matchesRun(runPat, test) {
 				return false
 			}
 			return true
-		}
+		}, lineSlow, true
 	}
 
-	fields := strings.Fields(cmd)
-	idx := -1
-	for i := 0; i < len(fields)-1; i++ {
-		if fields[i] == "go" && fields[i+1] == "test" {
-			idx = i + 2
-			break
-		}
-	}
-	if idx < 0 {
-		return nil
-	}
-
+	// Form 4: Simple direct package/-run command
 	var pkgs []string
+	runPat := ""
 	for i := idx; i < len(fields); i++ {
 		f := fields[i]
 		if f == "-run" && i+1 < len(fields) {
 			i++
+			runPat = strings.Trim(fields[i], `"'`)
 			continue
 		}
 		if strings.HasPrefix(f, "-run=") {
+			runPat = strings.Trim(strings.TrimPrefix(f, "-run="), `"'`)
 			continue
 		}
 		if strings.HasPrefix(f, "-") {
@@ -614,7 +639,7 @@ func parseSingleSupportedCommand(cmd string) func(pkg, test string) bool {
 			return false
 		}
 		return true
-	}
+	}, lineSlow, true
 }
 
 func coveredByCI(steps []ciStep, t gatedTest) string {

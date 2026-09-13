@@ -449,3 +449,75 @@ jobs:
 		t.Errorf("step with if: false must not certify coverage, got exit 0")
 	}
 }
+
+// TestAdversarialEchoGoTestNotCredited witnesses that `echo go test ./compiler`
+// does not have `go test` at command position and must NOT credit compiler.TestRequiredGate.
+func TestAdversarialEchoGoTestNotCredited(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflowEcho := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: echo command
+        env:
+          SCHEMA_SLOW: '1'
+        run: echo go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflowEcho)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("echo go test ./compiler must not credit test, got exit 0")
+	}
+}
+
+// TestAdversarialUnsetSchemaSlowMultilineNotCredited witnesses that an active line
+// like `unset SCHEMA_SLOW` is unsupported and causes the whole run block to be refused.
+func TestAdversarialUnsetSchemaSlowMultilineNotCredited(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflowUnset := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: multiline with unset
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          unset SCHEMA_SLOW
+          go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflowUnset)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("multiline block containing unset SCHEMA_SLOW must refuse whole block, got exit 0")
+	}
+}
