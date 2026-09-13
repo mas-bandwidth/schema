@@ -39,16 +39,6 @@ and a `corpus` line here says the dump does not write that pair yet.
 | `cfloat_res_refine` | cs | unassigned | 2026-09-12 |
 | `cfloat_res_refine` | elixir | unassigned | 2026-09-12 |
 | `cfloat_res_refine` | corpus | unassigned — `cfloat_range_widen` and `cfloat_res_refine` landed on the page with the red team's compressed-float ruling (`ad636dfb`) and are probed on no leg | 2026-09-12 |
-| `fixed_I_grow_element` | cpp | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | c | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | go | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | rust | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | dart | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | js | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | java | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | cs | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | elixir | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
-| `fixed_I_grow_element` | corpus | unassigned — `fixed_I_grow_element` was written into the page with no card | 2026-09-11 |
 | `forged_ordinal_both_plans` | cpp | unassigned — the page's divergence section names the reference and the dump as Johnny's | 2026-09-11 |
 | `forged_ordinal_both_plans` | c | unassigned | 2026-09-11 |
 | `forged_ordinal_both_plans` | go | unassigned | 2026-09-11 |
@@ -90,11 +80,8 @@ and a `corpus` line here says the dump does not write that pair yet.
 | `writer_bound_count` | elixir | unassigned | 2026-09-11 |
 | `writer_bound_count` | corpus | unassigned — the page's divergence section names the reference and the dump as Johnny's | 2026-09-11 |
 
-## What the three groups are
+## What the two groups are
 
-- **`fixed_I_grow_element`, every leg and the corpus.** The page's row — `[4]fixed(12,4)` widening to
-  `[4]fixed(28,4)`, the element's I, per slot — is probed nowhere and the dump writes no pair for it. Its
-  scalar sibling `fixed_I_grow` is on every leg, so the row is a port of a case that exists, not new work.
 - **The four divergence rows, every leg and the corpus.** `writer_bound_count`, `refuse_writes_nothing`,
   `unknown_census` and `forged_ordinal_both_plans` were written into the page for §5.8's rows 4, 9, 11 and 12
   and are probed nowhere yet. They are the rows whose counters are asserted EXACTLY rather than `>= 1`, so a
