@@ -41,6 +41,9 @@ on [`fixed-table-form`](https://github.com/mas-bandwidth/schema/tree/fixed-table
 It is not yet released on `main`.
 
 This matrix is generated from [recursive work data](docs/roadmap.sexp).
+The [feature survey](docs/FIXED-TABLES-SURVEY.md) records the scope correction:
+ordinary capabilities are appended to the original audit families. Current evidence
+reconciliation is unfinished; this is not yet a certified implementation percentage.
 Each feature/language cell contains required subtasks. A cell is green only when
 all are verified; language completion is green features divided by total features,
 not an average of partial-cell percentages. `?` means current evidence remains
@@ -49,7 +52,70 @@ only verified work. Shared compiler, lock and final integration gates remain
 required outside the per-language percentages; passing CI alone does not close them.
 
 <!-- nova-work:fixed-tables:start -->
-<!-- The Lisp renderer fills this region from docs/roadmap.sexp. -->
+
+| feature | cpp | c | cs | go | rust | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|---|
+| File framing and layout announcements | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Bounded batches | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Select known layouts and refuse unsupported input | ? (≥ 14%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Static plans, record sizes and caller capacity | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Layout and definition hashes | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Fixed closure and record limits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Retirement floors and supported versions | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Remove obsolete runtime and forward-read paths | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Numeric widening and backward-read landing rules | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) |
+| Optional values and absent payloads | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Renaming, appending and deprecating fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Exact counters and report semantics | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Array counts and writer bounds | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Text lengths, code units and named refusals | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Scalar bounds and compressed floats | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Full-width enum and union ordinals | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Bool and present-byte normalization | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Live extents, read slack and prefill | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Fixed-image writes and zeroed slack | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Nested union guards and independent metadata | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Partitioned plans and identity-path equivalence | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Shared byte oracle and round-trip conformance | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Hostile-input checks and negative controls | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Boolean values | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Signed integers: 8, 16, 32 and 64 bits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Unsigned integers: 8, 16, 32 and 64 bits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Signed 128-bit integers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Unsigned 128-bit integers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Ranged integer fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| bits(N) fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| 32-bit floating-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| 64-bit floating-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Compressed-float declarations stored as float32 | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Signed fixed-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Unsigned fixed-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Flags masks | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Enums and None | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Bounded UTF-8 string fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Bounded UTF-16 string fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | 0% | 0% | 0% | ? (≥ 0%) | 0% |
+| Bounded byte buffers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Nested types by value | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Nested fixed tables by value | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Fixed-length arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Bounded arrays with a live count | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Enum-keyed arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Nested enum-keyed arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Tagged unions with type or fixed-table payloads | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Union arms holding scalar, text or array fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Payload-free union arms | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Arrays of unions | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Optional scalar and enum fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Optional nested values | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Optional arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Scalar and enum defaults | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| String, byte-buffer and flags defaults | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) |
+| Save and load fixed-form files | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| Constant body size and file-size measurement | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
+| complete | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) |
+
+[Source data](docs/roadmap.sexp)
+
 <!-- nova-work:fixed-tables:end -->
 
 ### Future
