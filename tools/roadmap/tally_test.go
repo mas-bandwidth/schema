@@ -1,6 +1,7 @@
 package roadmap
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -18,18 +19,10 @@ func isValidCell(cell string, inGenerated bool) bool {
 	return generatedCellRx.MatchString(cell)
 }
 
-// TestTheTablesAreWellFormed holds every row of the tables to the header's
-// language columns and every cell outside generated progress blocks to ✅ or ❌.
-// Inside the fixed-tables generated block, explicit progress and unknown formats
-// are accepted.
-func TestTheTablesAreWellFormed(t *testing.T) {
-	raw, err := os.ReadFile("../../ROADMAP.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	columns, rows := 0, 0
+func checkRoadmapText(raw string) error {
+	currentColumns, rows := 0, 0
 	inGenerated := false
-	for line := range strings.SplitSeq(string(raw), "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		if strings.Contains(line, "<!-- nova-work:fixed-tables:start -->") {
 			inGenerated = true
 		}
@@ -41,32 +34,46 @@ func TestTheTablesAreWellFormed(t *testing.T) {
 		}
 		cells := strings.Split(strings.Trim(line, "|"), "|")
 		if strings.TrimSpace(cells[0]) == "feature" {
-			n := len(cells) - 1
-			if columns != 0 && n != columns {
-				t.Fatalf("the tables carry %d and %d language columns; they must agree", columns, n)
+			currentColumns = len(cells) - 1
+			if currentColumns <= 0 {
+				return fmt.Errorf("table header carries %d language columns; expected > 0", currentColumns)
 			}
-			columns = n
 			continue
 		}
 		if strings.HasPrefix(line, "|---") {
 			continue
 		}
-		if len(cells)-1 != columns {
-			t.Fatalf("row %q carries %d cells and the header carries %d", strings.TrimSpace(cells[0]), len(cells)-1, columns)
+		if len(cells)-1 != currentColumns {
+			return fmt.Errorf("row %q carries %d cells and the table header carries %d", strings.TrimSpace(cells[0]), len(cells)-1, currentColumns)
 		}
 		rows++
 		for _, cell := range cells[1:] {
 			trimmed := strings.TrimSpace(cell)
 			if !isValidCell(trimmed, inGenerated) {
 				if inGenerated {
-					t.Fatalf("row %q carries invalid generated progress cell %q", strings.TrimSpace(cells[0]), trimmed)
+					return fmt.Errorf("row %q carries invalid generated progress cell %q", strings.TrimSpace(cells[0]), trimmed)
 				}
-				t.Fatalf("row %q carries a cell %q that is neither ✅ nor ❌", strings.TrimSpace(cells[0]), trimmed)
+				return fmt.Errorf("row %q carries a cell %q that is neither ✅ nor ❌", strings.TrimSpace(cells[0]), trimmed)
 			}
 		}
 	}
-	if rows == 0 || columns == 0 {
-		t.Fatal("ROADMAP.md carries no feature table")
+	if rows == 0 || currentColumns == 0 {
+		return fmt.Errorf("ROADMAP.md carries no feature table")
+	}
+	return nil
+}
+
+// TestTheTablesAreWellFormed holds every row of each table to its own header's
+// language columns and every cell outside generated progress blocks to ✅ or ❌.
+// Inside the fixed-tables generated block, explicit progress and unknown formats
+// are accepted.
+func TestTheTablesAreWellFormed(t *testing.T) {
+	raw, err := os.ReadFile("../../ROADMAP.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRoadmapText(string(raw)); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -118,6 +125,46 @@ func TestGeneratedCellGrammar(t *testing.T) {
 		if isValidCell(c, false) {
 			t.Errorf("expected %q to be invalid outside generated block", c)
 		}
+	}
+}
+
+// TestTablesWithDifferentAxesPassIndependently verifies that tables with different
+// numbers of language columns (e.g. 20 columns for Packet wire, 9 for NEW Fixed Tables)
+// are each held to their own headers.
+func TestTablesWithDifferentAxesPassIndependently(t *testing.T) {
+	sample := `
+### Packet wire
+
+| feature | c1 | c2 |
+|---|---|---|
+| f1 | ✅ | ❌ |
+
+### NEW Fixed Tables
+
+<!-- nova-work:fixed-tables:start -->
+| feature | l1 | l2 | l3 |
+|---|---|---|---|
+| ft1 | 100% | 50% | ? (≥ 33%) |
+| complete | 1/1 | 0/1 | ≥ 0/1 |
+<!-- nova-work:fixed-tables:end -->
+
+### Future
+
+| feature | c1 | c2 |
+|---|---|---|
+| f2 | ❌ | ✅ |
+`
+	if err := checkRoadmapText(sample); err != nil {
+		t.Fatalf("expected sample with different table axes to pass, got: %v", err)
+	}
+
+	badSample := `
+| feature | c1 | c2 |
+|---|---|---|
+| f1 | ✅ | ❌ | ❌ |
+`
+	if err := checkRoadmapText(badSample); err == nil {
+		t.Fatal("expected row with extra cell to be rejected, but passed")
 	}
 }
 
