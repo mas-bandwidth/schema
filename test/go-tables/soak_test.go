@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -332,15 +333,21 @@ func isCodecFrame(fn string) bool {
 		}
 	}
 	// Codec roundTrip/textTrip/jsonTrip closures in soakRow:
-	if strings.HasPrefix(fn, "schematables.soakRow.func") {
-		return true
-	}
-	// Deliberate test allocation witnesses:
-	if strings.HasPrefix(fn, "schematables.TestSoakIdentifierCanGoRed") ||
-		strings.Contains(fn, "deliberateCodecAllocationHelper") {
+	if strings.HasPrefix(fn, "schematables.soakRow") && strings.Contains(fn, ".func") {
 		return true
 	}
 	return false
+}
+
+func TestReviewerRealSoakClosureAttribution(t *testing.T) {
+	for _, row := range soakCorpus(t) {
+		for name, fn := range map[string]func([]byte) []byte{"wire": row.roundTrip, "text": row.textTrip, "json": row.jsonTrip} {
+			symbol := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
+			if !isCodecFrame(symbol) {
+				t.Errorf("%s/%s actual measured closure is not attributed: %s", row.name, name, symbol)
+			}
+		}
+	}
 }
 
 func symbolise(key string, objects int64) site {
@@ -378,14 +385,9 @@ func symbolise(key string, objects int64) site {
 }
 
 // TestSoakIdentifierCanGoRed is the negative control for the identification
-// above, and it is not optional: the first version of that code took its
-// "before" snapshot ahead of the flush the profile needs, so it attributed the
-// SETUP's own objects to the loop and reported a finding that was not there. A
-// classifier that has never been shown a real allocation is a classifier nobody
-// has checked.
-//
-// It allocates deliberately, from THIS package, and requires the walk to see it
-// and to call it the port's.
+// above: it executes an actual measured soakRow operation containing a deliberate
+// allocation inside its measured step, and requires the stack walk to attribute it
+// to the port (mine=true) and name the exact innermost allocation site.
 func TestSoakIdentifierCanGoRed(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		runtime.GC()
@@ -396,9 +398,22 @@ func TestSoakIdentifierCanGoRed(t *testing.T) {
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
 
+	badRow := soakRow(t, "root_default", "../../testdata/wire/tables/root_default.bin",
+		tabledemo.RootConfigReset,
+		func(c *tabledemo.RootConfig, b []byte, r *tabledemo.TableReport) bool {
+			soakSink = make([]byte, 48)
+			return tabledemo.RootConfigLoad(c, b, r)
+		},
+		tabledemo.RootConfigMeasure, tabledemo.RootConfigSave,
+		tabledemo.RootConfigFromJson,
+		tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson,
+	)
+
+	scratch := make([]byte, 65536)
 	for i := 0; i < 100; i++ {
-		soakSink = make([]byte, 48)
+		_ = badRow.roundTrip(scratch)
 	}
+
 	for i := 0; i < 3; i++ {
 		runtime.GC()
 	}
@@ -407,17 +422,22 @@ func TestSoakIdentifierCanGoRed(t *testing.T) {
 
 	mine := 0
 	total := int64(0)
+	var foundWhere string
 	for _, s := range sites {
 		if s.mine {
 			mine++
 			total += s.objects
+			foundWhere = s.where
 		}
 	}
 	if mine == 0 {
-		t.Fatalf("100 deliberate allocations from this package were not attributed to it; saw %d site(s)", len(sites))
+		t.Fatalf("100 deliberate allocations from measured operation were not attributed to port; saw %d site(s)", len(sites))
 	}
 	if total < 50 {
 		t.Errorf("the walk counted %d of 100 deliberate allocations — it is seeing them, but not all of them", total)
+	}
+	if !strings.Contains(foundWhere, "soak_test.go") {
+		t.Errorf("expected innermost site to report file/line in soak_test.go, got %q", foundWhere)
 	}
 }
 
@@ -457,50 +477,6 @@ func TestNoCodecWorkProfilerClean(t *testing.T) {
 	}
 	if mine > 0 {
 		t.Fatalf("no-codec-work control failed: %d port-attributed sites detected (total mallocs grew=%d)", mine, grew)
-	}
-}
-
-// TestDeliberateCodecAllocationFails proves that an allocation occurring on the codec
-// path is reliably caught, attributed to the port (mine=true), and names the exact
-// innermost allocation site rather than being obscured by TestSoak.
-func TestDeliberateCodecAllocationFails(t *testing.T) {
-	for i := 0; i < 3; i++ {
-		runtime.GC()
-	}
-	before := memProfileByStack()
-
-	oldRate := runtime.MemProfileRate
-	runtime.MemProfileRate = 1
-	defer func() { runtime.MemProfileRate = oldRate }()
-
-	deliberateCodecAllocationHelper()
-
-	for i := 0; i < 3; i++ {
-		runtime.GC()
-	}
-	runtime.MemProfileRate = 0
-	sites := grownSites(before, memProfileByStack())
-
-	mine := 0
-	var foundWhere string
-	for _, s := range sites {
-		if s.mine {
-			mine++
-			foundWhere = s.where
-		}
-	}
-	if mine == 0 {
-		t.Fatalf("deliberate codec allocation control failed: 0 port-attributed sites detected across %d sites", len(sites))
-	}
-	if !strings.Contains(foundWhere, "deliberateCodecAllocationHelper") {
-		t.Errorf("expected innermost site to name deliberateCodecAllocationHelper, got %q", foundWhere)
-	}
-}
-
-//go:noinline
-func deliberateCodecAllocationHelper() {
-	for i := 0; i < 50; i++ {
-		soakSink = make([]byte, 64)
 	}
 }
 
