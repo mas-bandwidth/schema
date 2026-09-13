@@ -22,7 +22,7 @@
 //	                             it can ride every lane.
 //
 //	slowgatescan -coverage LOG   the accounting: LOG is a plain (no SCHEMA_SLOW)
-//	                             `go test` transcript (JSON or -v text). Every
+//	                             `go test -json` transcript. Every
 //	                             test that skipped at slowtest.Gate in it must
 //	                             be selected by at least one recipe line that
 //	                             DOES set the variable or an enabled CI step —
@@ -259,6 +259,15 @@ func workflowSteps(root string) ([]ciStep, error) {
 }
 
 func parseWorkflowContent(file, content string) ([]ciStep, error) {
+	// These settings can affect package resolution or test execution outside the
+	// command itself. This scanner does not resolve inherited workflow/job state.
+	for _, line := range strings.Split(content, "\n") {
+		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
+		switch key {
+		case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT":
+			return nil, nil // no coverage credit from an unsupported workflow shape
+		}
+	}
 	lines := strings.Split(content, "\n")
 	var steps []ciStep
 
@@ -297,7 +306,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			} else if strings.HasPrefix(lineAfterDash, "run:") {
 				cur.runLine = lineNo
 				runRest := strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "run:"))
-				if runRest != "" && runRest != "|" && runRest != ">" {
+				if runRest != "" && runRest != "|" {
 					cur.runLines = append(cur.runLines, runRest)
 				}
 				inRun = true
@@ -311,6 +320,15 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 		}
 
 		indent := len(line) - len(strings.TrimLeft(line, " "))
+		// End a block before interpreting a sibling property such as if: false.
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if inEnv && indent <= envIndent {
+				inEnv = false
+			}
+			if inRun && indent <= runIndent {
+				inRun = false
+			}
+		}
 
 		if strings.HasPrefix(trimmed, "name:") && !inRun && !inEnv {
 			cur.name = strings.TrimSpace(strings.TrimPrefix(trimmed, "name:"))
@@ -335,7 +353,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			runIndent = indent
 			cur.runLine = lineNo
 			runRest := strings.TrimSpace(strings.TrimPrefix(trimmed, "run:"))
-			if runRest != "" && runRest != "|" && runRest != ">" {
+			if runRest != "" && runRest != "|" {
 				cur.runLines = append(cur.runLines, runRest)
 			}
 			continue
@@ -445,58 +463,23 @@ func isStepConditionEnabled(ifCond string) bool {
 	return false
 }
 
+// CI coverage recognizes an intentionally small shell subset. Unsupported lines
+// refuse the whole step: ignoring one could miss a directory or environment change.
 func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test string) bool, bool) {
-	// First check: any compound/unresolved shell feature across lines causes immediate refusal
-	for _, l := range lines {
-		if strings.Contains(l, "cd ") || strings.Contains(l, "cd\t") || strings.TrimSpace(l) == "cd" {
-			return nil, false
-		}
-		if strings.Contains(l, "&&") || strings.Contains(l, "||") || strings.Contains(l, ";") || strings.Contains(l, "&") {
-			return nil, false
-		}
-		if strings.Contains(l, "|") {
-			if !strings.Contains(l, "grep -v '/internal/codegen/'") && !strings.Contains(l, `grep -v "/internal/codegen/"`) {
-				return nil, false
-			}
-		}
-		if strings.Contains(l, "$(") {
-			if !strings.Contains(l, "$(go list ./... | grep -v '/internal/codegen/')") && !strings.Contains(l, `$(go list ./... | grep -v "/internal/codegen/")`) {
-				return nil, false
-			}
-		}
-		if strings.Contains(l, "`") {
-			return nil, false
-		}
-	}
-
-	// Second check: EVERY active line must be an explicitly supported command form.
-	// Stella: "exact supported command grammar starting at command position, and refuse unsupported active lines for the whole block."
 	var selectors []func(pkg, test string) bool
-	allSlow := true
-
-	for _, l := range lines {
-		sel, isSlow, ok := parseSupportedCommandLine(l, stepEnvSlow)
-		if !ok {
-			// Unsupported command on an active line (e.g. echo, unset, etc.): refuse whole block!
+	for _, line := range lines {
+		selector, slow, ok := parseSupportedCommandLine(line, stepEnvSlow)
+		if !ok || !slow {
 			return nil, false
 		}
-		if !isSlow {
-			allSlow = false
-		}
-		selectors = append(selectors, sel)
+		selectors = append(selectors, selector)
 	}
-
-	if !allSlow || len(selectors) == 0 {
+	if len(selectors) == 0 {
 		return nil, false
 	}
-
-	if len(selectors) == 1 {
-		return selectors[0], true
-	}
-
 	return func(pkg, test string) bool {
-		for _, s := range selectors {
-			if s(pkg, test) {
+		for _, selector := range selectors {
+			if selector(pkg, test) {
 				return true
 			}
 		}
@@ -504,142 +487,113 @@ func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test strin
 	}, true
 }
 
+var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
+var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)
+
 func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test string) bool, bool, bool) {
+	cmd = strings.TrimSpace(cmd)
+	// Only this known assignment is supported. GOFLAGS and arbitrary assignments
+	// can change whether tests execute, so they must never be silently skipped.
+	if strings.HasPrefix(cmd, "env ") {
+		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, "env "))
+	}
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
 		return nil, false, false
 	}
-
-	idx := 0
-	lineSlow := stepEnvSlow
-
-	// Optional leading 'env'
-	if fields[idx] == "env" {
-		idx++
-		if idx >= len(fields) {
+	slow := stepEnvSlow
+	if strings.HasPrefix(fields[0], "SCHEMA_SLOW=") {
+		value := strings.TrimPrefix(fields[0], "SCHEMA_SLOW=")
+		switch value {
+		case "1", "'1'", `"1"`:
+			slow = true
+		default:
 			return nil, false, false
 		}
+		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, fields[0]))
 	}
-
-	// Optional leading env assignments like SCHEMA_SLOW=1 or SCHEMA_SLOW=10
-	for idx < len(fields) && strings.Contains(fields[idx], "=") {
-		pair := strings.SplitN(fields[idx], "=", 2)
-		if pair[0] == "SCHEMA_SLOW" {
-			val := strings.Trim(pair[1], `"'`)
-			if val == "1" {
-				lineSlow = true
-			} else {
-				lineSlow = false
-			}
-		}
-		idx++
+	// This is the one supported substitution, compared as a complete command.
+	// Its package selection cannot be inferred from a substring in another argument.
+	if cmd == "go test $(go list ./... | grep -v '/internal/codegen/')" ||
+		cmd == `go test $(go list ./... | grep -v "/internal/codegen/")` {
+		return func(pkg, test string) bool {
+			return pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/")
+		}, slow, true
 	}
-
-	// At command position, we MUST have "go" followed by "test"
-	if idx+1 >= len(fields) || fields[idx] != "go" || fields[idx+1] != "test" {
-		// Not a go test command at command position (e.g. echo, unset, etc.)
+	fields = strings.Fields(cmd)
+	if len(fields) < 3 || fields[0] != "go" || fields[1] != "test" {
 		return nil, false, false
 	}
-	idx += 2 // skip "go", "test"
-
-	restCmd := strings.Join(fields[idx:], " ")
-
-	// Form 1: Full-CI complement
-	if strings.Contains(cmd, "grep -v '/internal/codegen/'") || strings.Contains(cmd, `grep -v "/internal/codegen/"`) {
-		if !strings.Contains(cmd, "$(go list ./... | grep -v '/internal/codegen/')") && !strings.Contains(cmd, `$(go list ./... | grep -v "/internal/codegen/")`) {
-			return nil, false, false
-		}
-		runPat := runPattern(cmd)
-		return func(pkg, test string) bool {
-			if pkg == "./internal/codegen" || strings.HasPrefix(pkg, "./internal/codegen/") {
-				return false
+	var packages []string
+	run := ""
+	seenRun := false
+	for i := 2; i < len(fields); i++ {
+		field := fields[i]
+		switch {
+		case field == "-run" || strings.HasPrefix(field, "-run="):
+			if seenRun {
+				return nil, false, false
 			}
-			if runPat != "" && !matchesRun(runPat, test) {
-				return false
-			}
-			return true
-		}, lineSlow, true
-	}
-
-	// Form 2: Full-CI codegen emitter packages
-	if strings.Contains(restCmd, "./internal/codegen/...") {
-		runPat := runPattern(cmd)
-		return func(pkg, test string) bool {
-			if pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/") {
-				return false
-			}
-			if runPat != "" && !matchesRun(runPat, test) {
-				return false
-			}
-			return true
-		}, lineSlow, true
-	}
-
-	// Form 3: Umbrella selector ./...
-	if strings.Contains(restCmd, "./...") {
-		runPat := runPattern(cmd)
-		return func(pkg, test string) bool {
-			if runPat != "" && !matchesRun(runPat, test) {
-				return false
-			}
-			return true
-		}, lineSlow, true
-	}
-
-	// Form 4: Simple direct package/-run command
-	var pkgs []string
-	runPat := ""
-	for i := idx; i < len(fields); i++ {
-		f := fields[i]
-		if f == "-run" && i+1 < len(fields) {
-			i++
-			runPat = strings.Trim(fields[i], `"'`)
-			continue
-		}
-		if strings.HasPrefix(f, "-run=") {
-			runPat = strings.Trim(strings.TrimPrefix(f, "-run="), `"'`)
-			continue
-		}
-		if strings.HasPrefix(f, "-") {
-			if (f == "-timeout" || f == "-count" || f == "-tags") && i+1 < len(fields) && !strings.HasPrefix(fields[i+1], "-") {
+			seenRun = true
+			value := strings.TrimPrefix(field, "-run=")
+			if field == "-run" {
 				i++
+				if i == len(fields) {
+					return nil, false, false
+				}
+				value = fields[i]
 			}
-			continue
+			// Single quotes preserve regex metacharacters literally. Bare values are
+			// limited to words without shell expansion; other quoting is unsupported.
+			if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+				run = value[1 : len(value)-1]
+				if strings.ContainsRune(run, '\'') {
+					return nil, false, false
+				}
+			} else {
+				if !ciBareRun.MatchString(value) {
+					return nil, false, false
+				}
+				run = value
+			}
+			if _, err := regexp.Compile(run); err != nil {
+				return nil, false, false
+			}
+		case field == "-count=1", field == "-v", field == "-json":
+			// These options do not remove selected tests.
+		default:
+			// Unknown options, redirections, substitutions and command separators all
+			// fail this package grammar. In particular -list/-skip do not earn credit.
+			if field != "." && !ciPackage.MatchString(field) {
+				return nil, false, false
+			}
+			base := strings.TrimSuffix(field, "/...")
+			if strings.Contains(base, "..") || strings.Contains(base, "//") {
+				return nil, false, false
+			}
+			packages = append(packages, strings.TrimSuffix(field, "/"))
 		}
-		pkgs = append(pkgs, normalizePkg(f))
 	}
-
-	if len(pkgs) == 0 {
-		pkgs = []string{"."}
+	if len(packages) == 0 {
+		return nil, false, false
 	}
-
 	return func(pkg, test string) bool {
-		matchedPkg := false
-		for _, p := range pkgs {
-			if p == "./..." {
-				matchedPkg = true
-				break
+		if seenRun && !matchesRun(run, test) {
+			return false
+		}
+		for _, pattern := range packages {
+			if pattern == "./..." || pattern == pkg {
+				return true
 			}
-			if strings.HasSuffix(p, "/...") {
-				base := strings.TrimSuffix(p, "/...")
+			if strings.HasSuffix(pattern, "/...") {
+				base := strings.TrimSuffix(pattern, "/...")
 				if pkg == base || strings.HasPrefix(pkg, base+"/") {
-					matchedPkg = true
-					break
+					return true
 				}
 			}
-			if p == pkg {
-				matchedPkg = true
-				break
-			}
 		}
-		if !matchedPkg {
-			return false
-		}
-		if runPat != "" && !matchesRun(runPat, test) {
-			return false
-		}
-		return true
-	}, lineSlow, true
+		return false
+	}, slow, true
 }
 
 func coveredByCI(steps []ciStep, t gatedTest) string {
