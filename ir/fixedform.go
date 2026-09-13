@@ -327,34 +327,50 @@ func TableFixedKeyedSlots(owner *Struct, f *Field) string {
 }
 
 // TableFixedLeafCount bounds the entries a type's leaf walk writes, which sizes a
-// plan array. It counts leaves BEFORE coalescing.
+// plan array. It counts leaves BEFORE coalescing, and it counts THE WALK THE
+// REFERENCE EMITS: a bool or a present flag normalises through
+// [TableFixedOpBool] (byte != 0) rather than a flat copy, so an array whose
+// element holds one is walked element by element where the plain walk would have
+// folded it into one run. The cap is the reference's plan, so the count is the
+// reference's plan: otherwise the normalised walk bypasses a cap that still
+// counts the old flat fold. A flat array that carries no bool still costs one
+// run, exactly as [tableFixedElementLoop] folds it.
 func TableFixedLeafCount(u *Unit, st *Struct) int {
+	return tableFixedLeafCount(u, st, true)
+}
+
+func tableFixedLeafCount(u *Unit, st *Struct, normaliseBool bool) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += TableFixedFieldLeafCount(u, f)
+		n += tableFixedFieldLeafCount(u, f, normaliseBool)
 	}
 	return n
 }
 
-// TableFixedFieldLeafCount is one field's share of the count above.
-func TableFixedFieldLeafCount(u *Unit, f *Field) int {
-	per := TableFixedElementLeafCount(u, f)
-	flat := TableFixedFlatElem(u, f)
+// tableFixedFieldLeafCount is one field's share of the count above, over the
+// same walk [tableFixedBuildPlan] emits with normaliseBool. It is the plan's
+// own fold predicate: a flat element folds into one run unless normalisation
+// has to walk every element for a bool, and an array of bool is one normalised
+// run whatever the flat test says (see [tableFixedElementLoop]).
+func tableFixedFieldLeafCount(u *Unit, f *Field, normaliseBool bool) int {
+	per := tableFixedElementLeafCount(u, f, normaliseBool)
+	fold := TableFixedFlatElem(u, f) && !(normaliseBool && tableFixedContainsBool(f))
+	boolRun := normaliseBool && f.Type.Kind == TBool
 	n := per
 	switch {
 	case f.KeyEnum != "":
 		n = int(f.KeyEnumRef.Max) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayFixed:
 		n = int(f.ArrayBound) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
-		if flat {
+		if fold || boolRun {
 			n = 2
 		}
 	case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
@@ -366,12 +382,12 @@ func TableFixedFieldLeafCount(u *Unit, f *Field) int {
 	return n
 }
 
-// TableFixedElementLeafCount is the same question about ONE element.
-func TableFixedElementLeafCount(u *Unit, f *Field) int {
+// tableFixedElementLeafCount is the same question about ONE element.
+func tableFixedElementLeafCount(u *Unit, f *Field, normaliseBool bool) int {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			return TableFixedLeafCount(u, r)
+			return tableFixedLeafCount(u, r, normaliseBool)
 		case *Union:
 			n := 1 // the tag
 			for _, v := range r.Variants {
@@ -380,7 +396,7 @@ func TableFixedElementLeafCount(u *Unit, f *Field) int {
 				if v.F == nil {
 					continue
 				}
-				n += TableFixedFieldLeafCount(u, v.F)
+				n += tableFixedFieldLeafCount(u, v.F, normaliseBool)
 			}
 			return n
 		}
