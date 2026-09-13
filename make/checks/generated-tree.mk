@@ -29,7 +29,7 @@ generated-tree-negative-controls: $(GENERATED_TREE_CONTROLS:%=generated-tree-con
 # and never destroyed (even across a real SIGKILL of the whole verifier process
 # group), and that a staged edit does not pass as committed.
 
-GENERATED_TREE_VERIFY_CONTROLS := kill-retry regeneration-fails second-invocation staged-difference
+GENERATED_TREE_VERIFY_CONTROLS := kill-retry kill-before-emission simultaneous-contender ambiguous-marker regeneration-fails second-invocation staged-difference
 
 .PHONY: generated-tree-verify-controls $(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%)
 
