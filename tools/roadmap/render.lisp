@@ -78,8 +78,9 @@
     (with-input-from-string (s str)
       (let ((form (read s t nil)))
         ;; Require exactly one top-level form; reject trailing garbage / multiple forms
-        (let ((next (read s nil :eof)))
-          (unless (eq next :eof)
+        (let* ((eof (gensym "EOF"))
+               (next (read s nil eof)))
+          (unless (eq next eof)
             (error "Trailing data or multiple top-level forms in restricted reader input")))
         form))))
 
@@ -164,7 +165,7 @@
               (when (eq state :done)
                 (unless (and (listp evidence)
                              evidence
-                             (some (lambda (e) (and (stringp e) (> (length (string-trim " \t\n\r" e)) 0)))
+                             (some (lambda (e) (and (stringp e) (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) e)) 0)))
                                    evidence))
                   (error "Done task ~s has empty or missing required :evidence" id)))))
            (:roadmap
@@ -448,10 +449,8 @@
          ;; Select target roadmap reachable from :root (ignoring unreachable decoys)
          (roadmap (find-reachable-roadmap root-id table (or target-roadmap-id "fixed-tables"))))
     (unless roadmap
-      ;; Fallback: any reachable roadmap from :root
-      (setf roadmap (find-reachable-roadmap root-id table nil)))
-    (unless roadmap
-      (error "No :roadmap node reachable from root ~s" root-id))
+      (error "Roadmap ~s is not reachable from root ~s"
+             (or target-roadmap-id "fixed-tables") root-id))
 
     (let* ((table-string (render-table-string roadmap table sexp-path))
            (existing-text (read-file-to-string roadmap-path))
@@ -485,6 +484,23 @@
                  (error (e)
                    (format t "FAIL: ~a (~a)~%" name e)
                    (incf fail-count)))))
+
+      (test "literal EOF keyword is trailing data"
+        (lambda ()
+          (let ((caught nil))
+            (handler-case (read-restricted-from-string "(:schema 1) :eof")
+              (error () (setf caught t)))
+            (unless caught (error "Accepted trailing :eof keyword")))))
+
+      (test "whitespace-only evidence is not proof"
+        (lambda ()
+          (let* ((blank (coerce (list #\Tab #\Newline #\Return #\Space) 'string))
+                 (nodes (list (list :id "proof" :type :task :state :done
+                                    :evidence (list blank))))
+                 (caught nil))
+            (handler-case (build-and-validate-node-table nodes "proof")
+              (error () (setf caught t)))
+            (unless caught (error "Accepted whitespace-only evidence")))))
 
       ;; Test 1: Shared leaf deduplication
       (test "shared leaf deduplication"
