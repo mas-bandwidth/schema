@@ -35,6 +35,7 @@ package compiler
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -235,16 +236,51 @@ func probePattern(row string) *regexp.Regexp {
 	return regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(row) + `(_hostile)?(_case)?([^A-Za-z0-9_]|$)`)
 }
 
+// stripComments removes the harness languages' comment text so a row name in a
+// comment cannot earn coverage. // and /* */ cover Go, C++, C#, Java, Dart,
+// JavaScript and Rust; # covers Elixir. It is deliberately simple — it need not
+// preserve string literals, only never remove a registration.
+func stripComments(text string) string {
+	text = blockComment.ReplaceAllString(text, " ")
+	text = lineComment.ReplaceAllString(text, "")
+	return hashComment.ReplaceAllString(text, "")
+}
+
+var (
+	blockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	lineComment  = regexp.MustCompile(`//[^\n]*`)
+	hashComment  = regexp.MustCompile(`#[^\n]*`)
+)
+
+// registrationPattern matches the two ways this tree's harnesses register a row
+// so a test actually probes it:
+//
+//   - a struct-literal entry in a table the test iterates — `{row: "name"}` on
+//     every Go-driven leg, `{name: "name"}` on Java;
+//   - the C++ reference's INVOKED case, `<name>_case();`. Its definition
+//     (`void <name>_case()`) has no trailing semicolon, so an unused helper
+//     earns nothing.
+func registrationPattern(row string) *regexp.Regexp {
+	q := regexp.QuoteMeta(row)
+	return regexp.MustCompile(
+		`(?:^|[^A-Za-z0-9_])(?:row|name)\s*:\s*"` + q + `"` +
+			`|(?:^|[^A-Za-z0-9_])` + q + `(?:_hostile)?_case\s*\(\s*\)\s*;`)
+}
+
+// rowRegistered reports whether the harness text registers `row` in a way the
+// leg's test actually probes. Comments are removed first, so a row name in a
+// comment or an uncalled helper does not count. It is deliberately scoped to
+// REGISTRATION coverage, not to what the probe asserts.
+func rowRegistered(text, row string) bool {
+	return registrationPattern(row).MatchString(stripComments(text))
+}
+
 // probed reads every leg's harness once and reports, per leg, the set of rows
 // it names. A missing harness file is a leg that probes nothing: the gate then
 // reports its pairs as owed, which is the true state for a leg whose harness is
 // still in a PR.
 func probed(t *testing.T, rows []docRow) map[string]map[string]bool {
 	t.Helper()
-	patterns := map[string]*regexp.Regexp{}
-	for _, r := range rows {
-		patterns[r.name] = probePattern(r.name)
-	}
 	out := map[string]map[string]bool{}
 	for _, leg := range theNineLegs {
 		paths, ok := versioningHarnesses[leg]
@@ -261,9 +297,9 @@ func probed(t *testing.T, rows []docRow) map[string]map[string]bool {
 				continue // no harness yet: every row is owed
 			}
 			text := string(data)
-			for name, pat := range patterns {
-				if pat.MatchString(text) {
-					out[leg][name] = true
+			for _, r := range rows {
+				if rowRegistered(text, r.name) {
+					out[leg][r.name] = true
 				}
 			}
 		}
@@ -418,6 +454,13 @@ func TestEveryRowHasCorpusBytes(t *testing.T) {
 	for _, r := range rows {
 		byName[r.name] = r
 	}
+	// REPAIR (b): the manifest's `row=` fields were all this gate read, so a
+	// manifest naming every row with every binary deleted still passed. Every
+	// manifested file must exist, be a confined regular file and be non-empty,
+	// and every row it claims bytes for must carry BOTH an old_ and a new_ side.
+	for _, problem := range corpusFileProblems(string(data), filepath.Dir(corpusManifest), rows, inCorpus) {
+		t.Error(problem)
+	}
 	owed := map[string]owedPair{}
 	for _, p := range owedRows(t) {
 		if p.leg != corpusTarget {
@@ -446,6 +489,80 @@ func TestEveryRowHasCorpusBytes(t *testing.T) {
 	}
 }
 
+// corpusFileProblems validates the manifest's file references: every line that
+// names a file must name a CONFINED, regular, non-empty file, and every page
+// row the manifest claims bytes for must carry BOTH an old_ and a new_ file. It
+// is a shape check over the manifest and the filesystem, not a semantic proof
+// of the bytes. The manifest path is used in messages only; `dir` is where the
+// files live.
+func corpusFileProblems(manifest, dir string, rows []docRow, inCorpus map[string]bool) []string {
+	var problems []string
+	sides := map[string]map[string]bool{}
+	for n, line := range strings.Split(manifest, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var file, row, side string
+		for _, field := range strings.Fields(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				if file == "" {
+					file = v
+				}
+			case "row":
+				if row == "" {
+					row = v
+				}
+			case "side":
+				if side == "" {
+					side = v
+				}
+			}
+		}
+		if file == "" || row == "" {
+			continue
+		}
+		if file != filepath.Base(file) || file == "." || file == ".." {
+			problems = append(problems, fmt.Sprintf("%s:%d: row %s names file=%s, which is not a confined base name",
+				corpusManifest, n+1, row, file))
+			continue
+		}
+		if sides[row] == nil {
+			sides[row] = map[string]bool{}
+		}
+		sides[row][side] = true
+		full := filepath.Join(dir, file)
+		fi, err := os.Stat(full)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s:%d: row %s side %s names %s, which does not exist: %v",
+				corpusManifest, n+1, row, side, file, err))
+			continue
+		}
+		if !fi.Mode().IsRegular() {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s is not a regular file", corpusManifest, n+1, file))
+		} else if fi.Size() == 0 {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s is empty", corpusManifest, n+1, file))
+		}
+	}
+	for _, r := range rows {
+		if r.lockOnly || !inCorpus[r.name] {
+			continue
+		}
+		for _, side := range []string{"old", "new"} {
+			if !sides[r.name][side] {
+				problems = append(problems, fmt.Sprintf("%s: row %s is in the corpus but has no side=%s file",
+					corpusManifest, r.name, side))
+			}
+		}
+	}
+	return problems
+}
+
 // TestEveryRowProbeNameIsAnchored is the gate's own red: a probe pattern that
 // matched loosely would hand a leg credit for a row it never wrote, which is
 // exactly the silence this file exists to end. The pairs below are the page's
@@ -472,6 +589,34 @@ func TestEveryRowProbeNameIsAnchored(t *testing.T) {
 	for _, c := range cases {
 		if got := probePattern(c.row).MatchString(c.text); got != c.want {
 			t.Errorf("probePattern(%q) on %q = %v, want %v", c.row, c.text, got, c.want)
+		}
+	}
+}
+
+// TestEveryRowProbedNeedsARegistration is repair (a)'s own red. A row name in a
+// comment, or in a helper nobody calls, is not a probe: the harness must
+// REGISTER the row (a `{row: "..."}` / `{name: "..."}` entry in a table the
+// test iterates) or actually INVOKE the reference's `<row>_case()`. This is a
+// registration-coverage check, not a proof of what the probe asserts.
+func TestEveryRowProbedNeedsARegistration(t *testing.T) {
+	cases := []struct {
+		name, text string
+		want       bool
+	}{
+		{"fixed_I_grow_element", "// {row: \"fixed_I_grow_element\"}\n", false},
+		{"fixed_I_grow_element", "// fixed_I_grow_element_case();\n", false},
+		{"fixed_I_grow_element", "/* {row: \"fixed_I_grow_element\"} */\n", false},
+		{"fixed_I_grow_element", "# {row: \"fixed_I_grow_element\"}\n", false},
+		{"fixed_I_grow_element", "void fixed_I_grow_element_case()\n{\n}\n", false},
+		{"fixed_I_grow_element", "{row: \"fixed_I_grow_element\", widens: true},\n", true},
+		{"fixed_I_grow_element", "{name: \"fixed_I_grow_element\", widen: true},\n", true},
+		{"fixed_I_grow_element", "    fixed_I_grow_element_case();\n", true},
+		{"string_grow", "{row: \"wstring_grow\"},\n", false},
+		{"fixed_I_grow", "{row: \"fixed_I_grow_element\"},\n", false},
+	}
+	for _, c := range cases {
+		if got := rowRegistered(c.text, c.name); got != c.want {
+			t.Errorf("rowRegistered(%q, %q) = %v, want %v", c.text, c.name, got, c.want)
 		}
 	}
 }
