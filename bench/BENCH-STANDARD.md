@@ -770,12 +770,18 @@ that §2.1 fixes for the identity row, in the SAME sitting, interleaved by
 | `bench_fixed` | the identity entry | `write`, `round_trip` | **UNCHANGED**; no existing board moves |
 | `bench_fixed_read` | the identity entry, read alone | `read` | measured |
 | `bench_plan_read` | the OLDER entry, by its hash | `read` | measured |
+| `bench_mixed_read` | — the PACKET wire, same 64 logical records, read alone | `read` | measured — the gate's comparand (below) |
 
 **`bench_fixed_read` is not a convenience row; §2.9 forces it into existence.**
-The plan/identity ratio needs an identity read on the clock, and
-`bench_fixed`'s read is DERIVED and printed to stderr precisely so it can never
-be divided. Deriving the ratio's denominator would be the exact failure §2.9
-legislated against.
+A comparison of reads needs an identity read on the clock, and `bench_fixed`'s
+read is DERIVED and printed to stderr precisely so it can never be divided.
+Deriving a comparison's denominator would be the exact failure §2.9 legislated
+against. **`bench_mixed_read` exists for the same reason and on the same
+rule**: the gate below is against the packet wire's READ, the gen family's
+`bench_mixed` read is derived too, so this arm times the packet read ALONE in
+the same invocation. It is a row of this arm's sitting, keyed by its own name
+and `corpus_id`, and it is never folded into the published `gen` /
+`bench_mixed` / `round_trip` series the C/C++ pair lock is defined over.
 
 Everything §1.5, §1.6, §1.9 and §2 says applies unchanged: the golden gate
 before any clock, 1 discarded warmup plus 7 runs, best with median beside it,
@@ -824,66 +830,137 @@ bytes-per-record difference as a rate difference.
 > their OWN, keyed by row name, never folded into the `gen` / `bench_mixed`
 > curve the C/C++ pair lock is defined over.
 
-That is one line of filter and one line of key. **The `--check` teeth stay
-OFF these rows until the bound below is ratified**: `lockedLegs` gates the
-`bench_mixed` / `gen` / `round_trip` statistic and nothing else
-(`ledger.go:44`), and extending a gate to a new statistic is a ruling, not a
-filter change — the same reason the bitpacker rows sit outside the pair lock.
+That is one line of filter and one line of key, and `bench_mixed_read` rides
+in beside them under family `gen` with its own name. **The `--check` teeth stay
+OFF these rows**: `lockedLegs` gates the `bench_mixed` / `gen` / `round_trip`
+statistic and nothing else (`ledger.go:44`), and extending a gate to a new
+statistic is a ruling, not a filter change — the same reason the bitpacker rows
+sit outside the pair lock. The gate below lives in the paired driver's board,
+where both wires are measured in one sitting; the ledger's across-time teeth
+are a separate question and are not being answered here.
 
-#### The two ratios, and their bounds
+#### The gate is the packet wire, not a ratio
 
-| ratio | denominator | bound | status |
+**GLENN'S RULING, 2026-09-11, verbatim:** "We can find the bound only after we
+know how it should perform. I think if we find that we are slower than the
+equivalent packet wire (we should be faster) for the same lang, then we know we
+are a fail. The rest is by hand."
+
+**The ≤ 2.0x plan/identity bound this section proposed (PR #935) is WITHDRAWN as
+a gate.** It stays on the board as a REPORTED number, informational: nothing
+refuses a row on it, no leg fails on it, and no tool's `--check` knows it. A
+bound is found after we know how the thing should perform, not before the first
+number exists.
+
+**THE GATE, per leg, and it is the only automatic one this arm has.** For EACH
+of the two lanes — identity AND plan, each judged on its own — the fixed
+table's read of a record must be **FASTER than the SAME LEG's packet-wire read
+of the SAME logical record**. Slower is a **FAIL for that leg**. The fixed form
+is the form that reads a constant-size record through a compiled plan; it is
+supposed to beat the bitpacked wire it replaces, in its own language, on both
+lanes. Everything else on this board is judged **by hand** from the numbers:
+there is no other automatic threshold.
+
+**The exact rows compared.** The paired unit already carries both wires side by
+side over one shared-data oracle (§1.9), so the comparison is between rows of
+one sitting and invents no new corpus:
+
+| lane | fixed-form row (family `table`) | comparand (same leg, same sitting) | verdict |
 |---|---|---|---|
-| **identity / hand-written straight-line** | `test/bench/fixedform_measure.cpp` arm B, one constant-offset load per leaf, hand-written so the emitter does not grade its own homework | **≤ 1.5x** | RATIFIED, docs/SPEC-TABLES.md §3.4 — the price the one-reader-path ruling was bought with |
-| **plan / identity** | `bench_fixed_read` from the same invocation | **≤ 2.0x** | **PROPOSED** (below) |
+| identity | `bench_fixed_read` · `read` · measured | `bench_mixed_read` · family `gen` · `read` · measured | fixed-form row NOT faster → **FAIL** |
+| plan | `bench_plan_read` · `read` · measured | the same `bench_mixed_read` | fixed-form row NOT faster → **FAIL** |
 
-**Why 2.0x for plan / identity.** The identity lane is ONE pass over the
-record: empty fills, coalesced runs, a copy. A lineage read adds exactly one
-structural thing — the PREFILL, a second pass over the SAME destination bytes
-before the runs land (§4.3) — plus a run loop that is more fragmented, because
-a widening forbids the fold (§5.9 #33) and each widened element becomes its own
-entry. Fragmentation adds loop and dispatch overhead but touches **no new
-bytes**; the prefill is the only new traffic, and it is bounded by the
-destination's size, which is the identity read's own working set. So **two
-passes where identity pays one is the structural ceiling**, and 2.0x is the
-smallest constant the prefill alone cannot break. A leg above it is not paying
-for tolerance: it is re-reading the record, or dispatching per field where the
-plan should have coalesced, and the number is a coalescing defect to fix rather
-than a cost to accept. The bound is **per leg**, not an average — Glenn's gate
-is nine languages performant, and an average hides the one that is not.
+- **Both sides are MEASURED, and that is why `bench_mixed_read` exists.** §2.9
+  makes the gen family's packet `read` DERIVED — round-trip minus write,
+  stderr, never a CSV row — exactly so it can never be divided, and a gate is a
+  division. So the plan-read invocation times the packet wire's read ALONE, as
+  a row of its own, the same way `bench_fixed_read` was forced into existence
+  on the table side. **No derived number is ever the comparand.** The published
+  `bench_mixed` / `round_trip` rows are untouched and no existing board moves.
+- **One sitting, one iteration count per wire.** All three rows come out of ONE
+  invocation over the SAME 64 logical records, interleaved by §2.4, each wire at
+  the iteration count §2.1 fixes for it — fixed per benchmark, identical across
+  languages, above the 200 ms floor — so the `ns/record` the gate compares is
+  the same statistic in every leg. A fixed-form row is never compared against a
+  packet row it was not measured beside (§1.6: a different sitting is a
+  different `corpus_id`).
+- **A conservative shortcut that is always valid:** a round trip is never
+  cheaper than the read inside it, so a fixed-form read slower than the packet
+  leg's whole `round_trip` row is already a FAIL, with nothing derived and
+  nothing divided. It is sufficient and never necessary — the verdict is
+  against the packet READ.
+- **§5.3 rule 2 refuses this division on `bytes_per_op` and is right to**: a
+  packet record and a fixed record are different lengths by construction. Only
+  the paired driver may print it, the same exception §1.9 already grants it for
+  table-versus-packet, and the caption MUST name the record size on each wire so
+  nobody reads a bytes-per-record difference as a rate difference.
+- **The checks mismatch is LABELLED, not excused.** §1.9's label rides on this
+  board too: packet C/C++/C# is `checks=removed`, packet Go is `checks=always`,
+  table is `checks=contract`. The label is printed; the verdict is still
+  faster-or-FAIL.
+- **Per leg, never an average.** Glenn's gate is nine languages performant, and
+  an average hides the one that is not.
 
-`1.5 x 2.0 = 3.0x` is therefore the worst a backward read may cost against
-hand-written straight-line code, stated once so nobody has to multiply it
-themselves.
+**The 1.5x identity / hand-written bound is UNTOUCHED, and the two coexist.**
+`identity / hand-written straight-line ≤ 1.5x` (`test/bench/fixedform_measure.cpp`
+arm B, one constant-offset load per leaf, hand-written so the emitter does not
+grade its own homework) is RATIFIED in docs/SPEC-TABLES.md §3.4 — the
+reference's own, older rule, the price the one-reader-path ruling was bought
+with, and C++'s alone. Glenn's ruling neither relaxes nor restates it: a leg can
+pass the packet-wire gate and C++ can still owe §3.4 its ratio, and the two are
+read side by side on the board below. Nothing multiplies them together any more;
+the `1.5 x 2.0 = 3.0x` product this section used to state is withdrawn with the
+2.0x.
+
+**What the withdrawn 2.0x is still good for — as an expectation, not a gate.**
+The identity lane is ONE pass over the record: empty fills, coalesced runs, a
+copy. A lineage read adds exactly one structural thing — the PREFILL, a second
+pass over the SAME destination bytes before the runs land (§4.3) — plus a run
+loop that is more fragmented, because a widening forbids the fold (§5.9 #33)
+and each widened element becomes its own entry. Fragmentation adds loop and
+dispatch overhead but touches **no new bytes**; the prefill is the only new
+traffic, and it is bounded by the destination's size, which is the identity
+read's own working set. So two passes where identity pays one is the structural
+ceiling we EXPECT, and a leg far above it is worth a look: it is likely
+re-reading the record, or dispatching per field where the plan should have
+coalesced — a coalescing defect to fix rather than a cost to accept. That is a
+belief the board's reported `plan/identity` column checks against measurement,
+read by hand. It fails nothing on its own.
 
 #### The per-leg reporting shape
 
-Nine legs, three numbers each, one line per leg, on the paired driver's board
-beside `NINE.md`:
+Nine legs, three numbers and two verdicts each, one line per leg, on the paired
+driver's board beside `NINE.md`:
 
 ```
-# fixed form: the identity lane and the plan lane
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
 # host / arch / rev / lane / rounds / corpus_id(identity) / corpus_id(plan)
+# bytes_per_op: fixed 000 B/record, packet 000 B/record (§5.3 rule 2 — the division is this driver's alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)
 # C++ anchor: identity 000.0 ns/record / straight-line 000.0 = 0.00x  (bound 1.5x, SPEC-TABLES §3.4)
 
-leg      identity read    plan read    plan/identity
-         ns/record        ns/record    x (bound 2.0)
-cpp          00.0            00.0          0.00
-c            00.0            00.0          0.00
-go           00.0            00.0          0.00
-rust         00.0            00.0          0.00
-cs           00.0            00.0          0.00
-java         00.0            00.0          0.00
-js           00.0            00.0          0.00
-dart           —               —             —     no runner on this tree
-elixir       00.0            00.0          0.00
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
+cpp          00.0            00.0         00.0           PASS          PASS          0.00
+c            00.0            00.0         00.0           PASS          PASS          0.00
+go           00.0            00.0         00.0           PASS          PASS          0.00
+rust         00.0            00.0         00.0           PASS          PASS          0.00
+cs           00.0            00.0         00.0           PASS          PASS          0.00
+java         00.0            00.0         00.0           PASS          PASS          0.00
+js           00.0            00.0         00.0           PASS          PASS          0.00
+dart           —               —            —             —             —             —     no runner on this tree
+elixir       00.0            00.0         00.0           PASS          PASS          0.00
 ```
 
-Three rules about that page, each paying for a failure this standard already
+Four rules about that page, each paying for a failure this standard already
 names:
 
-- **The ratio column is the verdict and it is per leg.** A leg over 2.0x prints
-  its number and is marked, never dropped and never averaged away.
+- **The two GATE columns are the verdict, and they are per leg.** A lane not
+  faster than the same leg's packet read prints `FAIL` with both numbers
+  standing beside it, never dropped and never averaged away.
+- **The `plan/identity` column is REPORTED, never a verdict.** It prints the
+  number and no `PASS`/`FAIL`; the withdrawn 2.0x is the expectation it is read
+  against, by hand.
 - **A leg with no runner is NAMED with its reason**, in §1.9's and
   `nine.sh`'s own vocabulary — "no runner on this tree", "no leg in this driver
   yet", "runner present, but its rows do not belong to this sitting" are
@@ -918,7 +995,8 @@ names:
 17. `bench/tools/ledger.go` — admit `(table, bench_fixed_read|bench_plan_read, read)` as rows of their own; `lockedLegs` untouched.
 18. `bench/paired/main.go` — `-mode plan-read`: one invocation, the two rows, the distinct `corpus_id`, the `bytes_per_op` caption §5.3 rule 2 requires.
 19. `bench/paired/nine.sh` — the board above, three numbers per leg, the C++ anchor line, named refusals for absent legs.
-20. `docs/SPEC-TABLES.md` §3.4 — record the plan/identity bound once it is ratified; until then this section carries it as PROPOSED and nothing gates on it.
+20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (Glenn, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
+21. `bench/tables/<lang>/` + `bench/paired/main.go` — the PACKET leg's `bench_mixed_read`: the packet wire's read timed ALONE in the plan-read invocation, measured, the gate's comparand, never folded into the published `gen` / `bench_mixed` series.
 
 
 ---

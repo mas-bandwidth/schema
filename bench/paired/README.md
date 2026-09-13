@@ -368,20 +368,24 @@ corpus and hashes into `corpus_id` with the bytes, because a lock edit silently
 changes which plan ran.
 
 **The rows.** `bench_fixed` is untouched — `write` + `round_trip`, read derived
-— so no published board moves. The arm adds two:
+— so no published board moves. The arm adds three:
 
 | row | `LOAD` selects | path |
 |---|---|---|
 | `bench_fixed_read` | the identity entry, read alone | `read` |
 | `bench_plan_read` | the OLDER entry, by its hash | `read` |
+| `bench_mixed_read` | — the PACKET wire, same 64 logical records, read alone | `read` |
 
-`bench_fixed_read` exists because §2.9 forces it: the ratio's denominator has to
-be a measured identity read, and `bench_fixed`'s read is derived to stderr
-precisely so it can never be divided.
+`bench_fixed_read` exists because §2.9 forces it: a compared read has to be a
+measured read, and `bench_fixed`'s read is derived to stderr precisely so it can
+never be divided. `bench_mixed_read` exists for the same reason on the packet
+side: the gate below is against the packet wire's READ, and the gen family's
+packet read is derived too, so this arm times it alone. It belongs to this arm's
+sitting and is never folded into the published `gen` / `bench_mixed` series.
 
-Both rows come out of ONE invocation, at the same uniform iteration count per
-wire as the identity row, over the same 64 records, in the same sitting,
-interleaved. That invocation loads the two lineage files and the lock in
+All three rows come out of ONE invocation, at the iteration count §2.1 fixes for
+each wire (fixed per benchmark, identical across languages), over the same 64
+records, in the same sitting, interleaved. That invocation loads the two lineage files and the lock in
 ADDITION to the identity goldens, so its `corpus_id` differs from the ordinary
 table pass's by §1.6's own definition: the ratio's two halves share an id and
 are divisible, and neither can ever be divided against a `bench_fixed` row it
@@ -404,27 +408,53 @@ identity lane twice.
 **The board: nine legs, three numbers each.**
 
 ```
-# fixed form: the identity lane and the plan lane
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
 # host / arch / rev / lane / rounds / corpus_id(identity) / corpus_id(plan)
+# bytes_per_op: fixed 000 B/record, packet 000 B/record (§5.3 rule 2 — this driver's division alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always
 # C++ anchor: identity 000.0 ns/record / straight-line 000.0 = 0.00x  (bound 1.5x)
 
-leg      identity read    plan read    plan/identity
-         ns/record        ns/record    x (bound 2.0)
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
 ```
 
-Two bounds. **identity / hand-written straight-line ≤ 1.5x** is ratified
-(docs/SPEC-TABLES.md §3.4) and is C++'s alone — arm B of
-`fixedform_measure.cpp` is hand-written, and nine hand-maintained layouts would
-be nine chances for the comparand to be wrong in a leg-specific way, so the
-anchor line is where that ratio lives and no leg owes a hand-written arm.
-**plan / identity ≤ 2.0x is PROPOSED**: the identity lane is one pass over the
-record, a lineage read adds exactly one structural thing — the prefill, a second
-pass over the same destination bytes — and fragmenting the runs costs loop
-overhead but touches no new bytes, so two passes where identity pays one is the
-structural ceiling. A leg above it is re-reading the record or dispatching per
-field where the plan should have coalesced: a coalescing defect to fix, not a
-cost of tolerance. The bound is per leg, never an average, because the gate is
-nine languages performant and an average hides the one that is not.
+**The gate is the packet wire, not a ratio.** Glenn's ruling, 2026-09-11,
+verbatim: "We can find the bound only after we know how it should perform. I
+think if we find that we are slower than the equivalent packet wire (we should
+be faster) for the same lang, then we know we are a fail. The rest is by hand."
+
+So, per leg: each lane — identity AND plan, judged separately — must be FASTER
+than the SAME LEG's packet-wire read of the SAME logical record, or that leg
+FAILS. The rows compared are `bench_fixed_read` and `bench_plan_read` against
+`bench_mixed_read`, all measured, all out of the one invocation above, so no
+derived number is ever divided and no row is compared against one it was not
+measured beside. A conservative shortcut is always available: a round trip is
+never cheaper than the read inside it, so a fixed-form read slower than the
+packet leg's whole `round_trip` is already a FAIL. §5.3 rule 2 refuses this
+division on `bytes_per_op` — the two wires' records are different lengths by
+construction — so this driver is the only tool that prints it and its caption
+names the size on each wire. The checks mismatch is labelled on the board and
+not excused. Per leg, never an average, because the gate is nine languages
+performant and an average hides the one that is not. **Everything else on this
+board is judged by hand; there is no other automatic threshold.**
+
+**plan / identity ≤ 2.0x is WITHDRAWN as a gate** (it was PROPOSED by PR #935)
+and is now a REPORTED number in the last column, informational, failing nothing.
+The reasoning is kept as the expectation it checks: the identity lane is one
+pass over the record, a lineage read adds exactly one structural thing — the
+prefill, a second pass over the same destination bytes — and fragmenting the
+runs costs loop overhead but touches no new bytes, so two passes where identity
+pays one is the ceiling we expect. A leg far above it is likely re-reading the
+record or dispatching per field where the plan should have coalesced: a
+coalescing defect worth a look, read by hand.
+
+**identity / hand-written straight-line ≤ 1.5x is untouched**, and the two
+coexist. It is ratified in docs/SPEC-TABLES.md §3.4 — the reference's own, older
+rule — and C++'s alone: arm B of `fixedform_measure.cpp` is hand-written, and
+nine hand-maintained layouts would be nine chances for the comparand to be wrong
+in a leg-specific way, so the anchor line is where that ratio lives and no leg
+owes a hand-written arm. Glenn's ruling neither relaxes nor restates it; nothing
+multiplies the two together any more.
 
 A leg with no runner is NAMED with its reason in `nine.sh`'s own vocabulary and
 never estimated. Eight table runners exist under `bench/tables/` today; Dart's
@@ -435,7 +465,9 @@ This mode publishes nothing and seals nothing until a confirmation pass carries
 it: like fast mode it is the diagnostic, and the certified sitting is still
 `-mode run` inside the quiet window. `bench/tools/ledger.go` must admit
 `(family table, bench_fixed_read | bench_plan_read, path read)` as series of
-their own, keyed by row name and never folded into the `gen` / `bench_mixed`
-curve the C/C++ pair lock is defined over; the `--check` teeth stay off these
-rows until the plan/identity bound is ratified, because extending a gate to a
-new statistic is a ruling and not a filter change.
+their own — and `bench_mixed_read` beside them under family `gen` — keyed by row
+name and never folded into the `gen` / `bench_mixed` `round_trip` curve the
+C/C++ pair lock is defined over; the `--check` teeth stay off these rows,
+because extending a gate to a new statistic is a ruling and not a filter change.
+The packet-wire gate above is this driver's board, where both wires are measured
+in one sitting; the ledger's across-time teeth are a separate question.
