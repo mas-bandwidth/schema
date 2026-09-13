@@ -412,7 +412,8 @@ tables-cs-view: build/tables-generated-cs/.stamp
 # TWO CONFIGURATIONS, TWO NAMES, AND A COMBINED ONE — because the pair was 74 s
 # and the owner's rule is one to two minutes for anything a child iterates on.
 # Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
-# `make tables-cs-leg` is still the gate: CI and the release path run both.
+# `make tables-cs-leg` remains the full-CI and release gate, running both.
+# Fast CI uses Debug with versioning to stay within its two-minute budget.
 tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
 
 tables-cs-leg-debug: build/tables-generated-cs/.stamp

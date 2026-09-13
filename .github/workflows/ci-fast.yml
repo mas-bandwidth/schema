@@ -545,6 +545,7 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
+      # C# runs Debug here; full CI keeps both Debug and Release.
       # THE TWO GATES. The target names are the tree's own — the same ones
       # `make test` and ci-full.yml run — so a leg that renames a gate renames
       # it in one place and this row follows.
@@ -557,7 +558,7 @@ jobs:
             c)      make tables-c-fixedform tables-c-versioning ;;
             rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
-            cs)     make tables-cs-leg tables-cs-versioning ;;
+            cs)     make tables-cs-leg-debug tables-cs-versioning ;;
             java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
