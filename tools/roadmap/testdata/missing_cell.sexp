@@ -1,5 +1,5 @@
 (:schema 1
- :root "schema"
+ :root "rm"
  :nodes
  ((:id "task-1"
    :type :task

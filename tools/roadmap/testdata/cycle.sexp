@@ -1,5 +1,5 @@
 (:schema 1
- :root "schema"
+ :root "ws-a"
  :nodes
  ((:id "ws-a"
    :type :work-set
