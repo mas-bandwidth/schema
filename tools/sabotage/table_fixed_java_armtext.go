@@ -16,9 +16,17 @@ package main
 
 func init() {
 	sabotages["fixed-form-java-arm-text-flavour"] = []edit{
+		// THE ARITY IS THE TEN-ARGUMENT `push`'s, AND `meta` IS ITS LAST
+		// PARAMETER. The encoding this plants had no meta lane at all: the
+		// flavour went into `arg`, the ARM ORDINAL's own slot, through the
+		// NINE-argument overload. Spelling it as a ten-argument call with
+		// `arg` last put a `long` in a `byte` parameter and javac refused the
+		// sabotaged tree outright (`possible lossy conversion from long to
+		// byte`) -- a control that cannot compile is a control that never
+		// reaches the gate it names.
 		{
 			old: "c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);",
-			new: "c.push(theirAt, at, units, auxAt, guard, opText, meta, (byte) 0, (byte) 0, arg); // SABOTAGED: the flavour over the arm ordinal",
+			new: "c.push(theirAt, at, units, auxAt, guard, opText, meta, (byte) 0, (byte) 0); // SABOTAGED: the flavour over the arm ordinal",
 		},
 		{
 			old: "final int unit = (p.meta == textWide) ? 2 : 1;",
