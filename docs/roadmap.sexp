@@ -1,7 +1,7 @@
-; Restricted work data. Scope changes are explicit; the roadmap is a generated view.
+; Restricted work data. Implementation and acceptance are distinct; the roadmap is generated.
 (:schema 1 :root "schema/fixed-tables-goal" :inventory-status
- "Expanded source survey; evidence reconciliation in progress, not a certified total" :source-audit
- "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5647865348" :scope-note
+ "Ordinary capabilities source-reconciled at e3e88a46; original audit families still undergoing evidence reconciliation"
+ :source-audit "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5647865348" :scope-note
  "Only NEW Fixed Tables is active here. Existing acceptance gates remain; Future work is outside these language denominators. Grouping is not a waiver of any underlying requirement."
  :historical-aliases
  (("L1-L7" ("shared/lock-rules" "R9")) ("F5" ("R8" "R9" "R10")) ("F6" ("R8" "R9" "R10")) ("E2" ("R8" "R15"))
@@ -3814,1634 +3814,3216 @@
   (:id "integration" :type :task :title "Land and verify the completed fixed-form integration on main" :state
    :todo :evidence ("https://github.com/mas-bandwidth/schema/pull/836") :note
    "PR836 remains draft/open at8ea5ed8e. Full CI34757393846 passed72/72 jobs, but that does not close semantic acceptance or constitute a main merge.")
-  (:id "bool-values/cpp/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form bool-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "bool-values/cpp/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/cpp" :type :work-set :children ("bool-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/c/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/c" :type :work-set :children ("bool-values/c/valid-data") :category "ordinary-capability"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "bool-values/cpp" :type :work-set :children ("bool-values/cpp/valid-data") :category "ordinary-capability"
    :discovered-in-scope-revision 2)
-  (:id "bool-values/cs/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/cs" :type :work-set :children ("bool-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/go/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/go" :type :work-set :children ("bool-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/rust/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/rust" :type :work-set :children ("bool-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/java/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/java" :type :work-set :children ("bool-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/js/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/js" :type :work-set :children ("bool-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/dart/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/dart" :type :work-set :children ("bool-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bool-values/elixir/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bool" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bool-values/elixir" :type :work-set :children ("bool-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/cpp/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/cpp" :type :work-set :children ("signed-integers/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/c/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/c" :type :work-set :children ("signed-integers/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/cs/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/cs" :type :work-set :children ("signed-integers/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/go/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/go" :type :work-set :children ("signed-integers/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/rust/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/rust" :type :work-set :children ("signed-integers/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/java/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/java" :type :work-set :children ("signed-integers/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/js/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/js" :type :work-set :children ("signed-integers/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/dart/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/dart" :type :work-set :children ("signed-integers/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-integers/elixir/valid-data" :type :task :title
-   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, int8..int64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-integers/elixir" :type :work-set :children ("signed-integers/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/cpp/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/cpp" :type :work-set :children ("unsigned-integers/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/c/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/c" :type :work-set :children ("unsigned-integers/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/cs/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/cs" :type :work-set :children ("unsigned-integers/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/go/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/go" :type :work-set :children ("unsigned-integers/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/rust/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/rust" :type :work-set :children ("unsigned-integers/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/java/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/java" :type :work-set :children ("unsigned-integers/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/js/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/js" :type :work-set :children ("unsigned-integers/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/dart/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/dart" :type :work-set :children ("unsigned-integers/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-integers/elixir/valid-data" :type :task :title
-   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, uint8..uint64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-integers/elixir" :type :work-set :children ("unsigned-integers/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-128/cpp/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/cpp" :type :work-set :children ("signed-128/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-128/c/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/c" :type :work-set :children ("signed-128/c/valid-data") :category "ordinary-capability"
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "bool-values/c/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/c-tables/fixedform_fu1.c:67" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "bool-values/c" :type :work-set :children ("bool-values/c/valid-data") :category "ordinary-capability"
    :discovered-in-scope-revision 2)
-  (:id "signed-128/cs/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/cs" :type :work-set :children ("signed-128/cs/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "signed-128/go/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/go" :type :work-set :children ("signed-128/go/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "signed-128/rust/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/rust" :type :work-set :children ("signed-128/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-128/java/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/java" :type :work-set :children ("signed-128/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-128/js/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/js" :type :work-set :children ("signed-128/js/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "signed-128/dart/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/dart" :type :work-set :children ("signed-128/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-128/elixir/valid-data" :type :task :title
-   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, int128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-128/elixir" :type :work-set :children ("signed-128/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/cpp/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/cpp" :type :work-set :children ("unsigned-128/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/c/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/c" :type :work-set :children ("unsigned-128/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/cs/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/cs" :type :work-set :children ("unsigned-128/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/go/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/go" :type :work-set :children ("unsigned-128/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/rust/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/rust" :type :work-set :children ("unsigned-128/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/java/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/java" :type :work-set :children ("unsigned-128/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/js/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/js" :type :work-set :children ("unsigned-128/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/dart/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/dart" :type :work-set :children ("unsigned-128/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-128/elixir/valid-data" :type :task :title
-   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, uint128" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-128/elixir" :type :work-set :children ("unsigned-128/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/cpp/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/cpp" :type :work-set :children ("ranged-integers/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/c/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/c" :type :work-set :children ("ranged-integers/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/cs/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/cs" :type :work-set :children ("ranged-integers/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/go/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/go" :type :work-set :children ("ranged-integers/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/rust/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/rust" :type :work-set :children ("ranged-integers/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/java/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/java" :type :work-set :children ("ranged-integers/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/js/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/js" :type :work-set :children ("ranged-integers/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/dart/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/dart" :type :work-set :children ("ranged-integers/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "ranged-integers/elixir/valid-data" :type :task :title
-   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ranged integer" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "ranged-integers/elixir" :type :work-set :children ("ranged-integers/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/cpp/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/cpp" :type :work-set :children ("bits-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/c/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/c" :type :work-set :children ("bits-values/c/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "bits-values/cs/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/cs" :type :work-set :children ("bits-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/go/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/go" :type :work-set :children ("bits-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/rust/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/rust" :type :work-set :children ("bits-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/java/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/java" :type :work-set :children ("bits-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/js/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/js" :type :work-set :children ("bits-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/dart/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/dart" :type :work-set :children ("bits-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "bits-values/elixir/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "bits-values/elixir" :type :work-set :children ("bits-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/cpp/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/cpp" :type :work-set :children ("float32-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/c/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/c" :type :work-set :children ("float32-values/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/cs/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/cs" :type :work-set :children ("float32-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/go/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/go" :type :work-set :children ("float32-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/rust/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/rust" :type :work-set :children ("float32-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/java/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/java" :type :work-set :children ("float32-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/js/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/js" :type :work-set :children ("float32-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/dart/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/dart" :type :work-set :children ("float32-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float32-values/elixir/valid-data" :type :task :title
-   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float32-values/elixir" :type :work-set :children ("float32-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/cpp/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/cpp" :type :work-set :children ("float64-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/c/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/c" :type :work-set :children ("float64-values/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/cs/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/cs" :type :work-set :children ("float64-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/go/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/go" :type :work-set :children ("float64-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/rust/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/rust" :type :work-set :children ("float64-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/java/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/java" :type :work-set :children ("float64-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/js/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/js" :type :work-set :children ("float64-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/dart/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/dart" :type :work-set :children ("float64-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "float64-values/elixir/valid-data" :type :task :title
-   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, float64" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "float64-values/elixir" :type :work-set :children ("float64-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/cpp/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/cpp" :type :work-set :children ("compressed-floats/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/c/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/c" :type :work-set :children ("compressed-floats/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/cs/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/cs" :type :work-set :children ("compressed-floats/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/go/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/go" :type :work-set :children ("compressed-floats/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/rust/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/rust" :type :work-set :children ("compressed-floats/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/java/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/java" :type :work-set :children ("compressed-floats/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/js/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/js" :type :work-set :children ("compressed-floats/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/dart/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/dart" :type :work-set :children ("compressed-floats/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "compressed-floats/elixir/valid-data" :type :task :title
-   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "compressed-floats/elixir" :type :work-set :children ("compressed-floats/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/cpp/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/cpp" :type :work-set :children ("signed-fixed-point/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/c/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/c" :type :work-set :children ("signed-fixed-point/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/cs/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/cs" :type :work-set :children ("signed-fixed-point/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/go/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/go" :type :work-set :children ("signed-fixed-point/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/rust/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/rust" :type :work-set :children ("signed-fixed-point/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/java/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/java" :type :work-set :children ("signed-fixed-point/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/js/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/js" :type :work-set :children ("signed-fixed-point/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/dart/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/dart" :type :work-set :children ("signed-fixed-point/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "signed-fixed-point/elixir/valid-data" :type :task :title
-   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, fixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "signed-fixed-point/elixir" :type :work-set :children ("signed-fixed-point/elixir/valid-data")
+  (:verification "runtime-assertions-mapped" :remaining nil :id "bool-values/cs/valid-data" :type :task
+   :title "Boolean values: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:998"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "bool-values/cs" :type :work-set :children ("bool-values/cs/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/cpp/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/cpp" :type :work-set :children ("unsigned-fixed-point/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/c/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/c" :type :work-set :children ("unsigned-fixed-point/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/cs/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/cs" :type :work-set :children ("unsigned-fixed-point/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/go/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/go" :type :work-set :children ("unsigned-fixed-point/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/rust/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/rust" :type :work-set :children ("unsigned-fixed-point/rust/valid-data")
+  (:verification
+   "Coordinator read exact assertions and invocation: bool byte checks in slow-generated runtime run under SCHEMA_SLOW=1 in full CI; file roundtrip and measure compare the external C++ corpus in active FAST matched gate. No other row credited from these checks."
+   :remaining nil :id "bool-values/go/valid-data" :type :task :title
+   "Boolean values: valid-data write/read acceptance" :state :done :evidence
+   ("internal/codegen/gotable/fixedform_test.go:621" "internal/codegen/gotable/fixedform_test.go:632"
+    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "bool-values/go" :type :work-set :children ("bool-values/go/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/java/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/java" :type :work-set :children ("unsigned-fixed-point/java/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/js/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/js" :type :work-set :children ("unsigned-fixed-point/js/valid-data") :category
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "bool-values/rust/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:1504" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "bool-values/rust" :type :work-set :children ("bool-values/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/dart/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/dart" :type :work-set :children ("unsigned-fixed-point/dart/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "unsigned-fixed-point/elixir/valid-data" :type :task :title
-   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, ufixed(I,F)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "unsigned-fixed-point/elixir" :type :work-set :children ("unsigned-fixed-point/elixir/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/cpp/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/cpp" :type :work-set :children ("flags-values/cpp/valid-data") :category
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "bool-values/java/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :unknown :evidence ("test/java-fixedform/src/BenchFixed.java:159") :contract "§3.4 record, bool"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "bool-values/java" :type :work-set :children
+   ("bool-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "bool-values/js/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/js-tables/fixedform.mjs:325" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:126" "ir/fixedform.go:237") :implementation :implemented :id
+   "bool-values/js" :type :work-set :children ("bool-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "bool-values/dart/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/dart-tables/fixedform.dart:683" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:199" "ir/fixedform.go:237") :implementation :implemented :id
+   "bool-values/dart" :type :work-set :children ("bool-values/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/c/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "bool-values/elixir/valid-data" :type :task :title "Boolean values: valid-data write/read acceptance"
+   :state :unknown :evidence ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract
+   "§3.4 record, bool" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "bool-values/elixir" :type :work-set :children
+   ("bool-values/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete signed-integers values/boundaries not covered by cited assertions."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "signed-integers/cpp/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/fixedform_main.cpp:106" "test/tables/versioning_numbers.cpp:344") :contract
+   "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-integers/cpp" :type :work-set :children ("signed-integers/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete signed-integers feature coverage beyond the cited assertions; the full CI total does not certify every shape or boundary."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "signed-integers/c/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/ctable/fixedversioning_test.go:137") :contract "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-integers/c" :type :work-set :children ("signed-integers/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately.")
+   :id "signed-integers/cs/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:134") :contract "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "signed-integers/cs" :type :work-set :children
+   ("signed-integers/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately.")
+   :id "signed-integers/go/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/gotable/fixedform_test.go:169" "internal/codegen/gotable/fixedversioning_test.go:97")
+   :contract "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "signed-integers/go" :type :work-set :children
+   ("signed-integers/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form signed-integers read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "signed-integers/rust/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
+   :contract "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-integers/rust" :type :work-set :children ("signed-integers/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately."
+    "BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "signed-integers/java/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/Main.java:88" "test/java-fixedform/src/BenchFixed.java:135") :contract
+   "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "signed-integers/java" :type :work-set :children
+   ("signed-integers/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-integers/js/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/js-tables/fixedform.mjs:306" "make/js.mk:449" ".github/workflows/ci-fast.yml:560") :contract
+   "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:126" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-integers/js" :type :work-set :children ("signed-integers/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-integers/dart/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/dart-tables/fixedform.dart:663" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563") :contract
+   "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:199" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-integers/dart" :type :work-set :children ("signed-integers/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "signed-integers/elixir/valid-data" :type :task :title
+   "Signed integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, int8..int64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "signed-integers/elixir" :type :work-set :children
+   ("signed-integers/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete unsigned-integers values/boundaries not covered by cited assertions."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "unsigned-integers/cpp/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/fixedform_main.cpp:106") :contract "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-integers/cpp" :type :work-set :children ("unsigned-integers/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete unsigned-integers values/boundaries not covered by cited assertions."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "unsigned-integers/c/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/c-tables/fixedform_fx1.c:126") :contract "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-integers/c" :type :work-set :children ("unsigned-integers/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately.")
+   :id "unsigned-integers/cs/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:134") :contract "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "unsigned-integers/cs" :type :work-set :children
+   ("unsigned-integers/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately."
+    "Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "unsigned-integers/go/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "unsigned-integers/go" :type :work-set :children
+   ("unsigned-integers/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-integers read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Verify all four widths (8,16,32,64), signedness edges and exact round-trip values; one tested width is insufficient for this grouped row.")
+   :id "unsigned-integers/rust/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence nil
+   :contract "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-integers/rust" :type :work-set :children ("unsigned-integers/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped cases do not establish every 8/16/32/64-bit boundary; retain width-by-width certification separately."
+    "BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "unsigned-integers/java/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/Main.java:88" "test/java-fixedform/src/BenchFixed.java:132") :contract
+   "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "unsigned-integers/java" :type :work-set :children
+   ("unsigned-integers/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-integers/js/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/js-tables/fixedform.mjs:303" "make/js.mk:449" ".github/workflows/ci-fast.yml:560") :contract
+   "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:126" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-integers/js" :type :work-set :children ("unsigned-integers/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-integers/dart/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/dart-tables/fixedform.dart:662" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563") :contract
+   "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:199" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-integers/dart" :type :work-set :children ("unsigned-integers/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "Representative runtime corpus fields are asserted; reconcile explicit cases for every 8/16/32/64-bit width before full row certification."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "unsigned-integers/elixir/valid-data" :type :task :title
+   "Unsigned integers: 8, 16, 32 and 64 bits: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, uint8..uint64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "unsigned-integers/elixir" :type :work-set :children
+   ("unsigned-integers/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form signed-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "signed-128/cpp/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:373") :implementation :implemented :id "signed-128/cpp" :type
+   :work-set :children ("signed-128/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form signed-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "signed-128/c/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:347") :implementation :implemented :id "signed-128/c" :type
+   :work-set :children ("signed-128/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "signed-128/cs/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:453"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "signed-128/cs" :type :work-set :children ("signed-128/cs/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "signed-128/go/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract "§3.4 record, int128"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "signed-128/go" :type :work-set :children ("signed-128/go/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form signed-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "signed-128/rust/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:534") :implementation :implemented :id "signed-128/rust" :type
+   :work-set :children ("signed-128/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "signed-128/java/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:155") :contract "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "signed-128/java" :type :work-set :children
+   ("signed-128/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-128/js/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:361" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:195" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-128/js" :type :work-set :children ("signed-128/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-128/dart/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:740" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:230" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-128/dart" :type :work-set :children ("signed-128/dart/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "signed-128/elixir/valid-data" :type :task :title
+   "Signed 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, int128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "signed-128/elixir" :type :work-set :children
+   ("signed-128/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-128/cpp/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:373") :implementation :implemented :id "unsigned-128/cpp" :type
+   :work-set :children ("unsigned-128/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-128/c/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:347") :implementation :implemented :id "unsigned-128/c" :type
+   :work-set :children ("unsigned-128/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "unsigned-128/cs/valid-data" :type :task
+   :title "Unsigned 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:456"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "unsigned-128/cs" :type :work-set :children
+   ("unsigned-128/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "unsigned-128/go/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract "§3.4 record, uint128"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "unsigned-128/go" :type :work-set :children
+   ("unsigned-128/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-128 read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-128/rust/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:534") :implementation :implemented :id "unsigned-128/rust" :type
+   :work-set :children ("unsigned-128/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "unsigned-128/java/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:153") :contract "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "unsigned-128/java" :type :work-set :children
+   ("unsigned-128/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-128/js/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:360" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:195" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-128/js" :type :work-set :children ("unsigned-128/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-128/dart/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:738" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:230" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-128/dart" :type :work-set :children ("unsigned-128/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "unsigned-128/elixir/valid-data" :type :task :title
+   "Unsigned 128-bit integers: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, uint128" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "unsigned-128/elixir" :type :work-set :children
+   ("unsigned-128/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form ranged-integers read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "ranged-integers/cpp/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135"
+    "internal/codegen/cpptable/fixedform.go:879")
+   :implementation :implemented :id "ranged-integers/cpp" :type :work-set :children
+   ("ranged-integers/cpp/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "ranged-integers/c/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_v1.c:100" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135"
+    "internal/codegen/ctable/fixedform.go:897")
+   :implementation :implemented :id "ranged-integers/c" :type :work-set :children
+   ("ranged-integers/c/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "ranged-integers/cs/valid-data" :type :task
+   :title "Ranged integer fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:591"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "ranged-integers/cs" :type :work-set :children
+   ("ranged-integers/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "ranged-integers/go/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "ranged-integers/go" :type :work-set :children
+   ("ranged-integers/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "ranged-integers/rust/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:1747" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135"
+    "internal/codegen/rusttable/fixedform.go:1520")
+   :implementation :implemented :id "ranged-integers/rust" :type :work-set :children
+   ("ranged-integers/rust/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "ranged-integers/java/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:130") :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "ranged-integers/java" :type :work-set :children
+   ("ranged-integers/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "ranged-integers/js/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:317" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:605" "ir/fixedform.go:237") :implementation :implemented :id
+   "ranged-integers/js" :type :work-set :children ("ranged-integers/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "ranged-integers/dart/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:677" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:948" "ir/fixedform.go:237") :implementation :implemented :id
+   "ranged-integers/dart" :type :work-set :children ("ranged-integers/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "ranged-integers/elixir/valid-data" :type :task :title
+   "Ranged integer fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, ranged integer" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:958" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "ranged-integers/elixir" :type :work-set :children
+   ("ranged-integers/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form bits-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "bits-values/cpp/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "bits-values/cpp" :type :work-set :children ("bits-values/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form bits-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "bits-values/c/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "bits-values/c" :type :work-set :children ("bits-values/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "generation-only" :remaining
+   ("fixedbounds_test asserts generated source, not executed C# values; map a fixed-form runtime bits assertion.")
+   :id "bits-values/cs/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence ("internal/codegen/cstable/fixedbounds_test.go:12") :contract
+   "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "bits-values/cs" :type :work-set :children ("bits-values/cs/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "bits-values/go/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413")
+   :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "bits-values/go" :type :work-set :children ("bits-values/go/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form bits-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "bits-values/rust/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "bits-values/rust" :type :work-set :children ("bits-values/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "bits-values/java/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence ("test/java-fixedform/src/BenchFixed.java:129") :contract "§3.4 record, bits(N)"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "bits-values/java" :type :work-set :children
+   ("bits-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "bits-values/js/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/js-tables/fixedform.mjs:298" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:658" "ir/fixedform.go:237") :implementation :implemented :id
+   "bits-values/js" :type :work-set :children ("bits-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "bits-values/dart/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/dart-tables/fixedform.dart:655" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:899" "ir/fixedform.go:237") :implementation :implemented :id
+   "bits-values/dart" :type :work-set :children ("bits-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "bits-values/elixir/valid-data" :type :task :title "bits(N) fields: valid-data write/read acceptance"
+   :state :unknown :evidence ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract
+   "§3.4 record, bits(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "bits-values/elixir" :type :work-set :children
+   ("bits-values/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "float32-values/cpp/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:191" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "float32-values/cpp" :type :work-set :children ("float32-values/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form float32-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "float32-values/c/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "float32-values/c" :type :work-set :children ("float32-values/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "float32-values/cs/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "float32-values/cs" :type :work-set :children
+   ("float32-values/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "float32-values/go/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract "§3.4 record, float32"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "float32-values/go" :type :work-set :children
+   ("float32-values/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "float32-values/rust/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:164" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "float32-values/rust" :type :work-set :children ("float32-values/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "float32-values/java/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/Main.java:222" "test/java-fixedform/src/BenchFixed.java:150") :contract
+   "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "float32-values/java" :type :work-set :children
+   ("float32-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "float32-values/js/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:357" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:131" "ir/fixedform.go:237") :implementation :implemented :id
+   "float32-values/js" :type :work-set :children ("float32-values/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "float32-values/dart/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:735" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:203" "ir/fixedform.go:237") :implementation :implemented :id
+   "float32-values/dart" :type :work-set :children ("float32-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "float32-values/elixir/valid-data" :type :task :title
+   "32-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, float32" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:458" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "float32-values/elixir" :type :work-set :children
+   ("float32-values/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete float64-values values/boundaries not covered by cited assertions.") :id
+   "float64-values/cpp/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/versioning_numbers.cpp:661" "test/tables/versioning_numbers.cpp:668") :contract
+   "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "float64-values/cpp" :type :work-set :children ("float64-values/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form float64-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "float64-values/c/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "float64-values/c" :type :work-set :children ("float64-values/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "float64-values/cs/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "float64-values/cs" :type :work-set :children
+   ("float64-values/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "float64-values/go/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract "§3.4 record, float64"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "float64-values/go" :type :work-set :children
+   ("float64-values/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form float64-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "float64-values/rust/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "float64-values/rust" :type :work-set :children ("float64-values/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "float64-values/java/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:151") :contract "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "float64-values/java" :type :work-set :children
+   ("float64-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "float64-values/js/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:358" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:133" "ir/fixedform.go:237") :implementation :implemented :id
+   "float64-values/js" :type :work-set :children ("float64-values/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "float64-values/dart/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:736" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:205" "ir/fixedform.go:237") :implementation :implemented :id
+   "float64-values/dart" :type :work-set :children ("float64-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "float64-values/elixir/valid-data" :type :task :title
+   "64-bit floating-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, float64" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:462" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "float64-values/elixir" :type :work-set :children
+   ("float64-values/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form compressed-floats read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "compressed-floats/cpp/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135" "ir/fixedform.go:617") :implementation
+   :implemented :id "compressed-floats/cpp" :type :work-set :children ("compressed-floats/cpp/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form compressed-floats read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "compressed-floats/c/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135" "ir/fixedform.go:617") :implementation
+   :implemented :id "compressed-floats/c" :type :work-set :children ("compressed-floats/c/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "compressed-floats/cs/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence nil :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "compressed-floats/cs" :type :work-set :children
+   ("compressed-floats/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "compressed-floats/go/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence ("bench/tables/go/table_main.go:413" "internal/codegen/gotable/fixedcfloat_test.go:185")
+   :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "compressed-floats/go" :type :work-set :children
+   ("compressed-floats/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete compressed-floats values/boundaries not covered by cited assertions.") :id
+   "compressed-floats/rust/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence ("test/rust-fixedform/src/main.rs:1066") :contract
+   "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135" "ir/fixedform.go:617")
+   :implementation :implemented :id "compressed-floats/rust" :type :work-set :children
+   ("compressed-floats/rust/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "compressed-floats/java/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence ("test/java-fixedform/src/BenchFixed.java:147") :contract
+   "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "compressed-floats/java" :type :work-set :children
+   ("compressed-floats/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "compressed-floats/js/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:354" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:131" "ir/fixedform.go:237") :implementation :implemented :id
+   "compressed-floats/js" :type :work-set :children ("compressed-floats/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "compressed-floats/dart/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:732" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:203" "ir/fixedform.go:237") :implementation :implemented :id
+   "compressed-floats/dart" :type :work-set :children ("compressed-floats/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "compressed-floats/elixir/valid-data" :type :task :title
+   "Compressed-float declarations stored as float32: valid-data write/read acceptance" :state :unknown
+   :evidence ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract
+   "§3.4 record; ALGORITHM §5.9 compressed-float rulings" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:458" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "compressed-floats/elixir" :type :work-set :children
+   ("compressed-floats/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete signed-fixed-point values/boundaries not covered by cited assertions.") :id
+   "signed-fixed-point/cpp/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/versioning_numbers.cpp:886") :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-fixed-point/cpp" :type :work-set :children ("signed-fixed-point/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete signed-fixed-point feature coverage beyond the cited assertions; the full CI total does not certify every shape or boundary.")
+   :id "signed-fixed-point/c/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/ctable/fixedversioning_test.go:124") :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-fixed-point/c" :type :work-set :children ("signed-fixed-point/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "signed-fixed-point/cs/valid-data" :type
+   :task :title "Signed fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:454" "test/cs-tables/src/FixedFormChecks.cs:501"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "signed-fixed-point/cs" :type :work-set :children
+   ("signed-fixed-point/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "signed-fixed-point/go/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "signed-fixed-point/go" :type :work-set :children
+   ("signed-fixed-point/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete signed-fixed-point feature coverage beyond the cited assertions; the full CI total does not certify every shape or boundary.")
+   :id "signed-fixed-point/rust/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/rusttable/fixedversioning_test.go:150") :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "signed-fixed-point/rust" :type :work-set :children ("signed-fixed-point/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "signed-fixed-point/java/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:139") :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "signed-fixed-point/java" :type :work-set :children
+   ("signed-fixed-point/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-fixed-point/js/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:309" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:126" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-fixed-point/js" :type :work-set :children ("signed-fixed-point/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "signed-fixed-point/dart/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:665" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:199" "ir/fixedform.go:237") :implementation :implemented :id
+   "signed-fixed-point/dart" :type :work-set :children ("signed-fixed-point/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "signed-fixed-point/elixir/valid-data" :type :task :title
+   "Signed fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, fixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "signed-fixed-point/elixir" :type :work-set :children
+   ("signed-fixed-point/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Obtain execution receipt for the cited fixed-form runtime assertions; full CI does not directly invoke this dedicated target."
+    "Complete unsigned-fixed-point values/boundaries not covered by cited assertions."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-fixed-point/cpp/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/fixedform_properties.cpp:1158") :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-fixed-point/cpp" :type :work-set :children ("unsigned-fixed-point/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-fixed-point read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-fixed-point/c/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-fixed-point/c" :type :work-set :children ("unsigned-fixed-point/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "unsigned-fixed-point/cs/valid-data" :type
+   :task :title "Unsigned fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:455"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "unsigned-fixed-point/cs" :type :work-set :children
+   ("unsigned-fixed-point/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "unsigned-fixed-point/go/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "unsigned-fixed-point/go" :type :work-set :children
+   ("unsigned-fixed-point/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form unsigned-fixed-point read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Exercise nonzero high 64-bit limbs and declared range edges on the fixed wire; ordinary variable-table scalar goldens do not certify form 3.")
+   :id "unsigned-fixed-point/rust/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "unsigned-fixed-point/rust" :type :work-set :children ("unsigned-fixed-point/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("BenchFixed has exact 64-record scalar/bit-pattern assertions; its tables-java-fixedform-bench execution is not established by the inspected FAST job (which runs Main only).")
+   :id "unsigned-fixed-point/java/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/java-fixedform/src/BenchFixed.java:157") :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "unsigned-fixed-point/java" :type :work-set :children
+   ("unsigned-fixed-point/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-fixed-point/js/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:362" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:126" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-fixed-point/js" :type :work-set :children ("unsigned-fixed-point/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "unsigned-fixed-point/dart/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:742" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:199" "ir/fixedform.go:237") :implementation :implemented :id
+   "unsigned-fixed-point/dart" :type :work-set :children ("unsigned-fixed-point/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "unsigned-fixed-point/elixir/valid-data" :type :task :title
+   "Unsigned fixed-point fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§3.4 record, ufixed(I,F)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "unsigned-fixed-point/elixir" :type :work-set :children
+   ("unsigned-fixed-point/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision
+   2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "flags-values/cpp/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/tables/versioning_lists.cpp:737" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135"
+    "internal/codegen/cpptable/fixedform.go:359")
+   :implementation :implemented :id "flags-values/cpp" :type :work-set :children
+   ("flags-values/cpp/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form flags-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "flags-values/c/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
    :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/c" :type :work-set :children ("flags-values/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/cs/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
-   :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/cs" :type :work-set :children ("flags-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/go/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
-   :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/go" :type :work-set :children ("flags-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/rust/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/rust" :type :work-set :children ("flags-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/java/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/java" :type :work-set :children ("flags-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/js/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
-   :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/js" :type :work-set :children ("flags-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/dart/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/dart" :type :work-set :children ("flags-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "flags-values/elixir/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "flags-values/elixir" :type :work-set :children ("flags-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/cpp/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/cpp" :type :work-set :children ("enum-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/c/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/c" :type :work-set :children ("enum-values/c/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "enum-values/cs/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/cs" :type :work-set :children ("enum-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/go/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/go" :type :work-set :children ("enum-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/rust/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/rust" :type :work-set :children ("enum-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/java/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/java" :type :work-set :children ("enum-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/js/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/js" :type :work-set :children ("enum-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/dart/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/dart" :type :work-set :children ("enum-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "enum-values/elixir/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "enum-values/elixir" :type :work-set :children ("enum-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/cpp/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/cpp" :type :work-set :children ("utf8-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/c/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/c" :type :work-set :children ("utf8-values/c/valid-data") :category "ordinary-capability"
-   :discovered-in-scope-revision 2)
-  (:id "utf8-values/cs/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/cs" :type :work-set :children ("utf8-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/go/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/go" :type :work-set :children ("utf8-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/rust/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/rust" :type :work-set :children ("utf8-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/java/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/java" :type :work-set :children ("utf8-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/js/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/js" :type :work-set :children ("utf8-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/dart/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/dart" :type :work-set :children ("utf8-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf8-values/elixir/valid-data" :type :task :title
-   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, string(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf8-values/elixir" :type :work-set :children ("utf8-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/cpp/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, wstring(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf16-values/cpp" :type :work-set :children ("utf16-values/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/c/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, wstring(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf16-values/c" :type :work-set :children ("utf16-values/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/cs/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, wstring(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf16-values/cs" :type :work-set :children ("utf16-values/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/go/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, wstring(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf16-values/go" :type :work-set :children ("utf16-values/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/rust/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
-   ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/widetext.go#L27")
-   :contract "§3.4 record, wstring(N)" :note
-   "Explicitly unported table wide-text surface at this revision; named compiler refusal. Not a passed read and not silently excluded from feature scope.")
-  (:id "utf16-values/rust" :type :work-set :children ("utf16-values/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/java/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
-   ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/widetext.go#L27")
-   :contract "§3.4 record, wstring(N)" :note
-   "Explicitly unported table wide-text surface at this revision; named compiler refusal. Not a passed read and not silently excluded from feature scope.")
-  (:id "utf16-values/java" :type :work-set :children ("utf16-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/js/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
-   ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/widetext.go#L27")
-   :contract "§3.4 record, wstring(N)" :note
-   "Explicitly unported table wide-text surface at this revision; named compiler refusal. Not a passed read and not silently excluded from feature scope.")
-  (:id "utf16-values/js" :type :work-set :children ("utf16-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/dart/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, wstring(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "utf16-values/dart" :type :work-set :children ("utf16-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "utf16-values/elixir/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
-   ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/widetext.go#L27")
-   :contract "§3.4 record, wstring(N)" :note
-   "Explicitly unported table wide-text surface at this revision; named compiler refusal. Not a passed read and not silently excluded from feature scope.")
-  (:id "utf16-values/elixir" :type :work-set :children ("utf16-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/cpp/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/cpp" :type :work-set :children ("byte-buffers/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/c/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/c" :type :work-set :children ("byte-buffers/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/cs/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/cs" :type :work-set :children ("byte-buffers/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/go/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/go" :type :work-set :children ("byte-buffers/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/rust/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/rust" :type :work-set :children ("byte-buffers/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/java/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/java" :type :work-set :children ("byte-buffers/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/js/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/js" :type :work-set :children ("byte-buffers/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/dart/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/dart" :type :work-set :children ("byte-buffers/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "byte-buffers/elixir/valid-data" :type :task :title
-   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, bytes(N)" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "byte-buffers/elixir" :type :work-set :children ("byte-buffers/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/cpp/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/cpp" :type :work-set :children ("nested-types/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/c/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/c" :type :work-set :children ("nested-types/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/cs/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/cs" :type :work-set :children ("nested-types/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/go/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/go" :type :work-set :children ("nested-types/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/rust/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/rust" :type :work-set :children ("nested-types/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/java/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/java" :type :work-set :children ("nested-types/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/js/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/js" :type :work-set :children ("nested-types/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/dart/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/dart" :type :work-set :children ("nested-types/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-types/elixir/valid-data" :type :task :title
-   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested type" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-types/elixir" :type :work-set :children ("nested-types/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/cpp/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/cpp" :type :work-set :children ("nested-fixed-tables/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/c/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/c" :type :work-set :children ("nested-fixed-tables/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/cs/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/cs" :type :work-set :children ("nested-fixed-tables/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/go/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/go" :type :work-set :children ("nested-fixed-tables/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/rust/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/rust" :type :work-set :children ("nested-fixed-tables/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/java/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/java" :type :work-set :children ("nested-fixed-tables/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/js/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/js" :type :work-set :children ("nested-fixed-tables/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/dart/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/dart" :type :work-set :children ("nested-fixed-tables/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-fixed-tables/elixir/valid-data" :type :task :title
-   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.2; §3.4 record, nested fixed table" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-fixed-tables/elixir" :type :work-set :children ("nested-fixed-tables/elixir/valid-data")
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135"
+    "internal/codegen/ctable/fixedform.go:333")
+   :implementation :implemented :id "flags-values/c" :type :work-set :children ("flags-values/c/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/cpp/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/cpp" :type :work-set :children ("fixed-arrays/cpp/valid-data") :category
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "flags-values/cs/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
+   :unknown :evidence nil :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "flags-values/cs" :type :work-set :children
+   ("flags-values/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "flags-values/go/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
+   :unknown :evidence ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "flags-values/go" :type :work-set :children
+   ("flags-values/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form flags-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "flags-values/rust/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135"
+    "internal/codegen/rusttable/fixedform.go:541")
+   :implementation :implemented :id "flags-values/rust" :type :work-set :children
+   ("flags-values/rust/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "flags-values/java/valid-data" :type :task
+   :title "Flags masks: valid-data write/read acceptance" :state :done :evidence
+   ("internal/codegen/javatable/fixedversioning_test.go:551"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "flags-values/java" :type :work-set :children
+   ("flags-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "64-bit flags storage exists; flags_append row presence alone is not proof of mask runtime values.")
+   :id "flags-values/js/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance" :state
+   :unknown :evidence nil :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:135" "ir/fixedform.go:237") :implementation :implemented :id
+   "flags-values/js" :type :work-set :children ("flags-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "64-bit flags storage exists; flags_append row presence alone is not proof of mask runtime values.")
+   :id "flags-values/dart/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:208" "ir/fixedform.go:237") :implementation :implemented :id
+   "flags-values/dart" :type :work-set :children ("flags-values/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/c/valid-data" :type :task :title "Fixed-length arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/c" :type :work-set :children ("fixed-arrays/c/valid-data") :category
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "64-bit flags storage exists; flags_append row presence alone is not proof of mask runtime values.")
+   :id "flags-values/elixir/valid-data" :type :task :title "Flags masks: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, flags" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:451" "ir/fixedform.go:237") :implementation :implemented :id
+   "flags-values/elixir" :type :work-set :children ("flags-values/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/cs/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/cs" :type :work-set :children ("fixed-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/go/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/go" :type :work-set :children ("fixed-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/rust/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/rust" :type :work-set :children ("fixed-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/java/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/java" :type :work-set :children ("fixed-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/js/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/js" :type :work-set :children ("fixed-arrays/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/dart/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/dart" :type :work-set :children ("fixed-arrays/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-arrays/elixir/valid-data" :type :task :title
-   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 record, [N]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-arrays/elixir" :type :work-set :children ("fixed-arrays/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/cpp/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/cpp" :type :work-set :children ("counted-arrays/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/c/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/c" :type :work-set :children ("counted-arrays/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/cs/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/cs" :type :work-set :children ("counted-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/go/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/go" :type :work-set :children ("counted-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/rust/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/rust" :type :work-set :children ("counted-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/java/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/java" :type :work-set :children ("counted-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/js/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/js" :type :work-set :children ("counted-arrays/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/dart/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/dart" :type :work-set :children ("counted-arrays/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "counted-arrays/elixir/valid-data" :type :task :title
-   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§3.4 record, [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "counted-arrays/elixir" :type :work-set :children ("counted-arrays/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/cpp/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/cpp" :type :work-set :children ("keyed-arrays/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/c/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/c" :type :work-set :children ("keyed-arrays/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/cs/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/cs" :type :work-set :children ("keyed-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/go/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/go" :type :work-set :children ("keyed-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/rust/valid-data" :type :task :title
-   "Enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/rust" :type :work-set :children ("keyed-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/java/valid-data" :type :task :title
-   "Enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/java" :type :work-set :children ("keyed-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/js/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
-   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/js" :type :work-set :children ("keyed-arrays/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/dart/valid-data" :type :task :title
-   "Enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/dart" :type :work-set :children ("keyed-arrays/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "keyed-arrays/elixir/valid-data" :type :task :title
-   "Enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.4; §3.4 record, [Enum]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "keyed-arrays/elixir" :type :work-set :children ("keyed-arrays/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/cpp/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/cpp" :type :work-set :children ("nested-keyed-arrays/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/c/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/c" :type :work-set :children ("nested-keyed-arrays/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/cs/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/cs" :type :work-set :children ("nested-keyed-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/go/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/go" :type :work-set :children ("nested-keyed-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/rust/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/rust" :type :work-set :children ("nested-keyed-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/java/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/java" :type :work-set :children ("nested-keyed-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/js/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/js" :type :work-set :children ("nested-keyed-arrays/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/dart/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/dart" :type :work-set :children ("nested-keyed-arrays/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "nested-keyed-arrays/elixir/valid-data" :type :task :title
-   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "ALGORITHM §7 keyed corpus" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "nested-keyed-arrays/elixir" :type :work-set :children ("nested-keyed-arrays/elixir/valid-data")
+  (:verification "verified-subset" :remaining
+   ("Complete enum-values values/boundaries not covered by cited assertions.") :id
+   "enum-values/cpp/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance" :state
+   :unknown :evidence ("test/tables/fixedform_main.cpp:189") :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:366" "ir/fixedform.go:135") :implementation :implemented :id
+   "enum-values/cpp" :type :work-set :children ("enum-values/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form enum-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "enum-values/c/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:340" "ir/fixedform.go:135") :implementation :implemented :id
+   "enum-values/c" :type :work-set :children ("enum-values/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "enum-values/cs/valid-data" :type :task
+   :title "Enums and None: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:563" "test/cs-tables/src/FixedFormChecks.cs:777"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:439"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "enum-values/cs" :type :work-set :children ("enum-values/cs/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/cpp/valid-data" :type :task :title
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "enum-values/go/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
+   :state :unknown :evidence ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:493"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "enum-values/go" :type :work-set :children ("enum-values/go/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete enum-values values/boundaries not covered by cited assertions.") :id
+   "enum-values/rust/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance" :state
+   :unknown :evidence ("test/rust-fixedform/src/main.rs:199" "test/rust-fixedform/src/main.rs:1584")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:526" "ir/fixedform.go:135") :implementation :implemented :id
+   "enum-values/rust" :type :work-set :children ("enum-values/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "enum-values/java/valid-data" :type :task
+   :title "Enums and None: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:220" "test/java-fixedform/src/Main.java:423"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:569"
+    "internal/codegen/javatable/fixedform.go:1012" "internal/codegen/javatable/fixedform.go:1235")
+   :implementation :implemented :id "enum-values/java" :type :work-set :children
+   ("enum-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "enum-values/js/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/js-tables/fixedform.mjs:1622" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:582" "ir/fixedform.go:237") :implementation :implemented :id
+   "enum-values/js" :type :work-set :children ("enum-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "enum-values/dart/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/dart-tables/fixedform.dart:497" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:801" "ir/fixedform.go:237") :implementation :implemented :id
+   "enum-values/dart" :type :work-set :children ("enum-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "enum-values/elixir/valid-data" :type :task :title "Enums and None: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/elixir-fixedform/main.exs:274" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, enum" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:958" "ir/fixedform.go:237") :implementation :implemented :id
+   "enum-values/elixir" :type :work-set :children ("enum-values/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "utf8-values/cpp/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/versioning_numbers.cpp:432"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "utf8-values/cpp" :type
+   :work-set :children ("utf8-values/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "utf8-values/c/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_fx1.c:100" "test/c-tables/fixedform_fx1.c:329"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "utf8-values/c" :type
+   :work-set :children ("utf8-values/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "utf8-values/cs/valid-data" :type :task
+   :title "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:714" "test/cs-tables/src/FixedFormChecks.cs:840"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:1360"
+    "internal/codegen/cstable/fixedform.go:1374")
+   :implementation :implemented :id "utf8-values/cs" :type :work-set :children ("utf8-values/cs/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "utf8-values/go/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:207"
+    "internal/codegen/gotable/fixedform.go:566")
+   :implementation :implemented :id "utf8-values/go" :type :work-set :children ("utf8-values/go/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "utf8-values/rust/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:160" "test/rust-fixedform/src/main.rs:161"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "utf8-values/rust" :type
+   :work-set :children ("utf8-values/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "utf8-values/java/valid-data" :type :task
+   :title "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:126" "test/java-fixedform/src/Main.java:368"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:178"
+    "internal/codegen/javatable/fixedform.go:965" "internal/codegen/javatable/fixedform.go:1162")
+   :implementation :implemented :id "utf8-values/java" :type :work-set :children
+   ("utf8-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "utf8-values/js/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:348" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "utf8-values/js" :type :work-set :children ("utf8-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "utf8-values/dart/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:721" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "utf8-values/dart" :type :work-set :children ("utf8-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "utf8-values/elixir/valid-data" :type :task :title
+   "Bounded UTF-8 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:213" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, string(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "utf8-values/elixir" :type :work-set :children ("utf8-values/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "utf16-values/cpp/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/versioning_numbers.cpp:476"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "utf16-values/cpp" :type
+   :work-set :children ("utf16-values/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form utf16-values read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "utf16-values/c/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "utf16-values/c" :type
+   :work-set :children ("utf16-values/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present."
+    "wstring_grow versioning row exists, but generic load/counter success alone does not establish exact code-unit contents.")
+   :id "utf16-values/cs/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:1360"
+    "internal/codegen/cstable/fixedform.go:1374" "compiler/widetext.go:25")
+   :implementation :implemented :id "utf16-values/cs" :type :work-set :children
+   ("utf16-values/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present."
+    "wstring_grow versioning row exists, but generic load/counter success alone does not establish exact code-unit contents.")
+   :id "utf16-values/go/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:207"
+    "internal/codegen/gotable/fixedform.go:566" "compiler/widetext.go:25")
+   :implementation :implemented :id "utf16-values/go" :type :work-set :children
+   ("utf16-values/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "not-complete" :remaining
+   ("Implement and register Rust table UTF-16 carrier, then add exact code-unit and hostile-input runtime checks.")
+   :id "utf16-values/rust/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence nil :contract
+   "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("compiler/widetext.go:25" "compiler/widetext.go:65"
+    "internal/codegen/rusttable/fixedversioning_test.go:227")
+   :implementation :unsupported :id "utf16-values/rust" :type :work-set :children
+   ("utf16-values/rust/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "named-compile-refusal" :remaining
+   ("Java table UTF-16 has a named compiler refusal; unreachable internal TWString branches do not override this.")
+   :id "utf16-values/java/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
+   ("compiler/widetext_test.go:72") :contract "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("compiler/widetext.go:25" "compiler/widetext.go:64") :implementation :unsupported :id "utf16-values/java"
+   :type :work-set :children ("utf16-values/java/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Named compiler refusal; no language runtime implementation.") :id "utf16-values/js/valid-data" :type
+   :task :title "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
+   ("compiler/widetext_test.go:72") :contract "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("compiler/widetext.go:25" "compiler/widetext.go:64") :implementation :unsupported :id "utf16-values/js"
+   :type :work-set :children ("utf16-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "utf16-values/dart/valid-data" :type :task :title
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:351" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "utf16-values/dart" :type :work-set :children ("utf16-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Named compiler refusal; no language runtime implementation.") :id "utf16-values/elixir/valid-data" :type
+   :task :title "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
+   ("compiler/widetext_test.go:72") :contract "§3.4 record, wstring(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("compiler/widetext.go:25" "compiler/widetext.go:64") :implementation :unsupported :id
+   "utf16-values/elixir" :type :work-set :children ("utf16-values/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "byte-buffers/cpp/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:126" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "byte-buffers/cpp" :type
+   :work-set :children ("byte-buffers/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form byte-buffers read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "byte-buffers/c/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "byte-buffers/c" :type
+   :work-set :children ("byte-buffers/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "byte-buffers/cs/valid-data" :type :task
+   :title "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:136"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:1360"
+    "internal/codegen/cstable/fixedform.go:1374")
+   :implementation :implemented :id "byte-buffers/cs" :type :work-set :children
+   ("byte-buffers/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "byte-buffers/go/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:207"
+    "internal/codegen/gotable/fixedform.go:566")
+   :implementation :implemented :id "byte-buffers/go" :type :work-set :children
+   ("byte-buffers/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "byte-buffers/rust/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:2096" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "byte-buffers/rust" :type
+   :work-set :children ("byte-buffers/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "byte-buffers/java/valid-data" :type :task
+   :title "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:94" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:178"
+    "internal/codegen/javatable/fixedform.go:965" "internal/codegen/javatable/fixedform.go:1162")
+   :implementation :implemented :id "byte-buffers/java" :type :work-set :children
+   ("byte-buffers/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "byte-buffers/js/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:350" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "byte-buffers/js" :type :work-set :children ("byte-buffers/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "byte-buffers/dart/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:725" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "byte-buffers/dart" :type :work-set :children ("byte-buffers/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "byte-buffers/elixir/valid-data" :type :task :title
+   "Bounded byte buffers: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:187" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, bytes(N)" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "byte-buffers/elixir" :type :work-set :children ("byte-buffers/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-types/cpp/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:191" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:340") :implementation :implemented :id "nested-types/cpp" :type
+   :work-set :children ("nested-types/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-types/c/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_fu1.c:60" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:314") :implementation :implemented :id "nested-types/c" :type
+   :work-set :children ("nested-types/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped exact text/scalar values inside a nested type union payload; ordinary nested type field branch is shared but separate direct-root fixture not mapped.")
+   :id "nested-types/cs/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:714") :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "nested-types/cs" :type :work-set :children
+   ("nested-types/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "nested-types/go/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "nested-types/go" :type :work-set :children
+   ("nested-types/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-types/rust/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:163" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:759") :implementation :implemented :id "nested-types/rust" :type
+   :work-set :children ("nested-types/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "nested-types/java/valid-data" :type :task
+   :title "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:193"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "nested-types/java" :type :work-set :children
+   ("nested-types/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-types/js/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:1620" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:357" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-types/js" :type :work-set :children ("nested-types/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-types/dart/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:252" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:674" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-types/dart" :type :work-set :children ("nested-types/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-types/elixir/valid-data" :type :task :title
+   "Nested types by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:213" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested type" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:417" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-types/elixir" :type :work-set :children ("nested-types/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-fixed-tables/cpp/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:107" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:340") :implementation :implemented :id "nested-fixed-tables/cpp"
+   :type :work-set :children ("nested-fixed-tables/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-fixed-tables/c/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_fx1.c:128" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:314") :implementation :implemented :id "nested-fixed-tables/c"
+   :type :work-set :children ("nested-fixed-tables/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "nested-fixed-tables/cs/valid-data" :type
+   :task :title "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:135"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "nested-fixed-tables/cs" :type :work-set :children
+   ("nested-fixed-tables/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "nested-fixed-tables/go/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "nested-fixed-tables/go" :type :work-set :children
+   ("nested-fixed-tables/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-fixed-tables/rust/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:198" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:759") :implementation :implemented :id
+   "nested-fixed-tables/rust" :type :work-set :children ("nested-fixed-tables/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "nested-fixed-tables/java/valid-data" :type
+   :task :title "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:90" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "nested-fixed-tables/java" :type :work-set :children
+   ("nested-fixed-tables/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-fixed-tables/js/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:1624" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:357" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-fixed-tables/js" :type :work-set :children ("nested-fixed-tables/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-fixed-tables/dart/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:212" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:674" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-fixed-tables/dart" :type :work-set :children ("nested-fixed-tables/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-fixed-tables/elixir/valid-data" :type :task :title
+   "Nested fixed tables by value: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:187" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.2; §3.4 record, nested fixed table" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:417" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-fixed-tables/elixir" :type :work-set :children ("nested-fixed-tables/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-arrays/cpp/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/versioning_numbers.cpp:293"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "fixed-arrays/cpp" :type
+   :work-set :children ("fixed-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-arrays/c/valid-data" :type :task :title "Fixed-length arrays: valid-data write/read acceptance"
+   :state :done :evidence
+   ("internal/codegen/ctable/fixedversioning_test.go:92"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "fixed-arrays/c" :type
+   :work-set :children ("fixed-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "fixed-arrays/cs/valid-data" :type :task
+   :title "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:566"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "fixed-arrays/cs" :type :work-set :children
+   ("fixed-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "fixed-arrays/go/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract "§3.4 record, [N]T"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "fixed-arrays/go" :type :work-set :children
+   ("fixed-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-arrays/rust/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:201" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "fixed-arrays/rust" :type
+   :work-set :children ("fixed-arrays/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "fixed-arrays/java/valid-data" :type :task
+   :title "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:222"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "fixed-arrays/java" :type :work-set :children
+   ("fixed-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-arrays/js/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:346" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "fixed-arrays/js" :type :work-set :children ("fixed-arrays/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-arrays/dart/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:717" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "fixed-arrays/dart" :type :work-set :children ("fixed-arrays/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-arrays/elixir/valid-data" :type :task :title
+   "Fixed-length arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:276" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [N]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "fixed-arrays/elixir" :type :work-set :children ("fixed-arrays/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "counted-arrays/cpp/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/versioning_numbers.cpp:199"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "counted-arrays/cpp" :type
+   :work-set :children ("counted-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "counted-arrays/c/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_fx1.c:101" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "counted-arrays/c" :type
+   :work-set :children ("counted-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "counted-arrays/cs/valid-data" :type :task
+   :title "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:562" "test/cs-tables/src/FixedFormChecks.cs:842"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "counted-arrays/cs" :type :work-set :children
+   ("counted-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched gate proves external corpus byte fidelity; separately map direct decoded-value assertions if required by the acceptance row.")
+   :id "counted-arrays/go/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :unknown :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413") :contract
+   "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "counted-arrays/go" :type :work-set :children
+   ("counted-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "counted-arrays/rust/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:202" "test/rust-fixedform/src/main.rs:203"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "counted-arrays/rust"
+   :type :work-set :children ("counted-arrays/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "counted-arrays/java/valid-data" :type :task
+   :title "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:223" "test/java-fixedform/src/Main.java:225"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "counted-arrays/java" :type :work-set :children
+   ("counted-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "counted-arrays/js/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:310" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "counted-arrays/js" :type :work-set :children ("counted-arrays/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "counted-arrays/dart/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:666" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "counted-arrays/dart" :type :work-set :children ("counted-arrays/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "counted-arrays/elixir/valid-data" :type :task :title
+   "Bounded arrays with a live count: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:278" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 record, [Min..Max]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "counted-arrays/elixir" :type :work-set :children ("counted-arrays/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "keyed-arrays/cpp/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
+   :state :done :evidence
+   ("test/tables/versioning_lists.cpp:798" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "keyed-arrays/cpp" :type
+   :work-set :children ("keyed-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Add exact non-default values for all live keyed slots: existing probe asserts appended default and that old slots changed from poison, not their exact landed values.")
+   :id "keyed-arrays/c/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
+   :state :unknown :evidence
+   ("internal/codegen/ctable/fixedversioning_test.go:144"
+    "internal/codegen/ctable/fixedversioning_test.go:150")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "keyed-arrays/c" :type
+   :work-set :children ("keyed-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "keyed-arrays/cs/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "keyed-arrays/cs" :type :work-set :children
+   ("keyed-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "keyed-arrays/go/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
+   :state :unknown :evidence nil :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "keyed-arrays/go" :type :work-set :children
+   ("keyed-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "keyed-arrays/rust/valid-data" :type :task :title
+   "Enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:159" "test/rust-fixedform/src/main.rs:163"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "keyed-arrays/rust" :type
+   :work-set :children ("keyed-arrays/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "keyed-arrays/java/valid-data" :type :task
+   :title "Enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:191"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "keyed-arrays/java" :type :work-set :children
+   ("keyed-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Active appended-key slot assertion; reconcile all ordinary keyed-array values.") :id
+   "keyed-arrays/js/valid-data" :type :task :title "Enum-keyed arrays: valid-data write/read acceptance"
+   :state :unknown :evidence ("internal/codegen/jstable/fixedversioning_test.go:134") :contract
+   "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "keyed-arrays/js" :type :work-set :children ("keyed-arrays/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "keyed-arrays/dart/valid-data" :type :task :title
+   "Enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:413" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "keyed-arrays/dart" :type :work-set :children ("keyed-arrays/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "keyed-arrays/elixir/valid-data" :type :task :title
+   "Enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:252" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.4; §3.4 record, [Enum]T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "keyed-arrays/elixir" :type :work-set :children ("keyed-arrays/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form nested-keyed-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "nested-keyed-arrays/cpp/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "nested-keyed-arrays/cpp"
+   :type :work-set :children ("nested-keyed-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form nested-keyed-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "nested-keyed-arrays/c/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "nested-keyed-arrays/c"
+   :type :work-set :children ("nested-keyed-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "nested-keyed-arrays/cs/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "nested-keyed-arrays/cs" :type :work-set :children
+   ("nested-keyed-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "nested-keyed-arrays/go/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "nested-keyed-arrays/go" :type :work-set :children
+   ("nested-keyed-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "nested-keyed-arrays/rust/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:165" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id
+   "nested-keyed-arrays/rust" :type :work-set :children ("nested-keyed-arrays/rust/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "nested-keyed-arrays/java/valid-data" :type
+   :task :title "Nested enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:194"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "nested-keyed-arrays/java" :type :work-set :children
+   ("nested-keyed-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "nested-keyed-arrays/js/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-keyed-arrays/js" :type :work-set :children ("nested-keyed-arrays/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-keyed-arrays/dart/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:438" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-keyed-arrays/dart" :type :work-set :children ("nested-keyed-arrays/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "nested-keyed-arrays/elixir/valid-data" :type :task :title
+   "Nested enum-keyed arrays: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:265" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "ALGORITHM §7 keyed corpus" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "nested-keyed-arrays/elixir" :type :work-set :children ("nested-keyed-arrays/elixir/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "union-values/cpp/valid-data" :type :task :title
+   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/versioning_lists.cpp:669" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:343" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-values/cpp" :type :work-set :children ("union-values/cpp/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "union-values/c/valid-data" :type :task :title
+   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done :evidence
+   ("test/c-tables/fixedform_fu1.c:69" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:317" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-values/c" :type :work-set :children ("union-values/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "union-values/cs/valid-data" :type :task
+   :title "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done
+   :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:713"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:490"
+    "internal/codegen/cstable/fixedform.go:1441")
+   :implementation :implemented :id "union-values/cs" :type :work-set :children
+   ("union-values/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Matched corpus contains a nested type payload union and external byte-fidelity assertion. TestFixedFormArgLaneTextUnderSecondArm is explicitly skipped at fixedform_test.go:800 and is not execution evidence.")
+   :id "union-values/go/valid-data" :type :task :title
    "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/cpp" :type :work-set :children ("union-values/cpp/valid-data") :category
+   :evidence ("bench/tables/go/table_main.go:413") :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:222"
+    "internal/codegen/gotable/fixedform.go:589")
+   :implementation :implemented :id "union-values/go" :type :work-set :children
+   ("union-values/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "union-values/rust/valid-data" :type :task :title
+   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:1105" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:780" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-values/rust" :type :work-set :children ("union-values/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/c/valid-data" :type :task :title
+  (:verification "runtime-assertions-mapped" :remaining nil :id "union-values/java/valid-data" :type :task
+   :title "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done
+   :evidence
+   ("test/java-fixedform/src/Main.java:367"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:197"
+    "internal/codegen/javatable/fixedform.go:1330")
+   :implementation :implemented :id "union-values/java" :type :work-set :children
+   ("union-values/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "union-values/js/valid-data" :type :task :title
+   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:333" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:357" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-values/js" :type :work-set :children ("union-values/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "union-values/dart/valid-data" :type :task :title
+   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:695" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.6; §3.4 record, union" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:674" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-values/dart" :type :work-set :children ("union-values/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("BenchMixed whole-value fixed-versus-packet comparison and C++ byte rewrite cover these fields; not exhaustive domain boundaries."
+    "FAST job does not invoke tables-elixir-fixed-bench. Exact execution receipt for this bench target still needs reconciliation; source assertions are not asserted as executed here.")
+   :id "union-values/elixir/valid-data" :type :task :title
    "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/c" :type :work-set :children ("union-values/c/valid-data") :category
+   :evidence ("test/elixir-fixedform/bench.exs:65" "make/elixir.mk:411") :contract "§2.6; §3.4 record, union"
+   :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:417" "ir/fixedform.go:237" "bench/corpus/Bench.schema:185")
+   :implementation :implemented :id "union-values/elixir" :type :work-set :children
+   ("union-values/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "not-complete" :remaining
+   ("Implement direct text/byte-buffer/array arm layout and emitters; add fixed-form runtime assertions. Text inside a type arm is a different supported shape.")
+   :id "union-field-arms/cpp/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:343" "ir/fixedform.go:237") :implementation :partial :id
+   "union-field-arms/cpp" :type :work-set :children ("union-field-arms/cpp/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/cs/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/cs" :type :work-set :children ("union-values/cs/valid-data") :category
+  (:verification "not-complete" :remaining
+   ("Implement direct text/byte-buffer/array arm layout and emitters; add fixed-form runtime assertions. Text inside a type arm is a different supported shape.")
+   :id "union-field-arms/c/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:317" "ir/fixedform.go:237") :implementation :partial :id
+   "union-field-arms/c" :type :work-set :children ("union-field-arms/c/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/go/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/go" :type :work-set :children ("union-values/go/valid-data") :category
+  (:verification "partial-emitter-support" :remaining
+   ("Direct scalar arms admitted; direct text, bytes, array, keyed and optional arm payloads excluded by shared fixed-form gate. Text nested inside a type arm is a different supported case."
+    "Map an executable direct-scalar-arm value assertion.")
+   :id "union-field-arms/cs/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:490"
+    "internal/codegen/cstable/fixedform.go:1441" "ir/fixedform.go:263")
+   :implementation :partial :id "union-field-arms/cs" :type :work-set :children
+   ("union-field-arms/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "partial-emitter-support" :remaining
+   ("Direct scalar arms admitted; direct text, bytes, array, keyed and optional arm payloads excluded by shared fixed-form gate. Text nested inside a type arm is a different supported case."
+    "Map an executable direct-scalar-arm value assertion.")
+   :id "union-field-arms/go/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:222"
+    "internal/codegen/gotable/fixedform.go:589" "ir/fixedform.go:263")
+   :implementation :partial :id "union-field-arms/go" :type :work-set :children
+   ("union-field-arms/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "not-complete" :remaining
+   ("Implement direct text/byte-buffer/array arm layout and emitters; add fixed-form runtime assertions. Text inside a type arm is a different supported shape.")
+   :id "union-field-arms/rust/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:780" "ir/fixedform.go:237") :implementation :partial :id
+   "union-field-arms/rust" :type :work-set :children ("union-field-arms/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/rust/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/rust" :type :work-set :children ("union-values/rust/valid-data") :category
+  (:verification "partial-emitter-support" :remaining
+   ("Direct scalar arms admitted; direct text, bytes, array, keyed and optional arm payloads excluded by shared fixed-form gate. Text nested inside a type arm is a different supported case."
+    "Map an executable direct-scalar-arm value assertion.")
+   :id "union-field-arms/java/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:197"
+    "internal/codegen/javatable/fixedform.go:1330" "ir/fixedform.go:263")
+   :implementation :partial :id "union-field-arms/java" :type :work-set :children
+   ("union-field-arms/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Direct scalar arms emitted; direct text/bytes/array/optional arms refused. Text inside a type payload is a separate supported shape.")
+   :id "union-field-arms/js/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:357" "ir/fixedform.go:237" "ir/fixedform.go:267") :implementation
+   :partial :id "union-field-arms/js" :type :work-set :children ("union-field-arms/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/java/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/java" :type :work-set :children ("union-values/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/js/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/js" :type :work-set :children ("union-values/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/dart/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/dart" :type :work-set :children ("union-values/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-values/elixir/valid-data" :type :task :title
-   "Tagged unions with type or fixed-table payloads: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 record, union" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-values/elixir" :type :work-set :children ("union-values/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/cpp/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/cpp" :type :work-set :children ("union-field-arms/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/c/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/c" :type :work-set :children ("union-field-arms/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/cs/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/cs" :type :work-set :children ("union-field-arms/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/go/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/go" :type :work-set :children ("union-field-arms/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/rust/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/rust" :type :work-set :children ("union-field-arms/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/java/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/java" :type :work-set :children ("union-field-arms/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/js/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/js" :type :work-set :children ("union-field-arms/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/dart/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/dart" :type :work-set :children ("union-field-arms/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-field-arms/elixir/valid-data" :type :task :title
-   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :unknown
-   :evidence nil :contract "§2.6; §3.4 constant arm storage" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-field-arms/elixir" :type :work-set :children ("union-field-arms/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/cpp/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+  (:verification "source-and-assertion-survey" :remaining
+   ("Direct scalar arms emitted; direct text/bytes/array/optional arms refused. Text inside a type payload is a separate supported shape.")
+   :id "union-field-arms/dart/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:674" "ir/fixedform.go:237" "ir/fixedform.go:267")
+   :implementation :partial :id "union-field-arms/dart" :type :work-set :children
+   ("union-field-arms/dart/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Direct scalar arms emitted; direct text/bytes/array/optional arms refused. Text inside a type payload is a separate supported shape.")
+   :id "union-field-arms/elixir/valid-data" :type :task :title
+   "Union arms holding scalar, text or array fields: valid-data write/read acceptance" :state :todo :evidence
+   nil :contract "§2.6; §3.4 constant arm storage" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:417" "ir/fixedform.go:237" "ir/fixedform.go:267")
+   :implementation :partial :id "union-field-arms/elixir" :type :work-set :children
+   ("union-field-arms/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "not-complete" :remaining
+   ("Support payload-free declared union arms in shared eligibility/layout and each backend; test tag-only arms. Union None is distinct from a named payload-free arm.")
+   :id "payload-free-arms/cpp/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/cpp" :type :work-set :children ("payload-free-arms/cpp/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:343" "ir/fixedform.go:237") :implementation :unsupported :id
+   "payload-free-arms/cpp" :type :work-set :children ("payload-free-arms/cpp/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/c/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+  (:verification "not-complete" :remaining
+   ("Support payload-free declared union arms in shared eligibility/layout and each backend; test tag-only arms. Union None is distinct from a named payload-free arm.")
+   :id "payload-free-arms/c/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/c" :type :work-set :children ("payload-free-arms/c/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:317" "ir/fixedform.go:237") :implementation :unsupported :id
+   "payload-free-arms/c" :type :work-set :children ("payload-free-arms/c/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/cs/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+  (:verification "emitter-exclusion" :remaining
+   ("Fixed-form gate excludes nil/payload-free arms; a tag named None is not a declared payload-free arm.")
+   :id "payload-free-arms/cs/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/cs" :type :work-set :children ("payload-free-arms/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/go/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:260") :implementation :unsupported :id "payload-free-arms/cs" :type :work-set :children
+   ("payload-free-arms/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "emitter-exclusion" :remaining
+   ("Fixed-form gate excludes nil/payload-free arms; a tag named None is not a declared payload-free arm.")
+   :id "payload-free-arms/go/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/go" :type :work-set :children ("payload-free-arms/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/rust/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:260") :implementation :unsupported :id "payload-free-arms/go" :type :work-set :children
+   ("payload-free-arms/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "not-complete" :remaining
+   ("Support payload-free declared union arms in shared eligibility/layout and each backend; test tag-only arms. Union None is distinct from a named payload-free arm.")
+   :id "payload-free-arms/rust/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/rust" :type :work-set :children ("payload-free-arms/rust/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:780" "ir/fixedform.go:237") :implementation :unsupported :id
+   "payload-free-arms/rust" :type :work-set :children ("payload-free-arms/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/java/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+  (:verification "emitter-exclusion" :remaining
+   ("Fixed-form gate excludes nil/payload-free arms; a tag named None is not a declared payload-free arm.")
+   :id "payload-free-arms/java/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/java" :type :work-set :children ("payload-free-arms/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/js/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:260") :implementation :unsupported :id "payload-free-arms/java" :type :work-set
+   :children ("payload-free-arms/java/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Explicit declared void arm v.F == nil is refused. Implicit union None is supported but does not complete this row.")
+   :id "payload-free-arms/js/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/js" :type :work-set :children ("payload-free-arms/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/dart/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:262") :implementation :unsupported :id "payload-free-arms/js" :type :work-set :children
+   ("payload-free-arms/js/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Explicit declared void arm v.F == nil is refused. Implicit union None is supported but does not complete this row.")
+   :id "payload-free-arms/dart/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/dart" :type :work-set :children ("payload-free-arms/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "payload-free-arms/elixir/valid-data" :type :task :title
-   "Payload-free union arms: valid-data write/read acceptance" :state :unknown :evidence nil :contract
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:262") :implementation :unsupported :id "payload-free-arms/dart" :type :work-set
+   :children ("payload-free-arms/dart/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Explicit declared void arm v.F == nil is refused. Implicit union None is supported but does not complete this row.")
+   :id "payload-free-arms/elixir/valid-data" :type :task :title
+   "Payload-free union arms: valid-data write/read acceptance" :state :todo :evidence nil :contract
    "§2.6; ALGORITHM §1 kind32" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "payload-free-arms/elixir" :type :work-set :children ("payload-free-arms/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/cpp/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:262") :implementation :unsupported :id "payload-free-arms/elixir" :type :work-set
+   :children ("payload-free-arms/elixir/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form union-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "union-arrays/cpp/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/cpp" :type :work-set :children ("union-arrays/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/c/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:278") :implementation :implemented :id "union-arrays/cpp" :type
+   :work-set :children ("union-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form union-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "union-arrays/c/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/c" :type :work-set :children ("union-arrays/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/cs/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:255") :implementation :implemented :id "union-arrays/c" :type
+   :work-set :children ("union-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "union-arrays/cs/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/cs" :type :work-set :children ("union-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/go/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "union-arrays/cs" :type :work-set :children
+   ("union-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Emitter supports bounded arrays of admitted union shapes; map a direct fixed-form array-of-unions runtime assertion. TestFixedFormClampLiveCount exercises an array of integers beside a scalar union, not an array of unions.")
+   :id "union-arrays/go/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/go" :type :work-set :children ("union-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/rust/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "union-arrays/go" :type :work-set :children
+   ("union-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form union-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "union-arrays/rust/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/rust" :type :work-set :children ("union-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/java/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:440") :implementation :implemented :id "union-arrays/rust" :type
+   :work-set :children ("union-arrays/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "union-arrays/java/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/java" :type :work-set :children ("union-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/js/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "union-arrays/java" :type :work-set :children
+   ("union-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Generic array iteration reaches union writer/decoder; dedicated arrays-of-unions runtime assertions remain to locate.")
+   :id "union-arrays/js/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/js" :type :work-set :children ("union-arrays/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/dart/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:313" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-arrays/js" :type :work-set :children ("union-arrays/js/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Generic array iteration reaches union writer/decoder; dedicated arrays-of-unions runtime assertions remain to locate.")
+   :id "union-arrays/dart/valid-data" :type :task :title "Arrays of unions: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/dart" :type :work-set :children ("union-arrays/dart/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:609" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-arrays/dart" :type :work-set :children ("union-arrays/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "union-arrays/elixir/valid-data" :type :task :title
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Generic array iteration reaches union writer/decoder; dedicated arrays-of-unions runtime assertions remain to locate.")
+   :id "union-arrays/elixir/valid-data" :type :task :title
    "Arrays of unions: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.6; §3.4 [N]T / [Min..Max]T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "union-arrays/elixir" :type :work-set :children ("union-arrays/elixir/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:347" "ir/fixedform.go:237") :implementation :implemented :id
+   "union-arrays/elixir" :type :work-set :children ("union-arrays/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/cpp/valid-data" :type :task :title
+  (:verification "verified-subset" :remaining
+   ("Complete optional-scalars values/boundaries not covered by cited assertions.") :id
+   "optional-scalars/cpp/valid-data" :type :task :title
+   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/fixedform_main.cpp:196") :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:255") :implementation :implemented :id "optional-scalars/cpp"
+   :type :work-set :children ("optional-scalars/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete optional-scalars values/boundaries not covered by cited assertions.") :id
+   "optional-scalars/c/valid-data" :type :task :title
+   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/c-tables/fixedform_fu1.c:67") :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:235") :implementation :implemented :id "optional-scalars/c" :type
+   :work-set :children ("optional-scalars/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "optional-scalars/cs/valid-data" :type :task :title
    "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
    :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/cpp" :type :work-set :children ("optional-scalars/cpp/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "optional-scalars/cs" :type :work-set :children
+   ("optional-scalars/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Generated-runtime unit test is slow-gated; map its successful execution receipt, not a bare package PASS.")
+   :id "optional-scalars/go/valid-data" :type :task :title
+   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/gotable/fixedform_test.go:628") :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "optional-scalars/go" :type :work-set :children
+   ("optional-scalars/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete optional-scalars values/boundaries not covered by cited assertions.") :id
+   "optional-scalars/rust/valid-data" :type :task :title
+   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/rust-fixedform/src/main.rs:1505") :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:418") :implementation :implemented :id "optional-scalars/rust"
+   :type :work-set :children ("optional-scalars/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "optional-scalars/java/valid-data" :type
+   :task :title "Optional scalar and enum fields: valid-data write/read acceptance" :state :done :evidence
+   ("internal/codegen/javatable/fixedversioning_test.go:676"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "optional-scalars/java" :type :work-set :children
+   ("optional-scalars/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "optional-scalars/js/valid-data" :type :task :title
+   "Optional scalar and enum fields: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:1621" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; §3.4 record, ?T" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:301" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-scalars/js" :type :work-set :children ("optional-scalars/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/c/valid-data" :type :task :title
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "optional-scalars/dart/valid-data" :type :task :title
    "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
    :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/c" :type :work-set :children ("optional-scalars/c/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:588" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-scalars/dart" :type :work-set :children ("optional-scalars/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/cs/valid-data" :type :task :title
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "optional-scalars/elixir/valid-data" :type :task :title
    "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
    :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/cs" :type :work-set :children ("optional-scalars/cs/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:291" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-scalars/elixir" :type :work-set :children ("optional-scalars/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/go/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/go" :type :work-set :children ("optional-scalars/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/rust/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/rust" :type :work-set :children ("optional-scalars/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/java/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/java" :type :work-set :children ("optional-scalars/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/js/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/js" :type :work-set :children ("optional-scalars/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/dart/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/dart" :type :work-set :children ("optional-scalars/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-scalars/elixir/valid-data" :type :task :title
-   "Optional scalar and enum fields: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "§2.3; §3.4 record, ?T" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-scalars/elixir" :type :work-set :children ("optional-scalars/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/cpp/valid-data" :type :task :title
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form optional-nesting read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "optional-nesting/cpp/valid-data" :type :task :title
    "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/cpp" :type :work-set :children ("optional-nesting/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/c/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:255") :implementation :implemented :id "optional-nesting/cpp"
+   :type :work-set :children ("optional-nesting/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form optional-nesting read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "optional-nesting/c/valid-data" :type :task :title
    "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/c" :type :work-set :children ("optional-nesting/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/cs/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:235") :implementation :implemented :id "optional-nesting/c" :type
+   :work-set :children ("optional-nesting/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "optional-nesting/cs/valid-data" :type :task
+   :title "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:1035"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "optional-nesting/cs" :type :work-set :children
+   ("optional-nesting/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "optional-nesting/go/valid-data" :type :task :title
    "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/cs" :type :work-set :children ("optional-nesting/cs/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "optional-nesting/go" :type :work-set :children
+   ("optional-nesting/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "optional-nesting/rust/valid-data" :type :task :title
+   "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:166" "test/rust-fixedform/src/main.rs:167"
+    "test/rust-fixedform/src/main.rs:175" "test/rust-fixedform/src/main.rs:179"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:418") :implementation :implemented :id "optional-nesting/rust"
+   :type :work-set :children ("optional-nesting/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "optional-nesting/java/valid-data" :type
+   :task :title "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:144" "test/java-fixedform/src/Main.java:152"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "optional-nesting/java" :type :work-set :children
+   ("optional-nesting/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "optional-nesting/js/valid-data" :type :task :title
+   "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:1620" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:301" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-nesting/js" :type :work-set :children ("optional-nesting/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/go/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/go" :type :work-set :children ("optional-nesting/go/valid-data") :category
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "optional-nesting/dart/valid-data" :type :task :title
+   "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:308" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:588" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-nesting/dart" :type :work-set :children ("optional-nesting/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/rust/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/rust" :type :work-set :children ("optional-nesting/rust/valid-data") :category
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "optional-nesting/elixir/valid-data" :type :task :title
+   "Optional nested values: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:215" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§2.3; ALGORITHM §7 P1/P3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:291" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-nesting/elixir" :type :work-set :children ("optional-nesting/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/java/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/java" :type :work-set :children ("optional-nesting/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/js/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/js" :type :work-set :children ("optional-nesting/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/dart/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/dart" :type :work-set :children ("optional-nesting/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-nesting/elixir/valid-data" :type :task :title
-   "Optional nested values: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§2.3; ALGORITHM §7 P1/P3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-nesting/elixir" :type :work-set :children ("optional-nesting/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/cpp/valid-data" :type :task :title
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form optional-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "optional-arrays/cpp/valid-data" :type :task :title
    "Optional arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/cpp" :type :work-set :children ("optional-arrays/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/c/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:255") :implementation :implemented :id "optional-arrays/cpp"
+   :type :work-set :children ("optional-arrays/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form optional-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "optional-arrays/c/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/c" :type :work-set :children ("optional-arrays/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/cs/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:235") :implementation :implemented :id "optional-arrays/c" :type
+   :work-set :children ("optional-arrays/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "optional-arrays/cs/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/cs" :type :work-set :children ("optional-arrays/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/go/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:574"
+    "internal/codegen/cstable/fixedform.go:1333")
+   :implementation :implemented :id "optional-arrays/cs" :type :work-set :children
+   ("optional-arrays/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "optional-arrays/go/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/go" :type :work-set :children ("optional-arrays/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/rust/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:175"
+    "internal/codegen/gotable/fixedform.go:549")
+   :implementation :implemented :id "optional-arrays/go" :type :work-set :children
+   ("optional-arrays/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form optional-arrays read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "optional-arrays/rust/valid-data" :type :task :title
    "Optional arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/rust" :type :work-set :children ("optional-arrays/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/java/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:418") :implementation :implemented :id "optional-arrays/rust"
+   :type :work-set :children ("optional-arrays/rust/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-verification-not-yet-mapped" :remaining
+   ("Map an active fixed-form runtime value/byte assertion for this feature; implementation branches are present.")
+   :id "optional-arrays/java/valid-data" :type :task :title
    "Optional arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/java" :type :work-set :children ("optional-arrays/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/js/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:148"
+    "internal/codegen/javatable/fixedform.go:942" "internal/codegen/javatable/fixedform.go:1141")
+   :implementation :implemented :id "optional-arrays/java" :type :work-set :children
+   ("optional-arrays/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "optional-arrays/js/valid-data" :type :task :title "Optional arrays: valid-data write/read acceptance"
    :state :unknown :evidence nil :contract "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/js" :type :work-set :children ("optional-arrays/js/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:301" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-arrays/js" :type :work-set :children ("optional-arrays/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/dart/valid-data" :type :task :title
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "optional-arrays/dart/valid-data" :type :task :title
    "Optional arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/dart" :type :work-set :children ("optional-arrays/dart/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:588" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-arrays/dart" :type :work-set :children ("optional-arrays/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "optional-arrays/elixir/valid-data" :type :task :title
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately.")
+   :id "optional-arrays/elixir/valid-data" :type :task :title
    "Optional arrays: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§2.3; §3.4 optional wrapper" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "optional-arrays/elixir" :type :work-set :children ("optional-arrays/elixir/valid-data") :category
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:291" "ir/fixedform.go:237") :implementation :implemented :id
+   "optional-arrays/elixir" :type :work-set :children ("optional-arrays/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/cpp/valid-data" :type :task :title
+  (:verification "verified-subset" :remaining
+   ("Complete scalar-defaults values/boundaries not covered by cited assertions.") :id
+   "scalar-defaults/cpp/valid-data" :type :task :title
+   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/tables/fixedform_main.cpp:123") :contract "§3.4 template; ALGORITHM §3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/codecs.go:146" "compiler/valuedefaults_test.go:217") :implementation
+   :implemented :id "scalar-defaults/cpp" :type :work-set :children ("scalar-defaults/cpp/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "verified-subset" :remaining
+   ("Complete scalar-defaults feature coverage beyond the cited assertions; the full CI total does not certify every shape or boundary.")
+   :id "scalar-defaults/c/valid-data" :type :task :title
+   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/ctable/fixedversioning_test.go:112") :contract "§3.4 template; ALGORITHM §3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/codecs.go:131" "compiler/valuedefaults_test.go:217") :implementation
+   :implemented :id "scalar-defaults/c" :type :work-set :children ("scalar-defaults/c/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped default assertions cover scalar fields; map an explicit enum-default runtime case to close the combined row.")
+   :id "scalar-defaults/cs/valid-data" :type :task :title
+   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/cstable/fixedversioning_test.go:97") :contract "§3.4 template; ALGORITHM §3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:395"
+    "internal/codegen/cstable/fixedform.go:1539" "compiler/valuedefaults.go:1")
+   :implementation :implemented :id "scalar-defaults/cs" :type :work-set :children
+   ("scalar-defaults/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped default assertions cover scalar fields; map an explicit enum-default runtime case to close the combined row.")
+   :id "scalar-defaults/go/valid-data" :type :task :title
+   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/gotable/fixedversioning_test.go:72") :contract "§3.4 template; ALGORITHM §3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:778" "compiler/valuedefaults.go:1"
+    "internal/codegen/gotable/codecs.go:380")
+   :implementation :implemented :id "scalar-defaults/go" :type :work-set :children
+   ("scalar-defaults/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form scalar-defaults read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt.")
+   :id "scalar-defaults/rust/valid-data" :type :task :title
    "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/cpp" :type :work-set :children ("scalar-defaults/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/c/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:124" "compiler/valuedefaults_test.go:217") :implementation
+   :implemented :id "scalar-defaults/rust" :type :work-set :children ("scalar-defaults/rust/valid-data")
+   :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining
+   ("Mapped default assertions cover scalar fields; map an explicit enum-default runtime case to close the combined row.")
+   :id "scalar-defaults/java/valid-data" :type :task :title
+   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("internal/codegen/javatable/fixedversioning_test.go:627") :contract "§3.4 template; ALGORITHM §3" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:274"
+    "internal/codegen/javatable/fixedform.go:768" "compiler/valuedefaults.go:1")
+   :implementation :implemented :id "scalar-defaults/java" :type :work-set :children
+   ("scalar-defaults/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Prefill/constructed defaults implemented; locate active scalar AND enum default assertions, excluding retired cross-schema functions.")
+   :id "scalar-defaults/js/valid-data" :type :task :title
    "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/c" :type :work-set :children ("scalar-defaults/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/cs/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:791" "ir/fixedform.go:237"
+    "internal/codegen/jstable/fixedprefill.go:83")
+   :implementation :implemented :id "scalar-defaults/js" :type :work-set :children
+   ("scalar-defaults/js/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Prefill/constructed defaults implemented; locate active scalar AND enum default assertions, excluding retired cross-schema functions.")
+   :id "scalar-defaults/dart/valid-data" :type :task :title
    "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/cs" :type :work-set :children ("scalar-defaults/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/go/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:332" "ir/fixedform.go:237"
+    "internal/codegen/darttable/fixedprefill.go:84")
+   :implementation :implemented :id "scalar-defaults/dart" :type :work-set :children
+   ("scalar-defaults/dart/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Prefill/constructed defaults implemented; locate active scalar AND enum default assertions, excluding retired cross-schema functions.")
+   :id "scalar-defaults/elixir/valid-data" :type :task :title
    "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
    "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/go" :type :work-set :children ("scalar-defaults/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/rust/valid-data" :type :task :title
-   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/rust" :type :work-set :children ("scalar-defaults/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/java/valid-data" :type :task :title
-   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/java" :type :work-set :children ("scalar-defaults/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/js/valid-data" :type :task :title
-   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/js" :type :work-set :children ("scalar-defaults/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/dart/valid-data" :type :task :title
-   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/dart" :type :work-set :children ("scalar-defaults/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "scalar-defaults/elixir/valid-data" :type :task :title
-   "Scalar and enum defaults: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 template; ALGORITHM §3" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "scalar-defaults/elixir" :type :work-set :children ("scalar-defaults/elixir/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/cpp/valid-data" :type :task :title
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237"
+    "internal/codegen/elixirtable/fixeddefaults.go:86")
+   :implementation :implemented :id "scalar-defaults/elixir" :type :work-set :children
+   ("scalar-defaults/elixir/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form text-bytes-flags-defaults read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Verify fresh storage and missing-field prefill for string, bytes and flags separately; TestFixedTableValueDefaultsEveryLeg is generation-shape evidence only.")
+   :id "text-bytes-flags-defaults/cpp/valid-data" :type :task :title
    "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
    :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/cpp/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5449,13 +7031,19 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/cpp" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/codecs.go:146" "compiler/valuedefaults_test.go:217"
+    "internal/codegen/cpptable/codecs.go:265")
+   :implementation :implemented :id "text-bytes-flags-defaults/cpp" :type :work-set :children
    ("text-bytes-flags-defaults/cpp/generation" "text-bytes-flags-defaults/cpp/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/c/valid-data" :type :task :title
+  (:verification "unverified" :remaining
+   ("Add or identify fixed-form text-bytes-flags-defaults read/write assertions with non-default values and boundary cases; map the invoked test to an execution receipt."
+    "Verify fresh storage and missing-field prefill for string, bytes and flags separately; TestFixedTableValueDefaultsEveryLeg is generation-shape evidence only.")
+   :id "text-bytes-flags-defaults/c/valid-data" :type :task :title
    "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
    :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/c/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5463,13 +7051,18 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/c" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/codecs.go:131" "compiler/valuedefaults_test.go:217"
+    "internal/codegen/ctable/codecs.go:319")
+   :implementation :implemented :id "text-bytes-flags-defaults/c" :type :work-set :children
    ("text-bytes-flags-defaults/c/generation" "text-bytes-flags-defaults/c/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/cs/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "generation-only" :remaining
+   ("Compiler test confirms generation is accepted for fixed form; map runtime assertions of string bytes, byte-buffer bytes and flags defaults separately.")
+   :id "text-bytes-flags-defaults/cs/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("compiler/valuedefaults_test.go:217") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/cs/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5477,13 +7070,18 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/cs" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:395"
+    "internal/codegen/cstable/fixedform.go:1539" "compiler/valuedefaults.go:1")
+   :implementation :implemented :id "text-bytes-flags-defaults/cs" :type :work-set :children
    ("text-bytes-flags-defaults/cs/generation" "text-bytes-flags-defaults/cs/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/go/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "generation-only" :remaining
+   ("Compiler test confirms generation is accepted for fixed form; map runtime assertions of string bytes, byte-buffer bytes and flags defaults separately.")
+   :id "text-bytes-flags-defaults/go/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("compiler/valuedefaults_test.go:217") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/go/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5491,13 +7089,19 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/go" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:778" "compiler/valuedefaults.go:1"
+    "internal/codegen/gotable/codecs.go:380")
+   :implementation :implemented :id "text-bytes-flags-defaults/go" :type :work-set :children
    ("text-bytes-flags-defaults/go/generation" "text-bytes-flags-defaults/go/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/rust/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "verified-subset" :remaining
+   ("Complete text-bytes-flags-defaults values/boundaries not covered by cited assertions."
+    "Verify fresh storage and missing-field prefill for string, bytes and flags separately; TestFixedTableValueDefaultsEveryLeg is generation-shape evidence only.")
+   :id "text-bytes-flags-defaults/rust/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/rust-fixedform/src/main.rs:124") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/rust/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5505,13 +7109,18 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/rust" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:124" "compiler/valuedefaults_test.go:217"
+    "internal/codegen/rusttable/fixedform.go:137")
+   :implementation :implemented :id "text-bytes-flags-defaults/rust" :type :work-set :children
    ("text-bytes-flags-defaults/rust/generation" "text-bytes-flags-defaults/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/java/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "generation-only" :remaining
+   ("Compiler test confirms generation is accepted for fixed form; map runtime assertions of string bytes, byte-buffer bytes and flags defaults separately.")
+   :id "text-bytes-flags-defaults/java/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("compiler/valuedefaults_test.go:217") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/java/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5519,13 +7128,21 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/java" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:274"
+    "internal/codegen/javatable/fixedform.go:768" "compiler/valuedefaults.go:1")
+   :implementation :implemented :id "text-bytes-flags-defaults/java" :type :work-set :children
    ("text-bytes-flags-defaults/java/generation" "text-bytes-flags-defaults/java/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/js/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
+  (:verification "source-and-assertion-survey" :remaining
+   ("Generation test is not runtime. Runtime default values/bytes for all string, bytes, flags cases remain to reconcile; JS cited assertion covers string construction only."
+    "Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "text-bytes-flags-defaults/js/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("test/js-tables/fixedform.mjs:1219" "compiler/valuedefaults_test.go:217" "make/js.mk:449"
+    ".github/workflows/ci-fast.yml:560")
    :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/js/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5533,13 +7150,19 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/js" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedjs.go:897" "ir/fixedform.go:237"
+    "internal/codegen/jstable/fixedprefill.go:41")
+   :implementation :implemented :id "text-bytes-flags-defaults/js" :type :work-set :children
    ("text-bytes-flags-defaults/js/generation" "text-bytes-flags-defaults/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/dart/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Generation test is not runtime. Runtime default values/bytes for all string, bytes, flags cases remain to reconcile; JS cited assertion covers string construction only.")
+   :id "text-bytes-flags-defaults/dart/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("compiler/valuedefaults_test.go:217") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/dart/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5547,13 +7170,19 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/dart" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixeddart.go:531" "ir/fixedform.go:237"
+    "internal/codegen/darttable/fixedprefill.go:42")
+   :implementation :implemented :id "text-bytes-flags-defaults/dart" :type :work-set :children
    ("text-bytes-flags-defaults/dart/generation" "text-bytes-flags-defaults/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "text-bytes-flags-defaults/elixir/valid-data" :type :task :title
-   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence nil
-   :contract "ALGORITHM §3 prefill; landed PR847" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Generation test is not runtime. Runtime default values/bytes for all string, bytes, flags cases remain to reconcile; JS cited assertion covers string construction only.")
+   :id "text-bytes-flags-defaults/elixir/valid-data" :type :task :title
+   "String, byte-buffer and flags defaults: valid-data write/read acceptance" :state :unknown :evidence
+   ("compiler/valuedefaults_test.go:217") :contract "ALGORITHM §3 prefill; landed PR847" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
   (:id "text-bytes-flags-defaults/elixir/generation" :type :task :title
    "Compiler accepts fixed-form string, bytes and flags defaults" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/blob/8ea5ed8e4656875088250f564e88a965a7135e7c/compiler/valuedefaults_test.go#L217"
@@ -5561,114 +7190,240 @@
    :tested-revision "8ea5ed8e4656875088250f564e88a965a7135e7c" :test-name
    "TestFixedTableValueDefaultsEveryLeg" :observed-result
    "Passed locally 2026-09-13, -count=1. All targets generated; runtime acceptance is a separate required leaf.")
-  (:id "text-bytes-flags-defaults/elixir" :type :work-set :children
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:444" "ir/fixedform.go:237"
+    "internal/codegen/elixirtable/fixeddefaults.go:37")
+   :implementation :implemented :id "text-bytes-flags-defaults/elixir" :type :work-set :children
    ("text-bytes-flags-defaults/elixir/generation" "text-bytes-flags-defaults/elixir/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/cpp/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/cpp" :type :work-set :children ("fixed-file-roundtrip/cpp/valid-data") :category
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-file-roundtrip/cpp/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:97" "test/tables/fixedform_main.cpp:106"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:470") :implementation :implemented :id "fixed-file-roundtrip/cpp"
+   :type :work-set :children ("fixed-file-roundtrip/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-file-roundtrip/c/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("internal/codegen/ctable/identity_test.go:362" "internal/codegen/ctable/identity_test.go:366"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:555") :implementation :implemented :id "fixed-file-roundtrip/c"
+   :type :work-set :children ("fixed-file-roundtrip/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "fixed-file-roundtrip/cs/valid-data" :type
+   :task :title "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:125" "test/cs-tables/src/FixedFormChecks.cs:133"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:1678"
+    "internal/codegen/cstable/fixedform.go:1703")
+   :implementation :implemented :id "fixed-file-roundtrip/cs" :type :work-set :children
+   ("fixed-file-roundtrip/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification
+   "Coordinator read exact assertions and invocation: bool byte checks in slow-generated runtime run under SCHEMA_SLOW=1 in full CI; file roundtrip and measure compare the external C++ corpus in active FAST matched gate. No other row credited from these checks."
+   :remaining nil :id "fixed-file-roundtrip/go/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413"
+    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:696"
+    "internal/codegen/gotable/fixedform.go:715")
+   :implementation :implemented :id "fixed-file-roundtrip/go" :type :work-set :children
+   ("fixed-file-roundtrip/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "fixed-file-roundtrip/rust/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:98" "test/rust-fixedform/src/main.rs:106"
+    "test/rust-fixedform/src/main.rs:107" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:1045") :implementation :implemented :id
+   "fixed-file-roundtrip/rust" :type :work-set :children ("fixed-file-roundtrip/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/c/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/c" :type :work-set :children ("fixed-file-roundtrip/c/valid-data") :category
+  (:verification "runtime-assertions-mapped" :remaining nil :id "fixed-file-roundtrip/java/valid-data" :type
+   :task :title "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/java-fixedform/src/Main.java:93" "test/java-fixedform/src/Main.java:94"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:886"
+    "internal/codegen/javatable/fixedform.go:1432")
+   :implementation :implemented :id "fixed-file-roundtrip/java" :type :work-set :children
+   ("fixed-file-roundtrip/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-file-roundtrip/js/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:373" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedmodule.go:279" "ir/fixedform.go:237") :implementation :implemented :id
+   "fixed-file-roundtrip/js" :type :work-set :children ("fixed-file-roundtrip/js/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/cs/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/cs" :type :work-set :children ("fixed-file-roundtrip/cs/valid-data") :category
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-file-roundtrip/dart/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:758" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixedmodule.go:422" "ir/fixedform.go:237") :implementation :implemented :id
+   "fixed-file-roundtrip/dart" :type :work-set :children ("fixed-file-roundtrip/dart/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/go/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/go" :type :work-set :children ("fixed-file-roundtrip/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/rust/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/rust" :type :work-set :children ("fixed-file-roundtrip/rust/valid-data")
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "fixed-file-roundtrip/elixir/valid-data" :type :task :title
+   "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
+   ("test/elixir-fixedform/main.exs:140" "make/elixir.mk:339" ".github/workflows/ci-fast.yml:564"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 framing; ALGORITHM §2 / §7" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:1545" "ir/fixedform.go:237") :implementation :implemented
+   :id "fixed-file-roundtrip/elixir" :type :work-set :children ("fixed-file-roundtrip/elixir/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/java/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/java" :type :work-set :children ("fixed-file-roundtrip/java/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/js/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/js" :type :work-set :children ("fixed-file-roundtrip/js/valid-data") :category
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "record-measurement/cpp/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("test/tables/fixedform_main.cpp:97" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/cpptable/fixedform.go:470") :implementation :implemented :id "record-measurement/cpp"
+   :type :work-set :children ("record-measurement/cpp/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "record-measurement/c/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("internal/codegen/ctable/identity_test.go:362" "internal/codegen/ctable/identity_test.go:369"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/ctable/fixedform.go:555") :implementation :implemented :id "record-measurement/c" :type
+   :work-set :children ("record-measurement/c/valid-data") :category "ordinary-capability"
+   :discovered-in-scope-revision 2)
+  (:verification "runtime-assertions-mapped" :remaining nil :id "record-measurement/cs/valid-data" :type
+   :task :title "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done
+   :evidence
+   ("test/cs-tables/src/FixedFormChecks.cs:124" "test/cs-tables/src/FixedFormChecks.cs:125"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/cstable/fixedform.go:1678"
+    "internal/codegen/cstable/fixedform.go:1703")
+   :implementation :implemented :id "record-measurement/cs" :type :work-set :children
+   ("record-measurement/cs/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification
+   "Coordinator read exact assertions and invocation: bool byte checks in slow-generated runtime run under SCHEMA_SLOW=1 in full CI; file roundtrip and measure compare the external C++ corpus in active FAST matched gate. No other row credited from these checks."
+   :remaining nil :id "record-measurement/go/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413"
+    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/gotable/fixedform.go:696"
+    "internal/codegen/gotable/fixedform.go:715")
+   :implementation :implemented :id "record-measurement/go" :type :work-set :children
+   ("record-measurement/go/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "basic-valid-data-verified" :remaining
+   ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
+   :id "record-measurement/rust/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("test/rust-fixedform/src/main.rs:106" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/rusttable/fixedform.go:1045") :implementation :implemented :id
+   "record-measurement/rust" :type :work-set :children ("record-measurement/rust/valid-data") :category
    "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/dart/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/dart" :type :work-set :children ("fixed-file-roundtrip/dart/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "fixed-file-roundtrip/elixir/valid-data" :type :task :title
-   "Save and load fixed-form files: valid-data write/read acceptance" :state :unknown :evidence nil :contract
-   "§3.4 framing; ALGORITHM §2 / §7" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "fixed-file-roundtrip/elixir" :type :work-set :children ("fixed-file-roundtrip/elixir/valid-data")
-   :category "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/cpp/valid-data" :type :task :title
+  (:verification "runtime-assertions-mapped" :remaining nil :id "record-measurement/java/valid-data" :type
+   :task :title "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done
+   :evidence
+   ("test/java-fixedform/src/Main.java:93" "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("ir/fixedform.go:237" "internal/codegen/javatable/fixedform.go:886"
+    "internal/codegen/javatable/fixedform.go:1432")
+   :implementation :implemented :id "record-measurement/java" :type :work-set :children
+   ("record-measurement/java/valid-data") :category "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "record-measurement/js/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("test/js-tables/fixedform.mjs:278" "make/js.mk:449" ".github/workflows/ci-fast.yml:560"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/jstable/fixedmodule.go:279" "ir/fixedform.go:237") :implementation :implemented :id
+   "record-measurement/js" :type :work-set :children ("record-measurement/js/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
+   :id "record-measurement/dart/valid-data" :type :task :title
+   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
+   ("test/dart-tables/fixedform.dart:623" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
+    "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
+   :contract "§3.4 C(f), C(T), MeasureBody" :note
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/darttable/fixedmodule.go:422" "ir/fixedform.go:237") :implementation :implemented :id
+   "record-measurement/dart" :type :work-set :children ("record-measurement/dart/valid-data") :category
+   "ordinary-capability" :discovered-in-scope-revision 2)
+  (:verification "source-and-assertion-survey" :remaining
+   ("Dedicated active runtime witness for the full feature was not located in this bounded audit; emitter implementation is credited separately."
+    "Printed body size is not a runtime assertion of the measurement formula.")
+   :id "record-measurement/elixir/valid-data" :type :task :title
    "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
    nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/cpp" :type :work-set :children ("record-measurement/cpp/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/c/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/c" :type :work-set :children ("record-measurement/c/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/cs/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/cs" :type :work-set :children ("record-measurement/cs/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/go/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/go" :type :work-set :children ("record-measurement/go/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/rust/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/rust" :type :work-set :children ("record-measurement/rust/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/java/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/java" :type :work-set :children ("record-measurement/java/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/js/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/js" :type :work-set :children ("record-measurement/js/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/dart/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/dart" :type :work-set :children ("record-measurement/dart/valid-data") :category
-   "ordinary-capability" :discovered-in-scope-revision 2)
-  (:id "record-measurement/elixir/valid-data" :type :task :title
-   "Constant body size and file-size measurement: valid-data write/read acceptance" :state :unknown :evidence
-   nil :contract "§3.4 C(f), C(T), MeasureBody" :note
-   "Surveying current source and relevant assertions; no credit inferred from PR title or generator presence.")
-  (:id "record-measurement/elixir" :type :work-set :children ("record-measurement/elixir/valid-data")
+   "Ordinary valid-data capability assessed separately from the retained audit, evolution, hostile-input, performance and integration gates.")
+  (:assessment-revision "e3e88a46d4ec787788ec0d950d92eb8247437e57" :implementation-evidence
+   ("internal/codegen/elixirtable/fixedelixir.go:1545" "ir/fixedform.go:237") :implementation :implemented
+   :id "record-measurement/elixir" :type :work-set :children ("record-measurement/elixir/valid-data")
    :category "ordinary-capability" :discovered-in-scope-revision 2)))

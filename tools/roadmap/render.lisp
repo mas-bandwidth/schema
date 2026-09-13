@@ -137,6 +137,12 @@
           (error "Unsupported work node type ~s in node ~s" type id))
         (when (gethash id table)
           (error "Duplicate node ID: ~s" id))
+        (when (getf node :implementation)
+          (unless (and (member (getf node :implementation) '(:implemented :partial :unsupported))
+                       (getf node :implementation-evidence)
+                       (every (lambda (s) (and (stringp s) (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) s)))))
+                              (getf node :implementation-evidence)))
+            (error "Invalid implementation assessment or missing source evidence in ~s" id)))
         (setf (gethash id table) node)))
 
     ;; Verify declared root exists in the node table
@@ -356,6 +362,16 @@
 
 ;;; Table rendering
 
+(defun assessed-cell-text (eval work)
+  ;; Source support is useful information, but never promotes acceptance to green.
+  (if (cell-eval-is-green eval)
+      (cell-eval-text eval)
+      (case (getf work :implementation)
+        (:implemented "Built; verify")
+        (:partial "Partial")
+        (:unsupported "Missing")
+        (otherwise (cell-eval-text eval)))))
+
 (defun render-table-string (roadmap table sexp-path)
   (let* ((rows (getf roadmap :rows))
          (cols (getf roadmap :columns))
@@ -371,6 +387,7 @@
              (work-id (third cell))
              (leaves (collect-work-leaves work-id table memo nil 0))
              (eval (evaluate-cell leaves table)))
+        (setf (cell-eval-text eval) (assessed-cell-text eval (gethash work-id table)))
         (setf (gethash (cons r c) cell-evals) eval)))
 
     ;; Header
@@ -503,6 +520,14 @@
             (unless caught (error "Accepted whitespace-only evidence")))))
 
       ;; Test 1: Shared leaf deduplication
+      (test "implementation assessment cannot manufacture acceptance"
+        (lambda ()
+          (dolist (pair '((:implemented "Built; verify") (:partial "Partial") (:unsupported "Missing")))
+            (let ((eval (make-cell-eval :text "? (≥ 0%)" :is-green nil :has-unknown t)))
+              (unless (string= (assessed-cell-text eval (list :implementation (first pair))) (second pair))
+                (error "Implementation status not rendered"))
+              (when (cell-eval-is-green eval) (error "Source assessment became green"))))))
+
       (test "shared leaf deduplication"
         (lambda ()
           (let* ((sexp '(:schema 1 :root "ws-root" :nodes

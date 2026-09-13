@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-var generatedCellRx = regexp.MustCompile(`^(?:✅(?: 100%)?|❌|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
+var generatedCellRx = regexp.MustCompile(`^(?:Built; verify|Partial|Missing|✅(?: 100%)?|❌|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
 
 func isValidCell(cell string, inGenerated bool) bool {
 	cell = strings.TrimSpace(cell)

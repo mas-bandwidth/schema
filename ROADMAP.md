@@ -41,15 +41,21 @@ on [`fixed-table-form`](https://github.com/mas-bandwidth/schema/tree/fixed-table
 It is not yet released on `main`.
 
 This matrix is generated from [recursive work data](docs/roadmap.sexp).
-The [feature survey](docs/FIXED-TABLES-SURVEY.md) records the scope correction:
-ordinary capabilities are appended to the original audit families. Current evidence
-reconciliation is unfinished; this is not yet a certified implementation percentage.
-Each feature/language cell contains required subtasks. A cell is green only when
-all are verified; language completion is green features divided by total features,
-not an average of partial-cell percentages. `?` means current evidence remains
-unreconciled, not that implementation is absent. Any numeric lower bound counts
-only verified work. Shared compiler, lock and final integration gates remain
-required outside the per-language percentages; passing CI alone does not close them.
+The [feature survey](docs/FIXED-TABLES-SURVEY.md) records the full scope, including
+ordinary capabilities as well as the original audit families.
+
+`✅ 100%` means the cell's required acceptance has a source-matched test receipt.
+`Built; verify` means implementation was found, with specific acceptance work still
+open. `Partial` means only part of the feature is implemented; `Missing` means the
+current compiler refuses it. `?` remains only where audit evidence has not yet been
+reconciled. Source assessments use `e3e88a46`, landed as `9785a76c`; later fixes
+receive credit when their evidence is reconciled. Test references and remaining
+work live inside each cell in the source data.
+
+Language completion is green features divided by all features, not an average of
+partial-cell percentages. Ordinary valid-data checks do not close the separate
+hostile-input, evolution, performance, platform, compiler, lock or integration
+gates. The total is a verified lower bound while audit reconciliation remains open.
 
 <!-- nova-work:fixed-tables:start -->
 
@@ -78,41 +84,41 @@ required outside the per-language percentages; passing CI alone does not close t
 | Partitioned plans and identity-path equivalence | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
 | Shared byte oracle and round-trip conformance | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
 | Hostile-input checks and negative controls | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Boolean values | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Signed integers: 8, 16, 32 and 64 bits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Unsigned integers: 8, 16, 32 and 64 bits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Signed 128-bit integers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Unsigned 128-bit integers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Ranged integer fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| bits(N) fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| 32-bit floating-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| 64-bit floating-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Compressed-float declarations stored as float32 | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Signed fixed-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Unsigned fixed-point fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Flags masks | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Enums and None | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Bounded UTF-8 string fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Bounded UTF-16 string fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | 0% | 0% | 0% | ? (≥ 0%) | 0% |
-| Bounded byte buffers | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Nested types by value | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Nested fixed tables by value | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Fixed-length arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Bounded arrays with a live count | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Enum-keyed arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Nested enum-keyed arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Tagged unions with type or fixed-table payloads | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Union arms holding scalar, text or array fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Payload-free union arms | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Arrays of unions | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Optional scalar and enum fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Optional nested values | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Optional arrays | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Scalar and enum defaults | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| String, byte-buffer and flags defaults | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) | ? (≥ 50%) |
-| Save and load fixed-form files | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Constant body size and file-size measurement | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| complete | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) | ≥ 0/57 (≥ 0%) |
+| Boolean values | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Signed integers: 8, 16, 32 and 64 bits | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| Unsigned integers: 8, 16, 32 and 64 bits | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| Signed 128-bit integers | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Unsigned 128-bit integers | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Ranged integer fields | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| bits(N) fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| 32-bit floating-point fields | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| 64-bit floating-point fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Compressed-float declarations stored as float32 | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Signed fixed-point fields | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Unsigned fixed-point fields | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
+| Flags masks | ✅ 100% | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify |
+| Enums and None | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Bounded UTF-8 string fields | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Bounded UTF-16 string fields | ✅ 100% | Built; verify | Built; verify | Built; verify | Missing | Missing | Missing | ✅ 100% | Missing |
+| Bounded byte buffers | ✅ 100% | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Nested types by value | ✅ 100% | ✅ 100% | Built; verify | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Nested fixed tables by value | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Fixed-length arrays | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Bounded arrays with a live count | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Enum-keyed arrays | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% |
+| Nested enum-keyed arrays | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% |
+| Tagged unions with type or fixed-table payloads | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify |
+| Union arms holding scalar, text or array fields | Partial | Partial | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
+| Payload-free union arms | Missing | Missing | Missing | Missing | Missing | Missing | Missing | Missing | Missing |
+| Arrays of unions | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| Optional scalar and enum fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | Built; verify |
+| Optional nested values | Built; verify | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Optional arrays | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| Scalar and enum defaults | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| String, byte-buffer and flags defaults | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
+| Save and load fixed-form files | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
+| Constant body size and file-size measurement | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify |
+| complete | ≥ 13/57 (≥ 22%) | ≥ 10/57 (≥ 17%) | ≥ 16/57 (≥ 28%) | ≥ 3/57 (≥ 5%) | ≥ 15/57 (≥ 26%) | ≥ 15/57 (≥ 26%) | ≥ 22/57 (≥ 38%) | ≥ 24/57 (≥ 42%) | ≥ 11/57 (≥ 19%) |
 
 [Source data](docs/roadmap.sexp)
 
