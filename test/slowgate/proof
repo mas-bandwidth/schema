@@ -63,7 +63,7 @@ fi
 
 missing=""
 for want in $required; do
-	if ! grep -q -- "--- PASS: $want (" "$log"; then
+	if ! grep -F -q -- "--- PASS: $want (" "$log"; then
 		missing="$missing $want"
 	fi
 done

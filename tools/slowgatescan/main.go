@@ -22,13 +22,14 @@
 //	                             it can ride every lane.
 //
 //	slowgatescan -coverage LOG   the accounting: LOG is a plain (no SCHEMA_SLOW)
-//	                             `go test -v ./...` transcript. Every test that
-//	                             skipped at slowtest.Gate in it must be selected
-//	                             by at least one recipe line that DOES set the
-//	                             variable — that is the "247 skips accounted for
-//	                             line by line, to zero or to the exception
-//	                             list" the issue asks for. Anything covered by
-//	                             no target fails by name.
+//	                             `go test` transcript (JSON or -v text). Every
+//	                             test that skipped at slowtest.Gate in it must
+//	                             be selected by at least one recipe line that
+//	                             DOES set the variable or an enabled CI step —
+//	                             that is the "247 skips accounted for line by line,
+//	                             to zero or to the exception list" the issue
+//	                             asks for. Anything covered by no target fails by
+//	                             name.
 //
 // The exception file is TSV: target<TAB>package<TAB>reason. A reason is not
 // optional: the point of the file is that a deliberate omission is written
@@ -37,6 +38,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -47,6 +49,22 @@ import (
 )
 
 const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
+
+type gatedTest struct {
+	pkg  string // normalized to "./dir", e.g. "./compiler" or "./internal/codegen/gotable"
+	name string // test name, e.g. "TestRequiredGate" or "TestGoUnitViewCorpus"
+}
+
+func (t gatedTest) Display() string {
+	p := strings.TrimPrefix(t.pkg, "./")
+	if p == "" || p == "." {
+		return t.name
+	}
+	if strings.HasPrefix(t.name, p+".") {
+		return t.name
+	}
+	return p + "." + t.name
+}
 
 type recipe struct {
 	file     string
@@ -62,8 +80,17 @@ type exception struct {
 	target, pkg, reason string
 }
 
+type ciStep struct {
+	file     string
+	line     int
+	name     string
+	enabled  bool
+	selector func(pkg, test string) bool
+	desc     string
+}
+
 func main() {
-	coverage := flag.String("coverage", "", "a plain `go test -v ./...` transcript to account for, test by test")
+	coverage := flag.String("coverage", "", "a plain `go test -v ./...` or `go test -json ./...` transcript to account for, test by test")
 	root := flag.String("C", ".", "repository root")
 	flag.Parse()
 
@@ -85,11 +112,11 @@ func main() {
 	}
 
 	if *coverage != "" {
-		lanes, err := workflowLanes(*root)
+		steps, err := workflowSteps(*root)
 		if err != nil {
 			fail("scanning .github/workflows: %v", err)
 		}
-		os.Exit(runCoverage(*root, *coverage, recipes, exceptions, lanes))
+		os.Exit(runCoverage(*root, *coverage, recipes, exceptions, steps))
 	}
 	os.Exit(runStatic(recipes, exceptions, gated))
 }
@@ -143,11 +170,12 @@ func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) 
 // placed in exactly one of three buckets, and the whole table is written to
 // build/slowgate/coverage.tsv so the accounting can be read, not believed.
 //
-//	make    a make target that sets the variable runs it — named in the table
-//	ci      no make target runs it; it runs ONLY on ci-full.yml's SCHEMA_SLOW=1
-//	        steps. Not silence: a named lane, counted here, listed in the file.
-//	NOBODY  nothing in the repo runs it. That is the failure.
-func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, lanes []string) int {
+//	make       a make target that sets the variable runs it — named in the table
+//	exception  an entry in make/slow-gate-exceptions.txt names it
+//	ci         no make target runs it; it runs ONLY on ci-full.yml's SCHEMA_SLOW=1
+//	           steps. Not silence: a named lane, counted here, listed in the file.
+//	NOBODY     nothing in the repo runs it. That is the failure.
+func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, steps []ciStep) int {
 	skipped, err := gateSkips(logPath)
 	if err != nil {
 		fail("reading %s: %v", logPath, err)
@@ -157,23 +185,26 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 		return 1
 	}
 	byMake, byCI, var0 := 0, 0, 0
-	var uncovered []string
+	var uncovered []gatedTest
 	var rows []string
-	for _, name := range skipped {
-		switch {
-		case coveredBy(recipes, name) != "":
+	usedCILanes := map[string]bool{}
+
+	for _, t := range skipped {
+		tDisplay := t.Display()
+		if target := coveredBy(recipes, t); target != "" {
 			byMake++
-			rows = append(rows, fmt.Sprintf("make\t%s\t%s", name, coveredBy(recipes, name)))
-		case coveredByException(exceptions, name):
+			rows = append(rows, fmt.Sprintf("make\t%s\t%s", tDisplay, target))
+		} else if ok, _ := coveredByException(exceptions, t); ok {
 			byMake++
-			rows = append(rows, fmt.Sprintf("exception\t%s\tmake/slow-gate-exceptions.txt", name))
-		case len(lanes) > 0:
+			rows = append(rows, fmt.Sprintf("exception\t%s\tmake/slow-gate-exceptions.txt", tDisplay))
+		} else if lane := coveredByCI(steps, t); lane != "" {
 			byCI++
-			rows = append(rows, fmt.Sprintf("ci\t%s\t%s", name, strings.Join(lanes, ",")))
-		default:
+			usedCILanes[lane] = true
+			rows = append(rows, fmt.Sprintf("ci\t%s\t%s", tDisplay, lane))
+		} else {
 			var0++
-			uncovered = append(uncovered, name)
-			rows = append(rows, fmt.Sprintf("NOBODY\t%s\t-", name))
+			uncovered = append(uncovered, t)
+			rows = append(rows, fmt.Sprintf("NOBODY\t%s\t-", tDisplay))
 		}
 	}
 	out := filepath.Join(root, "build", "slowgate", "coverage.tsv")
@@ -183,80 +214,350 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 	if len(uncovered) > 0 {
 		fmt.Printf("SLOW GATE COVERAGE FAILED: %d of %d tests that skip at slowtest.Gate under a plain `go test ./...` are run by NOTHING — no make target and no SCHEMA_SLOW=1 CI step (schema#988):\n", len(uncovered), len(skipped))
 		for _, n := range uncovered {
-			fmt.Printf("  %s\n", n)
+			fmt.Printf("  %s\n", n.Display())
 		}
 		fmt.Println("remedy: give it a positive gate target that goes through test/slowgate/proof, or name it in make/slow-gate-exceptions.txt with the reason.")
 		return 1
 	}
+	var laneNames []string
+	for l := range usedCILanes {
+		laneNames = append(laneNames, l)
+	}
+	sort.Strings(laneNames)
+	ciDesc := strings.Join(laneNames, ",")
+	if ciDesc == "" {
+		ciDesc = "none"
+	}
 	fmt.Printf("slow gate coverage: %d slowtest skips in %s accounted for — %d run by a make target that sets the variable, %d run only by %s, 0 run by nobody (table: build/slowgate/coverage.tsv)\n",
-		len(skipped), logPath, byMake, byCI, strings.Join(lanes, ","))
+		len(skipped), logPath, byMake, byCI, ciDesc)
 	return 0
 }
 
-// workflowLanes returns the workflow steps that run `go test` with SCHEMA_SLOW
-// set. A gated test that no make target runs is not "unchecked" if one of these
-// runs it — but it is not covered by `make` either, and the coverage table says
-// which, by name, rather than leaving the reader to guess.
-func workflowLanes(root string) ([]string, error) {
+// workflowSteps parses workflow files in .github/workflows/*.yml and extracts
+// steps that run `go test` with SCHEMA_SLOW enabled.
+func workflowSteps(root string) ([]ciStep, error) {
 	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		return nil, err
 	}
 	sort.Strings(paths)
-	var lanes []string
+	var steps []ciStep
 	for _, p := range paths {
 		b, err := os.ReadFile(p)
 		if err != nil {
 			return nil, err
 		}
 		rel, _ := filepath.Rel(root, p)
-		lines := strings.Split(string(b), "\n")
-		slowAt := -1
-		for i, l := range lines {
-			if strings.Contains(l, "SCHEMA_SLOW") && !strings.HasPrefix(strings.TrimSpace(l), "#") {
-				slowAt = i
+		parsed, err := parseWorkflowContent(rel, string(b))
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", rel, err)
+		}
+		steps = append(steps, parsed...)
+	}
+	return steps, nil
+}
+
+func parseWorkflowContent(file, content string) ([]ciStep, error) {
+	lines := strings.Split(content, "\n")
+	var steps []ciStep
+
+	type rawStep struct {
+		startLine int
+		runLine   int
+		name      string
+		envLines  []string
+		runLines  []string
+	}
+
+	var rawSteps []rawStep
+	var cur *rawStep
+	inRun := false
+	inEnv := false
+	runIndent := 0
+	envIndent := 0
+
+	for idx, line := range lines {
+		lineNo := idx + 1
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "- ") {
+			if cur != nil {
+				rawSteps = append(rawSteps, *cur)
 			}
-			if slowAt >= 0 && i-slowAt <= 3 && strings.Contains(l, "go test") && !strings.HasPrefix(strings.TrimSpace(l), "#") {
-				lanes = append(lanes, fmt.Sprintf("%s:%d", rel, i+1))
-				slowAt = -1
+			cur = &rawStep{startLine: lineNo, runLine: lineNo}
+			inRun = false
+			inEnv = false
+			lineAfterDash := strings.TrimSpace(trimmed[2:])
+			if strings.HasPrefix(lineAfterDash, "name:") {
+				cur.name = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "name:"))
+			} else if strings.HasPrefix(lineAfterDash, "run:") {
+				cur.runLine = lineNo
+				runRest := strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "run:"))
+				if runRest != "" && runRest != "|" && runRest != ">" {
+					cur.runLines = append(cur.runLines, runRest)
+				}
+				inRun = true
+				runIndent = len(line) - len(strings.TrimLeft(line, " "))
+			}
+			continue
+		}
+
+		if cur == nil {
+			continue
+		}
+
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+
+		if strings.HasPrefix(trimmed, "name:") && !inRun && !inEnv {
+			cur.name = strings.TrimSpace(strings.TrimPrefix(trimmed, "name:"))
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "env:") {
+			inEnv = true
+			inRun = false
+			envIndent = indent
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "run:") {
+			inRun = true
+			inEnv = false
+			runIndent = indent
+			cur.runLine = lineNo
+			runRest := strings.TrimSpace(strings.TrimPrefix(trimmed, "run:"))
+			if runRest != "" && runRest != "|" && runRest != ">" {
+				cur.runLines = append(cur.runLines, runRest)
+			}
+			continue
+		}
+
+		if inEnv {
+			if indent > envIndent && strings.Contains(trimmed, ":") {
+				cur.envLines = append(cur.envLines, trimmed)
+			} else if trimmed != "" {
+				inEnv = false
+			}
+		}
+
+		if inRun {
+			if indent > runIndent {
+				cur.runLines = append(cur.runLines, trimmed)
+			} else if trimmed != "" {
+				inRun = false
 			}
 		}
 	}
-	return lanes, nil
+	if cur != nil {
+		rawSteps = append(rawSteps, *cur)
+	}
+
+	for _, rs := range rawSteps {
+		fullRun := strings.Join(rs.runLines, "\n")
+		if !strings.Contains(fullRun, "go test") {
+			continue
+		}
+
+		enabled := false
+		for _, el := range rs.envLines {
+			parts := strings.SplitN(el, ":", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "SCHEMA_SLOW" {
+				val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				if val == "1" || strings.EqualFold(val, "true") {
+					enabled = true
+				} else if val == "0" || strings.EqualFold(val, "false") {
+					enabled = false
+				}
+			}
+		}
+		for _, rl := range rs.runLines {
+			if strings.Contains(rl, "SCHEMA_SLOW=1") {
+				enabled = true
+			} else if strings.Contains(rl, "SCHEMA_SLOW=0") {
+				enabled = false
+			}
+		}
+
+		selector := buildCISelector(fullRun)
+
+		steps = append(steps, ciStep{
+			file:     file,
+			line:     rs.runLine,
+			name:     rs.name,
+			enabled:  enabled,
+			selector: selector,
+			desc:     fmt.Sprintf("%s:%d", file, rs.runLine),
+		})
+	}
+	return steps, nil
+}
+
+func buildCISelector(cmd string) func(pkg, test string) bool {
+	runPat := runPattern(cmd)
+
+	// Complementary selection 1: everything that is not an emitter package
+	if strings.Contains(cmd, "grep -v '/internal/codegen/'") || strings.Contains(cmd, `grep -v "/internal/codegen/"`) {
+		return func(pkg, test string) bool {
+			if strings.Contains(pkg, "/internal/codegen/") || pkg == "./internal/codegen" {
+				return false
+			}
+			if runPat != "" && !matchesRun(runPat, test) {
+				return false
+			}
+			return true
+		}
+	}
+
+	// Complementary selection 2: emitter packages ./internal/codegen/...
+	if strings.Contains(cmd, "./internal/codegen/...") {
+		return func(pkg, test string) bool {
+			if pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/") {
+				return false
+			}
+			if runPat != "" && !matchesRun(runPat, test) {
+				return false
+			}
+			return true
+		}
+	}
+
+	// Umbrella selection: go test ./...
+	if strings.Contains(cmd, "go test ./...") || strings.Contains(cmd, "go test \"./...\"") {
+		return func(pkg, test string) bool {
+			if runPat != "" && !matchesRun(runPat, test) {
+				return false
+			}
+			return true
+		}
+	}
+
+	// Specific packages: parse tokens
+	var pkgs []string
+	for _, line := range strings.Split(cmd, "\n") {
+		if !strings.Contains(line, "go test") {
+			continue
+		}
+		fields := strings.Fields(line)
+		isGoTest := false
+		for i := 0; i < len(fields); i++ {
+			f := fields[i]
+			if f == "go" && i+1 < len(fields) && fields[i+1] == "test" {
+				isGoTest = true
+				i++
+				continue
+			}
+			if !isGoTest {
+				continue
+			}
+			if strings.HasPrefix(f, "-") {
+				if f == "-run" && i+1 < len(fields) {
+					i++
+				}
+				continue
+			}
+			if strings.HasPrefix(f, "./") || (!strings.Contains(f, "=") && !strings.Contains(f, "$") && !strings.Contains(f, "|") && !strings.Contains(f, ";")) {
+				pkgs = append(pkgs, normalizePkg(f))
+			}
+		}
+	}
+
+	if len(pkgs) > 0 {
+		return func(pkg, test string) bool {
+			matchedPkg := false
+			for _, p := range pkgs {
+				if p == "./..." {
+					matchedPkg = true
+					break
+				}
+				if strings.HasSuffix(p, "/...") {
+					base := strings.TrimSuffix(p, "/...")
+					if pkg == base || strings.HasPrefix(pkg, base+"/") {
+						matchedPkg = true
+						break
+					}
+				}
+				if p == pkg {
+					matchedPkg = true
+					break
+				}
+			}
+			if !matchedPkg {
+				return false
+			}
+			if runPat != "" && !matchesRun(runPat, test) {
+				return false
+			}
+			return true
+		}
+	}
+
+	// Unsupported or unresolved command: selects nothing
+	return func(pkg, test string) bool {
+		return false
+	}
+}
+
+func coveredByCI(steps []ciStep, t gatedTest) string {
+	for _, s := range steps {
+		if !s.enabled {
+			continue
+		}
+		if s.selector != nil && s.selector(t.pkg, t.name) {
+			return s.desc
+		}
+	}
+	return ""
 }
 
 // coveredBy reports the first armed recipe whose package and -run pattern select
-// name, using Go's own -run semantics: the pattern is split on "/" and each
-// element is an unanchored regexp matched against the corresponding element of
-// the test's name.
-func coveredBy(recipes []recipe, name string) string {
+// t, using Go's own -run semantics.
+func coveredBy(recipes []recipe, t gatedTest) string {
 	for _, r := range recipes {
 		if !r.armed {
 			continue
 		}
-		if r.runPat == "" {
-			// No -run at all: the whole package runs.
-			return r.target
+		if !recipeMatchesPkg(r, t.pkg) {
+			continue
 		}
-		if matchesRun(r.runPat, name) {
+		if r.runPat == "" || matchesRun(r.runPat, t.name) {
 			return r.target
 		}
 	}
 	return ""
 }
 
-func coveredByException(exceptions []exception, name string) bool {
-	for _, e := range exceptions {
-		if e.pkg == "./..." || strings.HasPrefix(name, e.pkg) {
-			// A ./... exception is about the umbrella line, never about a test:
-			// it may not excuse a test nothing else runs.
-			continue
+func recipeMatchesPkg(r recipe, pkg string) bool {
+	for _, rp := range r.packages {
+		if rp == "./..." {
+			return true
 		}
-		if e.target == name || matchesRun(e.pkg, name) {
+		if strings.HasSuffix(rp, "/...") {
+			base := strings.TrimSuffix(rp, "/...")
+			if pkg == base || strings.HasPrefix(pkg, base+"/") {
+				return true
+			}
+		}
+		if normalizePkg(rp) == pkg {
 			return true
 		}
 	}
 	return false
+}
+
+func coveredByException(exceptions []exception, t gatedTest) (bool, string) {
+	for _, e := range exceptions {
+		if e.pkg == "./..." {
+			continue
+		}
+		ePkg := normalizePkg(e.pkg)
+		if ePkg != t.pkg {
+			continue
+		}
+		if e.target == t.name || matchesRun(e.target, t.name) {
+			return true, e.reason
+		}
+	}
+	return false, ""
 }
 
 func matchesRun(pattern, name string) bool {
@@ -291,11 +592,6 @@ func matchException(exceptions []exception, r recipe) int {
 	return -1
 }
 
-// gatedPackages returns the set of package directories (as "./dir" import
-// spellings, relative to root) whose tests reach internal/slowtest.Gate. Gate
-// takes a *testing.T, so a call site is always in the package under test —
-// including the ones inside a shared helper, which is why this is a grep over
-// the package's _test.go files and not a static call graph.
 func gatedPackages(root string) (map[string]bool, error) {
 	gated := map[string]bool{}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -374,16 +670,12 @@ func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
 			}
 			continue
 		}
-		// One logical recipe line: join backslash continuations.
 		start := lineNo
 		cmd := line
 		for strings.HasSuffix(strings.TrimRight(cmd, " "), `\`) && sc.Scan() {
 			lineNo++
 			cmd = strings.TrimSuffix(strings.TrimRight(cmd, " "), `\`) + " " + sc.Text()
 		}
-		// A line that goes through the proof helper no longer SPELLS `go test` —
-		// the helper does — so it has to be recognised here or the armed half of
-		// the audit would be invisible to it.
 		if !strings.Contains(cmd, "go test") && !strings.Contains(cmd, "test/slowgate/proof") {
 			continue
 		}
@@ -405,9 +697,6 @@ func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
 	return out, sc.Err()
 }
 
-// packagesOf returns the gated package arguments a recipe's `go test` names.
-// "./..." counts: it walks every gated package there is. A `cd dir && go test .`
-// is resolved against dir, which is how the sibling-module legs spell it.
 func packagesOf(cmd string, gated map[string]bool) []string {
 	base := ""
 	if i := strings.Index(cmd, "cd "); i >= 0 && strings.Contains(cmd[i:], "&&") {
@@ -455,7 +744,6 @@ func runPattern(cmd string) string {
 	if m == nil {
 		return ""
 	}
-	// Make doubles a literal '$' as '$$' in a recipe.
 	return strings.ReplaceAll(m[1], "$$", "$")
 }
 
@@ -488,31 +776,128 @@ func readExceptions(path string) ([]exception, error) {
 	return out, nil
 }
 
-// gateSkips returns the test names that skipped at slowtest.Gate in a plain
-// `go test -v` transcript. The name comes from the `=== RUN` line that opened
-// the test, NOT from the `--- SKIP` line, because Go prints a parent's
-// `--- PASS` before its skipped subtests and a scan that reads only result
-// lines cannot tell a gate skip from a retirement.
-func gateSkips(path string) ([]string, error) {
+func normalizePkg(pkg string) string {
+	pkg = strings.TrimSpace(pkg)
+	if pkg == "" {
+		return ""
+	}
+	for _, mod := range []string{"github.com/mas-bandwidth/schema/v2/", "github.com/mas-bandwidth/schema/"} {
+		if strings.HasPrefix(pkg, mod) {
+			pkg = strings.TrimPrefix(pkg, mod)
+			break
+		}
+	}
+	pkg = strings.TrimPrefix(pkg, "./")
+	pkg = strings.TrimSuffix(pkg, "/")
+	if pkg == "" || pkg == "." {
+		return "."
+	}
+	return "./" + filepath.ToSlash(pkg)
+}
+
+func makeGatedTest(pkg, name string) gatedTest {
+	pkg = normalizePkg(pkg)
+	if pkg == "" {
+		pkg = "."
+	}
+	return gatedTest{
+		pkg:  pkg,
+		name: name,
+	}
+}
+
+// gateSkips extracts test names and packages that skipped at slowtest.Gate.
+// Supports both Go test JSON streams (from `go test -json`) and plain -v text logs.
+func gateSkips(path string) ([]gatedTest, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	runLine := regexp.MustCompile(`^=== RUN\s+(\S+)`)
-	cur := ""
-	seen := map[string]bool{}
-	var out []string
-	for _, line := range strings.Split(string(b), "\n") {
-		if m := runLine.FindStringSubmatch(line); m != nil {
-			cur = m[1]
-		}
-		if strings.Contains(line, gateSkipMarker) && cur != "" && !seen[cur] {
-			seen[cur] = true
-			out = append(out, cur)
+	lines := strings.Split(string(b), "\n")
+
+	isJSON := false
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "{") && strings.Contains(trimmed, `"Action":`) {
+			isJSON = true
+			break
 		}
 	}
-	sort.Strings(out)
-	return out, nil
+
+	var results []gatedTest
+	seen := map[string]bool{}
+
+	if isJSON {
+		for _, l := range lines {
+			trimmed := strings.TrimSpace(l)
+			if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+				continue
+			}
+			var ev struct {
+				Action  string `json:"Action"`
+				Package string `json:"Package"`
+				Test    string `json:"Test"`
+				Output  string `json:"Output"`
+			}
+			if err := json.Unmarshal([]byte(trimmed), &ev); err != nil {
+				continue
+			}
+			if strings.Contains(ev.Output, gateSkipMarker) {
+				pkg := ev.Package
+				testName := ev.Test
+				if testName == "" {
+					continue
+				}
+				if strings.Contains(testName, ".") && pkg == "" {
+					parts := strings.SplitN(testName, ".", 2)
+					pkg = parts[0]
+					testName = parts[1]
+				}
+				gt := makeGatedTest(pkg, testName)
+				key := gt.pkg + ":" + gt.name
+				if !seen[key] {
+					seen[key] = true
+					results = append(results, gt)
+				}
+			}
+		}
+	} else {
+		runLine := regexp.MustCompile(`^=== RUN\s+(\S+)`)
+		pkgHeader := regexp.MustCompile(`^(?:ok|\?|FAIL)\s+(\S+)`)
+		curPkg := ""
+		curTest := ""
+		for _, line := range lines {
+			if m := pkgHeader.FindStringSubmatch(line); m != nil {
+				curPkg = m[1]
+			}
+			if m := runLine.FindStringSubmatch(line); m != nil {
+				curTest = m[1]
+			}
+			if strings.Contains(line, gateSkipMarker) && curTest != "" {
+				pkg := curPkg
+				testName := curTest
+				if strings.Contains(testName, ".") {
+					parts := strings.SplitN(testName, ".", 2)
+					pkg = parts[0]
+					testName = parts[1]
+				}
+				gt := makeGatedTest(pkg, testName)
+				key := gt.pkg + ":" + gt.name
+				if !seen[key] {
+					seen[key] = true
+					results = append(results, gt)
+				}
+			}
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].pkg != results[j].pkg {
+			return results[i].pkg < results[j].pkg
+		}
+		return results[i].name < results[j].name
+	})
+	return results, nil
 }
 
 func fail(format string, a ...any) {

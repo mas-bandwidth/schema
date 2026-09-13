@@ -6198,5 +6198,5 @@ test: slow-gate-scan
 .PHONY: slow-gate-coverage
 slow-gate-coverage:
 	@mkdir -p build/slowgate
-	go test -v ./... > build/slowgate/all-plain.log 2>&1 || true
+	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
