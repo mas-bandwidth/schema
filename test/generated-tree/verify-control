@@ -12,6 +12,18 @@
 #                       original is in build/generated-tree/prev and the
 #                       replacement tree exists; a second invocation must name
 #                       the state and leave the original bytes standing.
+#   kill-before-emission
+#                       SIGKILL the verifier after `mv generated "$prev"` but
+#                       before generation recreated its directory (the recipe
+#                       touches build/emission-started, then sleeps before
+#                       mkdir -p generated/go); the next invocation restores the
+#                       original and names the state.
+#   simultaneous-contender
+#                       start one verifier and wait for its lock, then start a
+#                       second: the second is refused and original, prev, fresh
+#                       and the marker are byte-identical before and after.
+#   ambiguous-marker    a marker with an unrecognised phase plus a prev tree:
+#                       refusal, marker and both trees unchanged.
 #   regeneration-fails  a normal failure: the original tree is restored and the
 #                       run exits non-zero.
 #   second-invocation   two normal invocations in a row; the second must not be
@@ -25,7 +37,7 @@ repo=$(cd "$(dirname "$0")/../.." && pwd)
 
 mode=${1:?usage: verify-control <case>}
 case "$mode" in
-kill-retry|regeneration-fails|second-invocation|staged-difference) ;;
+kill-retry|kill-before-emission|simultaneous-contender|ambiguous-marker|regeneration-fails|second-invocation|staged-difference) ;;
 *) printf 'unknown control: %s\n' "$mode" >&2; exit 1 ;;
 esac
 
@@ -58,6 +70,38 @@ generated/go/.stamp:
 	@printf 'synthetic emission\n' > generated/go/ATable.go
 	@touch build/replacement-exists
 	@sleep 8
+	@touch generated/go/.stamp
+EOF
+	;;
+kill-before-emission)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p build
+	@touch build/emission-started
+	@sleep 8
+	@mkdir -p generated/go
+	@printf 'synthetic emission\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+simultaneous-contender)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go build
+	@touch build/emission-started
+	@sleep 8
+	@printf 'synthetic emission\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+ambiguous-marker)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go
+	@printf 'committed original bytes\n' > generated/go/ATable.go
 	@touch generated/go/.stamp
 EOF
 	;;
@@ -140,6 +184,18 @@ assert_not_contains() {
 
 run_verify() { ( cd "$fixture" && sh test/generated-tree/verify "$@" ); }
 
+snapshot() {
+	# snapshot <label> — record the four shared artefacts (original tree, prev,
+	# fresh, state marker) to $work/<label>.snap for a byte-identical diff.
+	{
+		printf 'generated='; [ -f "$fixture/generated/go/ATable.go" ] && cat "$fixture/generated/go/ATable.go" || printf 'ABSENT'
+		printf '\nprev='; [ -f "$fixture/build/generated-tree/prev/go/ATable.go" ] && cat "$fixture/build/generated-tree/prev/go/ATable.go" || printf 'ABSENT'
+		printf '\nfresh='; [ -e "$fixture/build/generated-tree/fresh" ] && printf 'PRESENT' || printf 'ABSENT'
+		printf '\nstate='; [ -f "$fixture/build/generated-tree/state" ] && cat "$fixture/build/generated-tree/state" || printf 'ABSENT'
+		printf '\n'
+	} > "$work/$1.snap"
+}
+
 case "$mode" in
 kill-retry)
 	# The verifier must run in its own process group so the whole group — the
@@ -169,6 +225,97 @@ kill-retry)
 		fail=1
 	fi
 	printf 'verify-control kill-retry: the SIGKILLed run left the original in prev, and the retry RECOVERED it, named the state, and left the original bytes standing\n'
+	;;
+
+kill-before-emission)
+	# SIGKILL the verifier after `mv generated "$prev"` but before generation
+	# recreated its directory: the recipe touches build/emission-started, then
+	# sleeps before mkdir -p generated/go. At the kill there is no generated/
+	# at all — the exact hole the old early guard tripped over.
+	( cd "$fixture" && exec python3 -c 'import os,sys; os.setpgrp(); os.execvp("sh", ["sh","test/generated-tree/verify"])' ) > "$work/run1.log" 2>&1 &
+	vpid=$!
+
+	wait_for build/generated-tree/prev/go/ATable.go 100 || { printf 'the original never reached prev\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
+
+	wait_for build/emission-started 100 || { printf 'the generation rule never started\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	if [ -e "$fixture/generated" ]; then
+		printf 'ASSERTION FAILED: the boundary is wrong — generated/ exists before the recipe recreated it\n' >&2
+		fail=1
+	fi
+	kill -KILL -"$vpid"
+	wait "$vpid" 2>/dev/null || true
+
+	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
+
+	# The next invocation must recover (not destroy) the original and name the
+	# state, even though there was no generated/ tree at all when it started.
+	run_verify > "$work/run2.log" 2>&1 || rc2=$?
+	assert_contains run2.log 'RECOVERED' || fail=1
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	if [ "${rc2:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: the retry exited 0, but the committed tree is stale against the emission\n' >&2
+		fail=1
+	fi
+	printf 'verify-control kill-before-emission: the run killed before generation recreated the tree left no generated/; the retry RECOVERED the original and named the state\n'
+	;;
+
+simultaneous-contender)
+	# One verifier takes the lock and holds it (its generation rule sleeps); a
+	# second must be refused without moving a byte of shared state.
+	( cd "$fixture" && exec python3 -c 'import os,sys; os.setpgrp(); os.execvp("sh", ["sh","test/generated-tree/verify"])' ) > "$work/run1.log" 2>&1 &
+	vpid=$!
+
+	wait_for build/generated-tree/lock/owner 100 || { printf 'the first verifier never took the lock\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	wait_for build/emission-started 100 || { printf 'the first verifier never reached its generation rule\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+
+	snapshot before
+
+	run_verify > "$work/run2.log" 2>&1 || rc2=$?
+	assert_contains run2.log 'REFUSED' || fail=1
+	if [ "${rc2:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: the simultaneous contender was not refused\n' >&2
+		fail=1
+	fi
+
+	snapshot after
+	if ! cmp -s "$work/before.snap" "$work/after.snap"; then
+		printf 'ASSERTION FAILED: the refused contender changed a shared artefact\n' >&2
+		diff "$work/before.snap" "$work/after.snap" >&2 || true
+		fail=1
+	fi
+
+	kill -KILL -"$vpid" 2>/dev/null || true
+	wait "$vpid" 2>/dev/null || true
+	printf 'verify-control simultaneous-contender: the second verifier is refused, and original, prev, fresh and the marker are byte-identical before and after\n'
+	;;
+
+ambiguous-marker)
+	# A marker whose phase this script does not recognise, beside a preserved
+	# prev tree: the run must refuse and leave the marker and both trees exactly
+	# as they were.
+	mkdir -p "$fixture/build/generated-tree/prev/go"
+	printf 'preserved original bytes\n' > "$fixture/build/generated-tree/prev/go/ATable.go"
+	printf '99999 somenonce bogus-phase\n' > "$fixture/build/generated-tree/state"
+
+	marker_before=$(cat "$fixture/build/generated-tree/state")
+	prev_before=$(cat "$fixture/build/generated-tree/prev/go/ATable.go")
+	gen_before=$(cat "$fixture/generated/go/ATable.go")
+
+	run_verify > "$work/run1.log" 2>&1 || rc=$?
+	if [ "${rc:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: an unrecognised marker must be refused\n' >&2
+		fail=1
+	fi
+	assert_contains run1.log 'REFUSED' || fail=1
+
+	marker_after=$(cat "$fixture/build/generated-tree/state")
+	prev_after=$(cat "$fixture/build/generated-tree/prev/go/ATable.go")
+	gen_after=$(cat "$fixture/generated/go/ATable.go")
+	[ "$marker_before" = "$marker_after" ] || { printf 'ASSERTION FAILED: the marker was altered\n' >&2; fail=1; }
+	[ "$prev_before" = "$prev_after" ] || { printf 'ASSERTION FAILED: prev was altered\n' >&2; fail=1; }
+	[ "$gen_before" = "$gen_after" ] || { printf 'ASSERTION FAILED: generated was altered\n' >&2; fail=1; }
+	printf 'verify-control ambiguous-marker: an unrecognised marker is refused, and the marker and both trees are unchanged\n'
 	;;
 
 regeneration-fails)
