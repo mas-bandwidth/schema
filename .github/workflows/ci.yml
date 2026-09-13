@@ -9,7 +9,21 @@ name: CI
 # pins at 6:39 and big-endian at 6:39. Those three and cs-fuzz moved to
 # certify.yml WHOLE, under the same job names, in the commit that took them
 # off here — the nightly tier is where a leg that cannot fit the rule belongs,
-# and nothing is checked less than before. What stays is cut to fit:
+# and nothing is checked less than before. EACH MOVE HAS AN OWNER FOR THE WAY
+# BACK: issue #684 owns sharding big-endian, and issue #1025 owns go-test,
+# which measured 0:37 on run 33740084214 and 5:34 to 9:10 on the last eight
+# push runs to main — a 10x nobody has explained yet. A leg does not stay
+# nightly because it is slow; it stays nightly until somebody makes it fast.
+#
+# THE RULE IS NOW MECHANICAL, NOT PROSE. Every job in this file carries
+# `timeout-minutes: 2`, so a job that drifts past the law is cancelled and
+# read as a failure rather than quietly spending eight minutes. Queue time
+# does not count against it (GitHub starts the clock when the job starts).
+# Measured on run 34781883591, the run that made this pass: 41 jobs, wall
+# 1:59, slowest job 94 s. The next job that wants a place on this gate takes
+# its budget out of those 26 seconds.
+#
+# What stays is cut to fit:
 #
 #   * THE GO TOOLCHAIN PIN IS NOW A PATCH VERSION. The block on
 #     `conformance-matrix` below measured the cost of not pinning it: setup-go
@@ -49,7 +63,7 @@ name: CI
 # the way back onto this gate, and until somebody does that work it runs on
 # the tier that does not fire per commit. Its control is the reason
 # tables-big-endian-negative-control sits in the plan's exclusion list rather
-# than in a group: this job runs it on every pull request already. The C twin,
+# than in a group: this job runs it nightly already, in certify.yml. The C twin,
 # tables-c-big-endian-negative-control, rides the same job for the same reason.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
@@ -136,7 +150,7 @@ jobs:
   # generated-current`, which gets there through the whole `make test` chain.
   generated:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -201,7 +215,7 @@ jobs:
   # new field, which is the one edit this file still takes.
   conformance-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
@@ -258,7 +272,7 @@ jobs:
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.conformance-matrix.outputs.matrix) }}
@@ -362,7 +376,7 @@ jobs:
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PINNED to the module's own Go version, and it moves WITH the
@@ -446,7 +460,7 @@ jobs:
   # trigger substitutes for the other.
   vuln:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -480,7 +494,7 @@ jobs:
   # EMITS is compiled with cl by the `msvc` job below.
   windows:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -561,7 +575,7 @@ jobs:
   # unmeasurable, and here the measurement is worth more than the seconds.
   msvc:
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -707,7 +721,7 @@ jobs:
   # only shrink.
   shape-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -746,7 +760,7 @@ jobs:
   # main the diff against main is empty and the job is a no-op that says so.
   cpp-lock:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -845,7 +859,7 @@ jobs:
   # umbrellas rather than in a job that would run one of those leaves twice.
   negative-controls-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -889,7 +903,7 @@ jobs:
     # time and pays about 25 s of checkout, sibling clones and first build on
     # top, so five minutes is generous and a row that reaches it is a row that
     # left the rule. A ceiling wide enough to hide that is not a timeout.
-    timeout-minutes: 5
+    timeout-minutes: 2
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}

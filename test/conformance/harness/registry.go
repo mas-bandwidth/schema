@@ -94,19 +94,6 @@ func loadDrivers(path string) (drivers []driver, discovered bool, err error) {
 	return drivers, false, err
 }
 
-// matrix prints the CI matrix — `{"include": [...]}`, one row per discovered
-// driver — from every test/conformance/<lang>/ci.json. A row is that file's
-// keys plus "lang"; the workflow reads "targets" (the make targets that build
-// the leg), "env" (variable assignments the make and run steps carry),
-// "runtime" and "runtime_tag" (the sibling checkout and the workflow variable
-// holding its pin), and one key per toolchain step it can install. Every row
-// carries every key seen in any file, empty where a leg did not set it, so a
-// step comparing matrix.<key> with the empty string reads the same for every
-// leg.
-//
-// A driver with no ci.json is an error: a leg the harness runs locally and CI
-// never sees is the gap this registry exists to close. So is a ci.json with no
-// driver: a row CI would run for a leg that does not exist.
 // The tiers a leg's CI row may name, and the rule that puts it in one. The
 // owner's law is that CI running on every commit finishes in one to two
 // minutes, so a leg rides the per-commit tier exactly when it fits that
@@ -118,10 +105,11 @@ const (
 	tierNightly     = "nightly"
 )
 
-// matrixFor is `matrix` for ONE tier: the same rows, filtered by each leg's
-// "tier". An empty tier on a row means the per-commit one. An empty RESULT is
-// an error rather than an empty matrix, because a workflow whose matrix
-// expands to no job is a gate over nothing dressed as a green.
+// matrixFor prints the CI matrix — `{"include": [...]}` — for ONE tier: the
+// rows of matrixRows, filtered by each leg's "tier". An empty tier on a row
+// means the per-commit one. An empty RESULT is an error rather than an empty
+// matrix, because a workflow whose matrix expands to no job is a gate over
+// nothing dressed as a green.
 func matrixFor(dir, tier string) ([]byte, error) {
 	if tier != tierPullRequest && tier != tierNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", tier, tierPullRequest, tierNightly)
@@ -149,15 +137,19 @@ func matrixFor(dir, tier string) ([]byte, error) {
 	return json.Marshal(map[string]any{"include": kept})
 }
 
-func matrix(dir string) ([]byte, error) {
-	rows, err := matrixRows(dir)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(map[string]any{"include": rows})
-}
-
-// matrixRows is the registry as rows, every tier of it.
+// matrixRows is the registry as rows, every tier of it: one row per discovered
+// driver, read from every test/conformance/<lang>/ci.json. A row is that
+// file's keys plus "lang"; the workflow reads "targets" (the make targets that
+// build the leg), "env" (variable assignments the make and run steps carry),
+// "runtime" and "runtime_tag" (the sibling checkout and the workflow variable
+// holding its pin), and one key per toolchain step it can install. Every row
+// carries every key seen in any file, empty where a leg did not set it, so a
+// step comparing matrix.<key> with the empty string reads the same for every
+// leg.
+//
+// A driver with no ci.json is an error: a leg the harness runs locally and CI
+// never sees is the gap this registry exists to close. So is a ci.json with no
+// driver: a row CI would run for a leg that does not exist.
 func matrixRows(dir string) ([]map[string]string, error) {
 	drivers, err := discoverDrivers(dir)
 	if err != nil {
