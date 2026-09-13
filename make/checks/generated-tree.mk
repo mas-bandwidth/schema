@@ -22,4 +22,21 @@ $(GENERATED_TREE_CONTROLS:%=generated-tree-control-%): generated-tree-control-%:
 generated-tree-negative-controls: $(GENERATED_TREE_CONTROLS:%=generated-tree-control-%)
 	@echo "generated-tree controls: $(words $(GENERATED_TREE_CONTROLS)) planted verdicts, each named"
 
-test: generated-tree-negative-controls
+# THE VERIFIER'S LIFECYCLE WITNESSES. The controls above hand prepared
+# directories to compare; these drive the real verifier in a disposable Git
+# fixture with one generation rule, so they can prove the two things a prepared
+# directory cannot: that a previous run's preserved original tree is RECOVERED
+# and never destroyed (even across a real SIGKILL of the whole verifier process
+# group), and that a staged edit does not pass as committed.
+
+GENERATED_TREE_VERIFY_CONTROLS := kill-retry regeneration-fails second-invocation staged-difference
+
+.PHONY: generated-tree-verify-controls $(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%)
+
+$(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%): generated-tree-verify-control-%:
+	@test/generated-tree/verify-control $*
+
+generated-tree-verify-controls: $(GENERATED_TREE_VERIFY_CONTROLS:%=generated-tree-verify-control-%)
+	@echo "generated-tree verify controls: $(words $(GENERATED_TREE_VERIFY_CONTROLS)) lifecycle witnesses, each named"
+
+test: generated-tree-negative-controls generated-tree-verify-controls
