@@ -44,13 +44,15 @@ This matrix is generated from [recursive work data](docs/roadmap.sexp).
 The [feature survey](docs/FIXED-TABLES-SURVEY.md) records the full scope, including
 ordinary capabilities as well as the original audit families.
 
-`✅ 100%` means the cell's required acceptance has a source-matched test receipt.
-`Built; verify` means implementation was found, with specific acceptance work still
-open. `Partial` means only part of the feature is implemented; `Missing` means the
-current compiler refuses it. `?` remains only where audit evidence has not yet been
-reconciled. Source assessments use `e3e88a46`, landed as `9785a76c`; later fixes
-receive credit when their evidence is reconciled. Test references and remaining
-work live inside each cell in the source data.
+Cells use three states: **empty — missing/not started**, **🟠 ↻ — in progress or
+partial**, **✅ — verified**. Implementation that is built but still needs checks is
+in progress. Verification and evidence reconciliation are also unfinished work;
+nothing is complete until its required acceptance is verified.
+
+Source assessments use `e3e88a46`, landed as `9785a76c`; later fixes receive credit
+when their evidence is reconciled. Detailed implementation findings, test
+references, remaining work and subtask counts live inside each cell in the source
+data.
 
 Language completion is green features divided by all features, not an average of
 partial-cell percentages. Ordinary valid-data checks do not close the separate
@@ -61,63 +63,63 @@ gates. The total is a verified lower bound while audit reconciliation remains op
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|---|
-| File framing and layout announcements | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Bounded batches | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Select known layouts and refuse unsupported input | ? (≥ 14%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Static plans, record sizes and caller capacity | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Layout and definition hashes | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Fixed closure and record limits | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Retirement floors and supported versions | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Remove obsolete runtime and forward-read paths | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Numeric widening and backward-read landing rules | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) | ? (≥ 16%) |
-| Optional values and absent payloads | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Renaming, appending and deprecating fields | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Exact counters and report semantics | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Array counts and writer bounds | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Text lengths, code units and named refusals | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Scalar bounds and compressed floats | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Full-width enum and union ordinals | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Bool and present-byte normalization | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Live extents, read slack and prefill | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Fixed-image writes and zeroed slack | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Nested union guards and independent metadata | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Partitioned plans and identity-path equivalence | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Shared byte oracle and round-trip conformance | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Hostile-input checks and negative controls | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) | ? (≥ 0%) |
-| Boolean values | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Signed integers: 8, 16, 32 and 64 bits | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| Unsigned integers: 8, 16, 32 and 64 bits | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| Signed 128-bit integers | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Unsigned 128-bit integers | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Ranged integer fields | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| bits(N) fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| 32-bit floating-point fields | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| 64-bit floating-point fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Compressed-float declarations stored as float32 | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Signed fixed-point fields | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Unsigned fixed-point fields | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify |
-| Flags masks | ✅ 100% | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | Built; verify |
-| Enums and None | Built; verify | Built; verify | ✅ 100% | Built; verify | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Bounded UTF-8 string fields | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Bounded UTF-16 string fields | ✅ 100% | Built; verify | Built; verify | Built; verify | Missing | Missing | Missing | ✅ 100% | Missing |
-| Bounded byte buffers | ✅ 100% | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Nested types by value | ✅ 100% | ✅ 100% | Built; verify | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Nested fixed tables by value | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Fixed-length arrays | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Bounded arrays with a live count | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Enum-keyed arrays | ✅ 100% | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% |
-| Nested enum-keyed arrays | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% |
-| Tagged unions with type or fixed-table payloads | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify |
-| Union arms holding scalar, text or array fields | Partial | Partial | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
-| Payload-free union arms | Missing | Missing | Missing | Missing | Missing | Missing | Missing | Missing | Missing |
-| Arrays of unions | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| Optional scalar and enum fields | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | ✅ 100% | ✅ 100% | Built; verify | Built; verify |
-| Optional nested values | Built; verify | Built; verify | ✅ 100% | Built; verify | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Optional arrays | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| Scalar and enum defaults | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| String, byte-buffer and flags defaults | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify | Built; verify |
-| Save and load fixed-form files | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% |
-| Constant body size and file-size measurement | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 100% | Built; verify |
+| File framing and layout announcements | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Bounded batches | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Select known layouts and refuse unsupported input | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Static plans, record sizes and caller capacity | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Layout and definition hashes | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Fixed closure and record limits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Retirement floors and supported versions | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Remove obsolete runtime and forward-read paths | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Numeric widening and backward-read landing rules | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Optional values and absent payloads | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Renaming, appending and deprecating fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Exact counters and report semantics | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Array counts and writer bounds | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Text lengths, code units and named refusals | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Scalar bounds and compressed floats | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Full-width enum and union ordinals | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Bool and present-byte normalization | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Live extents, read slack and prefill | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Fixed-image writes and zeroed slack | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Nested union guards and independent metadata | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Partitioned plans and identity-path equivalence | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Shared byte oracle and round-trip conformance | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Hostile-input checks and negative controls | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Boolean values | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Signed integers: 8, 16, 32 and 64 bits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Unsigned integers: 8, 16, 32 and 64 bits | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Signed 128-bit integers | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Unsigned 128-bit integers | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Ranged integer fields | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| bits(N) fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| 32-bit floating-point fields | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| 64-bit floating-point fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Compressed-float declarations stored as float32 | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Signed fixed-point fields | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Unsigned fixed-point fields | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ |
+| Flags masks | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Enums and None | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ |
+| Bounded UTF-8 string fields | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bounded UTF-16 string fields | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |  |  |  | ✅ |  |
+| Bounded byte buffers | ✅ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nested types by value | ✅ | ✅ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nested fixed tables by value | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Fixed-length arrays | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bounded arrays with a live count | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Enum-keyed arrays | ✅ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ |
+| Nested enum-keyed arrays | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ |
+| Tagged unions with type or fixed-table payloads | ✅ | ✅ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ |
+| Union arms holding scalar, text or array fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Payload-free union arms |  |  |  |  |  |  |  |  |  |
+| Arrays of unions | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Optional scalar and enum fields | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | ✅ | ✅ | 🟠 ↻ | 🟠 ↻ |
+| Optional nested values | 🟠 ↻ | 🟠 ↻ | ✅ | 🟠 ↻ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Optional arrays | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Scalar and enum defaults | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| String, byte-buffer and flags defaults | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ | 🟠 ↻ |
+| Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟠 ↻ |
 | complete | ≥ 13/57 (≥ 22%) | ≥ 10/57 (≥ 17%) | ≥ 16/57 (≥ 28%) | ≥ 3/57 (≥ 5%) | ≥ 15/57 (≥ 26%) | ≥ 15/57 (≥ 26%) | ≥ 22/57 (≥ 38%) | ≥ 24/57 (≥ 42%) | ≥ 11/57 (≥ 19%) |
 
 [Source data](docs/roadmap.sexp)
