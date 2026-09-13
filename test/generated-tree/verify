@@ -38,17 +38,20 @@
 # compiler emits into nothing, then the listing and bytes are compared both
 # ways. A SIGKILL cannot be trapped, so a run killed mid-emission leaves the
 # original tree in build/generated-tree/prev and a partial replacement in
-# generated/. THAT PREVIOUS-RUN TREE IS EVIDENCE, NEVER SCRATCH. On start, when
-# build/generated-tree/prev exists, this script restores it to generated/ —
-# preserving any partial replacement in build/generated-tree/fresh — when
-# generated/ is absent or provably the partial replacement, and refuses (deleting
-# neither tree) when ownership is ambiguous. Ownership is recorded in a small
-# state marker written at each phase transition (pid, a nonce, and the phase),
-# and each invocation's scratch lives under a nonce-unique path, so concurrent
-# runs cannot collide and a dead run's state is told from a live run's by its
-# pid. What is promised is recoverable originals: the next invocation cannot
-# destroy a preserved original. What is NOT promised is restoration under an
-# uncatchable signal, because no trap runs for SIGKILL.
+# generated/. THAT PREVIOUS-RUN TREE IS EVIDENCE, NEVER SCRATCH. Each run holds
+# build/generated-tree/lock — created atomically — and records its pid and a
+# nonce inside it, and each phase transition writes a small state marker (pid,
+# nonce, phase) to build/generated-tree/state. On start a run takes the lock
+# (refusing a live holder without touching anything), validates the marker
+# (an unrecognised or partial one is preserved unchanged and the run refuses
+# without touching either tree), and — BEFORE the `generated/` existence guard —
+# restores a preserved original from prev to generated/ whenever the marker owns
+# one, preserving any partial replacement in build/generated-tree/fresh. The
+# nonce, not the pid (which a new process can reuse), is the authority that a
+# dead run's lock and marker name one and the same run. What is promised is
+# recoverable originals: the next invocation cannot destroy a preserved
+# original. What is NOT promised is restoration under an uncatchable signal,
+# because no trap runs for SIGKILL.
 #
 # --staged is a separately named mode that compares the on-disk tree against the
 # index instead of HEAD; it never prints the committed-emission sentence, because
@@ -62,6 +65,7 @@ prev=$out/prev
 fresh=$out/fresh
 exceptions=test/generated-tree/not-emitted
 state=$out/state
+lock=$out/lock
 
 mode=committed
 [ "${1:-}" = "--staged" ] && mode=staged
@@ -73,40 +77,100 @@ mkdir -p "$out" "$run"
 
 mark() { printf '%s %s %s\n' "$$" "$nonce" "$1" > "$state"; }
 
-[ -d generated ] || { printf 'there is no generated/ tree in %s\n' "$(pwd)" >&2; exit 1; }
-
-# A PREVIOUS RUN'S TREE IS EVIDENCE. Read its state marker first, then decide:
-# a live run holds the tree (refuse); a dead run left the original in prev
-# (recover, preserving any partial replacement); an unreadable marker with a
-# prev present is ambiguous (refuse, deleting neither tree).
+# A PREVIOUS RUN'S TREE IS EVIDENCE. Read its state marker before anything is
+# written: its pid, nonce and phase are what decide a recovery (a dead run's
+# leftover is restored) from a refusal (a live run, or a marker this script does
+# not recognise, is left exactly as it is).
 spid=; snonce=; sphase=
 if [ -f "$state" ]; then
 	read -r spid snonce sphase < "$state" 2>/dev/null || true
 fi
-if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
-	printf 'REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n' "$spid" "$prev" >&2
-	exit 1
-fi
-mark start
-if [ -d "$prev" ]; then
-	case "$sphase" in
-	moved|emitting|restoring)
-		if [ -d generated ]; then
-			[ -e "$fresh" ] && mv "$fresh" "$run/fresh.before-recovery" 2>/dev/null || true
-			mv generated "$fresh"
-		fi
-		mv "$prev" generated
-		printf 'RECOVERED — a previous verification (pid %s, state %s) left the original tree in %s; it is restored, and any partial replacement is preserved in %s.\n' \
-			"${spid:-unknown}" "$sphase" "$prev" "$fresh"
-		;;
+
+# EXCLUSIVE ACQUISITION — before any shared-state write. mkdir is atomic on one
+# filesystem, so exactly one caller creates $lock and records pid+nonce in it. A
+# loser refuses a live holder; a dead holder's lock is taken over only after it
+# is re-read unchanged, and the nonce (not the pid, which a new process can
+# reuse) is the authority that the lock and the state marker name one dead run.
+lock_held=0
+while ! mkdir "$lock" 2>/dev/null; do
+	read -r lpid lnonce < "$lock/owner" 2>/dev/null || true
+	if [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null; then
+		printf 'REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n' "$lpid" "$lock" >&2
+		exit 1
+	fi
+	read -r lpid2 lnonce2 < "$lock/owner" 2>/dev/null || true
+	if [ "$lpid2" != "$lpid" ] || [ "$lnonce2" != "$lnonce" ]; then
+		continue
+	fi
+	if [ -n "$lnonce" ] && [ -n "$snonce" ] && [ "$lnonce" != "$snonce" ]; then
+		printf 'REFUSED — %s and %s name different owners (%s vs %s); not touching either tree.\n' \
+			"$lock" "$state" "$lnonce" "$snonce" >&2
+		exit 1
+	fi
+	rm -rf "$lock"
+done
+printf '%s %s\n' "$$" "$nonce" > "$lock/owner"
+lock_held=1
+
+release() {
+	if [ "$lock_held" = 1 ]; then
+		rm -rf "$lock"
+		lock_held=0
+	fi
+	return 0
+}
+trap release EXIT HUP INT TERM
+
+# VALIDATE THE COMPLETE OWNED STATE TUPLE before writing mark start. A marker
+# must name a pid, a nonce and a phase this script recognises; an unrecognised
+# or partial one is preserved unchanged as evidence and the run refuses without
+# touching either tree.
+if [ -f "$state" ]; then
+	case "$spid:$snonce:$sphase" in
+	?*:?*:start|?*:?*:moved|?*:?*:emitting|?*:?*:restoring) ;;
 	*)
-		rm -f "$state"
-		printf 'REFUSED — %s exists from a previous run, but %s names no state this script recognises (%s); deleting neither tree.\n' \
-			"$prev" "$state" "${sphase:-none}" >&2
+		printf 'REFUSED — %s names no complete state this script recognises (pid %s, nonce %s, phase %s); preserving the marker and deleting neither tree.\n' \
+			"$state" "${spid:-none}" "${snonce:-none}" "${sphase:-none}" >&2
 		exit 1
 		;;
 	esac
 fi
+
+# RECOVERY, BEFORE THE EXISTENCE GUARD: a run killed after `mv generated "$prev"`
+# and before generation recreated its directory leaves the original in prev with
+# no generated/ at all. Restore it now, so the guard below never mistakes that
+# hole for a genuinely tree-less checkout. A preserved original with no marker
+# is ambiguous and is refused (deleting neither tree); a marker this script does
+# not recognise was already refused above.
+if [ -d "$prev" ]; then
+	if [ -z "$sphase" ]; then
+		printf 'REFUSED — %s exists from a previous run, but %s names no state this script recognises; deleting neither tree.\n' \
+			"$prev" "$state" >&2
+		exit 1
+	fi
+	if [ -d generated ]; then
+		if [ -e "$fresh" ]; then
+			mv "$fresh" "$run/fresh.before-recovery" || {
+				printf 'REFUSED — could not move %s aside to %s; deleting neither tree.\n' "$fresh" "$run/fresh.before-recovery" >&2
+				exit 1
+			}
+		fi
+		mv generated "$fresh" || {
+			printf 'REFUSED — could not move %s to %s; deleting neither tree.\n' generated "$fresh" >&2
+			exit 1
+		}
+	fi
+	mv "$prev" generated || {
+		printf 'REFUSED — could not restore %s to %s; deleting neither tree.\n' "$prev" generated >&2
+		exit 1
+	}
+	printf 'RECOVERED — a previous verification (pid %s, state %s) left the original tree in %s; it is restored, and any partial replacement is preserved in %s.\n' \
+		"${spid:-unknown}" "$sphase" "$prev" "$fresh"
+fi
+
+[ -d generated ] || { printf 'there is no generated/ tree in %s\n' "$(pwd)" >&2; exit 1; }
+
+mark start
 
 fail=0
 
@@ -158,13 +222,24 @@ restore() {
 	mark restoring
 	if [ -d "$prev" ]; then
 		if [ -d generated ]; then
-			[ -e "$fresh" ] && mv "$fresh" "$run/fresh.previous" 2>/dev/null || true
-			mv generated "$fresh"
+			if [ -e "$fresh" ]; then
+				mv "$fresh" "$run/fresh.previous" || {
+					printf 'REFUSED — could not move %s aside to %s; deleting neither tree.\n' "$fresh" "$run/fresh.previous" >&2
+					return 1
+				}
+			fi
+			mv generated "$fresh" || {
+				printf 'REFUSED — could not move %s to %s; deleting neither tree.\n' generated "$fresh" >&2
+				return 1
+			}
 		fi
-		mv "$prev" generated
+		mv "$prev" generated || {
+			printf 'REFUSED — could not restore %s to %s; deleting neither tree.\n' "$prev" generated >&2
+			return 1
+		}
 	fi
 }
-trap restore EXIT HUP INT TERM
+trap 'restore; release' EXIT HUP INT TERM
 
 mark moved
 mv generated "$prev"
