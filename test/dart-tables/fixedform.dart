@@ -1389,10 +1389,55 @@ void negativeControl() {
     2: fx1home.TableFixedRefusal.messageFormAsFile,
     6: fx1home.TableFixedRefusal.newerForm,
   };
+  // A REFUSAL WRITES NOTHING. §5.3's REFUSE is total — no counter moves,
+  // nothing is decoded, and not one destination byte is written, the prefill
+  // included — so the destination record is pre-poisoned here with sentinels
+  // no value of this type holds and must come back exactly as it was. The
+  // report is the other half: it names the reason and nothing else claims a
+  // read (no `malformed` beside a name, no counter moved, no hash reported).
+  fx1home.FxRoot poisonedRoot() {
+    final v = fx1home.FxRoot();
+    v.keep = 0x7f7f7f7f;
+    v.narrow = 0x5a5a;
+    v.renamed = 0x3c3c;
+    v.gone = 0x1e1e;
+    v.nested.a = 0x1111;
+    v.nested.b = 0x2222;
+    return v;
+  }
+
+  bool rootIntact(fx1home.FxRoot v) =>
+      v.keep == 0x7f7f7f7f &&
+      v.narrow == 0x5a5a &&
+      v.renamed == 0x3c3c &&
+      v.gone == 0x1e1e &&
+      v.nested.a == 0x1111 &&
+      v.nested.b == 0x2222;
+
+  bool namedOnly(fx1home.TableFixedReport r, int want) =>
+      r.refused == want &&
+      !r.malformed &&
+      r.unknown == 0 &&
+      r.kindMismatch == 0 &&
+      r.clamped == 0 &&
+      r.widened == 0 &&
+      r.hash == 0 &&
+      r.layoutHash == 0;
+
+  bool malformedOnly(fx1home.TableFixedReport r) =>
+      r.malformed &&
+      r.refused == fx1home.TableFixedRefusal.none &&
+      r.unknown == 0 &&
+      r.kindMismatch == 0 &&
+      r.clamped == 0 &&
+      r.widened == 0 &&
+      r.hash == 0 &&
+      r.layoutHash == 0;
+
   planted.forEach((byte, want) {
     final other = Uint8List.fromList(w2);
     other[0] = byte;
-    final v = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final v = <fx1home.FxRoot>[poisonedRoot()];
     final r = fx1home.TableFixedReport();
     final n = fx1.fxRootFixedLoad(
       v,
@@ -1403,11 +1448,121 @@ void negativeControl() {
       r,
     );
     check(
-      n < 0 && r.refused == want && !r.malformed,
+      n < 0 && namedOnly(r, want),
       'REFUSED BY NAME: form byte $byte is ${fx1home.TableFixedRefusal.name(want)} '
       '(got ${fx1home.TableFixedRefusal.name(r.refused)}), and malformed does not fire',
     );
+    check(
+      rootIntact(v[0]),
+      'REFUSAL WRITES NOTHING: form byte $byte leaves the destination record unchanged',
+    );
   });
+
+  // THE FIVE FORM-HEADER PROBES (schema#876 comment 5654419328, card 411411),
+  // EACH ON ITS EXACT INPUT. §5.3 step 1 and SPEC-TABLES §3.4 read the FORM
+  // BYTE BEFORE THE FILE'S LENGTH, so the REAL committed lengths of the two
+  // older forms — a form-1 file is TEN bytes and a form-2 batch THREE — are
+  // each answered by NAME and never `malformed`; only a file with no first
+  // byte at all is `malformed` before any byte can earn a name, and the
+  // twenty-byte minimum is step 2, after the byte has answered.
+
+  // CASE empty-file: ZERO BYTES is the residue `malformed`, with no name,
+  // because there is no first byte to earn one (§5.3 step 1).
+  {
+    final v = <fx1home.FxRoot>[poisonedRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      v,
+      1,
+      Uint8List(0),
+      0,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(
+      n < 0 && malformedOnly(r),
+      'CASE empty-file (zero bytes): malformed and no reason, and nothing else claims a read',
+    );
+    check(
+      rootIntact(v[0]),
+      'CASE empty-file: REFUSAL WRITES NOTHING to the destination record',
+    );
+  }
+
+  // CASE short-form1: a TEN-byte form-1 file is `previous_form`, NOT
+  // `malformed` — the variable form is OLDER than this one.
+  {
+    final v = <fx1home.FxRoot>[poisonedRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      v,
+      1,
+      Uint8List.fromList(<int>[1, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      10,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(
+      n < 0 && namedOnly(r, fx1home.TableFixedRefusal.previousForm),
+      'CASE short-form1 (a ten-byte form-1 file): previous_form, not malformed, '
+      'and nothing else claims a read',
+    );
+    check(
+      rootIntact(v[0]),
+      'CASE short-form1: REFUSAL WRITES NOTHING to the destination record',
+    );
+  }
+
+  // CASE short-form2: a THREE-byte form-2 batch is `message_form_as_file`,
+  // NOT `malformed` — form 2 is a batch where a FILE was expected.
+  {
+    final v = <fx1home.FxRoot>[poisonedRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      v,
+      1,
+      Uint8List.fromList(<int>[2, 1, 0]),
+      3,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(
+      n < 0 && namedOnly(r, fx1home.TableFixedRefusal.messageFormAsFile),
+      'CASE short-form2 (a three-byte form-2 batch): message_form_as_file, not '
+      'malformed, and nothing else claims a read',
+    );
+    check(
+      rootIntact(v[0]),
+      'CASE short-form2: REFUSAL WRITES NOTHING to the destination record',
+    );
+  }
+
+  // CASE reserved-byte3: a valid form-3 fixture with reserved byte 3 set
+  // nonzero is `malformed` — the seven reserved bytes are REFUSED rather than
+  // ignored, which is what keeps them spendable later (§3.4, §5.3 step 2).
+  {
+    final bad = Uint8List.fromList(fx1Record());
+    bad[3] = 1; // offset 3 is one of the header's seven reserved bytes
+    final v = <fx1home.FxRoot>[poisonedRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      v,
+      1,
+      bad,
+      bad.length,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(
+      n < 0 && malformedOnly(r),
+      'CASE reserved-byte3 (a valid form-3 fixture with reserved byte 3 nonzero): '
+      'malformed and no reason, and nothing else claims a read',
+    );
+    check(
+      rootIntact(v[0]),
+      'CASE reserved-byte3: REFUSAL WRITES NOTHING to the destination record',
+    );
+  }
 
   // THE RECOMPUTE OF THE HEADER'S HASH FROM THE LAYOUT BEHIND IT IS RETIRED
   // (§5.6): the digest is not on the wire, so the hash cannot be re-derived
