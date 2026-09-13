@@ -45,6 +45,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 )
 
 // versioningTestsDoc is the page that lists the edge cases, relative to this
@@ -310,16 +312,19 @@ func rowRegistered(text, row string) bool {
 }
 
 // extractGoRegisteredRows extracts rows registered in a Go harness. A row must
-// be an entry of a table that an executed Test* function ranges over, resolving
-// the ranged identifier to its definition.
+// be an entry of a table that an executed Go test function ranges over directly,
+// resolving the ranged identifier to its definition.
 func extractGoRegisteredRows(file *ast.File) map[string]bool {
 	rows := make(map[string]bool)
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || !strings.HasPrefix(fn.Name.Name, "Test") || fn.Body == nil {
+		if !ok || !isGoTestFunc(fn) {
 			continue
 		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if _, ok := n.(*ast.FuncLit); ok {
+				return false
+			}
 			rs, ok := n.(*ast.RangeStmt)
 			if !ok {
 				return true
@@ -329,6 +334,53 @@ func extractGoRegisteredRows(file *ast.File) map[string]bool {
 		})
 	}
 	return rows
+}
+
+// isGoTestFunc reports whether fn is an executed Go test entrypoint:
+// top-level function, no receiver, name matching Test[A-Z0-9_]*, signature
+// func(*testing.T) with no returns.
+func isGoTestFunc(fn *ast.FuncDecl) bool {
+	if fn == nil || fn.Recv != nil || fn.Body == nil {
+		return false
+	}
+	name := fn.Name.Name
+	if !strings.HasPrefix(name, "Test") {
+		return false
+	}
+	if len(name) > 4 {
+		r, _ := utf8.DecodeRuneInString(name[4:])
+		if unicode.IsLower(r) {
+			return false
+		}
+	}
+	if fn.Type.Params == nil || len(fn.Type.Params.List) != 1 {
+		return false
+	}
+	field := fn.Type.Params.List[0]
+	if len(field.Names) > 1 {
+		return false
+	}
+	star, ok := field.Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	switch x := star.X.(type) {
+	case *ast.SelectorExpr:
+		pkg, ok := x.X.(*ast.Ident)
+		if !ok || pkg.Name != "testing" || x.Sel.Name != "T" {
+			return false
+		}
+	case *ast.Ident:
+		if x.Name != "T" {
+			return false
+		}
+	default:
+		return false
+	}
+	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+		return false
+	}
+	return true
 }
 
 func collectRowsFromExpr(expr ast.Expr, rows map[string]bool) {
@@ -952,6 +1004,10 @@ func TestEveryRowProbedNeedsARegistration(t *testing.T) {
 			"package probe\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc unused(){for _,r:=range rows{_=r}}"},
 		{"Go shadowed rows inside TestX", "field_append",
 			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){rows:=[]int{1}; for _,r:=range rows{_=r}}"},
+		{"Go lowercase test helper without signature", "field_append",
+			"package probe\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc Testhelper(){for _,r:=range rows{_=r}}"},
+		{"Go uncalled function literal inside TestX", "field_append",
+			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){ _ = func(){for _,r:=range rows{_=r}} }"},
 		{"C++ string literal in main", "field_append",
 			`int main(){const char *s="field_append_case();";return 0;}`},
 		{"C++ arbitrary unused_cases", "field_append",
@@ -1007,8 +1063,8 @@ func TestEveryRowProbedNeedsARegistration(t *testing.T) {
 	}
 }
 
-// TestStellaExecutionRoot verifies the five execution-root false positive cases
-// identified in the review of card 1022c.
+// TestStellaExecutionRoot verifies the execution-root false positive cases
+// identified in the review of card 1022c and 1022d.
 func TestStellaExecutionRoot(t *testing.T) {
 	negatives := []struct {
 		name, text string
@@ -1020,6 +1076,14 @@ func TestStellaExecutionRoot(t *testing.T) {
 		{
 			"Go shadowed rows inside TestX",
 			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){rows:=[]int{1}; for _,r:=range rows{_=r}}",
+		},
+		{
+			"Go lowercase test helper without signature",
+			"package probe\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc Testhelper(){for _,r:=range rows{_=r}}",
+		},
+		{
+			"Go uncalled function literal inside TestX",
+			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){ _ = func(){for _,r:=range rows{_=r}} }",
 		},
 		{
 			"C++ string literal in main",
