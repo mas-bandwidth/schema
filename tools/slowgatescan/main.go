@@ -178,7 +178,8 @@ func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) 
 func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, steps []ciStep) int {
 	skipped, err := gateSkips(logPath)
 	if err != nil {
-		fail("reading %s: %v", logPath, err)
+		fmt.Fprintf(os.Stderr, "slow gate coverage: reading %s: %v\n", logPath, err)
+		return 1
 	}
 	if len(skipped) == 0 {
 		fmt.Printf("slow gate coverage: %s holds no slowtest skip — either it was produced WITH SCHEMA_SLOW set (it must not be) or the gate is gone\n", logPath)
@@ -265,6 +266,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 		startLine int
 		runLine   int
 		name      string
+		ifCond    string
 		envLines  []string
 		runLines  []string
 	}
@@ -290,6 +292,8 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			lineAfterDash := strings.TrimSpace(trimmed[2:])
 			if strings.HasPrefix(lineAfterDash, "name:") {
 				cur.name = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "name:"))
+			} else if strings.HasPrefix(lineAfterDash, "if:") {
+				cur.ifCond = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "if:"))
 			} else if strings.HasPrefix(lineAfterDash, "run:") {
 				cur.runLine = lineNo
 				runRest := strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "run:"))
@@ -310,6 +314,11 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 
 		if strings.HasPrefix(trimmed, "name:") && !inRun && !inEnv {
 			cur.name = strings.TrimSpace(strings.TrimPrefix(trimmed, "name:"))
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "if:") && !inRun && !inEnv {
+			cur.ifCond = strings.TrimSpace(strings.TrimPrefix(trimmed, "if:"))
 			continue
 		}
 
@@ -353,32 +362,53 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	}
 
 	for _, rs := range rawSteps {
-		fullRun := strings.Join(rs.runLines, "\n")
+		// Ignore comment lines and empty lines
+		var activeRunLines []string
+		for _, rl := range rs.runLines {
+			t := strings.TrimSpace(rl)
+			if t == "" || strings.HasPrefix(t, "#") {
+				continue
+			}
+			activeRunLines = append(activeRunLines, t)
+		}
+		if len(activeRunLines) == 0 {
+			continue
+		}
+
+		fullRun := strings.Join(activeRunLines, "\n")
 		if !strings.Contains(fullRun, "go test") {
 			continue
 		}
 
-		enabled := false
+		// Step condition: explicitly disabled steps must not count as enabled;
+		// unresolved execution conditions cannot certify coverage.
+		if !isStepConditionEnabled(rs.ifCond) {
+			steps = append(steps, ciStep{
+				file:     file,
+				line:     rs.runLine,
+				name:     rs.name,
+				enabled:  false,
+				selector: nil,
+				desc:     fmt.Sprintf("%s:%d", file, rs.runLine),
+			})
+			continue
+		}
+
+		// Step env: exact SCHEMA_SLOW: '1' required
+		stepEnvSlow := false
 		for _, el := range rs.envLines {
 			parts := strings.SplitN(el, ":", 2)
 			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "SCHEMA_SLOW" {
 				val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
-				if val == "1" || strings.EqualFold(val, "true") {
-					enabled = true
-				} else if val == "0" || strings.EqualFold(val, "false") {
-					enabled = false
+				if val == "1" {
+					stepEnvSlow = true
+				} else {
+					stepEnvSlow = false
 				}
 			}
 		}
-		for _, rl := range rs.runLines {
-			if strings.Contains(rl, "SCHEMA_SLOW=1") {
-				enabled = true
-			} else if strings.Contains(rl, "SCHEMA_SLOW=0") {
-				enabled = false
-			}
-		}
 
-		selector := buildCISelector(fullRun)
+		selector, enabled := parseCIStepCommands(activeRunLines, stepEnvSlow)
 
 		steps = append(steps, ciStep{
 			file:     file,
@@ -392,13 +422,107 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	return steps, nil
 }
 
-func buildCISelector(cmd string) func(pkg, test string) bool {
+func isStepConditionEnabled(ifCond string) bool {
+	ifCond = strings.TrimSpace(ifCond)
+	if ifCond == "" {
+		return true
+	}
+	if strings.HasPrefix(ifCond, "${{") && strings.HasSuffix(ifCond, "}}") {
+		ifCond = strings.TrimSpace(ifCond[3 : len(ifCond)-2])
+	}
+	unquoted := strings.Trim(ifCond, `"'`)
+	if unquoted == "false" {
+		return false
+	}
+	if unquoted == "true" || unquoted == "always()" || unquoted == "success()" {
+		return true
+	}
+	norm := strings.ReplaceAll(ifCond, `"`, `'`)
+	norm = strings.ReplaceAll(norm, " ", "")
+	if norm == "matrix.group=='unit-codegen'" || norm == "matrix.group=='unit-rest'" {
+		return true
+	}
+	return false
+}
+
+var reInlineSlow = regexp.MustCompile(`(?:^|\s)SCHEMA_SLOW=([^\s]+)`)
+
+func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test string) bool, bool) {
+	for _, l := range lines {
+		if strings.Contains(l, "cd ") || strings.Contains(l, "cd\t") || strings.TrimSpace(l) == "cd" {
+			return nil, false
+		}
+		if strings.Contains(l, "&&") || strings.Contains(l, "||") || strings.Contains(l, ";") || strings.Contains(l, "&") {
+			return nil, false
+		}
+		if strings.Contains(l, "|") {
+			if !strings.Contains(l, "grep -v '/internal/codegen/'") && !strings.Contains(l, `grep -v "/internal/codegen/"`) {
+				return nil, false
+			}
+		}
+		if strings.Contains(l, "$(") {
+			if !strings.Contains(l, "$(go list ./... | grep -v '/internal/codegen/')") && !strings.Contains(l, `$(go list ./... | grep -v "/internal/codegen/")`) {
+				return nil, false
+			}
+		}
+		if strings.Contains(l, "`") {
+			return nil, false
+		}
+	}
+
+	var selectors []func(pkg, test string) bool
+	anyEnabled := false
+
+	for _, l := range lines {
+		if !strings.Contains(l, "go test") {
+			continue
+		}
+
+		lineSlow := stepEnvSlow
+		if m := reInlineSlow.FindStringSubmatch(l); m != nil {
+			val := strings.Trim(m[1], `"'`)
+			if val == "1" {
+				lineSlow = true
+			} else {
+				lineSlow = false
+			}
+		}
+
+		if !lineSlow {
+			continue
+		}
+
+		sel := parseSingleSupportedCommand(l)
+		if sel != nil {
+			selectors = append(selectors, sel)
+			anyEnabled = true
+		}
+	}
+
+	if !anyEnabled || len(selectors) == 0 {
+		return nil, false
+	}
+
+	if len(selectors) == 1 {
+		return selectors[0], true
+	}
+
+	return func(pkg, test string) bool {
+		for _, s := range selectors {
+			if s(pkg, test) {
+				return true
+			}
+		}
+		return false
+	}, true
+}
+
+func parseSingleSupportedCommand(cmd string) func(pkg, test string) bool {
 	runPat := runPattern(cmd)
 
-	// Complementary selection 1: everything that is not an emitter package
 	if strings.Contains(cmd, "grep -v '/internal/codegen/'") || strings.Contains(cmd, `grep -v "/internal/codegen/"`) {
 		return func(pkg, test string) bool {
-			if strings.Contains(pkg, "/internal/codegen/") || pkg == "./internal/codegen" {
+			if pkg == "./internal/codegen" || strings.HasPrefix(pkg, "./internal/codegen/") {
 				return false
 			}
 			if runPat != "" && !matchesRun(runPat, test) {
@@ -408,7 +532,6 @@ func buildCISelector(cmd string) func(pkg, test string) bool {
 		}
 	}
 
-	// Complementary selection 2: emitter packages ./internal/codegen/...
 	if strings.Contains(cmd, "./internal/codegen/...") {
 		return func(pkg, test string) bool {
 			if pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/") {
@@ -421,8 +544,7 @@ func buildCISelector(cmd string) func(pkg, test string) bool {
 		}
 	}
 
-	// Umbrella selection: go test ./...
-	if strings.Contains(cmd, "go test ./...") || strings.Contains(cmd, "go test \"./...\"") {
+	if strings.Contains(cmd, "go test ./...") || strings.Contains(cmd, `go test "./..."`) {
 		return func(pkg, test string) bool {
 			if runPat != "" && !matchesRun(runPat, test) {
 				return false
@@ -431,69 +553,67 @@ func buildCISelector(cmd string) func(pkg, test string) bool {
 		}
 	}
 
-	// Specific packages: parse tokens
+	fields := strings.Fields(cmd)
+	idx := -1
+	for i := 0; i < len(fields)-1; i++ {
+		if fields[i] == "go" && fields[i+1] == "test" {
+			idx = i + 2
+			break
+		}
+	}
+	if idx < 0 {
+		return nil
+	}
+
 	var pkgs []string
-	for _, line := range strings.Split(cmd, "\n") {
-		if !strings.Contains(line, "go test") {
+	for i := idx; i < len(fields); i++ {
+		f := fields[i]
+		if f == "-run" && i+1 < len(fields) {
+			i++
 			continue
 		}
-		fields := strings.Fields(line)
-		isGoTest := false
-		for i := 0; i < len(fields); i++ {
-			f := fields[i]
-			if f == "go" && i+1 < len(fields) && fields[i+1] == "test" {
-				isGoTest = true
+		if strings.HasPrefix(f, "-run=") {
+			continue
+		}
+		if strings.HasPrefix(f, "-") {
+			if (f == "-timeout" || f == "-count" || f == "-tags") && i+1 < len(fields) && !strings.HasPrefix(fields[i+1], "-") {
 				i++
-				continue
 			}
-			if !isGoTest {
-				continue
-			}
-			if strings.HasPrefix(f, "-") {
-				if f == "-run" && i+1 < len(fields) {
-					i++
-				}
-				continue
-			}
-			if strings.HasPrefix(f, "./") || (!strings.Contains(f, "=") && !strings.Contains(f, "$") && !strings.Contains(f, "|") && !strings.Contains(f, ";")) {
-				pkgs = append(pkgs, normalizePkg(f))
-			}
+			continue
 		}
+		pkgs = append(pkgs, normalizePkg(f))
 	}
 
-	if len(pkgs) > 0 {
-		return func(pkg, test string) bool {
-			matchedPkg := false
-			for _, p := range pkgs {
-				if p == "./..." {
-					matchedPkg = true
-					break
-				}
-				if strings.HasSuffix(p, "/...") {
-					base := strings.TrimSuffix(p, "/...")
-					if pkg == base || strings.HasPrefix(pkg, base+"/") {
-						matchedPkg = true
-						break
-					}
-				}
-				if p == pkg {
-					matchedPkg = true
-					break
-				}
-			}
-			if !matchedPkg {
-				return false
-			}
-			if runPat != "" && !matchesRun(runPat, test) {
-				return false
-			}
-			return true
-		}
+	if len(pkgs) == 0 {
+		pkgs = []string{"."}
 	}
 
-	// Unsupported or unresolved command: selects nothing
 	return func(pkg, test string) bool {
-		return false
+		matchedPkg := false
+		for _, p := range pkgs {
+			if p == "./..." {
+				matchedPkg = true
+				break
+			}
+			if strings.HasSuffix(p, "/...") {
+				base := strings.TrimSuffix(p, "/...")
+				if pkg == base || strings.HasPrefix(pkg, base+"/") {
+					matchedPkg = true
+					break
+				}
+			}
+			if p == pkg {
+				matchedPkg = true
+				break
+			}
+		}
+		if !matchedPkg {
+			return false
+		}
+		if runPat != "" && !matchesRun(runPat, test) {
+			return false
+		}
+		return true
 	}
 }
 
@@ -807,88 +927,50 @@ func makeGatedTest(pkg, name string) gatedTest {
 }
 
 // gateSkips extracts test names and packages that skipped at slowtest.Gate.
-// Supports both Go test JSON streams (from `go test -json`) and plain -v text logs.
+// Requires a Go test JSON stream (from `go test -json`).
 func gateSkips(path string) ([]gatedTest, error) {
-	b, err := os.ReadFile(path)
+	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(b), "\n")
-
-	isJSON := false
-	for _, l := range lines {
-		trimmed := strings.TrimSpace(l)
-		if strings.HasPrefix(trimmed, "{") && strings.Contains(trimmed, `"Action":`) {
-			isJSON = true
-			break
-		}
-	}
+	defer fh.Close()
 
 	var results []gatedTest
 	seen := map[string]bool{}
 
-	if isJSON {
-		for _, l := range lines {
-			trimmed := strings.TrimSpace(l)
-			if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
-				continue
+	sc := bufio.NewScanner(fh)
+	sc.Buffer(make([]byte, 10<<20), 10<<20)
+	lineNo := 0
+
+	for sc.Scan() {
+		lineNo++
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var ev struct {
+			Action  string `json:"Action"`
+			Package string `json:"Package"`
+			Test    string `json:"Test"`
+			Output  string `json:"Output"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			return nil, fmt.Errorf("line %d: malformed JSON event: %w", lineNo, err)
+		}
+		if strings.Contains(ev.Output, gateSkipMarker) {
+			if strings.TrimSpace(ev.Package) == "" || strings.TrimSpace(ev.Test) == "" {
+				return nil, fmt.Errorf("line %d: gate skip record missing package or test identity", lineNo)
 			}
-			var ev struct {
-				Action  string `json:"Action"`
-				Package string `json:"Package"`
-				Test    string `json:"Test"`
-				Output  string `json:"Output"`
-			}
-			if err := json.Unmarshal([]byte(trimmed), &ev); err != nil {
-				continue
-			}
-			if strings.Contains(ev.Output, gateSkipMarker) {
-				pkg := ev.Package
-				testName := ev.Test
-				if testName == "" {
-					continue
-				}
-				if strings.Contains(testName, ".") && pkg == "" {
-					parts := strings.SplitN(testName, ".", 2)
-					pkg = parts[0]
-					testName = parts[1]
-				}
-				gt := makeGatedTest(pkg, testName)
-				key := gt.pkg + ":" + gt.name
-				if !seen[key] {
-					seen[key] = true
-					results = append(results, gt)
-				}
+			gt := makeGatedTest(ev.Package, ev.Test)
+			key := gt.pkg + ":" + gt.name
+			if !seen[key] {
+				seen[key] = true
+				results = append(results, gt)
 			}
 		}
-	} else {
-		runLine := regexp.MustCompile(`^=== RUN\s+(\S+)`)
-		pkgHeader := regexp.MustCompile(`^(?:ok|\?|FAIL)\s+(\S+)`)
-		curPkg := ""
-		curTest := ""
-		for _, line := range lines {
-			if m := pkgHeader.FindStringSubmatch(line); m != nil {
-				curPkg = m[1]
-			}
-			if m := runLine.FindStringSubmatch(line); m != nil {
-				curTest = m[1]
-			}
-			if strings.Contains(line, gateSkipMarker) && curTest != "" {
-				pkg := curPkg
-				testName := curTest
-				if strings.Contains(testName, ".") {
-					parts := strings.SplitN(testName, ".", 2)
-					pkg = parts[0]
-					testName = parts[1]
-				}
-				gt := makeGatedTest(pkg, testName)
-				key := gt.pkg + ":" + gt.name
-				if !seen[key] {
-					seen[key] = true
-					results = append(results, gt)
-				}
-			}
-		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
 	sort.Slice(results, func(i, j int) bool {

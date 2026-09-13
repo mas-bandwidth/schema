@@ -222,20 +222,159 @@ jobs:
 	}
 }
 
-// TestPlainLogFallback ensures plain text logs (with === RUN and ok/FAIL) are also parsed.
-func TestPlainLogFallback(t *testing.T) {
-	plainText := strings.Join([]string{
-		`=== RUN   compiler.TestRequiredGate`,
-		`    gate_test.go:10: ` + gateSkipMarker,
-		`--- SKIP: compiler.TestRequiredGate (0.00s)`,
+// Adversarial Controls 5A-5D: The five false-credit cases identified by Stella (stella-f42ad3d7317f).
+// Root compiler.TestRequiredGate must NOT be credited in any of these scenarios.
+
+func TestAdversarialSchemaSlowTrueDoesNotCredit(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
 	}, "\n")
 
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "plain.log")
-	if err := os.WriteFile(logPath, []byte(plainText), 0o644); err != nil {
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
 		t.Fatalf("writing test log: %v", err)
 	}
 
+	workflow := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: boolean true
+        env:
+          SCHEMA_SLOW: 'true'
+        run: go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflow)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("SCHEMA_SLOW: 'true' must not credit test (slowtest.Enabled requires exactly '1'), got exit 0")
+	}
+}
+
+func TestAdversarialSchemaSlow10DoesNotCredit(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflow := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: value 10
+        run: SCHEMA_SLOW=10 go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflow)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("SCHEMA_SLOW=10 must not credit test (must not mistake 10 for 1), got exit 0")
+	}
+}
+
+func TestAdversarialCommentedCommandDoesNotCredit(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflow := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: commented out command
+        run: |
+          # SCHEMA_SLOW=1 go test ./compiler
+          true
+`
+	steps, err := parseWorkflowContent("test.yml", workflow)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("commented out test command must not credit test, got exit 0")
+	}
+}
+
+func TestAdversarialCompoundDirectoryChangeRefused(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflow := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: compound command
+        env:
+          SCHEMA_SLOW: '1'
+        run: cd test && go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflow)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("compound cd test && go test ./compiler selects test/compiler, must not credit root compiler, got exit 0")
+	}
+}
+
+func TestAdversarialMalformedOrTruncatedJSONStreamRefused(t *testing.T) {
+	// One complete gate event and one truncated gate event
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestTrunc`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	// Verify gateSkips directly reports error
+	skips, err := gateSkips(logPath)
+	if err == nil {
+		t.Errorf("expected gateSkips to return error on truncated JSON stream, got skips: %v", skips)
+	}
+
+	// Step that would otherwise cover compiler
 	workflowSelecting := `
 name: test
 jobs:
@@ -252,8 +391,61 @@ jobs:
 		t.Fatalf("parseWorkflowContent: %v", err)
 	}
 
+	// runCoverage must return non-zero error, NOT silently retain the first event and exit 0
 	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
-	if rc != 0 {
-		t.Errorf("expected plain text fallback to succeed, got exit %d", rc)
+	if rc == 0 {
+		t.Errorf("expected runCoverage to fail on malformed/truncated stream, got exit 0")
+	}
+}
+
+func TestAdversarialMissingGateIdentityRefused(t *testing.T) {
+	// Missing package or test identity on gate record
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"","Test":"TestGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	_, err := gateSkips(logPath)
+	if err == nil {
+		t.Errorf("expected gateSkips to return error when gate skip record lacks package identity, got nil error")
+	}
+}
+
+func TestAdversarialExplicitlyDisabledStepCondition(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/compiler","Test":"TestRequiredGate","Output":"` + gateSkipMarker + `\n"}`,
+	}, "\n")
+
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "plain.log")
+	if err := os.WriteFile(logPath, []byte(transcript), 0o644); err != nil {
+		t.Fatalf("writing test log: %v", err)
+	}
+
+	workflowDisabledCond := `
+name: test
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: disabled condition
+        if: false
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./compiler
+`
+	steps, err := parseWorkflowContent("test.yml", workflowDisabledCond)
+	if err != nil {
+		t.Fatalf("parseWorkflowContent: %v", err)
+	}
+
+	rc := runCoverage(tmpDir, logPath, nil, nil, steps)
+	if rc == 0 {
+		t.Errorf("step with if: false must not certify coverage, got exit 0")
 	}
 }
