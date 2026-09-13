@@ -188,6 +188,7 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
 
@@ -239,6 +240,157 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
+# The reference writes eight form-3 files — the seven of
+# `make tables-fixedform-corpus` and the paired bench's sixty-four logical
+# records — and states the VALUES beside them, by hand in
+# test/tables/fixedform_dump.cpp and as a JSON oracle beside the bench corpus.
+# The Dart leg reads each file, checks every field against those values, writes
+# it back, and the bytes must be IDENTICAL. A reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong, which is why the
+# values ride beside the bytes and not instead of them.
+#
+# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2, V1/V2 and P1/P3
+# pairs the C++ leg uses (test/tables/fixedform_main.cpp), case for case — and
+# the negative controls, of which the one §3.4 names is a reader given the
+# WRONG PLAN for a record, which must come out wrong, and one corrupted-layout
+# case per NAMED RULE a reader holds an untrusted peer's layout to.
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). C++ already generates the pair;
+# this stamp did not.
+build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
+		test/tables/FX1.schema test/tables/FX2.schema \
+		test/tables/V1.schema test/tables/V2.schema \
+		test/tables/P1.schema test/tables/P3.schema test/tables/FXW.schema \
+		test/tables/FU1.schema test/tables/FU2.schema \
+		$(SCHEMAS_TABLES) make/dart.mk
+	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
+	./bin/schema generate --lang dart --out build/dart-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx2 test/tables/FX2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v1 test/tables/V1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v2 test/tables/V2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p1 test/tables/P1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu2 test/tables/FU2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
+	# THE WIDE TEXT UNIT (docs/SPEC-TABLES.md §3.4, kind 33): its own file and
+	# its own directory, because every SHARED schema list is pinned to targets
+	# that refuse kind 33 in a table closure. Dart carries it on FORM 3 and on
+	# no other form — the block and the cook refuse it by name — so this is the
+	# only gate it can ride in, and without it the wide flavour of the text op
+	# has no oracle bytes anywhere.
+	./bin/schema generate --lang dart --out build/dart-fixed/fxw test/tables/FXW.schema
+	@touch $@
+
+.PHONY: tables-dart-fixed-form
+tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+	$(DART) analyze build/dart-fixed test/dart-tables/fixedform.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
+	@for f in build/dart-fixed/*/*Fixed.dart; do \
+		$(DART) format --set-exit-if-changed --output=none $$f >/dev/null || \
+			{ echo "dart format drift in $$f"; exit 1; }; \
+	done
+	@echo "tables Dart fixed form: every generated library is format-canonical"
+	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	@mkdir -p build
+	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
+	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+
+# ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
+# red against the reference's corpus. Without this the byte comparison could be
+# comparing a file with itself and nobody would know.
+# THE VERSIONING GATE, THIS LEG'S SECOND HALF (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 6, §5.9 #11): the BYTE gate above proves this leg writes the
+# reference's bytes; this one proves it READS BACKWARD — every row of
+# docs/FIXED-FORM-VERSIONING-TESTS.md in both columns, NEW-READS-OLD and
+# OLD-REFUSES-NEW, plus the three floor rows, the hash rows and the branch
+# merge.
+#
+# THE PROBES ARE GENERATED, one per row per COLUMN, and run with THIS leg's own
+# toolchain (§5.9 #18) — the harness is internal/codegen/darttable's
+# fixedversioning_test.go, which plays the lock, generates the reader's Dart
+# with the older generation's locked entry as its lineage, writes a probe beside
+# it and runs `$(DART)` over it.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
+# SKIPS itself when build/fixedform-corpus or the SDK is absent, which is right
+# for a bare `go test ./...` and is exactly how a §5 regression would ride into
+# a green. So the target builds the oracle first and sets
+# SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
+.PHONY: tables-dart-versioning
+tables-dart-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning|TestFixedCompiledPlanTagPastArmSet'
+	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
+
+.PHONY: tables-dart-fixed-form-negative-control
+tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
+	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
+	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
+		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
+	@grep -q SABOTAGED build/dart-fixed-nc/fixeddart.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-fixed-nc/fixeddart.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-fixed-nc/overlay.json
+	go build -overlay build/dart-fixed-nc/overlay.json -o build/dart-fixed-nc/schema ./cmd/schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx1 test/tables/FX1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx2 test/tables/FX2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v1 test/tables/V1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v2 test/tables/V2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p1 test/tables/P1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p3 test/tables/P3.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu1 test/tables/FU1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu2 test/tables/FU2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fxw test/tables/FXW.schema
+	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \
+		test/dart-tables/fixedform.dart > build/dart-fixed-nc/fixedform.dart
+	@if $(DART) build/dart-fixed-nc/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus \
+			> build/dart-fixed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat build/dart-fixed-nc/log; exit 1; \
+	fi
+	@grep -q "first byte differing from the C++ reference" build/dart-fixed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; \
+		  cat build/dart-fixed-nc/log; exit 1; }
+	@grep -m1 "first byte differing from the C++ reference" build/dart-fixed-nc/log
+	@echo "negative control: one byte off the Dart write template reds the reference byte match"
+
+# ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
+# comparing a file with itself). The sabotage replaces the ONE name that carries
+# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
+# the reader — with `layout_malformed`, and the OLD-REFUSES-NEW column must go
+# red naming it. `go test -overlay` is the same trick the other controls use on
+# `go build`: the emitter is replaced for one run and the tree is never touched.
+.PHONY: tables-dart-versioning-negative-control
+tables-dart-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
+	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutMalformed; // SABOTAGED|' \
+		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
+	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedmodule.go":"%s/build/dart-versioning-nc/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -overlay build/dart-versioning-nc/overlay.json \
+			./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			> build/dart-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
+		cat build/dart-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_newer' build/dart-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/dart-versioning-nc/log; exit 1; }
+	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -253,6 +405,12 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-dart-fixed-form
+	$(MAKE) tables-dart-fixed-form-negative-control
+	# AND IT READS BACKWARD (§5): every versioning row, both columns
+	$(MAKE) tables-dart-versioning
+	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart

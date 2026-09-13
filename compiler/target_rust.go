@@ -15,7 +15,17 @@ type rustTarget struct{}
 
 func (rustTarget) Names() []string { return []string{"rust"} }
 
-func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+// Generate is the NO-LINEAGE case: a unit whose lock the caller did not read,
+// or that has none, whose every fixed table carries its own layout alone
+// (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
+func (t rustTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the second entry point of §5.9 #1: the driver read the
+// unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
+// rusttable opens no file and a build ships a reader for every locked layout.
+func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Packet wide text is carried; table kind 33 remains a named refusal.
 	if err := refuseWideText(u, "rust"); err != nil {
 		return nil, err
@@ -40,7 +50,7 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	// codecs, the reflection descriptors, the text form and the two
 	// accelerators (docs/SPEC-TABLES.md); a table-free unit's output is
 	// byte-identical to what the packet emitter alone produces.
-	tables, err := rusttable.Generate(u)
+	tables, err := rusttable.GenerateLineage(u, rustTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +72,41 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
+// rustTableLineage is the lock's lineage in the Rust backend's own spelling.
+// Nil in, nil out: a unit with no lock hands nothing.
+func rustTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rusttable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]rusttable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		entries := lineage.Entries(st.Name)
+		if len(entries) == 0 {
+			continue
+		}
+		for _, e := range entries {
+			out[st.Name] = append(out[st.Name], rusttable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
+}
+
 func init() {
 	registerWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
+	// AND THE TABLE WIRE'S DEFAULTS TOO, because the FIXED FORM needs them:
+	// §3.4's answer to a field a record does not carry is a PREFILL of the
+	// declared defaults, and rusttable lays that prefill down as a record image
+	// (internal/codegen/rusttable/fixedform.go's fixedDefaultImage) — a string,
+	// a bytes buffer and a flags mask included. The refusal was written for
+	// form 1's ELISION, which this port does not emit at all; leaving it up
+	// refused a schema the reference writes bytes for and this port reads.
+	valueDefaultTargets = append(valueDefaultTargets, "rust")
 	registerBuiltin(rustTarget{}, true, false, false, false)
 }

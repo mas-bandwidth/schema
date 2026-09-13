@@ -180,3 +180,28 @@ names bench/paired/main.go 3 source filenames passed to the existing compiler; n
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing
 timing test/bench/fixedform_measure.cpp 8 THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4): one reader path was decided against a ratio, and this is the file that reports it — the plan-driven reader against straight-line constant-offset loads. It is not in `make test` and produces no CSV row; it exists so the ruling's bound stays checkable
 paths test/bench/fixedform_measure.cpp 1 the same file: its path names a measurement because it IS one, and it lives beside the corpus it measures rather than in a runner directory
+
+# THE FIXED FORM'S CORPUS PRODUCER, beside the two files above and for the same
+# reason its twin `test/bench/table_main.cpp` is listed: it is the §1.5 oracle
+# for form 3, not a measurement. It decodes the paired bench's sixty-four
+# logical records from the canonical PACKET corpus — so it names no field and
+# generates no value of its own — writes them with the C++ reference's form-3
+# writer, and publishes the VALUES beside the bytes so a port that shares one
+# offset mistake with the reference is caught rather than round-tripped. There
+# is no clock in it. Only its bench-shaped PATH trips a check.
+
+paths test/bench/fixedform_corpus.cpp 1 the fixed form's §1.5 golden producer and value oracle: correctness code, no timing
+paths test/elixir-fixedform/bench.exs 1 the Elixir leg's byte-for-byte check of that corpus against the reference — the two wires' values compared field for field and the file written back; no clock, no row
+
+# THE THREE WIRES SIDE BY SIDE (docs/SPEC-TABLES.md §3.4). The paired bench times
+# the packet wire and form 1 over identical logical records and does not time
+# form 3 at all; this binary adds the third row, in one process, over the same 64
+# records of the same committed corpus, with a byte gate before every clock. It
+# names no shape and pins no value — the corpus does that — so only the CLOCK and
+# the bench-shaped PATH trip a check, exactly as its two neighbours' do.
+timing test/bench/fixedform_wires.cpp 2 the third row's clock: form 3 beside the packet wire and form 1, over the committed corpus, one process, median of N beside min and max
+paths test/bench/fixedform_wires.cpp 1 the same file: its path names a benchmark because it IS one, and it lives beside the corpus it measures rather than in a runner directory
+
+# Generated-tree exclusion uses wall-clock deadlines, not schema measurements.
+timing tools/treelock/main.go 2 Bounded lock-owner diagnostic retry; no benchmark or schema-shape timing.
+timing tools/treelock/treelock_test.go 7 Bounded subprocess readiness/release and contention controls; no benchmark measurement.

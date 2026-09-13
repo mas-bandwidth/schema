@@ -7,6 +7,8 @@
 // unit's protocol id.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Wide
 {
@@ -557,6 +559,294 @@ namespace Wide
         public static long LineToJson(Line value, Span<byte> buffer)
         {
             return TableJson.Write(value, LineTableType(), buffer, false);
+        }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // Stamp's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void StampFixedWriteBody(Span<byte> b, Stamp value)
+        {
+            if (value == null) return;
+            int len_label = value.Label != null ? value.LabelLength : 0;
+            System.Diagnostics.Debug.Assert(len_label <= 4);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_label);
+            if (len_label > 0) { MemoryMarshal.AsBytes(value.Label.AsSpan(0, len_label)).CopyTo(b.Slice(4)); }
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.Seq);
+        }
+
+        // Stamp's read-side bounds (§4.6).
+        public static void StampFixedClampBody(Stamp value, ref int clamped)
+        {
+            if (value == null) return;
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void StampFixedClamp(Stamp value, TableReport report)
+        {
+            int clamped = 0;
+            StampFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
+        // ---- Stamp, the fixed form ----
+
+        public const long StampFixedBodyBytes = 16;
+        public const long StampFixedRecordBytes = 8 + StampFixedBodyBytes;
+        public const ulong StampFixedHash = 0x820f5d6ffaf5e7eeul;
+
+        public static readonly byte[] StampFixedLayout = new byte[] {
+            0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x21, 0x0c, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x08, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long StampFixedLayoutBytes = 55;
+
+        public static readonly TableFixedDst[] StampFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // Stamp
+            new TableFixedDst(0, 0, 1, 0, 2), // label
+            new TableFixedDst(2, 0, 0, 0, 0), // seq
+        };
+
+        public static readonly TableFixedSlot<Stamp>[] StampFixedSlots = new TableFixedSlot<Stamp>[] {
+            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.LabelLength = (int)v, reset: (t) => { t.LabelLength = 0; }),
+            new TableFixedSlot<Stamp>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
+            new TableFixedSlot<Stamp>(setRaw: (t, v) => t.Seq = unchecked((uint)v), reset: (t) => { t.Seq = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] StampFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 3u),
+        };
+
+        public static readonly TableFixedPlan StampFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
+            new TableFixedEntry(12u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+        });
+
+        private static readonly byte[] StampFixedLayout0 = new byte[] {
+            0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x21, 0x0c, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x08, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public static readonly TableFixedKnownLayout[] StampFixedKnown = new TableFixedKnownLayout[] {
+            new TableFixedKnownLayout(0x820f5d6ffaf5e7eeul, StampFixedLayout0, 24),
+        };
+
+        // THE FLOOR: below it a layout this build once served is RETIRED, and the
+        // answer is layout_unsupported — upgrade the client — rather than
+        // layout_newer, which is ship the reader (§5.2).
+        public const int StampFixedFloor = 0;
+
+        // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
+        // type's static initializer: nothing compiles on the load path, and there
+        // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
+        public static readonly TableFixedLineagePlan[] StampFixedLineagePlans =
+            TableFixedWire.LineagePlans(StampFixedKnown, StampFixedLayout, StampFixedDst, StampFixedHash);
+
+        public static long StampFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + StampFixedLayoutBytes + count * StampFixedRecordBytes;
+        }
+
+        public static long StampFixedSave(ReadOnlySpan<Stamp> values, Span<byte> buffer)
+        {
+            long need = StampFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), StampFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)StampFixedLayoutBytes);
+            StampFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)StampFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, StampFixedHash);
+                at.Slice(8, (int)StampFixedBodyBytes).Clear();
+                StampFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)StampFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long StampFixedSave(Stamp[] values, Span<byte> buffer)
+        {
+            return StampFixedSave((ReadOnlySpan<Stamp>)values, buffer);
+        }
+
+        public static long StampFixedSave(Stamp value, Span<byte> buffer)
+        {
+            ReadOnlySpan<Stamp> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return StampFixedSave(span, buffer);
+        }
+
+        public static long StampFixedLoad(
+            Span<Stamp> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
+            int pick = TableFixedWire.Select(StampFixedKnown, hash);
+            if (pick < 0)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (pick < StampFixedFloor)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            TableFixedKnownLayout known = StampFixedKnown[pick];
+            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = StampFixedPlan;
+            long record_bytes = known.Record;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            int census_unknown = 0;
+            int census_kind = 0;
+            if (hash != StampFixedHash)
+            {
+                TableFixedLineagePlan lane = StampFixedLineagePlans[pick];
+                if (lane.Why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                if (lane.Count > plan.Length)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
+                // the plan this peer selected. It reads no layout and compiles
+                // nothing, so it is not what §5.8 row 3 retires from the load
+                // path; the PLAN is, and the plan is the build's.
+                int slotN = StampFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, StampFixedCover, landed, fillBuf);
+                }
+                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // it lands only on a read that RETURNS: REFUSE moves no counter.
+                census_unknown = lane.Unknown;
+                census_kind = lane.KindMismatch;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            byte[] widenScratch = Array.Empty<byte>();
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
+            for (int k = 0; k < n; ++k)
+            {
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                if (values[k] == null) { values[k] = new Stamp(); }
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]);
+                TableFixedWire.Run(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                StampFixedClamp(values[k], report);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null)
+            {
+                report.Unknown += census_unknown;
+                report.KindMismatch += census_kind;
+                report.Verdict = TableWire.Verdict.Ok;
+            }
+            return n;
+        }
+
+        public static long StampFixedLoad(Stamp[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return StampFixedLoad((Span<Stamp>)values, data, plan, report);
+        }
+
+        public static long StampFixedLoad(Stamp value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<Stamp> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return StampFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            Stamp dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, StampFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 

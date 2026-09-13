@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -126,6 +127,14 @@ type tableGen struct {
 	// counts. A generated field header carries its ordinal as a literal beside
 	// the id, and the id table answers a repeat from slot[ordinal].
 	idOrdinal map[uint64]int
+	// lock is the unit's schema.lock when it has one (algorithm §5.2 COMPILE).
+	// Lineage and Floor come from it; a unit that was never locked falls back
+	// to fixture peers.
+	lock *lockfile.Unit
+	// lineagePeers are older schema units whose matching fixed tables this
+	// generate COMPILEs known hashes and layout bytes from when the unit has
+	// no lock — the test-only fixture map (VOLD_/VNEW_, numbered pairs).
+	lineagePeers []*ir.Unit
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
 	// a suffix, so an element's decode inside an element's decode shadows
@@ -343,24 +352,36 @@ func formatFloat(v float64, single bool) string {
 // The names carry NO package scope. A consumer defines them once for the whole
 // program, the way it defines serialize_assert once, and every generated header
 // in every package picks the definition up.
-const tableHooks = `
-// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
-//
-// schema_assert — the runtime's own assert, and the refusal a debugger reads.
-// NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes ` + "`#define schema_assert serialize_assert`" + ` before
-// including this header and both halves land in one handler.
-#ifndef schema_assert
-#include <assert.h>
-#define schema_assert assert
-#endif // #ifndef schema_assert
-
+const tableHooks = tableAssertHook + `
 // schema_fatal — what stands after the assert on a path that cannot continue.
 // NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
 #ifndef schema_fatal
 #include <stdlib.h> // abort
 #define schema_fatal abort
 #endif // #ifndef schema_fatal
+`
+
+// tableAssertHook is the ASSERT half of the hooks on its own, because the two
+// halves reach two different sets of units: schema_fatal stands after a refusal
+// that aborts, which only the keyed accessor and the list accessor have, while
+// schema_assert alone is what the FIXED FORM's write-side bounds need (§3.4) —
+// and those are debug-only, so nothing after them has to abort.
+const tableAssertHook = `
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
 `
 
 // tableAllocatorHook is the DEFAULT allocator pair behind the same #ifndef,
@@ -689,8 +710,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -726,6 +763,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 ` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -1428,6 +1468,24 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // tables, and nothing when it does not — a table-free unit's generated tree
 // is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, loadUnitLock(u))
+}
+
+// GenerateLineage is Generate with the unit's LOCK handed in by the caller
+// (docs/FIXED-FORM-ALGORITHM.md §5.9 #1: the lock is opened in ONE place, the
+// driver, and a backend opens no file). A nil lock is a unit that was never
+// locked — or a caller that read none — and the lineage then comes from the
+// sibling-filename convention this backend still carries as §5.8 row 1's
+// interim.
+//
+// IT TAKES THE LOCK AND NOT §5.9 #1'S ENTRIES, and that is the interim showing:
+// this backend's lineage entries also carry the RANGES of an older declaration
+// (collectKnownRanges, read off a peer schema UNIT, not off the lock) and its
+// floor falls back to a test-only map keyed by package. Those two have no
+// spelling in lockfile.LineageEntry, so nothing in the shared path can supply
+// them yet. What moved is the READ; the interpretation moves with the
+// convention.
+func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -1468,9 +1526,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// can name, and the index it takes in the ascending set TableIds's
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
+	var peers []*ir.Unit
+	if lock == nil {
+		// Fixture siblings (VOLD_/numbered) are TEST-ONLY. A locked unit
+		// compiles from the lock; a sibling the convention can name must
+		// not append a non-oldest-first entry past the identity.
+		peers = loadFixturePeers(u)
+	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineagePeers: peers}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -1602,6 +1667,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
 		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
+		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
+		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
+		// counted array's live count, checked debug-only, with no abort behind
+		// them. A unit of plain scalars declares neither and gets no hook.
+		if !anyKeyed && !anyList && ir.TableFixedHasWriteBound(u) {
+			h.WriteString(tableAssertHook)
+		}
 		if anyKeyed || anyList {
 			// ENUM-KEYED arrays and UNBOUNDED arrays only: indexing a keyed array
 			// by None, or a list past its count, is a program error in EVERY
@@ -1806,9 +1878,10 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	return order
 }
 
-// unitHas128 reports whether any closure member declares a 128-bit field —
-// an int128, a uint128, or a fixed of 128 bits — which is what decides whether
-// the Table header includes serialize.h for the storage type.
+// unitHas128 reports whether the Table header names serialize.h: a 128-bit
+// integer's storage type, or any fixed-point field — the message codec uses
+// serialize::uint128_t for the whole fixed-point family (ir.TableKindWide),
+// not only 128-bit storage.
 func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
 		st := u.Tables[name]
@@ -1819,7 +1892,12 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 			continue
 		}
 		for _, f := range st.Fields {
-			if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			if f.Type.Kind == ir.TFixed {
+				// the message codec names serialize::uint128_t for the whole
+				// fixed-point family (ir.TableKindWide), not only 128-bit storage
+				return true
+			}
+			if f.Type.Width == 128 && f.Type.Kind == ir.TInt {
 				return true
 			}
 		}
@@ -1833,7 +1911,7 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 		}
 		if un != nil {
 			for _, arm := range un.Variants {
-				if arm.F != nil && arm.F.Type.Width == 128 && (arm.F.Type.Kind == ir.TInt || arm.F.Type.Kind == ir.TFixed) {
+				if arm.F != nil && (arm.F.Type.Kind == ir.TFixed || (arm.F.Type.Width == 128 && arm.F.Type.Kind == ir.TInt)) {
 					return true
 				}
 			}

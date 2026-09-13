@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "Frame.h"
 #include "DataTable.h"
 
@@ -79,8 +95,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -116,6 +148,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 
 
@@ -2080,7 +2115,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the other four are what a plan compiled from another writer's layout adds.
+// NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+// after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2090,9 +2127,10 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2131,9 +2169,14 @@ inline bool TableFixedWidens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  // u8 .. u64
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  // i8 .. i64
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; } // signed fixed(I,F): I grows, F stays
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; } // unsigned ufixed(I,F)
     return from == 10 && to == 11;                                            // f32 -> f64
 }
-inline bool TableFixedSignedKind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+inline bool TableFixedSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
+}
 
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
@@ -2146,9 +2189,34 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
-    uint8_t arg = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
+    // must hold for this entry to run. It is FULL WIDTH, matching the tag
+    // read (bill §12.7): a union past 255 arms, an enum past 255 variants,
+    // the lane is not a byte. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
+    uint64_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
+    // argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+    // eight, and comparing only the FIRST of them fires arm 1 on a foreign
+    // tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+    // one, which is the width a tag had when this field did not exist. It
+    // sits last so a ten-value aggregate still names op, arg, meta, dstsize
+    // and sign in that order.
+    uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2189,6 +2257,21 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     return v;
 }
 
+// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+// byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+// for, and reading only the first byte let 0x0101 run arm 1's entries over
+// a stranger's record.
+inline uint64_t TableFixedTagAt( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? 1u : ( argw > 8u ? 8u : argw );
+    uint64_t v = 0;
+    for ( uint8_t i = 0; i < w; ++i )
+    {
+        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+    }
+    return v;
+}
+
 // THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4).
 inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 {
@@ -2209,6 +2292,11 @@ inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 // ONE reader path rests on a measurement, and with a runtime-length memcpy per
 // entry that same measurement is 3.1x instead of 1.3x
 // (test/bench/fixedform_measure.cpp).
+//
+// AND EVERY MOVE STAYS WITHIN [ run start, run end ). Overlapping moves are the
+// technique; a move anchored OUTSIDE the run is not the technique, it is a
+// defect — it clobbers whatever field sits in front of the destination and it
+// reads past the record body.
 TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -2231,8 +2319,25 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
         }
         return;
     }
+    // EVERY MOVE IS ANCHORED INSIDE [ s, s + n ), AND THAT IS THE INVARIANT THIS
+    // BRANCH EXISTS TO STATE. A run of 17..31 bytes has no room for a sixteen,
+    // a second sixteen and a thirty-two, so it takes TWO SIXTEENS that OVERLAP
+    // in the middle: one at the run's start and one at end - 16, both wholly
+    // within the run because n >= 16. Anchoring the tail move at n - 32
+    // instead would put it 32 - n bytes IN FRONT of the run — reading and
+    // writing a neighbour's bytes, and reading past the record body, which for
+    // a file's last record is past the buffer.
+    if ( n <= 32 )
+    {
+        uint64_t w[2];
+        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        return;
+    }
     if ( n <= 64 )
     {
+        // n >= 33 here, so n - 32 is at least 1 and the tail move begins
+        // inside the run, exactly as the two moves in front of it do.
         uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
@@ -2268,14 +2373,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2292,11 +2397,15 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
-            uint32_t raw = 0;
+            uint64_t raw = 0;
             memcpy( &raw, src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
-            uint32_t v = 0;
-            if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }
+            uint64_t v = 0;
+            if ( raw != 0 )
+            {
+                if ( raw <= (uint64_t) table[0] ) { v = table[raw]; }
+                if ( v == 0 ) { clamped++; }
+            }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -2327,7 +2436,24 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
+            // An unguarded None const with dstsize = the WRITER's arm count:
+            // a tag past that set lands None (already written) and COUNTS.
+            if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
+            {
+                uint64_t raw = 0;
+                memcpy( &raw, src + p.src, p.size );
+                if ( raw > (uint64_t) p.dstsize ) { clamped++; }
+            }
+            break;
+        }
+        case kTableFixedPresent:
+        {
+            dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
         default: break;
@@ -2353,11 +2479,123 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( src[p.guard] != p.arg ) { continue; }
+        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
     report->widened += widened;
+}
+
+// ---- THE PREFILL -----------------------------------------------------------
+//
+// §3.4'S PREFILL ANSWERS ONE QUESTION — what does a field the record does not
+// carry hold? — and the owner's rule is that it answers it for EXACTLY THE
+// BYTES THE PLAN DOES NOT LAND, and no others. Prefilling a byte the plan is
+// about to overwrite is a write thrown away, and a form whose write makes two
+// passes over a body should not have its read make three.
+//
+// So the prefill is A LIST OF RANGES rather than a whole-value reset, and it is
+// computed where the plan is: the type's own VALUE BYTES — the identity plan's
+// destinations, laid down sorted and merged by the schema compiler as
+// <Name>FixedCover — MINUS every byte this plan lands.
+//
+// THE IDENTITY PLAN'S LIST IS EMPTY, and that is the rule's LIMIT CASE and not
+// an exception to it: its destinations ARE the value bytes, so there is nothing
+// left to subtract. Which is why nothing in the read loop asks whether the plan
+// it is running is the identity one — it runs the list it was handed, and that
+// list is empty.
+
+struct TableFixedFill
+{
+    uint32_t dst = 0;
+    uint32_t size = 0;
+};
+
+// THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
+// else. The default image is the caller's own storage reset once per read, not
+// per record.
+inline void TableFixedFillRun( const TableFixedFill * fill, int32_t count,
+                               const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        TableFixedCopyRun( dst + fill[i].dst, defaults + fill[i].dst, fill[i].size );
+    }
+}
+
+// TableFixedEntryLands is the bytes of the READER'S OWN STORAGE one entry
+// writes — TWO runs, because a text entry lands a length and a buffer and every
+// other op lands one run and leaves the second empty.
+//
+// A GUARDED ENTRY COUNTS AS LANDING ITS BYTES. It is a union arm, and an arm's
+// storage is the arm's: the tag says which one is live and nothing reads the
+// others. What must never be conditional is the TAG, and the compiler below
+// lays an unguarded one down for exactly this reason.
+inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
+{
+    lands[0] = e.dst;
+    lands[1] = e.dst;
+    lands[2] = 0;
+    lands[3] = 0;
+    switch ( e.op )
+    {
+        case kTableFixedCount: lands[1] = e.dst + 4u; break;
+        case kTableFixedText:
+        {
+            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
+            lands[1] = e.dst + 4u;
+            lands[2] = e.aux;
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            break;
+        }
+        case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
+        case kTableFixedWiden:
+        case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        default: lands[1] = e.dst + e.size; break; // copy, const
+    }
+}
+
+// TableFixedFills is the subtraction: the cover MINUS everything the plan
+// lands, as a list of ranges, answered into the out array or merely counted
+// when it is NULL. It walks the cover once and, at each position, asks the plan what
+// run starts there and where the next one starts — so it costs the plan's
+// length per RUN of the answer, once per file and never per record. The plan's
+// length is the caller's declared plan capacity, which is what bounds it.
+inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
+                                const TableFixedFill * cover, int32_t cover_count,
+                                TableFixedFill * out )
+{
+    int32_t n = 0;
+    for ( int32_t r = 0; r < cover_count; ++r )
+    {
+        const uint32_t hi = cover[r].dst + cover[r].size;
+        uint32_t pos = cover[r].dst;
+        while ( pos < hi )
+        {
+            uint32_t end = pos;  // the end of the landed run that covers pos
+            uint32_t next = hi;  // where the next landed run starts, past pos
+            for ( int32_t i = 0; i < count; ++i )
+            {
+                uint32_t lands[4];
+                TableFixedEntryLands( plan[i], lands );
+                for ( int32_t q = 0; q < 4; q += 2 )
+                {
+                    const uint32_t lo = lands[q];
+                    const uint32_t top = lands[q + 1];
+                    if ( top <= lo ) { continue; }
+                    if ( lo <= pos && pos < top ) { if ( top > end ) { end = top; } }
+                    else if ( lo > pos && lo < next ) { next = lo; }
+                }
+            }
+            if ( end > pos ) { pos = end; continue; }
+            if ( next > hi ) { next = hi; }
+            if ( out != NULL ) { out[n].dst = pos; out[n].size = next - pos; }
+            n++;
+            pos = next;
+        }
+    }
+    return n;
 }
 
 // ---- THE LAYOUT ------------------------------------------------------------
@@ -2698,7 +2936,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -2712,6 +2950,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     TableReport * report = NULL;
 };
 
@@ -2726,9 +2965,15 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
+        if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
+        const uint8_t gw = e.argw == 0 ? 1u : e.argw;
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
             return;
@@ -2744,6 +2989,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 // coalescing pass, which only moves entries down, never moves one.
 inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * values, int32_t n )
 {
+    if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }
     const int32_t bytes = ( n + 1 ) * (int32_t) sizeof( uint16_t );
     const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
     c.pool += bytes;
@@ -2751,20 +2997,39 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     const uint32_t at = (uint32_t) ( total - c.pool );
     uint16_t * dst = (uint16_t *) (void *) ( (uint8_t *) c.plan + at );
     dst[0] = (uint16_t) n;
-    for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
+    if ( values != NULL )
+    {
+        for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
+    }
     return at;
 }
+
+// TableFixedLayFills reserves the prefill's ranges in the SAME POOL the remap
+// tables come out of, above the entries and growing downward, and answers the
+// byte offset of the array from the plan's base. The pool is the caller's plan
+// storage: this codec allocates nothing, here as everywhere, and a plan whose
+// pool does not fit is a refusal by name.
+inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
+{
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    // ROUNDED SO THE ARRAY IS ALIGNED: a remap table is laid in units of two
+    // bytes and this array's members are four wide.
+    c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    return (uint32_t) ( total - c.pool );
+}
+
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint8_t arg );
+                                    uint32_t guard, uint64_t arg );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
                                      const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                      const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                     uint32_t guard, uint8_t arg )
+                                     uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -2807,7 +3072,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint8_t arg )
+                                    uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -2825,6 +3090,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     } depth_guard( c );
     (void) depth_guard;
     const uint32_t aux_at = my_at + d.aux;
+    // T into ?T: an unguarded present op, then the payload under the wrapper
+    // (bill §12.8, algorithm §5.2). The writer's kind is the payload's; the
+    // reader's is the optional wrapper.
+    if ( me.kind == 35 && te.kind != 35 )
+    {
+        TableFixedEntry e;
+        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        TableFixedPush( c, e );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        return;
+    }
     if ( te.kind != me.kind )
     {
         if ( TableFixedWidens( te.kind, me.kind ) )
@@ -2867,7 +3143,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             if ( d.counted )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = their_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
@@ -2902,7 +3178,33 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         {
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
+            const uint8_t saved_argw = c.argw;
+            c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : 1u;
             int32_t my_arm = mi + 1;
+            // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag value
+            // below is written under THEIR tag's guard, so a record naming an
+            // arm this build does not have would land no tag at all — and the
+            // prefill cannot answer for it, because those bytes are named by
+            // the guarded entries. The plan is partitioned unguarded-first, so
+            // this is overwritten by the arm that matches and stands when none
+            // does. It is the ONE byte this form writes twice, and it is the
+            // compiled path's alone.
+            //
+            // Nested: None answers to the OUTER tag at the OUTER width. Push
+            // stamps c.argw, which is the inner tag's width here, so restore
+            // the outer width for this one entry (bill §12.7, #876 card 13).
+            {
+                const uint8_t inner_argw = c.argw;
+                if ( guard != kTableFixedNoGuard ) { c.argw = saved_argw ? saved_argw : 1u; }
+                TableFixedEntry none;
+                none.src = their_at; none.dst = aux_at; none.size = my_tag;
+                none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                // Writer arm count, for a tag past the old set (bill §12.5).
+                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
+                TableFixedPush( c, none );
+                c.argw = inner_argw;
+            }
+            const int32_t restamp_from = c.count;
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
                 const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
@@ -2915,23 +3217,60 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         // MY tag value, written under THEIR tag's guard
                         TableFixedEntry tag;
                         tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
-                        tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
+                        tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint64_t) j + 1u;
+                        tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                                                mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
+                                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
+            if ( guard != kTableFixedNoGuard )
+            {
+                const uint8_t outer_w = saved_argw ? saved_argw : 1u;
+                for ( int32_t q = restamp_from; q < c.count; ++q )
+                {
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
+                }
+            }
+            c.argw = saved_argw;
             break;
         }
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
-            uint16_t map[256];
-            const uint32_t n = te.children < 255u ? te.children : 255u;
+            // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
+            // append-only means the writer's ordinal IS the reader's, and the
+            // counter owes one. Remap is only for a merge that reordered names.
+            if ( te.size < me.size )
+            {
+                TableFixedEntry e;
+                e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                TableFixedPush( c, e );
+                break;
+            }
+            // FULL WIDTH (bill §12.7): the remap is one slot per writer
+            // variant, not a 255-deep stack array. n past 65535 is a plan
+            // that does not fit the uint16 length word; overflow refuses it.
+            const uint32_t n = te.children;
+            const uint32_t at_map = TableFixedLayTable( c, NULL, (int32_t) n );
+            if ( c.overflow ) { break; }
+            uint16_t * map = (uint16_t *) (void *) ( (uint8_t *) c.plan + at_map );
             for ( uint32_t j = 0; j < n; ++j )
             {
                 const uint64_t vid = TableFixedEntryAt( theirs, ti + 1 + (int32_t) j ).id;
@@ -2940,12 +3279,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid ) { landed = (uint16_t) ( k + 1 ); break; }
                 }
-                map[j] = landed;
+                map[1 + j] = landed;
             }
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = te.size; e.guard = guard; e.op = kTableFixedOrdinal;
             e.arg = arg; e.dstsize = (uint8_t) me.size;
-            e.aux = TableFixedLayTable( c, map, (int32_t) n );
+            e.aux = at_map;
             TableFixedPush( c, e );
             break;
         }
@@ -2954,7 +3293,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -2984,7 +3323,9 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
                                   const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
+                                  const TableFixedFill * cover, int32_t cover_count,
                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
+                                  uint32_t * fill_at, int32_t * fill_count,
                                   TableReport * report )
 {
     TableFixedLayoutView mine;
@@ -3005,7 +3346,11 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.want_guarded = true;
     c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
     TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
-    if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
+    if ( c.overflow || c.hostile )
+    {
+        if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
+        return c.hostile ? -2 : -1;
+    }
     // COALESCE inside each half, never across the split
     int32_t out = 0;
     int32_t split = 0;
@@ -3014,6 +3359,9 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
+             plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -3024,7 +3372,126 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     }
     if ( plain == c.count ) { split = out; }
     if ( guarded != NULL ) { *guarded = split; }
+    // THE PREFILL'S RANGES, out of the same pool and by the same rule: the
+    // type's value bytes minus everything this plan lands.
+    c.count = out;
+    *fill_at = 0;
+    *fill_count = TableFixedFills( plan, out, cover, cover_count, NULL );
+    if ( *fill_count > 0 )
+    {
+        const uint32_t at = TableFixedLayFills( c, *fill_count );
+        if ( c.overflow ) { return -1; }
+        TableFixedFills( plan, out, cover, cover_count, (TableFixedFill *) (void *) ( (uint8_t *) plan + at ) );
+        *fill_at = at;
+    }
     return out;
+}
+
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+// One COMPILE'd lineage entry: the hash LOAD looks up, the layout bytes it
+// memcmps, the writer's record size. Plans for older hashes are compiled from
+// these trusted bytes, never from the file (algorithm §5.3).
+struct TableFixedKnownLayout
+{
+    uint64_t hash = 0;
+    const uint8_t * layout = NULL;
+    int64_t layout_bytes = 0;
+    int64_t record_bytes = 0;
+};
+
+// Writer ranges the hostile pass clamps against (bill §12.5). dst is the
+// READER's storage offset; lo/hi are the WRITER's declared bounds.
+struct TableFixedKnownRange
+{
+    uint32_t dst = 0;
+    uint8_t width = 0;
+    uint8_t sgn = 0;
+    int64_t lo = 0;
+    int64_t hi = 0;
+};
+
+inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int32_t n,
+                                        uint8_t * dst, TableReport * report )
+{
+    if ( ranges == NULL || n <= 0 || dst == NULL ) { return; }
+    int32_t clamped = 0;
+    for ( int32_t i = 0; i < n; ++i )
+    {
+        const TableFixedKnownRange & b = ranges[i];
+        if ( b.width == 0 || b.width > 8 ) { continue; }
+        uint64_t raw = 0;
+        memcpy( &raw, dst + b.dst, b.width );
+        int64_t v = 0;
+        if ( b.sgn != 0 )
+        {
+            const unsigned bits = (unsigned) b.width * 8u;
+            const uint64_t top = 1ull << ( bits - 1 );
+            if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            v = (int64_t) raw;
+        }
+        else
+        {
+            v = (int64_t) raw;
+        }
+        int64_t landed = v;
+        if ( landed < b.lo ) { landed = b.lo; clamped++; }
+        else if ( landed > b.hi ) { landed = b.hi; clamped++; }
+        if ( landed == v ) { continue; }
+        uint64_t out = (uint64_t) landed;
+        memcpy( dst + b.dst, &out, b.width );
+    }
+    if ( report != NULL ) { report->clamped += clamped; }
+}
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].fill = NULL;
+        cache.slots[i].fill_count = 0;
+        cache.slots[i].made = 0;
+    }
 }
 
 } // namespace blockhome
@@ -4364,7 +4831,7 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own layout for anybody else.
+// the writer's own layout for anybody else. There is no second reader.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -4397,8 +4864,9 @@ inline void PartFrameFixedWriteBody( uint8_t * b, const PartFrame & value )
 {
     (void) b; (void) value;
     TableFixedPut64( b + 0, (uint64_t) value.version );
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 8, (uint32_t) value.parts_count );
-    for ( int64_t i = 0; i < 32; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.parts_count; ++i )
     {
         PartRowFixedWriteBody( b + 12 + i * 340 + 0, value.parts[i] );
     }
@@ -4410,7 +4878,7 @@ inline void PartFrameFixedWriteBody( uint8_t * b, const PartFrame & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PartRowFixedBodyBytes = 340;
 constexpr int64_t PartRowFixedRecordBytes = 8 + PartRowFixedBodyBytes; // the hash and the body
-constexpr uint64_t PartRowFixedHash = 0x77235ae96f13007cull; // fnv1a64 over the layout's bytes
+constexpr uint64_t PartRowFixedHash = 0x77235ae96f13007cull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 25 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -4484,17 +4952,83 @@ constexpr TableFixedDst PartRowFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PartRowFixedPlan[] = {
-    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
+    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
 };
 constexpr int32_t PartRowFixedPlanCount = 8;
 constexpr int32_t PartRowFixedPlanGuarded = 8;
+
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill PartRowFixedCover[] = {
+    { 0u, 13u },
+    { 16u, 13u },
+    { 32u, 5u },
+    { 40u, 309u },
+};
+constexpr int32_t PartRowFixedCoverCount = 4;
+
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t PartRowFixedLineage[] = {
+    0x77235ae96f13007cull, // identity
+};
+constexpr int32_t PartRowFixedLineageCount = 1;
+constexpr int32_t PartRowFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t PartRowFixedFloorLive = PartRowFixedFloor;
+inline void PartRowFixedSetFloorForTest( int32_t index ) { PartRowFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t PartRowFixedKnown0Layout[] = {
+    0x19, 0x00, 0x00, 0x00, 0xf0, 0xb1, 0x40, 0x26, 0x28, 0x61, 0xc4, 0x27, 0x0d, 0x54, 0x01, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x94, 0x91, 0x69, 0x7e, 0xb6, 0x88, 0x99, 0xd1, 0x0d, 0x1f, 0x00,
+    0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c, 0x8b, 0x53, 0x0d, 0x0d,
+    0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x15, 0xf3, 0xb4, 0x25, 0xca, 0x65, 0xae, 0xdb, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x61, 0x31, 0x98, 0x68, 0x75, 0x6f, 0x02,
+    0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x8c, 0x76, 0x29, 0xec, 0x9f, 0xe3,
+    0x84, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d,
+    0xe6, 0x4c, 0x0d, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x15, 0xf3, 0xb4, 0x25, 0xca,
+    0x65, 0xae, 0xdb, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x61, 0x31, 0x98,
+    0x68, 0x75, 0x6f, 0x02, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x8c, 0x76,
+    0x29, 0xec, 0x9f, 0xe3, 0x84, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0, 0xf4,
+    0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89,
+    0x59, 0xb6, 0x2e, 0xef, 0x84, 0x6f, 0x1e, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6, 0xdb, 0x40, 0x0d, 0x30, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00,
+    0x00, 0x7f, 0xdb, 0xc3, 0xb0, 0xa6, 0x8c, 0x0b, 0x26, 0x0e, 0x04, 0x01, 0x00, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02,
+    0x00, 0x00, 0x00, 0x51, 0xb6, 0x60, 0xd3, 0x9a, 0x05, 0xce, 0x8e, 0x08, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x48, 0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x0a, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xf6, 0x87, 0xa0, 0x5a, 0x10, 0x99, 0x3c, 0x0e, 0x24, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08,
+    0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x51, 0xb6, 0x60, 0xd3, 0x9a, 0x05, 0xce, 0x8e, 0x08,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc,
+    0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86, 0x24, 0xa5, 0x8e, 0x72, 0x64, 0x9b,
+    0xad, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x6e, 0x25, 0x80, 0x31, 0xe5,
+    0x9b, 0xbd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x51, 0x41, 0x33, 0x6b,
+    0x20, 0xd6, 0x04, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+    0x18, 0x16, 0x77, 0x6a, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout PartRowFixedKnown[] = {
+    { 0x77235ae96f13007cull, PartRowFixedKnown0Layout, 429, 348 }, // identity
+};
+
+constexpr const TableFixedKnownRange * PartRowFixedKnownRanges[] = {
+    NULL,
+};
+constexpr int32_t PartRowFixedKnownRangeCounts[] = { 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -4524,18 +5058,17 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -4547,42 +5080,114 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < PartRowFixedLineageCount; ++i )
+    {
+        if ( PartRowFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = PartRowFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = PartRowFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = PartRowFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = PartRowFixedPlan;
     int32_t entry_count = PartRowFixedPlanCount;
     int32_t entry_guarded = PartRowFixedPlanGuarded;
     int64_t record_bytes = PartRowFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != PartRowFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, PartRowFixedLayout, (int32_t) PartRowFixedLayoutBytes, PartRowFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, PartRowFixedLayout, (int32_t) PartRowFixedLayoutBytes, PartRowFixedDst,
+                                                   PartRowFixedCover, PartRowFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            record_bytes = known.record_bytes;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    PartRow defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
+        PartRowReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        PartRowReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedClampKnownRanges( PartRowFixedKnownRanges[lineage_at], PartRowFixedKnownRangeCounts[lineage_at],
+                                    (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -4594,7 +5199,7 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PartFrameFixedBodyBytes = 10892;
 constexpr int64_t PartFrameFixedRecordBytes = 8 + PartFrameFixedBodyBytes; // the hash and the body
-constexpr uint64_t PartFrameFixedHash = 0xa6bf965bfbe5ce4eull; // fnv1a64 over the layout's bytes
+constexpr uint64_t PartFrameFixedHash = 0xa6bf965bfbe5ce4eull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 28 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -4674,267 +5279,461 @@ constexpr TableFixedDst PartFrameFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PartFrameFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // version
-    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // parts count
-    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // version
+    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // parts count
+    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
+    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thickness
+    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // rating
+    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups count
+    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // firing_groups, whole
+    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups count
+    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // missile_groups, whole
+    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reload_seconds
 };
 constexpr int32_t PartFrameFixedPlanCount = 258;
 constexpr int32_t PartFrameFixedPlanGuarded = 258;
+
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill PartFrameFixedCover[] = {
+    { 0u, 21u },
+    { 24u, 13u },
+    { 40u, 5u },
+    { 48u, 309u },
+    { 360u, 13u },
+    { 376u, 13u },
+    { 392u, 5u },
+    { 400u, 309u },
+    { 712u, 13u },
+    { 728u, 13u },
+    { 744u, 5u },
+    { 752u, 309u },
+    { 1064u, 13u },
+    { 1080u, 13u },
+    { 1096u, 5u },
+    { 1104u, 309u },
+    { 1416u, 13u },
+    { 1432u, 13u },
+    { 1448u, 5u },
+    { 1456u, 309u },
+    { 1768u, 13u },
+    { 1784u, 13u },
+    { 1800u, 5u },
+    { 1808u, 309u },
+    { 2120u, 13u },
+    { 2136u, 13u },
+    { 2152u, 5u },
+    { 2160u, 309u },
+    { 2472u, 13u },
+    { 2488u, 13u },
+    { 2504u, 5u },
+    { 2512u, 309u },
+    { 2824u, 13u },
+    { 2840u, 13u },
+    { 2856u, 5u },
+    { 2864u, 309u },
+    { 3176u, 13u },
+    { 3192u, 13u },
+    { 3208u, 5u },
+    { 3216u, 309u },
+    { 3528u, 13u },
+    { 3544u, 13u },
+    { 3560u, 5u },
+    { 3568u, 309u },
+    { 3880u, 13u },
+    { 3896u, 13u },
+    { 3912u, 5u },
+    { 3920u, 309u },
+    { 4232u, 13u },
+    { 4248u, 13u },
+    { 4264u, 5u },
+    { 4272u, 309u },
+    { 4584u, 13u },
+    { 4600u, 13u },
+    { 4616u, 5u },
+    { 4624u, 309u },
+    { 4936u, 13u },
+    { 4952u, 13u },
+    { 4968u, 5u },
+    { 4976u, 309u },
+    { 5288u, 13u },
+    { 5304u, 13u },
+    { 5320u, 5u },
+    { 5328u, 309u },
+    { 5640u, 13u },
+    { 5656u, 13u },
+    { 5672u, 5u },
+    { 5680u, 309u },
+    { 5992u, 13u },
+    { 6008u, 13u },
+    { 6024u, 5u },
+    { 6032u, 309u },
+    { 6344u, 13u },
+    { 6360u, 13u },
+    { 6376u, 5u },
+    { 6384u, 309u },
+    { 6696u, 13u },
+    { 6712u, 13u },
+    { 6728u, 5u },
+    { 6736u, 309u },
+    { 7048u, 13u },
+    { 7064u, 13u },
+    { 7080u, 5u },
+    { 7088u, 309u },
+    { 7400u, 13u },
+    { 7416u, 13u },
+    { 7432u, 5u },
+    { 7440u, 309u },
+    { 7752u, 13u },
+    { 7768u, 13u },
+    { 7784u, 5u },
+    { 7792u, 309u },
+    { 8104u, 13u },
+    { 8120u, 13u },
+    { 8136u, 5u },
+    { 8144u, 309u },
+    { 8456u, 13u },
+    { 8472u, 13u },
+    { 8488u, 5u },
+    { 8496u, 309u },
+    { 8808u, 13u },
+    { 8824u, 13u },
+    { 8840u, 5u },
+    { 8848u, 309u },
+    { 9160u, 13u },
+    { 9176u, 13u },
+    { 9192u, 5u },
+    { 9200u, 309u },
+    { 9512u, 13u },
+    { 9528u, 13u },
+    { 9544u, 5u },
+    { 9552u, 309u },
+    { 9864u, 13u },
+    { 9880u, 13u },
+    { 9896u, 5u },
+    { 9904u, 309u },
+    { 10216u, 13u },
+    { 10232u, 13u },
+    { 10248u, 5u },
+    { 10256u, 309u },
+    { 10568u, 13u },
+    { 10584u, 13u },
+    { 10600u, 5u },
+    { 10608u, 309u },
+    { 10920u, 13u },
+    { 10936u, 13u },
+    { 10952u, 5u },
+    { 10960u, 309u },
+    { 11272u, 4u },
+};
+constexpr int32_t PartFrameFixedCoverCount = 129;
+
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t PartFrameFixedLineage[] = {
+    0xa6bf965bfbe5ce4eull, // identity
+};
+constexpr int32_t PartFrameFixedLineageCount = 1;
+constexpr int32_t PartFrameFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t PartFrameFixedFloorLive = PartFrameFixedFloor;
+inline void PartFrameFixedSetFloorForTest( int32_t index ) { PartFrameFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t PartFrameFixedKnown0Layout[] = {
+    0x1c, 0x00, 0x00, 0x00, 0xb1, 0x2f, 0x3a, 0x9e, 0xfd, 0xb7, 0xa1, 0x7c, 0x0d, 0x8c, 0x2a, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb, 0x09, 0x08, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x58, 0xf9, 0xa1, 0xa7, 0x9d, 0x51, 0x0c, 0x0e, 0x84,
+    0x2a, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d,
+    0x54, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x94, 0x91, 0x69, 0x7e, 0xb6, 0x88, 0x99, 0xd1,
+    0x0d, 0x1f, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c, 0x8b,
+    0x53, 0x0d, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x15, 0xf3, 0xb4, 0x25, 0xca, 0x65,
+    0xae, 0xdb, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x61, 0x31, 0x98, 0x68,
+    0x75, 0x6f, 0x02, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x8c, 0x76, 0x29,
+    0xec, 0x9f, 0xe3, 0x84, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xe7, 0xdd,
+    0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x15, 0xf3,
+    0xb4, 0x25, 0xca, 0x65, 0xae, 0xdb, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0,
+    0x61, 0x31, 0x98, 0x68, 0x75, 0x6f, 0x02, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x56, 0x8c, 0x76, 0x29, 0xec, 0x9f, 0xe3, 0x84, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x89, 0x59, 0xb6, 0x2e, 0xef, 0x84, 0x6f, 0x1e, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6, 0xdb, 0x40, 0x0d, 0x30, 0x01, 0x00, 0x00,
+    0x04, 0x00, 0x00, 0x00, 0x7f, 0xdb, 0xc3, 0xb0, 0xa6, 0x8c, 0x0b, 0x26, 0x0e, 0x04, 0x01, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00,
+    0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x51, 0xb6, 0x60, 0xd3, 0x9a, 0x05, 0xce, 0x8e, 0x08, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x0a,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xf6, 0x87, 0xa0, 0x5a, 0x10, 0x99, 0x3c,
+    0x0e, 0x24, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x51, 0xb6, 0x60, 0xd3, 0x9a, 0x05,
+    0xce, 0x8e, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x3d, 0x34, 0x53, 0x69,
+    0xbe, 0x2c, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x86, 0x24, 0xa5, 0x8e,
+    0x72, 0x64, 0x9b, 0xad, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x6e, 0x25,
+    0x80, 0x31, 0xe5, 0x9b, 0xbd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x51,
+    0x41, 0x33, 0x6b, 0x20, 0xd6, 0x04, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd1,
+    0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout PartFrameFixedKnown[] = {
+    { 0xa6bf965bfbe5ce4eull, PartFrameFixedKnown0Layout, 480, 10900 }, // identity
+};
+
+constexpr const TableFixedKnownRange * PartFrameFixedKnownRanges[] = {
+    NULL,
+};
+constexpr int32_t PartFrameFixedKnownRangeCounts[] = { 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -4964,18 +5763,17 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -4987,42 +5785,114 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < PartFrameFixedLineageCount; ++i )
+    {
+        if ( PartFrameFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = PartFrameFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = PartFrameFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = PartFrameFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = PartFrameFixedPlan;
     int32_t entry_count = PartFrameFixedPlanCount;
     int32_t entry_guarded = PartFrameFixedPlanGuarded;
     int64_t record_bytes = PartFrameFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != PartFrameFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, PartFrameFixedLayout, (int32_t) PartFrameFixedLayoutBytes, PartFrameFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, PartFrameFixedLayout, (int32_t) PartFrameFixedLayoutBytes, PartFrameFixedDst,
+                                                   PartFrameFixedCover, PartFrameFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            record_bytes = known.record_bytes;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    PartFrame defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
+        PartFrameReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        PartFrameReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedClampKnownRanges( PartFrameFixedKnownRanges[lineage_at], PartFrameFixedKnownRangeCounts[lineage_at],
+                                    (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;

@@ -9,7 +9,9 @@ name: Certify
 # owner's rule, 2026-09-07: CI that runs per commit finishes in one minute,
 # two at most; anything longer is nightly or manually triggered.
 #
-# THE PULL-REQUEST GATE IS ci.yml, and it is the fast half of this same set.
+# THE PULL-REQUEST GATE IS ci-fast.yml (per push, two minutes, selected by
+# path) and ci-full.yml (on merge, nightly, on demand, and on a `full-ci`
+# label), and together they are the fast half of this same set.
 # Nothing is checked less than it was before the split — what moved is WHEN a
 # certification instrument runs. A regression only this file can see fails
 # loudly at the next nightly, or the same hour when someone dispatches this
@@ -42,7 +44,7 @@ concurrency:
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
 # RELEASED tag, never main: a sibling merging to main mid-day must not change
-# what a schema commit's CI proves. ci.yml carries the same block; the two must
+# what a schema commit's CI proves. ci-full.yml carries the same block; the two must
 # move together.
 # To bump a pin: edit the *_TAG line to the new release tag — nothing else
 # changes. Find the newest tag with:
@@ -103,7 +105,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -159,23 +161,21 @@ jobs:
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
-      # above regenerated every tracked file IN PLACE, so staleness is
-      # precisely a dirty tree here: a tracked file that changed, or a newly
-      # emitted file nobody committed (which a diff-only check would miss).
-      # The pull-request gate reaches the same verdict from bin/schema alone;
-      # this is the same check against the whole chain's output.
-      - name: generated tree is current
+      # above regenerated every tracked file IN PLACE, and in place a rule only
+      # writes: a file the emitter STOPPED writing stays on disk byte-identical
+      # to the index, and a rule that never ran leaves its whole directory
+      # standing, and a diff calls both green. So the verdict here is the same
+      # script the `generated` job in ci-full.yml and `make generated-current`
+      # run — test/generated-tree/verify, which moves the tree aside and emits
+      # into NOTHING (#898's gate G3), then compares the full listing and the
+      # bytes both ways. It checks this chain's in-place output against the
+      # committed tree on its way past.
+      - name: the committed generated/ tree is what this compiler emits, from an empty directory
         run: |
-          git diff --exit-code generated/ || {
-            echo "::error::committed generated/ tree is stale — the current compiler emits different text. Run 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit the regenerated files."
+          test/generated-tree/verify || {
+            echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
-          untracked=$(git status --porcelain generated/)
-          if [ -n "$untracked" ]; then
-            echo "$untracked"
-            echo "::error::the generator emitted files that are not committed under generated/ — add them."
-            exit 1
-          fi
 
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input
@@ -247,7 +247,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -347,7 +347,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -401,7 +401,7 @@ jobs:
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
-  # The same job rides every pull request in ci.yml, deliberately: neither
+  # The same job rides every merge in ci-full.yml, deliberately: neither
   # trigger substitutes for the other.
   vuln:
     runs-on: ubuntu-latest

@@ -184,6 +184,52 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # and output root, because the big-endian negative control below regenerates
 # the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
 # be a second corpus, and the gate would stop covering what the leg covers.
+# ---- rowan/cpp-versioning-numbers: BEGIN --------------------------------
+# THE VERSIONING LAW'S SCHEMAS (docs/FIXED-FORM-VERSIONING-TESTS.md). One PAIR
+# per row of the law, differing by EXACTLY that row, same table name in two
+# packages so both generations compile into one binary. Every one of them goes
+# into ONE generated directory: the emitter names its files after the SCHEMA,
+# so 35 units share a directory without colliding and the test binaries take one
+# -I instead of 35.
+SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
+	test/tables/VOLD_array_fixed_grow.schema \
+	test/tables/VOLD_array_elem_widen.schema \
+	test/tables/VOLD_constant_grow.schema \
+	test/tables/VOLD_string_grow.schema \
+	test/tables/VOLD_wstring_grow.schema \
+	test/tables/VOLD_bytes_grow.schema \
+	test/tables/VOLD_int_widen.schema \
+	test/tables/VOLD_uint_widen.schema \
+	test/tables/VOLD_float_widen.schema \
+	test/tables/VOLD_range_widen.schema \
+	test/tables/VOLD_bits_grow.schema \
+	test/tables/VOLD_fixed_I_grow.schema \
+	test/tables/VOLD_fixed_I_grow_element.schema \
+	test/tables/VOLD_optional_add.schema \
+	test/tables/VNEW_array_bounded_grow.schema \
+	test/tables/VNEW_array_fixed_grow.schema \
+	test/tables/VNEW_array_elem_widen.schema \
+	test/tables/VNEW_constant_grow.schema \
+	test/tables/VNEW_string_grow.schema \
+	test/tables/VNEW_wstring_grow.schema \
+	test/tables/VNEW_bytes_grow.schema \
+	test/tables/VNEW_int_widen.schema \
+	test/tables/VNEW_uint_widen.schema \
+	test/tables/VNEW_float_widen.schema \
+	test/tables/VNEW_range_widen.schema \
+	test/tables/VNEW_bits_grow.schema \
+	test/tables/VNEW_fixed_I_grow.schema \
+	test/tables/VNEW_fixed_I_grow_element.schema \
+	test/tables/VNEW_optional_add.schema \
+	test/tables/VOLD_floor.schema \
+	test/tables/VMID_floor.schema \
+	test/tables/VNEW_floor.schema \
+	test/tables/VOLD_lineage_merge.schema \
+	test/tables/VBRA_lineage_merge.schema \
+	test/tables/VBRB_lineage_merge.schema \
+	test/tables/VNEW_lineage_merge.schema
+# ---- rowan/cpp-versioning-numbers: END ----------------------------------
+
 define tables_generate
 	$(1) generate --lang cpp --out $(2)/examples tables/examples
 	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
@@ -194,6 +240,20 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/blobs tables/blobs
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cpp --out $(2)/ut1 test/tables/UT1.schema
+	$(1) generate --lang cpp --out $(2)/ut2 test/tables/UT2.schema
+	$(1) generate --lang cpp --out $(2)/fn1 test/tables/FN1.schema
+	$(1) generate --lang cpp --out $(2)/hb test/tables/HB.schema
+	$(1) generate --lang cpp --out $(2)/fn2 test/tables/FN2.schema
+	$(1) generate --lang cpp --out $(2)/fu1 test/tables/FU1.schema
+	$(1) generate --lang cpp --out $(2)/fu2 test/tables/FU2.schema
+	$(1) generate --lang cpp --out $(2)/fh1 test/tables/FH1.schema
+	$(1) generate --lang cpp --out $(2)/fh2 test/tables/FH2.schema
+	$(1) generate --lang cpp --out $(2)/fg1 test/tables/FG1.schema
+	$(1) generate --lang cpp --out $(2)/fe1 test/tables/FE1.schema
+	$(1) generate --lang cpp --out $(2)/fe2 test/tables/FE2.schema
+	$(1) generate --lang cpp --out $(2)/fm1 test/tables/FM1.schema
+	$(1) generate --lang cpp --out $(2)/fm2 test/tables/FM2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
@@ -222,6 +282,35 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
+	# ==== BEGIN rowan/cpp-versioning-lists ====
+	# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
+	# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
+	# the SAME table name on both sides (one lineage) and a package each, so
+	# both generations compile into one test binary — the FX1/FX2 precedent.
+	# The reference's two read columns are test/tables/versioning_lists.cpp.
+	$(1) generate --lang cpp --out $(2)/vold_field_append test/tables/VOLD_field_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_append test/tables/VNEW_field_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_field_deprecate test/tables/VOLD_field_deprecate.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_deprecate test/tables/VNEW_field_deprecate.schema
+	$(1) generate --lang cpp --out $(2)/vold_field_undeprecate test/tables/VOLD_field_undeprecate.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_undeprecate test/tables/VNEW_field_undeprecate.schema
+	$(1) generate --lang cpp --out $(2)/vold_enum_append test/tables/VOLD_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_enum_append test/tables/VNEW_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_enum_width test/tables/VOLD_enum_width.schema
+	$(1) generate --lang cpp --out $(2)/vnew_enum_width test/tables/VNEW_enum_width.schema
+	$(1) generate --lang cpp --out $(2)/vold_union_append test/tables/VOLD_union_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_union_append test/tables/VNEW_union_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_union_arm_payload_widen test/tables/VOLD_union_arm_payload_widen.schema
+	$(1) generate --lang cpp --out $(2)/vnew_union_arm_payload_widen test/tables/VNEW_union_arm_payload_widen.schema
+	$(1) generate --lang cpp --out $(2)/vold_flags_append test/tables/VOLD_flags_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_flags_append test/tables/VNEW_flags_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_keyed_array_enum_append test/tables/VOLD_keyed_array_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_keyed_array_enum_append test/tables/VNEW_keyed_array_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_nested_append test/tables/VOLD_nested_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_nested_append test/tables/VNEW_nested_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
+	$(1) generate --lang cpp --out $(2)/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
+	# ==== END rowan/cpp-versioning-lists ====
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -238,13 +327,18 @@ define tables_generate
 	# because examples/ pins gate 1 for all nine targets and eight of them
 	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
+	# ---- rowan/cpp-versioning-numbers: BEGIN ----
+	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
+	$(foreach sc,$(SCHEMAS_VERSIONING),$(1) generate --lang cpp --out $(2)/vnum $(sc)
+	)
+	# ---- rowan/cpp-versioning-numbers: END ----
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -2711,7 +2805,7 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 # order is proven to refuse rather than to garble.
 #
 # The toolchain is not a system binary and is not assumed: CI installs an
-# exact pinned version (.github/workflows/ci.yml) and these two variables name
+# exact pinned version (.github/workflows/ci-full.yml) and these two variables name
 # what it installed, so the leg runs anywhere the same pair is on PATH.
 BE_CXX ?= s390x-linux-gnu-g++
 BE_RUN ?= qemu-s390x
@@ -4347,6 +4441,42 @@ build/schema_test_bench_paired_table_cpp: generated/bench/paired/cpp/.stamp benc
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -DBENCH_MATCHED -Igenerated/bench/paired/cpp bench/tables/cpp/table_main.cpp -o $@
 
+# THE THREE WIRES, SIDE BY SIDE (docs/SPEC-TABLES.md §3.4). The paired bench
+# above times the PACKET wire and FORM 1 over identical logical records and does
+# NOT time form 3 — its C++ runner calls BenchMixedSave/Load and nothing but a
+# conformance test calls the fixed codec. This adds the third row, in ONE
+# process, over the SAME 64 committed variants, with the same loop structure,
+# the same escape barriers and the same warmup-then-median shape, and it times
+# form 3 BOTH WAYS a fixed record travels: batched into one file, where the
+# layout is paid once, and sent one record at a time, where it rides with every
+# one.
+#
+# IT IS A DIFFERENT MEASUREMENT FROM bench-fixedform-measure BELOW, which is the
+# form's RULING measurement — the plan-driven reader against straight-line
+# constant-offset loads, the ratio the one-reader-path decision was bought with.
+# That one asks whether the plan costs too much; this one asks what the wire is
+# worth against the other two. Neither answers the other's question.
+#
+# IT IS A MEASUREMENT AND NOT A GATE, so it is not in `make test`: it starts a
+# clock, and a clock in a test suite is a flaky test. What makes its numbers
+# worth reading is that EVERY PATH IS GATED BEFORE ANY CLOCK STARTS — each must
+# reproduce its own bytes, and every form-3 record must re-encode to the packet
+# bytes it came from, so a path that decoded wrongly does not get to be fast.
+#
+#   make bench-fixedform-wires                     five runs
+#   make bench-fixedform-wires MEASURE_RUNS=7      seven
+build/schema_bench_fixedform_wires: generated/bench/paired/cpp/.stamp test/bench/fixedform_wires.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -Igenerated/bench/paired/cpp -I$(SERIALIZE) \
+	    test/bench/fixedform_wires.cpp -o $@
+
+MEASURE_RUNS ?= 5
+
+bench-fixedform-wires: build/schema_bench_fixedform_wires
+	./build/schema_bench_fixedform_wires $(MEASURE_RUNS)
+
+.PHONY: bench-fixedform-wires
+
 tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test_bench_paired_c
 	./build/schema_test_bench_paired_table_cpp --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 	./build/schema_test_bench_paired_c --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
@@ -4354,6 +4484,31 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 .PHONY: tables-fixed-matched
 
 test: tables-fixed-matched
+
+# THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
+# paired headers, normalise the fixed runtimes through the documented token
+# map, and diff the rest. Any leftover line that is not one of the three
+# named differences is a failure. The negative control plants an extra
+# enumerator so a map that swallowed every divergence has no blade.
+tables-fixed-twin: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	go test ./tools/fixedtwin -count=1
+	go run ./tools/fixedtwin generated/bench/paired/c/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h
+	$(MAKE) tables-fixed-twin-negative-control
+
+.PHONY: tables-fixed-twin
+
+test: tables-fixed-twin
+
+.PHONY: tables-fixed-twin-negative-control
+tables-fixed-twin-negative-control: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	@mkdir -p build/fixed-twin-nc
+	@sed 's/kTableFixedCopy    = 0/kTableFixedCopy    = 99/' generated/bench/paired/c/FixedTableTable.h > build/fixed-twin-nc/FixedTableTable.h
+	@cmp -s generated/bench/paired/c/FixedTableTable.h build/fixed-twin-nc/FixedTableTable.h && { echo 'NEGATIVE CONTROL: the planted op patched nothing'; exit 1; } || true
+	@if go run ./tools/fixedtwin build/fixed-twin-nc/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h; then \
+		echo 'NEGATIVE CONTROL FAILED: planted leftover line passed the twin gate'; \
+		exit 1; \
+	fi
+	@echo 'fixed twin negative control: planted leftover line reds'
 
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
@@ -4371,24 +4526,19 @@ bench-fixedform-measure: build/schema_bench_fixedform
 .PHONY: bench-fixedform-measure
 
 
-# Prove the COMMITTED generated/ tree matches what the current compiler
-# emits (issue #30). `make test` regenerates every tracked generated file in
-# place, so staleness is precisely a dirty tree afterwards — a tracked file
-# that changed, or a newly emitted file nobody committed. CI runs the same
-# two checks after its make test step.
-generated-current: test
-	@git diff --exit-code generated/ || { \
-		echo "committed generated/ tree is STALE — the current compiler emits different text."; \
-		echo "review the diff above, then commit the regenerated files."; \
-		exit 1; \
-	}
-	@untracked=$$(git status --porcelain generated/); \
-	if [ -n "$$untracked" ]; then \
-		echo "$$untracked"; \
-		echo "the generator emitted files that are not committed under generated/ — add them."; \
-		exit 1; \
-	fi
-	@echo "generated/ tree is current"
+# Prove the COMMITTED generated/ tree matches what the current compiler emits
+# (issue #30, tightened by #898's gate G3). It used to regenerate in place and
+# read `git diff`: in place a rule only writes and never removes, so a file the
+# emitter STOPPED writing stayed on disk byte-identical to the index and the
+# diff was silent about it — and a rule that never ran at all left its whole
+# directory standing and was called green. So the tree is moved aside and the
+# compiler emits into NOTHING; the full listing and the bytes are compared both
+# ways, with every failing file named. test/generated-tree/verify says how, the
+# `generated` job in ci-full.yml and the certify workflow run that same script,
+# and it no longer needs the whole `make test` chain to get there: the emission
+# takes bin/schema and nothing else.
+generated-current: bin/schema build/treelock
+	@test/generated-tree/verify
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -4668,8 +4818,13 @@ tables-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/ref-ordinal-nc/log; exit 1; \
 	fi
@@ -4698,8 +4853,13 @@ tables-ref-ordinal-shared-negative-control:
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-shared-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the shared-id driver did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-shared-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
 		cat build/ref-ordinal-shared-nc/log; exit 1; \
 	fi
@@ -5507,6 +5667,7 @@ include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
+include make/checks/generated-tree.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
@@ -5656,6 +5817,16 @@ toolchain-negative-control:
 # pointers read null, and the home vessel holds its declared default. The
 # positive half runs first, against the shipped W2, so the two answers are
 # read side by side.
+# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# THE FLOOR'S TEST-ONLY SETTER, and nothing else, lives behind this define. It
+# is NOT `SCHEMA_HAS_FLOOR`: that one says a build HAS a floor, and a shipped
+# build that has one must not compile a way to lower it. Only the two fixedform
+# test binaries below pass it, so the emitter is to emit
+# `T##FixedSetFloorForTest` under this define alone (test/tables/versioning_numbers.cpp,
+# `floor_raise_live`; bill §6b, §9).
+FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
+# ---- rowan/cpp-versioning-numbers: END ----
+
 .PHONY: tables-was-negative-control
 # THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4). One
 # binary, every case of §3.4's "held by test" row: the identity plan, an older
@@ -5665,33 +5836,267 @@ toolchain-negative-control:
 # and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
 # carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
 # a reader holds an untrusted peer's layout to.
-build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+# ==== BEGIN rowan/cpp-versioning-lists ====
+# THE LIST ROWS' GENERATED PAIRS, as one variable so the three recipes that
+# need them keep one line each (docs/FIXED-FORM-VERSIONING-TESTS.md).
+VLISTS_INCLUDES = -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was
+# ==== END rowan/cpp-versioning-lists ====
+
+build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
+                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fh1 -Ibuild/tables-generated/fh2 \
+	    -Ibuild/tables-generated/fg1 \
+	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
+	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
+	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
 # fixed record carries no lengths and no terminators, so every offset the
 # reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
 # leaves the buffer" is a claim only a sanitizer can hold.
-build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
+                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 	    -fno-omit-frame-pointer -g \
 	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fh1 -Ibuild/tables-generated/fh2 \
+	    -Ibuild/tables-generated/fg1 \
+	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
+	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
+	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 
-tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
-	./build/schema_test_fixedform
-	./build/schema_test_fixedform_asan
+# THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
+# fixtures above check the VALUES a read produces; this one checks the single
+# invariant the copy primitive has — every byte it reads or writes is inside the
+# run — over EVERY length from 0 to 96 rather than the lengths a schema happens
+# to produce. Exact-size heap blocks make the sanitized twin the assertion.
+# THE TWO WIRE BYTES A READER MUST NORMALISE, on their own
+# (test/tables/fixedform_hostile_bytes.cpp). A `bool` and an optional's PRESENT
+# flag are `0` or `1` on the wire and nothing else, and a reader lands them as
+# `byte != 0` (docs/FIXED-FORM-ALGORITHM.md §4.5). The reference lands both with
+# a plain one-byte copy, so a forged `0x02` becomes a C++ `bool` holding `2` --
+# an object whose every LOAD is undefined behaviour, reachable from a lawful
+# schema and ONE hostile byte with no refusal and no counter moved. The fixture
+# reads the member's byte with memcpy rather than loading it, so the case REPORTS
+# instead of being the crash, and it is RED by name against fix 2.
+build/schema_test_fixedform_hostile_bytes: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/hb \
+	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
+
+build/schema_test_fixedform_hostile_bytes_asan: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/hb \
+	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
+
+build/schema_test_fixedform_runcopy: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -O2 -Ibuild/tables-generated/scalars \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o $@
+
+build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/scalars \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o $@
+
+# THE ORACLE BYTES ARE A PREREQUISITE OF THE REFERENCE'S OWN TEST (schema#876,
+# card 15): the dump writes build/fixedform-corpus and this binary READS fu1.bin
+# and fu2.bin back, so the file every port diffs against is held to the same
+# values this test states. A corpus the writer produces and no reader checks is
+# a golden nobody has read.
+tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
+                  build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan \
+                  build/schema_test_fixedform_hostile_bytes build/schema_test_fixedform_hostile_bytes_asan \
+                  build/fixedform-corpus/.stamp
+	./build/schema_test_fixedform build/fixedform-corpus
+	./build/schema_test_fixedform_asan build/fixedform-corpus
+	./build/schema_test_fixedform_runcopy
+	./build/schema_test_fixedform_runcopy_asan
+	./build/schema_test_fixedform_hostile_bytes
+	./build/schema_test_fixedform_hostile_bytes_asan
 
 test: tables-fixedform
 
 .PHONY: tables-fixedform
+
+# THE RUN COPY'S NEGATIVE CONTROL, BOTH LEGS AT ONCE. The defect this gate is
+# for was real and it was SILENT: the 17..31-byte branch anchored its tail move
+# at the run's end, so it began 32 - n bytes in front of the run, took a
+# neighbour's field with it on both sides of the copy, and read past the record
+# body — with every counter and verdict in the report clean. Nothing but a
+# sanitizer over exact-size blocks can see it, which is exactly why the gate
+# above has to be shown going red.
+#
+# The sabotage plants that anchor back in BOTH emitters through a Go overlay,
+# never in the tree, and the control requires the sanitized run copy test to
+# name a heap-buffer-overflow in each leg.
+#
+# The C compile uses TABLES_CFLAGS, which carries -O2: gcc at -O0 emits the
+# generated header's unused JSON wrappers, they call symbols in ScalarsTable.c,
+# and the link fails before ASan can name the overflow. The optimiser drops
+# them; the control's red is still the sanitizer's.
+.PHONY: tables-fixedform-run-copy-negative-control
+tables-fixedform-run-copy-negative-control:
+	@mkdir -p build/runcopy-negative
+	go run ./tools/sabotage -name reference-run-copy-anchor -out build/runcopy-negative/cpp_fixedruntime.gotext internal/codegen/cpptable/fixedruntime.go
+	go run ./tools/sabotage -name reference-run-copy-anchor-c -out build/runcopy-negative/c_fixedruntime.gotext internal/codegen/ctable/fixedruntime.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedruntime.go":"%s/build/runcopy-negative/cpp_fixedruntime.gotext","%s/internal/codegen/ctable/fixedruntime.go":"%s/build/runcopy-negative/c_fixedruntime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/runcopy-negative/overlay.json
+	go run -overlay=build/runcopy-negative/overlay.json ./cmd/schema generate --lang cpp --out build/runcopy-negative/cpp tables/scalars
+	go run -overlay=build/runcopy-negative/overlay.json ./cmd/schema generate --lang c --out build/runcopy-negative/c tables/scalars
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/cpp \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o build/runcopy-negative/cpp_driver
+	$(CC) $(TABLES_CFLAGS) -fsanitize=address,undefined \
+	    -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/c \
+	    -I$(SERIALIZE_C) test/tables/fixedform_runcopy.c -o build/runcopy-negative/c_driver -lm
+	@if ./build/runcopy-negative/cpp_driver > build/runcopy-negative/cpp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ run copy anchored at n - 32 did not leave its run"; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/runcopy-negative/cpp.log || { \
+		echo "NEGATIVE CONTROL FAILED: the C++ driver failed, but not with the overflow this control is for"; \
+		tail -20 build/runcopy-negative/cpp.log; exit 1; }
+	@if ./build/runcopy-negative/c_driver > build/runcopy-negative/c.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C run copy anchored at n - 32 did not leave its run"; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/runcopy-negative/c.log || { \
+		echo "NEGATIVE CONTROL FAILED: the C driver failed, but not with the overflow this control is for"; \
+		tail -20 build/runcopy-negative/c.log; exit 1; }
+	@echo "run copy negative control: the old n - 32 anchor is a heap-buffer-overflow in both legs"
+
+# THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
+#
+# The C++ backend is the REFERENCE for this form, so the reference is what
+# writes the bytes and every port matches them — Glenn's rule for this class,
+# and the same shape the paired bench already pins. This target writes one
+# form-3 FILE per root into build/fixedform-corpus, with values set by hand so
+# nothing passes by accident, and a port's leg proves itself against them two
+# ways: reading a file and saving it back has to reproduce it BYTE FOR BYTE,
+# and reading a file written under ANOTHER schema's layout is the plan path,
+# which is the whole of what §3.4's versioning invariant is worth.
+#
+# It lives HERE rather than in a language's own make/<lang>.mk because it is
+# every port's oracle and none of theirs: a corpus one leg owns is a corpus the
+# next leg re-derives, and a golden a generator has to re-derive is not a
+# golden.
+# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
+# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
+# and Go today, and every SHARED schema list is pinned to targets that refuse
+# it. Naming the unit here rather than in tables_generate keeps it out of the
+# nine negative controls that regenerate that whole corpus.
+build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
+	@rm -rf build/tables-generated-fxw
+	@mkdir -p build/tables-generated-fxw
+	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+	@touch $@
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) \
+	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+	@rm -rf build/fixedform-corpus
+	@mkdir -p build/fixedform-corpus
+	./build/schema_test_fixedform_dump build/fixedform-corpus
+# ---- rowan/corpus-manifest ----
+# THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 1, ruling #32): the dump writes it from the same values it writes
+# into the bytes, and a corpus without it is a corpus a port has to read the
+# emitter to use. Nothing under build/ is committed; the line below only refuses
+# to call the corpus finished when the manifest did not arrive.
+	@test -s build/fixedform-corpus/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
+	@touch $@
+
+tables-fixedform-corpus: build/fixedform-corpus/.stamp
+	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
+	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
+
+.PHONY: tables-fixedform-corpus
+
+# THE FIXED FORM'S BENCH CORPUS, also the C++ reference's (docs/SPEC-TABLES.md
+# §3.4's "held by test": the PAIRED CORPUS, sixty-four logical records on the
+# packet wire and on this one). The reference decodes the canonical packet
+# corpus, saves the same values with its form-3 writer, and states the VALUES
+# beside the bytes in a JSON oracle — because a reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong.
+build/fixedform-bench-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/fixedform-bench-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/fixedform-bench-corpus/corpus
+	./build/fixedform-bench-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/fixedform-bench-corpus/bench_fixed.bin build/fixedform-bench-corpus/bench_fixed.oracle.json
+	@touch $@
+
+tables-fixedform-bench-corpus: build/fixedform-bench-corpus/.stamp
+	@echo "fixed form: the reference's paired bench corpus is in build/fixedform-bench-corpus"
+
+.PHONY: tables-fixedform-bench-corpus
+
+# THE THREE PROPERTIES (docs/SPEC-TABLES.md §3.4). A port that is wrong in both
+# directions at once passes every round-trip the versioning set has, and the
+# coverage matrix's named reds were found one fixture at a time. This binary
+# asks the same three questions of every fixed-form fixture:
+#
+#   P1  identity plan == compiled plan, on every field and every counter
+#   P2  write-read-write is byte-identical
+#   P3  every byte of every record, mutated to {00,01,02,7f,80,ff}, both paths:
+#       every landed field is within its bound or the read is a named refusal,
+#       and a correction moves a counter. Under ASan+UBSan.
+#
+# A KNOWN-RED is printed by name on a green run. A listed case that starts
+# PASSING turns the run red — delete it from known_red[] as part of landing
+# the fix. A new red that is not on the list fails the target.
+FIXEDFORM_PROP_INCLUDES := \
+	-Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
+	-Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	-Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	-Ibuild/tables-generated/fm1 -Ibuild/tables-generated/fm2 \
+	-Ibuild/tables-generated/f1 \
+	-I$(SERIALIZE)
+
+build/schema_test_fixedform_properties: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_PROP_INCLUDES) \
+	    test/tables/fixedform_properties.cpp -o $@
+
+build/schema_test_fixedform_properties_asan: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -DSCHEMA_FIXEDFORM_SANITIZED \
+	    $(FIXEDFORM_PROP_INCLUDES) test/tables/fixedform_properties.cpp -o $@
+
+tables-fixed-properties: build/schema_test_fixedform_properties build/schema_test_fixedform_properties_asan
+	./build/schema_test_fixedform_properties
+	./build/schema_test_fixedform_properties_asan
+	@echo "fixed form properties: P1 P2 P3 green, known-reds named"
+
+test: tables-fixed-properties
+
+.PHONY: tables-fixed-properties
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc
@@ -5745,3 +6150,51 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
 include make/checks/reference-review.mk
+
+# ---------------------------------------------------------------------------
+# THE SLOW-GATE SCAN (schema#988, G5) ---------------------------------------
+#
+# internal/slowtest.Gate SKIPS a test that shells out to a foreign toolchain or
+# reads the C++ reference corpus unless SCHEMA_SLOW=1 or SCHEMA_REQUIRE_CORPUS
+# is set — AND A SKIPPED TEST MAKES `go test` EXIT 0. So a make target that runs
+# a bare `go test` on such a package GOES GREEN HAVING RUN NOTHING. Fourteen
+# positive gate targets did, for a day, while internal/slowtest's own package
+# comment said every make gate set the variable. THE COMMENT WAS THE BUG: a
+# claim about this Makefile belongs in a check.
+#
+# slow-gate-scan IS THAT CHECK and it costs milliseconds, so it rides `test`:
+# every recipe line in Makefile, make/*.mk and make/checks/*.mk that runs
+# `go test` on a package holding gated tests must set SCHEMA_SLOW=1, set
+# SCHEMA_REQUIRE_CORPUS, or go through test/slowgate/proof. Anything else fails
+# BY NAME. A line deliberately left as it is must be named in
+# make/slow-gate-exceptions.txt WITH A REASON, and an entry there that matches
+# no line any more fails too — a stale excuse is how the next bare `go test`
+# slips in behind a line nobody reads.
+.PHONY: slow-gate-scan
+slow-gate-scan:
+	go run ./tools/slowgatescan
+
+test: slow-gate-scan
+
+# AND THE ACCOUNTING, test by test rather than target by target: a plain
+# `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
+# point) is read back and every test that skipped at the gate is placed in one
+# of three buckets — run by a make target that sets the variable, run only by
+# ci-full.yml's SCHEMA_SLOW=1 steps, or run by NOBODY. The third bucket is the
+# failure. The whole table lands in build/slowgate/coverage.tsv so the
+# accounting is READ, not believed.
+#
+# It costs one plain `go test ./...` — 27 s with a warm build cache, 2 m 35 s
+# cold, measured on the Studio — so it is NOT on `test`: it rides ci-full.yml
+# beside the two steps it credits. Nothing is MOVED to nightly by this; the scan
+# above, which is the gate, is on `test`.
+#
+# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
+# which tests the gate skipped, and it must still read that when some unrelated
+# test is red. The red itself is `test`'s to report, not this target's, and the
+# accounting below exits nonzero on its own finding.
+.PHONY: slow-gate-coverage
+slow-gate-coverage:
+	@mkdir -p build/slowgate
+	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log

@@ -112,11 +112,15 @@ type tableGen struct {
 	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
 	file             *ir.File
-	anyVariable      bool // the unit declares at least one variable-length table
-	anySequence      bool
-	anyList          bool
-	anyMap           bool
-	anyKeyed         bool // the unit declares at least one enum-keyed array
+	// lineage is the LOCKED LAYOUTS per fixed table, OLDEST FIRST, handed down
+	// by GenerateLineage (docs/FIXED-FORM-ALGORITHM.md §5.2). Nil is a build
+	// with no lock: a table then carries its own entry and nothing else.
+	lineage     map[string][]FixedLineageEntry
+	anyVariable bool // the unit declares at least one variable-length table
+	anySequence bool
+	anyList     bool
+	anyMap      bool
+	anyKeyed    bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -264,10 +268,21 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 
 `
 
+// tableFixedAssertHook is the ASSERT half of the hooks, on its own. The keyed
+// accessor above carries BOTH halves because its refusal ABORTS; the fixed
+// form's write-side bounds are debug-only and nothing stands after them, so a
+// unit that has the form and no keyed array defines schema_assert alone. The
+// #ifndef is what lets the two blocks meet in a unit that has both.
+const tableFixedAssertHook = `
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+`
+
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string, fixedForm bool, wide bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string, fixedForm bool, wide bool, writeBound bool) string {
 	// THE FIXED FORM'S RUNTIME RIDES IN THE PRIMITIVES BLOCK (docs/SPEC-TABLES.md
 	// §3.4) and not beside the codecs that use it, because this block carries the
 	// per-package guard: whichever <Base>Table.h a translation unit includes
@@ -275,7 +290,15 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
 	// headers carried and others did not would depend on include order.
 	fixed := ""
 	if fixedForm {
-		fixed = strings.ReplaceAll(tableFixedRuntime, "@INLINE@", tableInlineMacro(pkg))
+		if writeBound {
+			// THE FIXED FORM'S WRITE-SIDE BOUNDS, and only the ASSERT: they are
+			// debug-only and nothing aborts behind them, so this unit defines
+			// schema_assert and not schema_fatal (docs/SPEC-TABLES.md §3.4).
+			// A unit that also has the keyed accessor already has both, and the
+			// #ifndef is what makes the two blocks meet without a redefinition.
+			fixed = tableFixedAssertHook
+		}
+		fixed += strings.ReplaceAll(tableFixedRuntime, "@INLINE@", tableInlineMacro(pkg))
 		if wide {
 			fixed += tableFixedRuntime128
 		}
@@ -380,6 +403,12 @@ typedef struct TableReport
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       hash AND NOTHING ELSE, and layout_unsupported carries it too — the
+       operator's other answer, a layout this build served and has retired
+       (§5.9 #7). Zero on every other path, refusal or read. */
+    uint64_t layout_hash;
 } TableReport;
 
 enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
@@ -527,6 +556,16 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated tree is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, and §5.9 #1 on why it is a SECOND entry
+// point rather than a file this backend opens itself). A nil map is a build with
+// no lock, and every table then carries the one entry it can always compute:
+// its own.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return generateViewFiles(u, nil, nil, nil, false, false, false), nil
 	}
@@ -568,7 +607,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	probed := tableDefaultProbedStructs(u)
 	hasProbes := len(probed) > 0
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -577,7 +616,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
@@ -727,6 +766,12 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// needs <stdlib.h> whether or not NDEBUG keeps the assert.
 		h.WriteString("#include <assert.h> /* the keyed accessor's None refusal, in a debug build */\n")
 		h.WriteString("#include <stdlib.h> /* and its abort, which NDEBUG does not remove */\n")
+	} else if ir.TableFixedHasWriteBound(u) {
+		// THE FIXED FORM'S WRITE-SIDE BOUNDS need the assert and NOTHING after
+		// it (docs/SPEC-TABLES.md §3.4): a text field's used length and a
+		// counted array's live count, debug-only, with no abort behind them —
+		// so this unit takes <assert.h> and not <stdlib.h>.
+		h.WriteString("#include <assert.h> /* the fixed form's write-side bounds, in a debug build */\n")
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {

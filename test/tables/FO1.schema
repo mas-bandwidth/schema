@@ -1,0 +1,65 @@
+// FO1.schema — the FIXED FORM's OPTIONAL conformance (docs/SPEC-TABLES.md
+// §3.4). P1/P3 hold the one fact §3.4 departs from §2.3 on — that `?T` and a
+// plain `T` are a present byte apart on this form and the edit between them is
+// REPORTED — and this schema holds the shape of the thing they disagree about:
+// every place a present byte can ride.
+//
+//   opt    ?Leaf    an optional NESTED TYPE at the root
+//   num    ?int32   an optional SCALAR
+//   mark   ?Grade   an optional ENUM, whose ordinal remaps under a plan
+//   wrap.leaf       an optional UNDER A NESTED TYPE — the present byte rides
+//                   inside the nested body, at the nested body's own offsets,
+//                   which is the case a walk that only looked at a table's own
+//                   fields would place one byte wrong and never notice.
+//                   `wrap` is a `table` nested BY VALUE because an optional is
+//                   a TABLE construct: a `type`'s wire is positional and every
+//                   field of one always rides (§2.3), so there is no absence
+//                   for a `type` to express and the compiler refuses the ? there
+//
+// The union rides beside them because a union's TAG is the other ordinal this
+// form carries, and a tag beyond the arm count is the identity path's twin of
+// a forged count: it lands as None and counts one clamped.
+package tblfo1
+
+enum Grade { Bronze, Gold }
+
+type Leaf
+{
+    v   int32 = 7 | min = -1000, max = 1000
+    tag string(8)
+}
+
+type Boost
+{
+    power int32 = 0 | min = 0, max = 1000
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+// A NESTED TABLE, BY VALUE, THAT ITSELF CARRIES AN OPTIONAL.
+fixed table Wrap
+{
+    n    int32 = 3 | min = -1000, max = 1000
+    leaf ?Leaf
+}
+
+fixed table OptRoot
+{
+    name   string(12)
+    plain  int32 = 5 | min = 0, max = 1000
+    opt    ?Leaf
+    num    ?int32
+    mark   ?Grade
+    wrap   Wrap
+    effect Effect
+    tail   uint16 = 9
+}

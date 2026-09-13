@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "Bench.h"
 #include "serialize.h" // serialize::int128_t / uint128_t: the 128-bit storage
 
@@ -79,8 +95,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -116,6 +148,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 
 
@@ -2147,7 +2182,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the other four are what a plan compiled from another writer's layout adds.
+// NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+// after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2157,9 +2194,10 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2198,9 +2236,14 @@ inline bool TableFixedWidens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  // u8 .. u64
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  // i8 .. i64
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; } // signed fixed(I,F): I grows, F stays
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; } // unsigned ufixed(I,F)
     return from == 10 && to == 11;                                            // f32 -> f64
 }
-inline bool TableFixedSignedKind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+inline bool TableFixedSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
+}
 
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
@@ -2213,9 +2256,34 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
-    uint8_t arg = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
+    // must hold for this entry to run. It is FULL WIDTH, matching the tag
+    // read (bill §12.7): a union past 255 arms, an enum past 255 variants,
+    // the lane is not a byte. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
+    uint64_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
+    // argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+    // eight, and comparing only the FIRST of them fires arm 1 on a foreign
+    // tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+    // one, which is the width a tag had when this field did not exist. It
+    // sits last so a ten-value aggregate still names op, arg, meta, dstsize
+    // and sign in that order.
+    uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2256,6 +2324,21 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     return v;
 }
 
+// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+// byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+// for, and reading only the first byte let 0x0101 run arm 1's entries over
+// a stranger's record.
+inline uint64_t TableFixedTagAt( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? 1u : ( argw > 8u ? 8u : argw );
+    uint64_t v = 0;
+    for ( uint8_t i = 0; i < w; ++i )
+    {
+        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+    }
+    return v;
+}
+
 // THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4).
 inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 {
@@ -2276,6 +2359,11 @@ inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 // ONE reader path rests on a measurement, and with a runtime-length memcpy per
 // entry that same measurement is 3.1x instead of 1.3x
 // (test/bench/fixedform_measure.cpp).
+//
+// AND EVERY MOVE STAYS WITHIN [ run start, run end ). Overlapping moves are the
+// technique; a move anchored OUTSIDE the run is not the technique, it is a
+// defect — it clobbers whatever field sits in front of the destination and it
+// reads past the record body.
 TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -2298,8 +2386,25 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
         }
         return;
     }
+    // EVERY MOVE IS ANCHORED INSIDE [ s, s + n ), AND THAT IS THE INVARIANT THIS
+    // BRANCH EXISTS TO STATE. A run of 17..31 bytes has no room for a sixteen,
+    // a second sixteen and a thirty-two, so it takes TWO SIXTEENS that OVERLAP
+    // in the middle: one at the run's start and one at end - 16, both wholly
+    // within the run because n >= 16. Anchoring the tail move at n - 32
+    // instead would put it 32 - n bytes IN FRONT of the run — reading and
+    // writing a neighbour's bytes, and reading past the record body, which for
+    // a file's last record is past the buffer.
+    if ( n <= 32 )
+    {
+        uint64_t w[2];
+        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        return;
+    }
     if ( n <= 64 )
     {
+        // n >= 33 here, so n - 32 is at least 1 and the tail move begins
+        // inside the run, exactly as the two moves in front of it do.
         uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
@@ -2335,14 +2440,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2359,11 +2464,15 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
-            uint32_t raw = 0;
+            uint64_t raw = 0;
             memcpy( &raw, src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
-            uint32_t v = 0;
-            if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }
+            uint64_t v = 0;
+            if ( raw != 0 )
+            {
+                if ( raw <= (uint64_t) table[0] ) { v = table[raw]; }
+                if ( v == 0 ) { clamped++; }
+            }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -2394,7 +2503,24 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
+            // An unguarded None const with dstsize = the WRITER's arm count:
+            // a tag past that set lands None (already written) and COUNTS.
+            if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
+            {
+                uint64_t raw = 0;
+                memcpy( &raw, src + p.src, p.size );
+                if ( raw > (uint64_t) p.dstsize ) { clamped++; }
+            }
+            break;
+        }
+        case kTableFixedPresent:
+        {
+            dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
         default: break;
@@ -2420,11 +2546,123 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( src[p.guard] != p.arg ) { continue; }
+        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
     report->widened += widened;
+}
+
+// ---- THE PREFILL -----------------------------------------------------------
+//
+// §3.4'S PREFILL ANSWERS ONE QUESTION — what does a field the record does not
+// carry hold? — and the owner's rule is that it answers it for EXACTLY THE
+// BYTES THE PLAN DOES NOT LAND, and no others. Prefilling a byte the plan is
+// about to overwrite is a write thrown away, and a form whose write makes two
+// passes over a body should not have its read make three.
+//
+// So the prefill is A LIST OF RANGES rather than a whole-value reset, and it is
+// computed where the plan is: the type's own VALUE BYTES — the identity plan's
+// destinations, laid down sorted and merged by the schema compiler as
+// <Name>FixedCover — MINUS every byte this plan lands.
+//
+// THE IDENTITY PLAN'S LIST IS EMPTY, and that is the rule's LIMIT CASE and not
+// an exception to it: its destinations ARE the value bytes, so there is nothing
+// left to subtract. Which is why nothing in the read loop asks whether the plan
+// it is running is the identity one — it runs the list it was handed, and that
+// list is empty.
+
+struct TableFixedFill
+{
+    uint32_t dst = 0;
+    uint32_t size = 0;
+};
+
+// THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
+// else. The default image is the caller's own storage reset once per read, not
+// per record.
+inline void TableFixedFillRun( const TableFixedFill * fill, int32_t count,
+                               const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        TableFixedCopyRun( dst + fill[i].dst, defaults + fill[i].dst, fill[i].size );
+    }
+}
+
+// TableFixedEntryLands is the bytes of the READER'S OWN STORAGE one entry
+// writes — TWO runs, because a text entry lands a length and a buffer and every
+// other op lands one run and leaves the second empty.
+//
+// A GUARDED ENTRY COUNTS AS LANDING ITS BYTES. It is a union arm, and an arm's
+// storage is the arm's: the tag says which one is live and nothing reads the
+// others. What must never be conditional is the TAG, and the compiler below
+// lays an unguarded one down for exactly this reason.
+inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
+{
+    lands[0] = e.dst;
+    lands[1] = e.dst;
+    lands[2] = 0;
+    lands[3] = 0;
+    switch ( e.op )
+    {
+        case kTableFixedCount: lands[1] = e.dst + 4u; break;
+        case kTableFixedText:
+        {
+            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
+            lands[1] = e.dst + 4u;
+            lands[2] = e.aux;
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            break;
+        }
+        case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
+        case kTableFixedWiden:
+        case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        default: lands[1] = e.dst + e.size; break; // copy, const
+    }
+}
+
+// TableFixedFills is the subtraction: the cover MINUS everything the plan
+// lands, as a list of ranges, answered into the out array or merely counted
+// when it is NULL. It walks the cover once and, at each position, asks the plan what
+// run starts there and where the next one starts — so it costs the plan's
+// length per RUN of the answer, once per file and never per record. The plan's
+// length is the caller's declared plan capacity, which is what bounds it.
+inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
+                                const TableFixedFill * cover, int32_t cover_count,
+                                TableFixedFill * out )
+{
+    int32_t n = 0;
+    for ( int32_t r = 0; r < cover_count; ++r )
+    {
+        const uint32_t hi = cover[r].dst + cover[r].size;
+        uint32_t pos = cover[r].dst;
+        while ( pos < hi )
+        {
+            uint32_t end = pos;  // the end of the landed run that covers pos
+            uint32_t next = hi;  // where the next landed run starts, past pos
+            for ( int32_t i = 0; i < count; ++i )
+            {
+                uint32_t lands[4];
+                TableFixedEntryLands( plan[i], lands );
+                for ( int32_t q = 0; q < 4; q += 2 )
+                {
+                    const uint32_t lo = lands[q];
+                    const uint32_t top = lands[q + 1];
+                    if ( top <= lo ) { continue; }
+                    if ( lo <= pos && pos < top ) { if ( top > end ) { end = top; } }
+                    else if ( lo > pos && lo < next ) { next = lo; }
+                }
+            }
+            if ( end > pos ) { pos = end; continue; }
+            if ( next > hi ) { next = hi; }
+            if ( out != NULL ) { out[n].dst = pos; out[n].size = next - pos; }
+            n++;
+            pos = next;
+        }
+    }
+    return n;
 }
 
 // ---- THE LAYOUT ------------------------------------------------------------
@@ -2765,7 +3003,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -2779,6 +3017,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     TableReport * report = NULL;
 };
 
@@ -2793,9 +3032,15 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
+        if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
+        const uint8_t gw = e.argw == 0 ? 1u : e.argw;
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
             return;
@@ -2811,6 +3056,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 // coalescing pass, which only moves entries down, never moves one.
 inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * values, int32_t n )
 {
+    if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }
     const int32_t bytes = ( n + 1 ) * (int32_t) sizeof( uint16_t );
     const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
     c.pool += bytes;
@@ -2818,20 +3064,39 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     const uint32_t at = (uint32_t) ( total - c.pool );
     uint16_t * dst = (uint16_t *) (void *) ( (uint8_t *) c.plan + at );
     dst[0] = (uint16_t) n;
-    for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
+    if ( values != NULL )
+    {
+        for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
+    }
     return at;
 }
+
+// TableFixedLayFills reserves the prefill's ranges in the SAME POOL the remap
+// tables come out of, above the entries and growing downward, and answers the
+// byte offset of the array from the plan's base. The pool is the caller's plan
+// storage: this codec allocates nothing, here as everywhere, and a plan whose
+// pool does not fit is a refusal by name.
+inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
+{
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    // ROUNDED SO THE ARRAY IS ALIGNED: a remap table is laid in units of two
+    // bytes and this array's members are four wide.
+    c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    return (uint32_t) ( total - c.pool );
+}
+
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint8_t arg );
+                                    uint32_t guard, uint64_t arg );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
                                      const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                      const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                     uint32_t guard, uint8_t arg )
+                                     uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -2874,7 +3139,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint8_t arg )
+                                    uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -2892,6 +3157,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     } depth_guard( c );
     (void) depth_guard;
     const uint32_t aux_at = my_at + d.aux;
+    // T into ?T: an unguarded present op, then the payload under the wrapper
+    // (bill §12.8, algorithm §5.2). The writer's kind is the payload's; the
+    // reader's is the optional wrapper.
+    if ( me.kind == 35 && te.kind != 35 )
+    {
+        TableFixedEntry e;
+        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        TableFixedPush( c, e );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        return;
+    }
     if ( te.kind != me.kind )
     {
         if ( TableFixedWidens( te.kind, me.kind ) )
@@ -2934,7 +3210,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             if ( d.counted )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = their_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
@@ -2969,7 +3245,33 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         {
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
+            const uint8_t saved_argw = c.argw;
+            c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : 1u;
             int32_t my_arm = mi + 1;
+            // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag value
+            // below is written under THEIR tag's guard, so a record naming an
+            // arm this build does not have would land no tag at all — and the
+            // prefill cannot answer for it, because those bytes are named by
+            // the guarded entries. The plan is partitioned unguarded-first, so
+            // this is overwritten by the arm that matches and stands when none
+            // does. It is the ONE byte this form writes twice, and it is the
+            // compiled path's alone.
+            //
+            // Nested: None answers to the OUTER tag at the OUTER width. Push
+            // stamps c.argw, which is the inner tag's width here, so restore
+            // the outer width for this one entry (bill §12.7, #876 card 13).
+            {
+                const uint8_t inner_argw = c.argw;
+                if ( guard != kTableFixedNoGuard ) { c.argw = saved_argw ? saved_argw : 1u; }
+                TableFixedEntry none;
+                none.src = their_at; none.dst = aux_at; none.size = my_tag;
+                none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                // Writer arm count, for a tag past the old set (bill §12.5).
+                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
+                TableFixedPush( c, none );
+                c.argw = inner_argw;
+            }
+            const int32_t restamp_from = c.count;
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
                 const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
@@ -2982,23 +3284,60 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         // MY tag value, written under THEIR tag's guard
                         TableFixedEntry tag;
                         tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
-                        tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
+                        tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint64_t) j + 1u;
+                        tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                                                mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
+                                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
+            if ( guard != kTableFixedNoGuard )
+            {
+                const uint8_t outer_w = saved_argw ? saved_argw : 1u;
+                for ( int32_t q = restamp_from; q < c.count; ++q )
+                {
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
+                }
+            }
+            c.argw = saved_argw;
             break;
         }
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
-            uint16_t map[256];
-            const uint32_t n = te.children < 255u ? te.children : 255u;
+            // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
+            // append-only means the writer's ordinal IS the reader's, and the
+            // counter owes one. Remap is only for a merge that reordered names.
+            if ( te.size < me.size )
+            {
+                TableFixedEntry e;
+                e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                TableFixedPush( c, e );
+                break;
+            }
+            // FULL WIDTH (bill §12.7): the remap is one slot per writer
+            // variant, not a 255-deep stack array. n past 65535 is a plan
+            // that does not fit the uint16 length word; overflow refuses it.
+            const uint32_t n = te.children;
+            const uint32_t at_map = TableFixedLayTable( c, NULL, (int32_t) n );
+            if ( c.overflow ) { break; }
+            uint16_t * map = (uint16_t *) (void *) ( (uint8_t *) c.plan + at_map );
             for ( uint32_t j = 0; j < n; ++j )
             {
                 const uint64_t vid = TableFixedEntryAt( theirs, ti + 1 + (int32_t) j ).id;
@@ -3007,12 +3346,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid ) { landed = (uint16_t) ( k + 1 ); break; }
                 }
-                map[j] = landed;
+                map[1 + j] = landed;
             }
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = te.size; e.guard = guard; e.op = kTableFixedOrdinal;
             e.arg = arg; e.dstsize = (uint8_t) me.size;
-            e.aux = TableFixedLayTable( c, map, (int32_t) n );
+            e.aux = at_map;
             TableFixedPush( c, e );
             break;
         }
@@ -3021,7 +3360,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -3051,7 +3390,9 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
                                   const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
+                                  const TableFixedFill * cover, int32_t cover_count,
                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
+                                  uint32_t * fill_at, int32_t * fill_count,
                                   TableReport * report )
 {
     TableFixedLayoutView mine;
@@ -3072,7 +3413,11 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.want_guarded = true;
     c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
     TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
-    if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
+    if ( c.overflow || c.hostile )
+    {
+        if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
+        return c.hostile ? -2 : -1;
+    }
     // COALESCE inside each half, never across the split
     int32_t out = 0;
     int32_t split = 0;
@@ -3081,6 +3426,9 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
+             plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -3091,7 +3439,126 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     }
     if ( plain == c.count ) { split = out; }
     if ( guarded != NULL ) { *guarded = split; }
+    // THE PREFILL'S RANGES, out of the same pool and by the same rule: the
+    // type's value bytes minus everything this plan lands.
+    c.count = out;
+    *fill_at = 0;
+    *fill_count = TableFixedFills( plan, out, cover, cover_count, NULL );
+    if ( *fill_count > 0 )
+    {
+        const uint32_t at = TableFixedLayFills( c, *fill_count );
+        if ( c.overflow ) { return -1; }
+        TableFixedFills( plan, out, cover, cover_count, (TableFixedFill *) (void *) ( (uint8_t *) plan + at ) );
+        *fill_at = at;
+    }
     return out;
+}
+
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+// One COMPILE'd lineage entry: the hash LOAD looks up, the layout bytes it
+// memcmps, the writer's record size. Plans for older hashes are compiled from
+// these trusted bytes, never from the file (algorithm §5.3).
+struct TableFixedKnownLayout
+{
+    uint64_t hash = 0;
+    const uint8_t * layout = NULL;
+    int64_t layout_bytes = 0;
+    int64_t record_bytes = 0;
+};
+
+// Writer ranges the hostile pass clamps against (bill §12.5). dst is the
+// READER's storage offset; lo/hi are the WRITER's declared bounds.
+struct TableFixedKnownRange
+{
+    uint32_t dst = 0;
+    uint8_t width = 0;
+    uint8_t sgn = 0;
+    int64_t lo = 0;
+    int64_t hi = 0;
+};
+
+inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int32_t n,
+                                        uint8_t * dst, TableReport * report )
+{
+    if ( ranges == NULL || n <= 0 || dst == NULL ) { return; }
+    int32_t clamped = 0;
+    for ( int32_t i = 0; i < n; ++i )
+    {
+        const TableFixedKnownRange & b = ranges[i];
+        if ( b.width == 0 || b.width > 8 ) { continue; }
+        uint64_t raw = 0;
+        memcpy( &raw, dst + b.dst, b.width );
+        int64_t v = 0;
+        if ( b.sgn != 0 )
+        {
+            const unsigned bits = (unsigned) b.width * 8u;
+            const uint64_t top = 1ull << ( bits - 1 );
+            if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            v = (int64_t) raw;
+        }
+        else
+        {
+            v = (int64_t) raw;
+        }
+        int64_t landed = v;
+        if ( landed < b.lo ) { landed = b.lo; clamped++; }
+        else if ( landed > b.hi ) { landed = b.hi; clamped++; }
+        if ( landed == v ) { continue; }
+        uint64_t out = (uint64_t) landed;
+        memcpy( dst + b.dst, &out, b.width );
+    }
+    if ( report != NULL ) { report->clamped += clamped; }
+}
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].fill = NULL;
+        cache.slots[i].fill_count = 0;
+        cache.slots[i].made = 0;
+    }
 }
 
 // sixteen bytes, the LOW 64-bit half first, which is this wire's order for the
@@ -3577,7 +4044,10 @@ inline void BenchMixedReset( BenchMixed & value )
     MixedStatReset( value.stats[0] );
     for ( int32_t i = 1; i < 80; i++ ) { value.stats[i] = value.stats[0]; }
     value.stats_count = 0;
-    value.game_event = MixedEvent();
+    MixedHitEventReset( value.game_event.hit );
+    MixedChatEventReset( value.game_event.chat );
+    MixedPickupEventReset( value.game_event.pickup );
+    value.game_event.type = MixedEventType::None;
     memset( value.loadout, 0, sizeof( value.loadout ) );
     memset( value.player_name, 0, sizeof( value.player_name ) );
     value.player_name_length = 0;
@@ -8373,7 +8843,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.server_time != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.server_time ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 24 ); }
+        w.put( (uint64_t) ( value.server_time ), 24 );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
@@ -8488,7 +8958,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.ping != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.ping ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 16 ); }
+        w.put( (uint64_t) ( value.ping ), 16 );
     }
     if ( value.crc_hint != 0 )
     {
@@ -9626,7 +10096,7 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own layout for anybody else.
+// the writer's own layout for anybody else. There is no second reader.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -9772,13 +10242,15 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
-    for ( int64_t i = 0; i < 8; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         MixedEntityFixedWriteBody( b + 56 + i * 51 + 0, value.entities[i] );
     }
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 464, (uint32_t) value.stats_count );
-    for ( int64_t i = 0; i < 80; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
         MixedStatFixedWriteBody( b + 468 + i * 8 + 0, value.stats[i] );
     }
@@ -9802,14 +10274,16 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
         }
         default: break;
     }
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut8( b + 1122 + i * 1 + 0, (uint8_t) value.loadout[i] );
     }
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1126, (uint32_t) value.player_name_length );
-    memcpy( b + 1130, value.player_name, 15 );
+    memcpy( b + 1130, value.player_name, (size_t) ( value.player_name_length ) );
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1145, (uint32_t) value.payload_length );
-    memcpy( b + 1149, value.payload, 16 );
+    memcpy( b + 1149, value.payload, (size_t) ( value.payload_length ) );
     TableFixedPutF32( b + 1165, value.aim_x );
     TableFixedPutF32( b + 1169, value.aim_y );
     TableFixedPutF32( b + 1173, value.aim_z );
@@ -9822,6 +10296,151 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut8( b + 1227, value.has_extra ? 1 : 0 );
     TableFixedPut32( b + 1228, (uint32_t) value.extra );
     TableFixedPut32( b + 1232, (uint32_t) value.idle_ticks );
+}
+
+// MixedEntity's read-side bounds.
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.entity_id > 4095ull );
+    value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
+    clamped += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    value.pos_x = ( value.pos_x < -16383 ) ? -16383 : ( ( value.pos_x > 16383 ) ? 16383 : value.pos_x );
+    clamped += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    value.pos_y = ( value.pos_y < -16383 ) ? -16383 : ( ( value.pos_y > 16383 ) ? 16383 : value.pos_y );
+    clamped += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    value.pos_z = ( value.pos_z < -16383 ) ? -16383 : ( ( value.pos_z > 16383 ) ? 16383 : value.pos_z );
+    // bits(9) width clamp
+    clamped += ( value.yaw > 511ull );
+    value.yaw = ( value.yaw > 511ull ) ? 511ull : value.yaw;
+    // bits(9) width clamp
+    clamped += ( value.pitch > 511ull );
+    value.pitch = ( value.pitch > 511ull ) ? 511ull : value.pitch;
+    clamped += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    value.vel_x = ( value.vel_x < -2048 ) ? -2048 : ( ( value.vel_x > 2047 ) ? 2047 : value.vel_x );
+    clamped += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    value.vel_y = ( value.vel_y < -2048 ) ? -2048 : ( ( value.vel_y > 2047 ) ? 2047 : value.vel_y );
+    clamped += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
+    clamped += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
+    if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; clamped++; }
+}
+
+// MixedStat's read-side bounds.
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(8) width clamp
+    clamped += ( value.stat_id > 255ull );
+    value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
+    clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
+}
+
+// MixedHitEvent's read-side bounds.
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.target_id > 4095ull );
+    value.target_id = ( value.target_id > 4095ull ) ? 4095ull : value.target_id;
+    clamped += (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    value.damage = ( value.damage < 0 ) ? 0 : ( ( value.damage > 4095 ) ? 4095 : value.damage );
+    clamped += (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    value.hit_kind = ( value.hit_kind < 0 ) ? 0 : ( ( value.hit_kind > 7 ) ? 7 : value.hit_kind );
+}
+
+// MixedChatEvent's read-side bounds.
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    value.channel = ( value.channel < 0 ) ? 0 : ( ( value.channel > 3 ) ? 3 : value.channel );
+    // bits(12) width clamp
+    clamped += ( value.speaker > 4095ull );
+    value.speaker = ( value.speaker > 4095ull ) ? 4095ull : value.speaker;
+}
+
+// MixedPickupEvent's read-side bounds.
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(10) width clamp
+    clamped += ( value.item_id > 1023ull );
+    value.item_id = ( value.item_id > 1023ull ) ? 1023ull : value.item_id;
+    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 255 ) ? 255 : value.amount );
+}
+
+// BenchMixed's read-side bounds.
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    // bits(16) width clamp
+    clamped += ( value.sequence > 65535ull );
+    value.sequence = ( value.sequence > 65535ull ) ? 65535ull : value.sequence;
+    clamped += (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    value.ack_sequence = ( value.ack_sequence < 0 ) ? 0 : ( ( value.ack_sequence > 65535 ) ? 65535 : value.ack_sequence );
+    clamped += (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    value.world_time = ( value.world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value.world_time > 1000000000000ll ) ? 1000000000000ll : value.world_time );
+    // bits(48) width clamp
+    clamped += ( value.frame_tick > 281474976710655ull );
+    value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
+    clamped += (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
+    value.server_time = ( value.server_time < 0 ) ? 0 : ( ( value.server_time > 16776960 ) ? 16776960 : value.server_time );
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        MixedEntityFixedClampBody( value.entities[i], clamped, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        MixedStatFixedClampBody( value.stats[i], clamped, damaged );
+    }
+    if ( (uint64_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
+    switch ( value.game_event.type )
+    {
+        case MixedEventType::Hit:
+        {
+            MixedHitEventFixedClampBody( value.game_event.hit, clamped, damaged );
+            break;
+        }
+        case MixedEventType::Chat:
+        {
+            MixedChatEventFixedClampBody( value.game_event.chat, clamped, damaged );
+            break;
+        }
+        case MixedEventType::Pickup:
+        {
+            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) )
+    {
+        memset( value.player_name, 0, sizeof( value.player_name ) );
+        value.player_name_length = 0;
+        damaged++;
+    }
+    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    clamped += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
+    clamped += ( value.ping > 64000 );
+    value.ping = ( value.ping > 64000 ) ? 64000 : value.ping;
+    // bits(24) width clamp
+    clamped += ( value.crc_hint > 16777215ull );
+    value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;
+    clamped += (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    value.extra = ( value.extra < 0 ) ? 0 : ( ( value.extra > 255 ) ? 255 : value.extra );
+    clamped += (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    value.idle_ticks = ( value.idle_ticks < 0 ) ? 0 : ( ( value.idle_ticks > 15 ) ? 15 : value.idle_ticks );
 }
 
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----

@@ -1,0 +1,567 @@
+name: CI fast
+
+# THE FAST LANE, and the rule it exists to keep (the owner's, today, verbatim):
+# "Remember that we desire the 1-2 minutes per-CI run for interactive fast
+# iteration. We keep slipping from this. If CI slows down iteration, it is our
+# job to realize this, and then fix it."
+#
+# WE HAD SLIPPED, and the measurement is the reason this file exists. Five
+# completed CI runs on fixed-table-form pull requests (34596169063,
+# 34596024573, 34595364248, 34595255044, 34594783777), job by job:
+#
+#   job                        n   median RUN   median QUEUE WAIT
+#   go-test                    5       650 s         216 s
+#   pins                       5       585 s         235 s
+#   big-endian                 5       514 s          11 s
+#   C# fuzz (matrix)          10       134 s         190 s
+#   negative controls (47)   235        93 s         698 s
+#   msvc                       5        85 s          30 s
+#   windows                    5        78 s          23 s
+#   lint                       5        62 s         161 s
+#   conformance (9)           45        47 s         403 s
+#
+# END TO END those runs took 10:53, 15:08, 16:08, 15:45 and 24:42 — and THE
+# CRITICAL PATH IS NOT RUN TIME, IT IS QUEUE WAIT. ci-full.yml dispatches SEVENTY
+# JOBS per pull request; with a dozen branches in flight the 47 negative-control
+# rows alone sat a median of 11m38s waiting for a runner, and the last job of a
+# run started up to 23 minutes after the push. No single job needed fixing: the
+# JOB COUNT did. A 15-minute timeout was raised this morning instead, which
+# treats a queue as a budget.
+#
+# SO THE SPLIT IS BY WHEN, NOT BY WHETHER. Nothing is checked less than before.
+#   * THIS FILE runs on every pull-request push. Five jobs, selected BY PATH,
+#     targeting two minutes wall: the cheap lints, the block zero-cost gate,
+#     `go test` of the packages the diff touches, and the fixed-form and
+#     versioning gates of the LEGS the diff touches.
+#   * ci-full.yml runs everything — the whole go-test, pins, the nine
+#     conformance legs, the 47 negative controls, windows, msvc, big-endian,
+#     vuln — on merge to main or fixed-table-form, nightly, on
+#     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
+#     carrying the `full-ci` label.
+#
+# THE SELECTION IS BY PATH AND NEVER BY DROPPING A GATE. A diff that touches
+# ir/, compiler/, docs/FIXED-FORM-*, the C++ reference's emitters, tables/, the
+# root Makefile or this file gets ALL NINE LEGS and `go test ./...` — the broad
+# rule is in `plan` below, and the conservative direction is always "run more".
+#
+# THE FLOOR, measured and named so the next reader does not chase it: a job on
+# this lane cannot finish under about 25-35 s. Runner assignment plus
+# actions/checkout is 10-15 s, actions/setup-go is another 8-12 s even with
+# `cache: false`, and the Go build cache restore is 5-10 s for ~100 MB. The legs
+# that need a sibling runtime (the C++ reference's byte oracle) pay a shallow
+# clone on top, and the Dart and Elixir legs pay their own SDK setup. Two
+# minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
+#
+# SO WE BUILT THE WARM POOL, and this lane runs on OUR OWN HARDWARE. Every job
+# here is `runs-on: [self-hosted, studio]`: six runners on the Studio (Apple M3
+# Ultra, 32 cores, 512 GB), which is both the queue fix and the floor fix. The
+# queue is ours — six concurrent jobs with nobody else's branches in front of
+# them, so the nine-row leg matrix is parallel and not serial — and the floor
+# drops because the toolchains are already on the host: /Users/Shared/schema-dist
+# carries jdk 21, elixir 1.20.4 on OTP 29, dart 3.13.2 and node 26.7.0, dotnet
+# 10.0.400 is in ~/.local/bin, and go, clang, make and rustup come from the
+# system. The runner puts all of them on PATH through its own `.path` and
+# `.env`, so the `setup-*` actions below — 8-12 s each, with the Dart and BEAM
+# SDK downloads on top — are SKIPPED on a self-hosted runner and run only on
+# the hosted fallback. The `uses:` lines stay, pinned, for exactly that reason.
+#
+# THE CHECKOUT STAYS CLEAN. A warm runner is a correctness hazard in exactly one
+# way: a stale file in the workspace making a gate pass. So actions/checkout
+# keeps its default clean on every run and nothing here sets `clean: false`.
+# What stays warm is OUTSIDE the workspace and cannot forge a green: the Go
+# build cache in the host's ~/Library/Caches/go-build — content-addressed by the
+# compiler's own inputs, so a stale entry is not reachable — and the read-only
+# dist toolchains. The `actions/cache` restores are skipped on self-hosted for
+# the same reason: what they were restoring is already there.
+#
+# ci-full.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
+# full lane is the one that proves the bytes on an x86-64 box we do not own, and
+# the merge gate is not where we trade breadth for speed.
+#
+# ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
+# request's own code on our hardware, so a pull request from a FORK MUST NEVER
+# reach these machines: every job below carries
+#   if: github.event.pull_request.head.repo.full_name == github.repository
+# and a fork's pull request is covered by ci-full.yml on hosted runners.
+#
+# SPACE IS NOT IN THE POOL, and the reason is worth writing down: the x86-64
+# Linux box has ONE CORE. It is registered as `space-x64` for a future
+# cross-architecture row that can afford to be slow, and no job here names it.
+#
+# TO TAKE THE POOL DOWN for a benchmark window — never measure against a runner
+# doing a build — on the Studio:
+#   for d in ~/actions-runner ~/actions-runner-[2-6]; do (cd "$d" && ./svc.sh stop); done
+# and `./svc.sh start` the same way to bring it back.
+
+on:
+  pull_request:
+    branches: [ main, fixed-table-form ]
+  workflow_dispatch:
+
+# A superseded push cancels its predecessor: this lane is for the tip of a
+# branch, and an interactive gate that queues behind its own stale runs is the
+# thing this file is fixing.
+concurrency:
+  group: ci-fast-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The same sibling pins ci-full.yml and certify.yml carry, for the same reason: a
+# sibling merging to main mid-day must not change what a schema commit proves.
+# The three files move together.
+env:
+  SERIALIZE_TAG: v1.16.2
+  SERIALIZE_C_TAG: v1.10.0
+  SERIALIZE_GO_TAG: v1.15.1
+  SERIALIZE_RS_TAG: v2.4.0
+  SERIALIZE_CS_TAG: v1.9.1
+  SERIALIZE_JS_TAG: v1.4.2
+
+jobs:
+  # WHAT THE DIFF TOUCHES. One cheap job, no toolchain at all, whose outputs
+  # are the two selections the jobs below run: the Go packages, and the legs.
+  # It is deliberately the only `needs:` in this file — every gate that can
+  # start immediately does.
+  plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.pick.outputs.packages }}
+      legs: ${{ steps.pick.outputs.legs }}
+      broad: ${{ steps.pick.outputs.broad }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the merge base with the target branch is what names the diff, so
+          # the whole history is needed rather than the single merge commit
+          fetch-depth: 0
+
+      - name: the diff, the packages and the legs
+        id: pick
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'fixed-table-form' }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$BASE"
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          if [ -z "$files" ]; then
+            echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
+            files="ir/"
+          fi
+          echo "--- files in the diff"
+          echo "$files"
+
+          # THE BROAD RULE. These paths can change what EVERY leg emits or what
+          # every package compiles, so a diff that touches one of them gets the
+          # whole of both selections. The direction of the error is deliberate:
+          # shared schema fixtures select every leg that consumes them.
+          broad=no
+          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)'; then
+            broad=yes
+          fi
+
+          # THE LEGS. One line per leg: the codegen packages that emit it, the
+          # generated tree it owns, its own test directory and its make include.
+          # A leg whose paths are untouched does not run here; ci-full.yml runs
+          # every leg on the merge regardless.
+          legs=""
+          add_leg() { case " $legs " in *" $1 "*) ;; *) legs="$legs $1" ;; esac; }
+          while read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|make/go.mk) add_leg go ;;
+            esac
+            case "$f" in
+              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
+            esac
+            case "$f" in
+              internal/codegen/cpptable/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h) add_leg cpp ;;
+            esac
+            case "$f" in
+              internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
+            esac
+            case "$f" in
+              internal/codegen/jstable/*|internal/codegen/js/*|generated/js/*|test/js-tables/*|make/js.mk) add_leg js ;;
+            esac
+            case "$f" in
+              internal/codegen/cstable/*|internal/codegen/csharp/*|generated/cs/*|test/cs-tables/*|make/cs.mk) add_leg cs ;;
+            esac
+            case "$f" in
+              internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk) add_leg java ;;
+            esac
+            case "$f" in
+              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk) add_leg dart ;;
+            esac
+            case "$f" in
+              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
+            esac
+          done <<EOF
+          $files
+          EOF
+          if [ "$broad" = yes ]; then
+            legs="cpp go c rust js cs java dart elixir"
+          fi
+
+          # THE PACKAGES. Every directory holding a changed .go file, as the
+          # package path `go test` takes, plus the codegen package of each
+          # selected leg — a make include or a generated tree changing is a
+          # reason to run that leg's harness even with no .go file in the diff.
+          #
+          # ONLY A PACKAGE OF THE MAIN MODULE, the set `./...` names. A
+          # generated tree (generated/go, generated/bench/go, test/go) is its
+          # own module, and a testdata/ directory is invisible to the go tool;
+          # a .go file there is the leg gate's business, and naming its
+          # directory here fails by name — #958 and #960, go-test-touched:
+          #   main module (github.com/mas-bandwidth/schema/v2) does not
+          #   contain package .../generated/go
+          if [ "$broad" = yes ]; then
+            packages="./..."
+          else
+            packages=""
+            for f in $files; do
+              case "$f" in
+                *.go) d=$(dirname "$f"); [ -d "$d" ] || continue
+                      case "/$d/" in */testdata/*) continue ;; esac
+                      m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; m=$(dirname "$m"); done
+                      case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac ;;
+              esac
+            done
+            for leg in $legs; do
+              case "$leg" in
+                cpp) p=./internal/codegen/cpptable ;;
+                *)   p=./internal/codegen/${leg}table ;;
+              esac
+              [ -d "${p#./}" ] || continue
+              case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+            done
+            packages=$(echo "$packages" | xargs || true)
+          fi
+
+          # the legs as a JSON array, which is what a matrix reads
+          json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $1} END{printf "]"}')
+          [ -n "$json" ] || json='[]'
+
+          echo "broad=$broad"        >> "$GITHUB_OUTPUT"
+          echo "packages=$packages"  >> "$GITHUB_OUTPUT"
+          echo "legs=$json"          >> "$GITHUB_OUTPUT"
+          {
+            echo "### what this push runs on the fast lane"
+            echo
+            echo "* broad selection: **$broad**"
+            echo "* packages: \`${packages:-(none)}\`"
+            echo "* legs: \`$json\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
+  # human would otherwise find by reading. golangci-lint, modernize, the
+  # absolute ledger and the render smoke are NOT here: each downloads and
+  # compiles a tool of its own, which is a minute this lane does not have, and
+  # they run in ci-full.yml.
+  lint-fast:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the Studio's own go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — ci-full.yml's `go-test` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "$out"
+            echo "::error::gofmt differs — run gofmt -w on the files above"
+            exit 1
+          fi
+      - name: go mod tidy
+        run: go mod tidy -diff
+      - name: go vet
+        run: go vet ./...
+      # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
+      # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
+      # test exits 0 — so a make target running a bare `go test` on such a
+      # package goes GREEN HAVING RUN NOTHING. Fourteen did. This scan fails any
+      # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
+      # because the regression it catches is somebody adding the fifteenth.
+      - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
+        run: make slow-gate-scan
+      # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
+      # tree — this one included: every `uses:` names a full commit SHA with the
+      # tag in a trailing comment, nothing runs @latest, and every csproj
+      # agrees with the one .NET SDK pin.
+      - name: CI lints itself — action pins and the .NET SDK pin
+        run: go test ./internal/ci/
+      - name: bench scripts parse
+        run: bash -n bench/run.sh
+
+  # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
+  # step in ci-full.yml). The committed tables goldens must equal a fresh
+  # generation byte for byte, which is the one gate that can redden from a
+  # one-character change to any emitter — so it rides every push. It takes
+  # bin/schema and nothing else: no toolchain, no sibling checkout.
+  #
+  # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
+  # "the build did no work" must not be an available explanation for a green.
+  block-gate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the Studio's own go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make tables-block-zero-cost
+
+  # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
+  # median and lives in ci-full.yml; this job runs the packages `plan` picked,
+  # which for a single-leg diff is one or two of them. The corpus-reading
+  # suites behave exactly as they do today: without build/fixedform-corpus and
+  # without SCHEMA_REQUIRE_CORPUS=1 they skip themselves, and the leg gates
+  # below are where they are made to run.
+  go-test-touched:
+    needs: plan
+    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, studio ]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
+      # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
+      # internal/codegen/ write a probe module whose go.mod carries
+      # `replace github.com/mas-bandwidth/serialize.go => <abs ../serialize.go>`
+      # (compiler/tableclosuredefaults_test.go:79,
+      # internal/codegen/golang/golang_test.go:557, seven more under
+      # internal/codegen/gotable) and then `go build` it; the C++, C and C#
+      # probes do the same with ../serialize, ../serialize.c and ../serialize.cs.
+      # Without the sibling checkouts every one of those is a `setup failed`,
+      # not a verdict on the diff.
+      #
+      # THE PINS ARE THE FILE'S OWN, the same SERIALIZE*_TAG values ci-full.yml
+      # reads, so this lane compiles against the runtime the full lane does.
+      #
+      # Measured on the Studio's own network: the four shallow clones are
+      # ~0.6 s each, ~2.5 s total for ~4.8 MB — inside the floor named at the
+      # top of this file, not a new minute.
+      - name: Check out the C++, C, C# and Go serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.cs serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      # the Studio's own go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE SIBLINGS ARE THERE OR THIS JOB IS NOT A VERDICT. Refusing by name
+      # here, before `go test`, turns a future missing checkout into one line
+      # that says which runtime and which pin, instead of forty
+      # `replacement directory ... does not exist` lines inside unrelated tests.
+      - name: the sibling runtimes are present
+        run: |
+          set -euo pipefail
+          missing=
+          for d in serialize serialize.c serialize.cs serialize.go; do
+            [ -d "../$d" ] || missing="$missing $d"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the Go probes link sibling runtimes this runner does not have:$missing." \
+                 "Clone them beside the checkout at the pins this file names" \
+                 "(SERIALIZE_TAG=$SERIALIZE_TAG, SERIALIZE_C_TAG=$SERIALIZE_C_TAG," \
+                 "SERIALIZE_CS_TAG=$SERIALIZE_CS_TAG, SERIALIZE_GO_TAG=$SERIALIZE_GO_TAG)."
+            exit 1
+          fi
+
+      - name: go test the touched packages
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+          BROAD: ${{ needs.plan.outputs.broad }}
+        run: |
+          set -euo pipefail
+          echo "packages: $PACKAGES"
+          if [ "$BROAD" = yes ]; then
+            # a broad diff's own gate is the full suite in ci-full.yml; here it
+            # is bounded so the lane keeps its budget, and the short run still
+            # catches the ordinary mistake in minutes rather than at merge
+            echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
+            # shellcheck disable=SC2086
+            go test -short $PACKAGES
+          else
+            # shellcheck disable=SC2086
+            go test $PACKAGES
+          fi
+
+  # THE TOUCHED LEG'S TWO GATES: the fixed form's bytes and §5's versioning
+  # rows, one matrix row per leg so nine legs cost nine parallel jobs rather
+  # than nine serial minutes. A leg gate is 5-30 s of work once its toolchain
+  # is up; the rest is the floor named at the top of this file.
+  #
+  # BOTH GATES, ALWAYS, per §5.9 #11 — a leg that proved its bytes and not its
+  # versioning rows has proved half of what it owes. The Java leg has no
+  # versioning target yet and the C++ reference IS the oracle, so those two
+  # rows run what exists; ci-full.yml is unchanged for both.
+  #
+  # SCHEMA_REQUIRE_CORPUS=1 is inside every one of these make targets: a corpus
+  # that failed to build is a failure here, never a quiet skip.
+  leg-gate:
+    needs: plan
+    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: fixed form + versioning (${{ matrix.leg }})
+    runs-on: [ self-hosted, studio ]
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.legs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # THE C++ REFERENCE IS EVERY LEG'S ORACLE: build/fixedform-corpus is dumped
+      # by ../serialize, so every row clones it. The leg's own sibling runtime
+      # comes with it where the probes link one.
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "${{ matrix.leg }}" in
+            go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+            c)    git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+          esac
+
+      # the Studio's own go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # The leg's own toolchain, and only the leg's: a row that is not C# does
+      # not wait for the .NET SDK. The pins are the ones ci-full.yml carries.
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.leg == 'cs' && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          # the version test/conformance/js/ci.json names
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      # C# runs Debug here; full CI keeps both Debug and Release.
+      # THE TWO GATES. The target names are the tree's own — the same ones
+      # `make test` and ci-full.yml run — so a leg that renames a gate renames
+      # it in one place and this row follows.
+      - name: the ${{ matrix.leg }} leg's fixed form and versioning rows
+        run: |
+          set -euo pipefail
+          case "${{ matrix.leg }}" in
+            cpp)    make tables-fixedform ;;
+            go)     make tables-go-fixed-form tables-go-versioning ;;
+            c)      make tables-c-fixedform tables-c-versioning ;;
+            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
+            cs)     make tables-cs-leg-debug tables-cs-versioning ;;
+            java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
+            dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
+            elixir) make tables-elixir-fixed-form tables-elixir-versioning \
+                      ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
+          esac

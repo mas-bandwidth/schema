@@ -484,7 +484,10 @@ func init() {
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4). C has no namespace
 		// to hide it in, so every spelling of it is a unit-level name; the two
 		// MACROS it defines lead with SCHEMA_ and are reserved by internal/check
-		// instead, which is where this backend's macros are claimed.
+		// instead, which is where this backend's macros are claimed. §5.3's two
+		// refusal REASONS (layout_newer, layout_unsupported) lead with SCHEMA_ too
+		// and belong with their enum's siblings — none of the refusal reasons are
+		// registered here, and registering one would be a claim nothing needs.
 		Name{Name: "TableFixedCompiler", What: "the fixed form's plan compiler state (§3.4)"},
 		Name{Name: "TableFixedDst", What: "the fixed form: MY side of a LAYOUT entry"},
 		Name{Name: "TableFixedEntry", What: "the fixed form: one plan entry"},
@@ -502,6 +505,7 @@ func init() {
 		Name{Name: "kTableFixedRecordMaxBytes", What: "the fixed form: §3.4's 65536-byte record ceiling"},
 		Name{Name: "kTableFixedForm", What: "the fixed form's form byte, 3"},
 		Name{Name: "kTableFixedOrdinal", What: "the fixed form's ops"},
+		Name{Name: "kTableFixedPresent", What: "the fixed form's ops: §5.2's present op, the one byte that says an optional arrived"},
 		Name{Name: "kTableFixedText", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedTextBytes", What: "the fixed form: a text entry's flavour"},
 		Name{Name: "kTableFixedTextUtf8", What: "the fixed form: a text entry's flavour"},
@@ -531,6 +535,11 @@ func init() {
 		Name{Name: "table_fixed_putf32", What: "the fixed form's little-endian stores"},
 		Name{Name: "table_fixed_putf64", What: "the fixed form's little-endian stores"},
 		Name{Name: "table_fixed_run", What: "the fixed form's ONE read loop"},
+		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the bytes a plan does not land"},
+		Name{Name: "table_fixed_entry_lands", What: "the fixed form: the storage bytes one plan entry writes"},
+		Name{Name: "table_fixed_fill_run", What: "the fixed form: copy the prefill's ranges from the default image"},
+		Name{Name: "table_fixed_fills", What: "the fixed form: cover minus what this plan lands"},
+		Name{Name: "table_fixed_lay_fills", What: "the fixed form: reserve the prefill ranges in the plan pool"},
 		Name{Name: "table_fixed_signed_kind", What: "the fixed form's widening rungs"},
 		Name{Name: "table_fixed_layout_entry_zero", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_layout_view_zero", What: "the fixed form's layout reader"},
@@ -538,8 +547,17 @@ func init() {
 		Name{Name: "table_fixed_ordinal_width", What: "the fixed form's layout validation: a tag or ordinal's admitted widths"},
 		Name{Name: "table_fixed_parse_layout", What: "the fixed form's layout reader, and the whole of what a reader trusts a layout on"},
 		Name{Name: "table_fixed_subtree", What: "the fixed form's layout reader"},
+		Name{Name: "table_fixed_tag_at", What: "the fixed form: the plan guard compared at the tag's width"},
 		Name{Name: "table_fixed_tag_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_union_arm_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_widens", What: "the fixed form's widening rungs"},
+		Name{Name: "TableFixedKnownLayout", What: "the fixed form: one locked layout of a lineage entry — its hash, its bytes and its record size (§5.2)"},
+		Name{Name: "TableFixedLineagePlan", What: "the fixed form: one lineage entry's plan, built from the lock's bytes off every load path (§5.2)"},
+		Name{Name: "table_fixed_select", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
+		Name{Name: "table_fixed_refuse_hash", What: "the fixed form: a refusal that carries THE FILE'S hash — layout_newer and layout_unsupported (§5.3)"},
+		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
+		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
+		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
+		Name{Name: "table_fixed_plan_cache_init", What: "bind caller-owned slot storage to a plan cache"},
 	)
 }

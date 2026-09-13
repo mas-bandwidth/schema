@@ -245,13 +245,29 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Dart, JavaScript, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #514, #516,
-#515 and #517 bring the id-table wire to those ports). Every generated language has
-a table backend; refusal is scoped to a construct, never the table declaration.
+these surfaces too. Rust, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #515
+and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
+FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
+the write template, the plan-driven read and the LAYOUT / vocabulary block — and
+neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
+§3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
+block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
+kind 35, the present byte in front of a payload that rides whole — whose flag
+lands in a PRESENCE MEMBER on the table's own storage class. That class is the
+table backend's own: `?T` is a table construct, so an optional never appears in
+a `type`, and the packet emitter — which emits a class for every `type` and
+none for a `table` — neither declares the member nor reads it. Every generated
+language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C# and Go. The C codec uses
+reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
+3.4's FIXED form is carried by the C++ reference, by Dart, and by JavaScript, whose
+layout/block, hash and record bytes are held against the reference's own over the
+paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
+OPTIONAL corpus the reference writes at every place a present byte can ride —
+a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`). The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
@@ -264,9 +280,10 @@ reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
-message loads, and writes retained file roots (§6.6). Rust, Dart, JavaScript,
+message loads, and writes retained file roots (§6.6). Rust, JavaScript,
 Elixir and Java write no table wire: each carries the block and cook read
-halves only. [ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
+halves only. Dart writes FORM 3 and only form 3 (§3.4).
+[ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
 `malformed`. Recompile callers with their generated headers and initialize a
@@ -390,10 +407,31 @@ their own `<Name>Row` structs, as they are in C#, because SPEC §6.1's Rust
 storage column spells `string(N)` as `[u8; N]` where the layout model spells
 `char[N + 1]`; the layout contract is asserted over them AT COMPILE TIME, with
 const asserts over `core::mem::offset_of!`, where C++ has `static_assert` and
-C# has a check run at type initialization. A UNION in a cooked record is a
-named follow-on there for the same reason it is absent from the block form: a
-Rust union is a real enum with no committed payload layout, and the
-`#[repr(C)] union` twin is a pass of its own.
+C# has a check run at type initialization. A UNION in one of those records is
+the `#[repr(C)]` TWIN — `<Name>Row`, a tag at offset zero at its own storage
+width beside `<Name>RowArms`, a `#[repr(C)] union` of the arms — because a
+Rust union on the packet wire is a real enum with no committed payload layout
+and the Row family needs one that has: the twin IS ir.UnionLayout, the same
+model the C++ reference's storage struct meets, and the const asserts hold
+this build to it arm by arm. Rust says out loud what the C reference leaves
+unsaid: READING an arm is `unsafe` and every such read is guarded by the tag,
+while WRITING one is safe. THE TAG AND THE OVERLAY ARE THE CRATE'S AND NOT THE
+CALLER'S, for exactly that reason: a public tag beside a public overlay, with
+safe functions reading the arm the tag names, is undefined behaviour with no
+`unsafe` anywhere near the caller — nothing would stop the tag moving without
+its arm, and the next safe read would build a `bool` out of a byte that is
+neither 0 nor 1. The public surface is a CHECKED ACCESSOR PAIR per arm —
+`x() -> Option<XRow>` hands the arm back only when the tag names it, and
+`set_x()` is the only way the tag moves at all — so tag and arm cannot
+disagree, and the generated codecs inside the crate still read the overlay
+under `unsafe` guarded by the tag they just matched, exactly as the C
+reference's `switch` is. What is still a named follow-on is narrower than
+the twin was: an arm whose storage needs a COMPANION beside it — text, or an
+array with its count — is two pieces in one slot of the overlay that C++
+spells as an unnamed struct and no port lays out (§3.4 refuses those arms
+outright), and a union's reflective COOK DESCRIPTOR, whose fields would
+overlap, which is why a union-reaching record has a Row and a fixed form but
+no `<Name>Cook`.
 
 And the THIRD: **the two accelerators are cargo features**, both on by
 default. §19's rule is that the block form costs nothing unless you reach for
@@ -6375,6 +6413,15 @@ and not §19's block form, neither of which this section touches.
 **FORM BYTE `3` IS THE FIXED FORM.** Form bytes `1` and `2` do not move, and
 nothing in this subsection touches a file of §3 or a batch of §3.3.
 
+**AND THE ALGORITHM EVERY PORT IMPLEMENTS FROM IS
+[`docs/FIXED-FORM-ALGORITHM.md`](FIXED-FORM-ALGORITHM.md).** This section states
+the wire and its reasons; that page states the same wire as STEPS, in one
+language-neutral notation, with each piece's invariants, refusal names and §4
+counters beside it — because nine ports written from prose and a C++ reference
+came out nine ways, and the ones that copied the reference inherited its
+accidents as law. **Where the two disagree THIS SECTION IS THE LAW**, except at
+that page's footnoted rulings, which name the reference fixes still landing.
+
 ---
 
 #### THE VERSIONING INVARIANT, FIRST
@@ -6787,6 +6834,16 @@ between the two forms** — which is the surprise the keyword exists to prevent.
 
 **A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
 
+**A READ IS ONE PREFILL, ONE LOOP OVER THE PLAN THE LAYOUT HASH SELECTED, AND
+THEN ONE BOUNDS PASS OVER THE STORAGE THE LOOP WROTE — the same pass, whichever
+plan ran.** The hash chooses the plan and nothing else: the identity plan when
+the writer's layout is this build's own, a plan compiled from the writer's
+layout when it is not. The identity plan carries `copy`, `count` and `text`; a
+compiled plan adds only the ops that a foreign layout needs — `union`, `widen`,
+`ordinal`, and a constant this reader's storage takes. **NO PLAN OP CLAMPS**,
+and neither plan is a shorter or a longer road than the other: one path, one
+set of cases to test.
+
 ```
 plan entry := src  (u32)   a byte offset into the RECORD's body
               dst  (u32)   a byte offset into the READER's own storage
@@ -6796,7 +6853,8 @@ plan entry := src  (u32)   a byte offset into the RECORD's body
 ```
 
 **THE OPS ARE THE WHOLE SET**, and a plan for a record of plain scalars carries
-only the first:
+only the first. **There is no clamp among them.** A declared range is held by
+the bounds pass that runs after the loop, over storage, for either plan:
 
   | op | what the loop does |
   |---|---|
@@ -6805,14 +6863,14 @@ only the first:
   | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
-  | `clamp` | reconstruct against the writer's declared range and apply the reader's own, `clamped` counts if it fired |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
 
-**A READ IS A PREFILL AND A LOOP, AND NOTHING ELSE.**
+**A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
 ```
 Reset( value );                     // the declared defaults, one prefill
 for ( entry : plan ) { … }          // the loop above
+FixedClamp( value, report );        // the bounds pass, after either plan
 ```
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
@@ -6845,11 +6903,16 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote: every entry a `copy`, with **ADJACENT RUNS COALESCED** — two
-neighbouring fields whose source and destination both advance together are one
-entry, so a record whose declared order matches its storage layout collapses to
-a handful of runs. Coalescing is the only optimization a plan compiler performs
-and it is performed identically on both sides.
+already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
+`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
+length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
+behind them, and a copy holds nothing. The other four ops are a compiled plan's
+alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+source and destination both advance together are one entry, so a record whose
+declared order matches its storage layout collapses to a handful of runs.
+Coalescing is the only optimization a plan compiler performs and it is performed
+identically on both sides.
 
 **FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
 WRITER'S LAYOUT, AND CACHED BY HASH.** The compiler walks the layout against the
@@ -11647,10 +11710,36 @@ in build version (§20.5).
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
-  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
+  FixedClamp  FixedClampBody
+  FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
+  FixedKnown  FixedFloor  FixedLineagePlans
   ```
 
-  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  The last six of the `Fixed` rows are the READING TIER's, and they are the
+  price a language with no struct layout pays for the same form. Where the
+  reference lands a plan's bytes at `offsetof( T, member )`, a reading tier
+  lands them in a canonical body image and then PROJECTS that image into the
+  language's own objects — `FixedDecode` — because there a struct is not its
+  bytes. `FixedPrefill`, `FixedIdentity` and `FixedNewPlan` are the same story
+  told about storage: the declared defaults, the one-entry identity plan and
+  the plan constructor are module data where the reference has a type. And
+  `FixedHashLo` / `FixedHashHi` are `FixedHash` in two uint32 lanes, claimed
+  BESIDE it rather than instead of it, because a sixty-four-bit constant
+  becomes two wherever a per-record compare through a wide integer would be an
+  allocation per record. All six are claimed on this list's own rule, like
+  every row above them.
+
+  The three after them are §21's, the LINEAGE as static data
+  (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads BACKWARD and never
+  forward, so every root carries the layouts its lock recorded — `FixedKnown`,
+  oldest first with the current one last — the index a retirement cuts at,
+  `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
+  They are per-declaration for the same reason the identity plan is: a lineage
+  belongs to ONE table and a unit can declare several, so a name that is free
+  today must not become a collision the day a second root is added.
+
+  The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
   carries it, and a table gains and loses the form as its closure gains and
   loses a pointer — so a name that is free today must not become a collision
@@ -11658,6 +11747,11 @@ in build version (§20.5).
   has no struct to hang a plan's two numbers on and spells them as two more
   file-scope constants; the whole row is one claim across the ports, spelled
   `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
+  `FixedClamp` and `FixedClampBody` are §3.4's READ-SIDE BOUNDS — the
+  straight-line pass a read makes after the copy — and they are claimed for
+  every closure member on the same rule and not only for the ones that declare
+  a bound today: a field gains a `min` or a `max`, or a union or an enum, as an
+  ordinary edit, and the name has to already be taken when it does.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
@@ -16281,3 +16375,74 @@ a second digest.
   field's offset in the compiler's model and BOTH backends go red; that is
   §19.3's test obligation, now owed for every record in the closure and not
   only for blocks and rows.
+
+## 21. The fixed table reads backward, never forward
+
+**A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
+A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
+record, and reads nothing. There is no partial read of a fixed table: no clamp across versions, no value
+landed as `None` for want of a name, no field dropped because the reader lacked it. (Glenn, 2026-09-10:
+"Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new
+versions, and complain loudly and refuse. Nothing else makes sense." The bill is
+`docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)
+
+### 21.1 The law: everything that inputs into a fixed table only widens
+
+A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
+time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule. Widening is
+defined by the default it fills: a change with no default to fill is not a widening.
+
+| definition | widens by | never |
+|---|---|---|
+| a fixed table, a `type` or `table` in its closure | a field ADDED AT THE END; a field deprecated in place | a field modified, removed, or inserted elsewhere |
+| an enum | a variant ADDED AT THE END; deprecated in place | a variant removed, reordered, inserted mid-list, or renamed without `was` |
+| a union | an arm ADDED AT THE END | an arm removed, reordered, or its payload changed |
+| `flags` | a flag ADDED | a flag removed or moved |
+| an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
+| an element type | the widening ladder, as a field | narrowed |
+| an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
+| a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
+| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward; a resolution COARSENED (the old values are off this reader's grid); anything else |
+| `bits(N)` | a larger N | smaller |
+| `fixed(I,F)` | a larger I | F changed |
+| an optional | `T` to `?T` (old values land present) | `?T` to `T` |
+| a field's kind | — | changed |
+| a specified default | — | changed (§18: it defines what every old file means) |
+| the `fixed` keyword | — | added or removed (a different form, not a version) |
+| a reader-side limit a table declares | larger | smaller |
+| a deprecated field | stays written, in its place, read on every plan | leaving the layout; undeprecating (one way, bill §12.3) |
+
+### 21.2 What a newer reader does with an older file
+
+A field the reader added: its declared default. A field the reader deprecated: dropped, counted once under
+`unknown` per plan. A narrower integer or float: widened exactly, `widened` counts. A shorter array or
+string: landed, the reader's slack is template zeros. An older enum: its ordinals are the reader's, the
+list being a prefix. Everything else: copied.
+
+### 21.3 What an older reader does with a newer file
+
+Refuses, by name, at load, before any record: **`layout_newer`**. No counter moves. REFUSE is total. The
+refusal carries what the reader could not hold, as its language can name it.
+
+### 21.4 The closure rule
+
+Every table or type a fixed table reaches by value is itself declared `fixed`, with its own layout and its
+own lineage. A pointer, a map, or an unbounded array in the closure is refused, so a fixed table never
+reaches itself.
+
+### 21.5 The lineage, the floor, and the plans
+
+`schema.lock` keeps each fixed table's LINEAGE: every layout it has had, in order, with its hash and its
+layout bytes. The layout hash is the version; nothing on the wire carries a number. A FLOOR per table names
+the oldest supported entry; the reader accepts the lineage from the floor to its own layout and refuses
+older ones as `layout_unsupported`. Because the accepted set is finite and known at build time, the plan
+for each supported version is compiled at build time from the lock and shipped as static data; at load the
+file's hash selects a plan, the file's layout bytes are compared to the known bytes for that hash, and a
+mismatch is `layout_malformed`. The reader never parses a layout it has not seen before.
+
+### 21.6 The deployment rule, and the lifecycle
+
+Readers ship before writers, by a margin a reader can roll back across; the floor is the delta between the
+live clients and the backend. When a table has grown past sense: create a new table, deprecate the old,
+clean out the cruft, ship the backend reading both, then the client, and when nothing live speaks the old
+table, remove it.

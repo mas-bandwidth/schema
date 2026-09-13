@@ -80,7 +80,10 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
+	// DART IS NOT IN THIS LIST: its table surface is §3.4's fixed form, which
+	// lays wide text out, so it CARRIES the construct — see
+	// TestWideTextInATableClosureRidesTheDartFixedForm below.
+	for _, target := range []string{"rust", "java", "js", "elixir"} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)
@@ -89,6 +92,43 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 		if !strings.Contains(err.Error(), "Text.name") {
 			t.Errorf("%s's refusal does not name the field: %v", target, err)
 		}
+	}
+}
+
+// TestWideTextInATableClosureRidesTheDartFixedForm is the other half of the
+// rule above: Dart takes the same unit, emits the FIXED form for it, and emits
+// NEITHER accelerator — a block row and a cooked node have no kind 33 in this
+// backend, and the refusal is scoped to them by name rather than taken out on
+// a form that lays the construct out fine (docs/SPEC-TABLES.md §3.4, §15).
+func TestWideTextInATableClosureRidesTheDartFixedForm(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Wide.schema")
+	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	u, err := c.Load([]string{path})
+	if err != nil {
+		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
+	}
+	files, err := c.Generate(u, "dart", Options{})
+	if err != nil {
+		t.Fatalf("dart refused a wstring(N) its fixed form carries: %v", err)
+	}
+	var fixed, accelerator []string
+	for _, name := range keysOf(files) {
+		switch {
+		case strings.HasSuffix(name, "Fixed.dart"):
+			fixed = append(fixed, name)
+		case strings.HasSuffix(name, "Block.dart"), strings.HasSuffix(name, "Cook.dart"):
+			accelerator = append(accelerator, name)
+		}
+	}
+	if len(fixed) == 0 {
+		t.Errorf("dart emitted no fixed form for a wide-text table: %v", keysOf(files))
+	}
+	if len(accelerator) != 0 {
+		t.Errorf("dart emitted an accelerator for a wide-text table: %v", accelerator)
 	}
 }
 

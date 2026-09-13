@@ -1,0 +1,46 @@
+// FH2.schema — the NEWER side of the nested-union pair. See FH1.schema.
+//
+// ONE FIELD IS APPENDED to the root and nothing else moves. That is enough
+// to change the layout hash, which is enough to send a read of FH1's bytes
+// down the COMPILED plan — and the compiled plan is the path where an inner
+// union's None const and arm entries used to answer to the inner tag.
+package tblfh2
+
+type Leaf
+{
+    n int32 = 0
+}
+
+type Alt
+{
+    k int32 = 0
+}
+
+type Other
+{
+    m int32 = 0
+}
+
+union Inner
+{
+    leaf Leaf
+    alt  Alt
+}
+
+type Wrap
+{
+    inner Inner
+}
+
+union Outer
+{
+    wrap  Wrap
+    other Other
+}
+
+fixed table NestRoot
+{
+    pick  Outer
+    tail  int32 = 7
+    extra int32 = 11
+}

@@ -34,36 +34,81 @@ const (
 // declares no table: a table-free unit's Rust output is byte-identical with
 // this backend in the chain or out of it.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LOCK'S LINEAGE handed in as data
+// (docs/FIXED-FORM-ALGORITHM.md §5.2's COMPILE, and §5.9 #1: the backend takes
+// the lineage AS DATA through a second entry point and opens no file itself).
+// `lineage` is per fixed table the lock's entries OLDEST FIRST, each carrying
+// §5.2's facts; the table's own layout is appended last when the lineage does
+// not already end on it, and the floor is 1 + the highest retired index.
+//
+// Generate is the NO-LINEAGE case — a unit that was never locked promises
+// nothing, so it emits the identity plan and a lineage of one.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
-	}
-	if err := ir.RefuseWideTableKinds(u, "Rust"); err != nil {
-		return nil, err
 	}
 	out := map[string][]byte{}
 
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
 
-	if anyCookable(u, closure) {
+	// §15's WIDE-KIND REFUSAL IS OWED BY THE ACCELERATORS AND NOT BY THE WIRE,
+	// and ir.WideTableKinds is the one place that rule lives. The block form and
+	// the cooked form are the two things this backend has that must name a
+	// kind's storage column and its reflection descriptor, and they are what
+	// does not carry the fixed-point and 128-bit kinds yet. The FIXED FORM
+	// (§3.4) names no kind at all on the emitted path: a field is a store of its
+	// width at its offset, so a 128-bit field is a `u128` store and a
+	// fixed-point one is its raw integer, and the layout's own entry carries the
+	// kind byte the reader compares.
+	//
+	// THE `fixedForm` ARGUMENT IS THIS BACKEND'S OWN ANSWER, and it is `true`
+	// here now: the day the ir rule landed it read `false` because this port had
+	// no form-3 codec. It has one. So a unit that declares the wide kinds still
+	// gets it, the two accelerators stand down alone, and only a unit with NO
+	// fixed root is refused whole, BY NAME.
+	fixed := anyFixedRoot(u, closure)
+	scope := ir.WideTableKinds(u, "Rust", fixed)
+	if scope.Unit {
+		return nil, scope.Refusal
+	}
+	accelerators := scope.Refusal
+
+	if accelerators == nil && anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
+	}
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3. It is a WIRE
+	// form and not an accelerator, so it rides unconditionally the way form 1
+	// does in C++ — there is no cargo feature over it, because a wire a
+	// consumer can be handed is not something they opt into.
+	if fixed {
+		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, closure: closure}
+		g := &gen{unit: u, file: f, closure: closure, lineage: lineage}
 		if body := g.recordsModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_records.rs"] = body
 		}
-		if body := g.cookModule(); body != nil {
-			out[strings.ToLower(f.Base)+"_cook.rs"] = body
+		if accelerators == nil {
+			if body := g.cookModule(); body != nil {
+				out[strings.ToLower(f.Base)+"_cook.rs"] = body
+			}
+		}
+
+		if body := g.fixedModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
 		}
 	}
 
 	// the BLOCK form: nothing declares it, every fixed table has one, and it
 	// lives in its own modules so a consumer that never opens a block pays
 	// only for a module it does not call (docs/SPEC-TABLES.md §19).
-	if blocks != nil {
+	if accelerators == nil && blocks != nil {
 		blockOut, err := generateBlocks(u, blocks, "")
 		if err != nil {
 			return nil, err
@@ -105,6 +150,9 @@ type gen struct {
 	unit    *ir.Unit
 	file    *ir.File
 	closure map[string]bool
+	// lineage is the LOCK'S, per fixed table, OLDEST FIRST (§5.2); nil for a
+	// unit that was never locked, whose lineage is its own layout alone.
+	lineage map[string][]FixedLineageEntry
 
 	body strings.Builder
 }
@@ -129,7 +177,12 @@ func header(base, pkg string, what string) string {
 // fn is the name-first free-function spelling: Cfg + "measure" -> cfg_measure.
 func fn(typeName, verb string) string { return ir.RustSnake(typeName) + "_" + verb }
 
-// rustUint / rustInt name a width's Rust storage.
+// rustUint / rustInt name a width's Rust storage. THE 128-BIT ARM IS NATIVE
+// HERE: Rust's u128/i128 are sixteen bytes at sixteen on every target this
+// backend emits for, which is the piece ir.RecordLayout models for a 128-bit
+// integer and the alignment a table's C++ storage spells `alignas( 16 )`
+// (docs/SPEC-TABLES.md §7.2, §19.3), so the layout contract's own const
+// asserts hold this arm to the model rather than trusting it.
 func rustUint(bits int) string {
 	switch {
 	case bits <= 8:
@@ -138,8 +191,10 @@ func rustUint(bits int) string {
 		return "u16"
 	case bits <= 32:
 		return "u32"
+	case bits <= 64:
+		return "u64"
 	}
-	return "u64"
+	return "u128"
 }
 
 func rustInt(bits int) string {
@@ -150,8 +205,10 @@ func rustInt(bits int) string {
 		return "i16"
 	case bits <= 32:
 		return "i32"
+	case bits <= 64:
+		return "i64"
 	}
-	return "i64"
+	return "i128"
 }
 
 func isStruct(f *ir.Field) bool {

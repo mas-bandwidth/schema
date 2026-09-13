@@ -88,7 +88,31 @@ import (
 // is keyed by (`key=Hull@0x...`) and its element beside it (`elem=4/4`), the
 // two facts every other array already carried. v4 locks are deleted and
 // rewritten, the same sentence v1 took.
-const Version = 5
+// 6 is the MONOTONE LAW's own widening (docs/FIXED-FORM-BILL-READS-BACKWARD.md
+// §2, §6): the DECLARED SIZE FACTS the record's width carries only as a total,
+// and which a refusal has to be able to name — an array's bound and its shape
+// (`bound=4 shape=counted`), a text field's capacity (`cap=8`), a `bits(N)`
+// width (`bits=12`) and a fixed-point field's I (`ibits=12`). Each is a fact a
+// narrowing moves and the width reports vaguely or not at all, so "bound
+// narrowed (4 -> 2)" needs them written down. They ride at the END of the
+// entry line, after `deprecated`, so a line is read left to right the way it
+// grew. v5 locks are deleted and rewritten, the same sentence v1 took.
+// 7 is THE LINEAGE (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.6, §11.7):
+// one `lineage` line per layout a fixed table has had, oldest first, each with
+// the WIRE hash the file header carries, the layout bytes, the §13 definitions
+// digest, the record size, a retired mark and a reason (lineage.go). It is what
+// COMPILE reads to lay one plan per supported version down as static data, and
+// it is the first thing in this file that is HISTORY rather than a projection of
+// the declaration — so v6 locks SALVAGE (§11.8): the one layout a v6 lock holds
+// becomes the first lineage entry and nothing in the file is deleted. That
+// sentence replaces "delete it and write it again" from here on, because
+// deleting this file now means wiping a fleet's lineage.
+const Version = 7
+
+// salvageFrom is the oldest rendering version this compiler reads and carries
+// forward rather than refusing (§11.8). Below it a lock holds nothing a hand or
+// this command can turn into a lineage.
+const salvageFrom = 6
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -138,6 +162,44 @@ type Table struct {
 	Layout uint64
 
 	Entries []Entry
+
+	// Retired marks a fixed table NOTHING LIVE SPEAKS ANY MORE (bill §11.5):
+	// `schema lock --retire T`. Its block and its whole lineage stay in this
+	// file forever; what the mark buys is that the DECLARATION may then be
+	// dropped, and that the "fixed removed" refusal applies only to a table
+	// nobody has retired. A table is retired, never removed.
+	Retired bool
+
+	// Reason is the sentence the operator wrote when retiring the table. A
+	// retirement is the one DECLARATION this file holds — every other write it
+	// takes is an append — so it wants a sentence a person reads years later.
+	Reason string
+
+	// Lineage is every layout this table has had, OLDEST FIRST, the current one
+	// LAST — the record COMPILE reads (lineage.go, bill §6b and §11.7). It is
+	// filled on a FIXED table and empty on a nested `type`: a type has no file
+	// of its own and no hash a file carries, and its changes are the holder's.
+	Lineage []LineageEntry
+
+	// lineageRollup is the `lineage=0x...` token this FILE carried on the
+	// `fixed table` line — [LineageHash] over the lineage lines under it, which
+	// binds the SET of them the way Layout binds the entry lines. It is read off
+	// the file and never used to write one: [Unit.Text] computes the token from
+	// the lineage it is writing, so a token can only ever be stale in a file a
+	// hand has touched, which is precisely what diffRollup catches.
+	lineageRollup uint64
+
+	// rollupWritten says the file CARRIED that token. A lock written before the
+	// token existed did not, and that one is salvage rather than a refusal
+	// (§11.8): [Parse] computes the roll-up from the lineage lines the file does
+	// hold, and the next `schema lock` writes it down. Nothing is deleted and
+	// the check stays silent, which is the bill's sentence for every older
+	// rendering of this file.
+	rollupWritten bool
+
+	// FixedEmitted reports whether the fixed form is emitted for this table
+	// (ir.TableFixedEmitted): the closure is supported and within the ceiling.
+	FixedEmitted bool
 }
 
 // An Entry is one field of a locked record, and it is the unit the check
@@ -194,6 +256,37 @@ type Entry struct {
 	// on and it may never turn off: the slot stays where it is, nothing new
 	// may name the field, and a reader ignores what it finds there.
 	Deprecated bool
+
+	// Bound is an array's DECLARED ELEMENT COUNT — `[4]T`'s 4, `[..N]T`'s
+	// EVALUATED N, an enum-keyed array's slot count — and 0 on every field
+	// that is not an array. The width carries it only multiplied by the
+	// element and buried under the count companion, and the monotone law has
+	// to be able to say "bound narrowed (4 -> 2)" (§6).
+	Bound int64
+
+	// Shape is an array's FORM: "fixed" for `[N]T`, "counted" for `[..N]T`,
+	// "list" for `[]T`, "keyed" for `[Enum]T`, and "" on every field that is
+	// not an array. The bill refuses a shape change outright (§2): the count
+	// companion, the slot numbering and the key are three different things a
+	// reader walks.
+	Shape string
+
+	// Cap is a text field's DECLARED CAPACITY in its own units — `string(N)`
+	// and `bytes(N)` in bytes, `wstring(N)` in UTF-16 code units — and 0 on
+	// every other field. Glenn: "wstring/strings/bytes can be widened only,
+	// not narrowed, because a narrowed string/array cannot read the old."
+	Cap int64
+
+	// Bits is a `bits(N)` field's DECLARED WIDTH, and 0 on every other field.
+	// Two bits() widths inside one storage kind are the same kind and the same
+	// width in the record, so this is the only fact that tells them apart.
+	Bits int
+
+	// IBits is a fixed-point field's I — its integer bits, the sign bit
+	// counted when signed — and 0 on every other field. The kind carries
+	// I + F rounded up to a storage width, so I alone is not in it, and
+	// "I narrowed (12 -> 4)" needs it.
+	IBits int
 
 	// HeldName and HeldHash are the named type a slot holds — a kind-13
 	// table, a kind-15 union, a kind-7 enum, a kind-9 flags mask, or a
@@ -434,6 +527,12 @@ func (r *renderer) table(decl string, st *ir.Struct) Table {
 
 func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 	t := Table{Decl: decl, Name: st.WireName()}
+	if decl == DeclFixedTable {
+		// THE ONE LAYOUT A RENDERING KNOWS (lineage.go): the declaration's own.
+		// [Update] carries the committed history forward onto it.
+		t.Lineage = renderLineage(r.u, st)
+		t.FixedEmitted = ir.TableFixedEmitted(r.u, st)
+	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
 		e := Entry{
@@ -453,6 +552,23 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		}
 		if f.Type.Kind == ir.TFixed {
 			e.Frac = f.Type.FracBits
+			e.IBits = f.Type.IntBits
+		}
+		switch f.Type.Kind {
+		case ir.TString, ir.TWString, ir.TBytes:
+			e.Cap = f.Type.Size
+		case ir.TBits:
+			e.Bits = f.Type.Width
+		}
+		switch {
+		case f.KeyEnum != "":
+			e.Shape, e.Bound = "keyed", f.ArrayBound
+		case f.Array == ir.ArrayFixed:
+			e.Shape, e.Bound = "fixed", f.ArrayBound
+		case f.Array == ir.ArrayCounted:
+			e.Shape, e.Bound = "counted", f.ArrayBound
+		case f.Array == ir.ArrayList:
+			e.Shape = "list"
 		}
 		if fl := layout.FieldByName(f.Name); fl != nil {
 			e.Width = fl.Size
@@ -755,6 +871,25 @@ func (e Entry) line() string {
 	if e.Deprecated {
 		s += " deprecated"
 	}
+	// THE DECLARED SIZE FACTS, AT THE END OF THE LINE (Version 6): a token a
+	// line did not carry before goes last, so an older line read left to right
+	// is this line's prefix and the file grew the way the tables it describes
+	// grow.
+	if e.Bound != 0 {
+		s += " bound=" + strconv.FormatInt(e.Bound, 10)
+	}
+	if e.Shape != "" {
+		s += " shape=" + e.Shape
+	}
+	if e.Cap != 0 {
+		s += " cap=" + strconv.FormatInt(e.Cap, 10)
+	}
+	if e.Bits != 0 {
+		s += " bits=" + strconv.Itoa(e.Bits)
+	}
+	if e.IBits != 0 {
+		s += " ibits=" + strconv.Itoa(e.IBits)
+	}
 	return s
 }
 
@@ -788,9 +923,24 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "%s %d\n", magic, u.Version)
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 	for _, t := range u.Tables {
-		fmt.Fprintf(&b, "\n%s %s layout=0x%016x\n", t.Decl, t.Name, t.Layout)
+		// THE ROLL-UP BESIDE THE LAYOUT HASH, on a fixed table only: `layout=`
+		// binds the field lines below and `lineage=` binds the lineage lines
+		// below (lineage.go, [LineageHash]). It is computed from the lineage
+		// being written rather than read out of the table, so the file the
+		// compiler writes is always self-consistent; a nested `type` carries no
+		// lineage and so no token.
+		rollup := ""
+		if t.Decl == DeclFixedTable {
+			rollup = fmt.Sprintf(" lineage=0x%016x", LineageHash(t.Lineage))
+		}
+		fmt.Fprintf(&b, "\n%s %s layout=0x%016x%s%s\n", t.Decl, t.Name, t.Layout, rollup, retiredText(t.Retired, t.Reason))
 		for _, e := range t.Entries {
 			fmt.Fprintf(&b, "    %s\n", e.line())
+		}
+		// THE LINEAGE AFTER THE LAW, oldest first: the entries above say what
+		// the record IS, and these say every shape it has BEEN (lineage.go).
+		for _, l := range t.Lineage {
+			fmt.Fprintf(&b, "    %s\n", l.line())
 		}
 	}
 	for _, v := range u.Values {
@@ -849,7 +999,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %q is not a rendering version", where, fields[1])
 			}
-			if v != Version {
+			if v != Version && v < salvageFrom {
 				// THE ONE PARSE REFUSAL THAT IS NOT A HAND-EDIT. The
 				// rendering version is the compiler's own, so there is
 				// nothing here for a person to repair: the file is
@@ -860,6 +1010,9 @@ func Parse(path string, data []byte) (*Unit, error) {
 				// gone first.
 				return nil, fmt.Errorf("%s: this lock is rendering version %d and this compiler writes version %d — the rendering version is the compiler's own and this file holds nothing a hand can carry forward: delete it and write it again with `schema lock`", where, v, Version)
 			}
+			if v > Version {
+				return nil, fmt.Errorf("%s: this lock is rendering version %d and this compiler writes version %d — it was written by a NEWER compiler than this one, and this one cannot know what it holds: build the compiler this tree pins, or relock with it", where, v, Version)
+			}
 			u.Version = v
 		case fields[0] == "package":
 			if len(fields) != 2 {
@@ -867,14 +1020,28 @@ func Parse(path string, data []byte) (*Unit, error) {
 			}
 			u.Package = fields[1]
 		case fields[0] == "fixed" && len(fields) > 1 && fields[1] == "table":
-			if len(fields) != 4 {
-				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x...`", where)
+			head, retired, reason := splitRetired(line)
+			fields = strings.Fields(head)
+			// THE ROLL-UP IS OPTIONAL ON THE WAY IN and written on the way out:
+			// a v7 lock from before the token SALVAGES (§11.8), because every
+			// layout it shipped is still written below and the token is a
+			// projection of them.
+			if len(fields) != 4 && len(fields) != 5 {
+				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x... [lineage=0x...] [retired] [reason=<text>]`", where)
 			}
 			h, err := parseHex(fields[3], "layout")
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			u.Tables = append(u.Tables, Table{Decl: DeclFixedTable, Name: fields[2], Layout: h})
+			t := Table{Decl: DeclFixedTable, Name: fields[2], Layout: h, Retired: retired, Reason: reason}
+			if len(fields) == 5 {
+				r, rerr := parseHex(fields[4], "lineage")
+				if rerr != nil {
+					return nil, fmt.Errorf("%s: %w", where, rerr)
+				}
+				t.lineageRollup, t.rollupWritten = r, true
+			}
+			u.Tables = append(u.Tables, t)
 			cur, curList = &u.Tables[len(u.Tables)-1], nil
 		case fields[0] == DeclType:
 			if len(fields) != 3 {
@@ -896,6 +1063,20 @@ func Parse(path string, data []byte) (*Unit, error) {
 			}
 			u.Values = append(u.Values, ValueList{Decl: fields[0], Name: fields[1], Hash: h})
 			cur, curList = nil, &u.Values[len(u.Values)-1]
+		case fields[0] == "lineage":
+			// ONE LAYOUT THE TABLE HAS HAD (lineage.go). The lines are OLDEST
+			// FIRST, the current layout last, and nothing ever removes one.
+			if cur == nil {
+				return nil, fmt.Errorf("%s: a lineage line before any record line", where)
+			}
+			if cur.Decl != DeclFixedTable {
+				return nil, fmt.Errorf("%s: a %s carries no lineage — a nested record has no file of its own and no hash a file carries; its changes are the holder's layout", where, cur.Decl)
+			}
+			l, err := parseLineage(line)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			cur.Lineage = append(cur.Lineage, l)
 		case fields[0] == "field":
 			if cur == nil {
 				return nil, fmt.Errorf("%s: a field line before any record line", where)
@@ -937,12 +1118,35 @@ func Parse(path string, data []byte) (*Unit, error) {
 	if u.Version == 0 {
 		return nil, fmt.Errorf("%s: empty — a %s begins with %q and its rendering version", path, FileName, magic)
 	}
+	// EVERY FIXED TABLE CARRIES ITS LINEAGE, from the rendering version that
+	// introduced it. An older lock is salvage (§11.8) and its lineage is filled
+	// from the declaration it is held against.
+	if u.Version == Version {
+		for i := range u.Tables {
+			t := &u.Tables[i]
+			if t.Decl == DeclFixedTable && len(t.Lineage) == 0 {
+				return nil, fmt.Errorf("%s: fixed table %s carries no lineage line — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7)", path, t.Name)
+			}
+		}
+	}
+	// AND THE ROLL-UP IS SALVAGED, NEVER DEMANDED of a file that predates it: a
+	// lock written before the `lineage=` token holds every layout it shipped on
+	// the lines below, so the token is computed from them here and written down
+	// by the next `schema lock`. Demanding it instead would be the one thing
+	// §11.8 forbids — a file the fleet must delete and rewrite, and a rewrite of
+	// this file is a lineage wiped.
+	for i := range u.Tables {
+		t := &u.Tables[i]
+		if t.Decl == DeclFixedTable && !t.rollupWritten {
+			t.lineageRollup = LineageHash(t.Lineage)
+		}
+	}
 	return u, nil
 }
 
 func parseEntry(fields []string) (Entry, error) {
 	if len(fields) < 6 {
-		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [key=Name@0x...] [optional] [deprecated]`")
+		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [key=Name@0x...] [optional] [deprecated] [bound=N] [shape=S] [cap=N] [bits=N] [ibits=N]`")
 	}
 	e := Entry{Name: fields[1], Frac: -1}
 	for _, tok := range fields[2:] {
@@ -998,6 +1202,37 @@ func parseEntry(fields []string) (Entry, error) {
 				return Entry{}, err
 			}
 			e.KeyName, e.KeyHash = name, hash
+		case key == "bound":
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return Entry{}, fmt.Errorf("bound=%q is not a count of elements", val)
+			}
+			e.Bound = n
+		case key == "shape":
+			switch val {
+			case "fixed", "counted", "list", "keyed":
+				e.Shape = val
+			default:
+				return Entry{}, fmt.Errorf("shape=%q is not fixed, counted, list or keyed", val)
+			}
+		case key == "cap":
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return Entry{}, fmt.Errorf("cap=%q is not a capacity", val)
+			}
+			e.Cap = n
+		case key == "bits":
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return Entry{}, fmt.Errorf("bits=%q is not a width", val)
+			}
+			e.Bits = n
+		case key == "ibits":
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return Entry{}, fmt.Errorf("ibits=%q is not a count of integer bits", val)
+			}
+			e.IBits = n
 		case key == "elem":
 			ks, ws, ok := strings.Cut(val, "/")
 			if !ok {

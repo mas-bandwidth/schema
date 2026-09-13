@@ -92,7 +92,7 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	# The pointered unit carries managed wire storage and native cooked readers.
@@ -103,6 +103,8 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p3 test/tables/P3.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/fx2 test/tables/FX2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/k1 test/tables/K1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/k2 test/tables/K2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/csids test/tables/CsIds.schema
@@ -136,6 +138,7 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/csretain2 test/tables/CsRetain2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections1 test/tables/CsCollections1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections2 test/tables/CsCollections2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/ut test/tables/UT.schema
 
 	@touch $@
 
@@ -385,7 +388,7 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-view tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
+.PHONY: tables-cs-view tables-cs-leg tables-cs-leg-debug tables-cs-leg-release tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
 tables-cs-view: build/tables-generated-cs/.stamp
 	@mkdir -p build/view-cs
 	@set -e; for entry in $(VIEW_CORPUS); do \
@@ -406,9 +409,46 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
-tables-cs-leg: build/tables-generated-cs/.stamp
+# TWO CONFIGURATIONS, TWO NAMES, AND A COMBINED ONE — because the pair was 74 s
+# and the owner's rule is one to two minutes for anything a child iterates on.
+# Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
+# `make tables-cs-leg` remains the full-CI and release gate, running both.
+# Fast CI uses Debug with versioning to stay within its two-minute budget.
+tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
+
+tables-cs-leg-debug: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
+
+tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
+
+# THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
+# docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
+# against THE C++ REFERENCE'S OWN BYTES.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
+# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
+# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
+# regression would ride into CI green. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the reference's own dump, about 25 s) and then sets
+# SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this name a
+# missing corpus can never pass silently.
+#
+# ONE ASSEMBLY, ONE BUILD, ONE RUN. The harness generates fifty-seven probes —
+# one per row per COLUMN (§5.9 #18) — into ONE project, each in the namespace its
+# own schema's package gives it, and runs the lot once. Fifty-seven `dotnet run`s
+# would cost minutes; this costs one build.
+#
+# EVERY ROW IS GREEN, `array_elem_widen` INCLUDED. It was the one named red here
+# (§5.9 #31): the C# leg FOLDED a flat element run into one plan entry, and a fold
+# whose two images differ in WIDTH has no element-wise destination to widen into,
+# so the element widen was dropped and `widened` stayed zero. 157268a6 stopped
+# folding a widened run — §5.2's EMIT has no fold at all — and the row asserts the
+# reference's EXACT four since (csVersionRow.widened).
+.PHONY: tables-cs-versioning
+tables-cs-versioning: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
@@ -434,6 +474,10 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
+.PHONY: tables-cs-fixedform-arm-negative-control
+tables-cs-fixedform-arm-negative-control: bin/schema
+	sh test/cs-tables/armtext-negative-control "$(DOTNET)"
+
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
@@ -445,6 +489,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz
 	$(MAKE) tables-cs-builder-fuzz
@@ -452,6 +497,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
 	$(MAKE) tables-cs-message-blob-endian-negative-control
+	$(MAKE) tables-cs-fixedform-arm-negative-control
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs
 	$(MAKE) tables-cook-open-cs-lengths-negative-control

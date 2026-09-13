@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func runGenerated(t *testing.T, schema, testSource string) {
@@ -25,7 +28,11 @@ func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string
 
 func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
 	t.Helper()
-	u := unitFrom(t, schema)
+	return runGeneratedUnit(t, unitFrom(t, schema), testSource, edit, flags...)
+}
+
+func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
+	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +58,7 @@ func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[s
 		}
 	}
 	args := append([]string{"test", "-count=1"}, flags...)
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

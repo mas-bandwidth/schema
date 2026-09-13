@@ -1,0 +1,16 @@
+// VNEW_wstring_grow.schema — NEW: wstring(16)
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vnew_wstring_grow
+
+fixed table WstringGrow
+{
+    lead  uint32 = 1
+    text  wstring(16)
+    trail uint32 = 2
+}
