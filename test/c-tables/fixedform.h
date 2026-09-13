@@ -40,6 +40,14 @@ int64_t fixed_fu1_bytes( void );
 /* ...and each reads the other's, through the ONE plan-driven path. */
 void fixed_fx1_read_own( const uint8_t * data, int64_t bytes );
 void fixed_fx1_slack( void );
+
+/* THE FIVE FORM-HEADER PROBES (docs/FIXED-FORM-ALGORITHM.md §5.3 step 1 and 2,
+   docs/SPEC-TABLES.md §3.4), the exact inputs pinned on schema#876: the
+   empty file, the ten-byte form-1 file, the three-byte form-2 batch, form
+   byte 0 on the otherwise valid fixture, and the fixture with reserved byte 3
+   set nonzero. The form byte is read BEFORE the file's length, and each case
+   also proves the refusal writes no destination byte. */
+void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes );
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes );
 void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes );
 void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes );

@@ -2,6 +2,7 @@
    §3.4). This translation unit is the ONLY one that names tblfx1's types; see
    fixedform.h for why there is more than one. */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "FX1Table.h"
@@ -128,6 +129,75 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
     fixed_check( back.nested.a == 111 && back.nested.b == 222, "same schema: the nesting" );
     fixed_check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                  "same schema: a silent report" );
+}
+
+/* ONE FORM-HEADER PROBE: the destination is POISONED before the load and
+   compared unchanged after it, so a refusal that wrote one byte is caught, and
+   the report has to name the reason and claim nothing else. `want_refused` is
+   1 for a named form-byte refusal and 0 for the residue, `malformed`. */
+static void form_case( const char * name, const uint8_t * file, int64_t bytes,
+                       int want_refused, int want_reason, int want_malformed )
+{
+    FxRoot before, after;
+    TableReport r;
+    char why[160];
+    int64_t got;
+
+    memset( &before, 0xAB, sizeof( before ) );
+    memset( &after, 0xAB, sizeof( after ) );
+    memset( &r, 0, sizeof( r ) );
+
+    got = fx_root_fixed_load( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
+
+    snprintf( why, sizeof( why ), "C FORM HEADER: %s returns a refusal, never a record", name );
+    fixed_check( got < 0, why );
+
+    snprintf( why, sizeof( why ), "C FORM HEADER: %s names the reason and nothing else", name );
+    fixed_check( r.refused == want_refused && r.malformed == want_malformed &&
+                 ( want_refused ? r.reason == want_reason : 1 ), why );
+
+    snprintf( why, sizeof( why ), "C FORM HEADER: %s claims no success", name );
+    fixed_check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
+                 r.duplicate == 0 && r.layout_hash == 0, why );
+
+    snprintf( why, sizeof( why ), "C FORM HEADER: %s writes no destination byte", name );
+    fixed_check( memcmp( &before, &after, sizeof( before ) ) == 0, why );
+}
+
+/* THE FIVE FORM-HEADER PROBES (docs/FIXED-FORM-ALGORITHM.md §5.3 step 1 and 2,
+   docs/SPEC-TABLES.md §3.4). THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH:
+   a committed form-1 file is TEN bytes and a form-2 batch THREE, and a reader
+   that measured first would answer malformed for every real file of the two
+   forms it is supposed to name. Cases 2 and 3 take exactly those lengths and
+   never a full-length buffer. */
+void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
+{
+    static const uint8_t form1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    static const uint8_t form2[3] = { 2, 1, 0 };
+    static const uint8_t none[1] = { 0 };
+    static uint8_t form0[8192];
+    static uint8_t reserved[8192];
+
+    /* ZERO BYTES IS THE RESIDUE: malformed, with no byte to earn a name. */
+    form_case( "zero bytes", none, 0, 0, SCHEMA_TABLE_NO_REFUSAL, 1 );
+
+    /* THE TEN- AND THREE-BYTE FILES of the two forms this reader NAMES: the
+       form byte earns its name before the twenty-byte minimum is measured. */
+    form_case( "a ten-byte form-1 file", form1, 10, 1, SCHEMA_TABLE_PREVIOUS_FORM, 0 );
+    form_case( "a three-byte form-2 batch", form2, 3, 1, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, 0 );
+
+    /* FORM BYTE 0 IS NOT A FORM AND IS STILL NOT MALFORMED: the registry is
+       ORDERED, so the otherwise valid fixture with its form byte zeroed is
+       named by where its byte sits — newer_form. */
+    memcpy( form0, data, (size_t) bytes );
+    form0[0] = 0;
+    form_case( "form byte 0 on a valid tail", form0, bytes, 1, SCHEMA_TABLE_NEWER_FORM, 0 );
+
+    /* THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):
+       the valid form-3 fixture with reserved byte 3 set nonzero is malformed. */
+    memcpy( reserved, data, (size_t) bytes );
+    reserved[3] = 1;
+    form_case( "reserved byte 3 nonzero", reserved, bytes, 0, SCHEMA_TABLE_NO_REFUSAL, 1 );
 }
 
 /* CASE 3: A NEWER WRITER — a field this reader cannot name, stepped over by
