@@ -1,4 +1,4 @@
-// THE TWO WIRE BYTES A FIXED READER MUST NORMALISE
+// THE TWO WIRE BYTES A FIXED READER NORMALISES
 // (docs/FIXED-FORM-ALGORITHM.md §4.5's last row; "Reference fixes pending" fix 2).
 //
 // A fixed record is a positional image and the read loop moves bytes. Two of
@@ -7,26 +7,17 @@
 // as `byte != 0`, normalised to the language's own true — "0x02 is not a bool
 // a reader stores verbatim".
 //
-// The reference lands both with a plain one-byte `copy`, so a forged `0x02`
-// becomes a C++ `bool` holding `2`. That is not a wrong value in some abstract
-// sense: READING such an object is UNDEFINED BEHAVIOUR, and the sanitized twin
-// of this binary says so by name —
+// THE FIX IS IN. The C++ reference lands both through kTableFixedBool, so a
+// forged 0x02 becomes a bool holding 1 (true) and never 2, on the identity plan
+// and on a plan compiled from another writer's layout. The cases below are
+// ordinary checks now; each was the RED witness that waited on fix 2, and each
+// names the neighbouring bytes it pre-poisons so a normalise that spilled would
+// be caught.
 //
-//   runtime error: load of value 2, which is not a valid value for type 'bool'
-//
-// so the defect is reachable from a LAWFUL schema and ONE hostile byte, on the
-// IDENTITY plan, with no refusal and no counter moved. The file is the reader's
-// untrusted input; a peer does not have to be honest about this byte.
-//
-// HOW THIS FILE READS THE BYTE. It must not trip the sanitizer itself, or the
-// test would be the crash rather than the assertion, so it never loads the
-// `bool` — it `memcpy`s the member's byte out and compares the INTEGER. That is
-// the whole of the trick, and it is why this case can sit inside the sanitized
-// target and still report.
-//
-// RED, BY NAME. Both cases assert the RULING (`1`), so they are RED on the
-// reference today and they name the fix they wait on; a red that starts passing
-// is a FAILURE, because the fix has landed and the case belongs in check().
+// HOW THIS FILE READS THE BYTE. It `memcpy`s the member's byte out and compares
+// the INTEGER, so the fixture never LOADS a bool whose value would be UB. That
+// is the whole of the trick, and it is how the case could sit inside the
+// sanitized target and still report.
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -37,18 +28,10 @@
 namespace {
 
 int failures = 0;
-int reds = 0;
 
 void check( bool ok, const char * what )
 {
     if ( !ok ) { std::printf( "FAIL: %s\n", what ); failures++; }
-}
-
-void red( bool ok, const char * what, const char * waits_on )
-{
-    if ( !ok ) { std::printf( "RED [%s]: %s\n", waits_on, what ); reds++; return; }
-    std::printf( "FAIL: RED case PASSES now, promote it to check(): %s (was waiting on %s)\n", what, waits_on );
-    failures++;
 }
 
 // The one byte of a member, read as an INTEGER. Never a load of the member.
@@ -86,17 +69,20 @@ void bool_byte_two_case()
 
     hb::Hostile back;
     hb::HostileReset( back );
+    // PRE-POISON the neighbours: the bytes beside the normalised one must land
+    // from the wire, neither keeping this stain nor taking the bool op's byte.
+    back.link.n = 0x5A5A5A5A;
+    back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
     const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed,
            "bool_byte_two: a bool byte of 2 is a CONTENT fact, so the record still reads" );
-    check( back.trail == 0xBBBBBBBBu, "bool_byte_two: trail brackets the byte exactly" );
-    red( byte_of( &back.flag ) == 1,
-         "bool_byte_two: a bool byte of 2 lands as the language's own true (1), never verbatim (§4.5) — "
-         "reading the member as it stands is UB: 'load of value 2, which is not a valid value for type bool'",
-         "Reference fixes pending, fix 2" );
+    check( byte_of( &back.flag ) == 1,
+           "bool_byte_two: a bool byte of 2 lands as the language's own true (1), never verbatim (§4.5)" );
+    check( back.link_present && back.link.n == 11 && back.trail == 0xBBBBBBBBu,
+           "bool_byte_two: the fields beside the normalised byte land from the wire, untouched" );
 }
 
 // a present byte of 2
@@ -108,18 +94,18 @@ void present_byte_two_case()
 
     hb::Hostile back;
     hb::HostileReset( back );
+    back.link.n = 0x5A5A5A5A;
+    back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
     const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed,
            "present_byte_two: a present byte of 2 is a CONTENT fact, so the record still reads" );
+    check( byte_of( &back.link_present ) == 1,
+           "present_byte_two: an optional's present byte of 2 lands as the language's own true (1) (§4.5)" );
     check( back.trail == 0xBBBBBBBBu && back.link.n == 11,
-           "present_byte_two: the payload and the trail stand" );
-    red( byte_of( &back.link_present ) == 1,
-         "present_byte_two: an optional's present byte of 2 lands as the language's own true (1) (§4.5) — "
-         "reading the member as it stands is UB: 'load of value 2, which is not a valid value for type bool'",
-         "Reference fixes pending, fix 2" );
+           "present_byte_two: the payload and the trail beside it land from the wire, untouched" );
 }
 
 } // namespace
@@ -128,10 +114,6 @@ int main()
 {
     bool_byte_two_case();
     present_byte_two_case();
-    if ( reds > 0 )
-    {
-        std::printf( "fixed form hostile bytes (C++): %d RED, each naming the fix it waits on\n", reds );
-    }
     if ( failures > 0 )
     {
         std::printf( "fixed form hostile bytes (C++): %d FAILED\n", failures );
