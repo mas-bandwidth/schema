@@ -39,16 +39,4 @@ tables-go-block-fill-refuser	./internal/codegen/gotable	TestBlockFillRefuser rea
 tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlockFillRefuserNegativeControl reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.02s under a plain go test)
 tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
 
-# --- REMOVE THESE FIVE WHEN #987 MERGES (they are that PR's lines, not this one's)
-#
-# PR #987 (rowan/fix-negative-controls, G1+G2) arms exactly these five lines
-# with SCHEMA_SLOW=1 plus its own SKIP/PASS scan. This branch shares its base
-# (fixed-table-form at b7ab66a8) and does not touch another lane's files. When
-# #987 lands, these five entries go stale and THE SCAN WILL FAIL UNTIL THEY ARE
-# DELETED — which is the handshake: whoever merges deletes them, and the scan
-# says so by name.
-tables-ref-ordinal-negative-control	./compiler	armed by PR #987 (rowan/fix-negative-controls); delete this line when #987 merges
-tables-ref-ordinal-shared-negative-control	./compiler	armed by PR #987 (rowan/fix-negative-controls); delete this line when #987 merges
-tables-c-ref-ordinal-negative-control	./compiler	armed by PR #987 (rowan/fix-negative-controls); delete this line when #987 merges
-tables-c-message-negative-control	./compiler	armed by PR #987 (rowan/fix-negative-controls); delete this line when #987 merges
-tables-c-retain-negative-control	./compiler	armed by PR #987 (rowan/fix-negative-controls); delete this line when #987 merges
+
