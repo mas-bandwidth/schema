@@ -884,11 +884,11 @@ one sitting and invents no new corpus:
   the same statistic in every leg. A fixed-form row is never compared against a
   packet row it was not measured beside (§1.6: a different sitting is a
   different `corpus_id`).
-- **A conservative shortcut that is always valid:** a round trip is never
-  cheaper than the read inside it, so a fixed-form read slower than the packet
-  leg's whole `round_trip` row is already a FAIL, with nothing derived and
-  nothing divided. It is sufficient and never necessary — the verdict is
-  against the packet READ.
+- **A diagnostic, never a verdict.** A fixed-form read slower than the packet
+  leg's whole `round_trip` row is a prompt to run the actual comparator, not a
+  FAIL: a fused read/write workload's elapsed time is not an unconditional bound
+  on the separately measured packet read. Only measured packet-read evidence
+  decides this gate.
 - **§5.3 rule 2 refuses this division on `bytes_per_op` and is right to**: a
   packet record and a fixed record are different lengths by construction. Only
   the paired driver may print it, the same exception §1.9 already grants it for
@@ -929,8 +929,8 @@ read by hand. It fails nothing on its own.
 
 #### The per-leg reporting shape
 
-Nine legs, three numbers and two verdicts each, one line per leg, on the paired
-driver's board beside `NINE.md`:
+Nine legs, three measured rows and four numbers each, two verdicts each, one
+line per leg, on the paired driver's board beside `NINE.md`:
 
 ```
 # fixed form: the identity lane, the plan lane, and the same leg's packet wire
@@ -993,8 +993,8 @@ names:
 15. `bench/tables/elixir/runner.exs` — the same mode, and its input manifest gains the two files.
 16. `bench/tables/run.sh` — pass the mode through; a leg that does not answer it is named, not dropped.
 17. `bench/tools/ledger.go` — admit `(table, bench_fixed_read|bench_plan_read, read)` as rows of their own; `lockedLegs` untouched.
-18. `bench/paired/main.go` — `-mode plan-read`: one invocation, the two rows, the distinct `corpus_id`, the `bytes_per_op` caption §5.3 rule 2 requires.
-19. `bench/paired/nine.sh` — the board above, three numbers per leg, the C++ anchor line, named refusals for absent legs.
+18. `bench/paired/main.go` — `-mode plan-read`: one invocation, the three measured rows, the distinct `corpus_id`, the `bytes_per_op` caption §5.3 rule 2 requires.
+19. `bench/paired/nine.sh` — the board above, three measured rows and four numbers per leg, the C++ anchor line, named refusals for absent legs.
 20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (Glenn, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
 21. `bench/tables/<lang>/` + `bench/paired/main.go` — the PACKET leg's `bench_mixed_read`: the packet wire's read timed ALONE in the plan-read invocation, measured, the gate's comparand, never folded into the published `gen` / `bench_mixed` series.
 

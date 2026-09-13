@@ -405,7 +405,7 @@ iterations, as the shipped call reuses it, but every iteration pays its own
 prefill. A runner that hoists the prefill out of the loop has measured the
 identity lane twice.
 
-**The board: nine legs, three numbers each.**
+**The board: nine legs, three measured rows and four numbers each.**
 
 ```
 # fixed form: the identity lane, the plan lane, and the same leg's packet wire
@@ -428,9 +428,10 @@ than the SAME LEG's packet-wire read of the SAME logical record, or that leg
 FAILS. The rows compared are `bench_fixed_read` and `bench_plan_read` against
 `bench_mixed_read`, all measured, all out of the one invocation above, so no
 derived number is ever divided and no row is compared against one it was not
-measured beside. A conservative shortcut is always available: a round trip is
-never cheaper than the read inside it, so a fixed-form read slower than the
-packet leg's whole `round_trip` is already a FAIL. §5.3 rule 2 refuses this
+measured beside. A fixed-form read slower than the packet leg's whole
+`round_trip` is a diagnostic prompt to run the actual comparator, never a
+FAIL: the fused round trip's elapsed time does not bound the separately
+measured packet read. §5.3 rule 2 refuses this
 division on `bytes_per_op` — the two wires' records are different lengths by
 construction — so this driver is the only tool that prints it and its caption
 names the size on each wire. The checks mismatch is labelled on the board and
