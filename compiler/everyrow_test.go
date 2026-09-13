@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -251,177 +252,141 @@ func probePattern(row string) *regexp.Regexp {
 //   - `<row>_case();` in a helper the runner never invokes is not a probe;
 //   - `{row: "<row>"}` in a table nobody ranges over is not a probe.
 //
-// So the two languages are read as STRUCTURE: a Go harness is parsed and the
-// entry must be an element of a package-level table the code ranges over, and
-// the C++ reference's call must sit inside the runner (`main` or a `<...>_cases`
-// function). Comments and strings fall out of the parsers/scanners — never a
-// blind strip of `//`, `/*` and `#`, which would corrupt string literals.
-func rowRegistered(text, row string) bool {
-	if goRowRegistered(text, row) {
-		return true
-	}
-	return cppRowRegistered(text, row)
-}
+// So the two languages are read as STRUCTURE: a Go harness is parsed into AST
+// and the entry must be an element of a table the Test* function ranges over
+// (resolving the range identifier to its declaration, so shadowed locals or
+// un-iterated tables never earn credit). The C++ reference's call must sit
+// inside a verified runner invoked from fixedform_main.cpp's main
+// (versioning_numbers_cases and versioning_lists_cases) or inside main itself.
+// String and character literals and comments are masked so strings never match
+// as calls, and function declarations are distinguished from call statements.
 
-// goRowRegistered parses a Go harness (every non-C++ leg is one) and reports
-// whether `row` is an entry of a package-level table the code ranges over. A
-// composite literal inside a function, or in a package var nothing iterates, is
-// not a probe.
-func goRowRegistered(text, row string) bool {
-	file, err := parser.ParseFile(token.NewFileSet(), "harness.go", text, 0)
-	if err != nil {
-		return false
-	}
-	ranged := map[string]bool{}
-	ast.Inspect(file, func(n ast.Node) bool {
-		if rs, ok := n.(*ast.RangeStmt); ok {
-			if id, ok := rs.X.(*ast.Ident); ok {
-				ranged[id.Name] = true
+var (
+	cppRunnersOnce   sync.Once
+	cachedCppRunners map[string]bool
+)
+
+func getVerifiedCppRunners() map[string]bool {
+	cppRunnersOnce.Do(func() {
+		cachedCppRunners = map[string]bool{"main": true}
+		paths := []string{
+			"../test/tables/fixedform_main.cpp",
+			"test/tables/fixedform_main.cpp",
+		}
+		var mainData []byte
+		for _, p := range paths {
+			if d, err := os.ReadFile(p); err == nil {
+				mainData = d
+				break
 			}
 		}
-		return true
+		if len(mainData) > 0 {
+			masked := maskCppCommentsAndLiterals(string(mainData))
+			fns := extractCppFunctions(masked)
+			if mainBody, ok := fns["main"]; ok {
+				for _, runner := range []string{"versioning_numbers_cases", "versioning_lists_cases"} {
+					if isCppCall(mainBody, runner) {
+						cachedCppRunners[runner] = true
+					}
+				}
+			}
+		}
 	})
+	return cachedCppRunners
+}
+
+// parseHarnessRegisteredRows parses a harness file once and extracts all
+// registered row names.
+func parseHarnessRegisteredRows(text string) map[string]bool {
+	fset := token.NewFileSet()
+	if file, err := parser.ParseFile(fset, "harness.go", text, 0); err == nil {
+		return extractGoRegisteredRows(file)
+	}
+	return extractCppRegisteredRows(text)
+}
+
+func rowRegistered(text, row string) bool {
+	return parseHarnessRegisteredRows(text)[row]
+}
+
+// extractGoRegisteredRows extracts rows registered in a Go harness. A row must
+// be an entry of a table that an executed Test* function ranges over, resolving
+// the ranged identifier to its definition.
+func extractGoRegisteredRows(file *ast.File) map[string]bool {
+	rows := make(map[string]bool)
 	for _, decl := range file.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.VAR {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || !strings.HasPrefix(fn.Name.Name, "Test") || fn.Body == nil {
 			continue
 		}
-		for _, spec := range gd.Specs {
-			vs, ok := spec.(*ast.ValueSpec)
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			rs, ok := n.(*ast.RangeStmt)
 			if !ok {
-				continue
-			}
-			for i, name := range vs.Names {
-				if !ranged[name.Name] || i >= len(vs.Values) {
-					continue
-				}
-				cl, ok := vs.Values[i].(*ast.CompositeLit)
-				if !ok {
-					continue
-				}
-				if compositeRegistersRow(cl, row) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// compositeRegistersRow reports whether a table literal carries a
-// `{row: "<row>"}` (Go/C/Rust/Dart/JS/C#/Elixir) or `{name: "<row>"}` (Java)
-// entry.
-func compositeRegistersRow(cl *ast.CompositeLit, row string) bool {
-	for _, elt := range cl.Elts {
-		switch e := elt.(type) {
-		case *ast.CompositeLit:
-			// A `[]versionRow{{row: "..."}}` element is its own (type-elided)
-			// composite literal; the key/value pair lives one level in.
-			if compositeRegistersRow(e, row) {
 				return true
 			}
-		case *ast.KeyValueExpr:
-			if keyValueRegistersRow(e, row) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// keyValueRegistersRow reports whether one `row: "<row>"` / `name: "<row>"` pair
-// names the row.
-func keyValueRegistersRow(kv *ast.KeyValueExpr, row string) bool {
-	key, ok := kv.Key.(*ast.Ident)
-	if !ok || (key.Name != "row" && key.Name != "name") {
-		return false
-	}
-	lit, ok := kv.Value.(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return false
-	}
-	s, err := strconv.Unquote(lit.Value)
-	return err == nil && s == row
-}
-
-// cppRunnerCalls matches one row's C++ registration call in the two spellings
-// the reference uses, `<row>_case();` and `<row>_hostile_case();`. It is only
-// ever run over a runner body, so a declaration or an uncalled helper is not a
-// probe.
-func cppRunnerCalls(row string) *regexp.Regexp {
-	return regexp.MustCompile(`(?:^|[^A-Za-z0-9_])` + regexp.QuoteMeta(row) + `(?:_hostile)?_case\s*\(\s*\)\s*;`)
-}
-
-// cppRunnerBodies returns the body of every C++ function the build invokes:
-// `main` itself and the reference's per-file `<...>_cases` runners (the two
-// `test/tables/versioning_*.cpp` files each expose one, and
-// `test/tables/fixedform_main.cpp` calls both). A `_case` function is not a
-// runner and an uncalled helper is neither.
-func cppRunnerBodies(text string) []string {
-	code := stripCppComments(text)
-	header := regexp.MustCompile(`(?m)([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{`)
-	var bodies []string
-	for _, m := range header.FindAllStringSubmatchIndex(code, -1) {
-		name := code[m[2]:m[3]]
-		if name != "main" && !strings.HasSuffix(name, "_cases") {
-			continue
-		}
-		open := strings.IndexByte(code[m[0]:], '{')
-		if open < 0 {
-			continue
-		}
-		if start := m[0] + open; start < len(code) {
-			if end := matchingBrace(code, start); end > start {
-				bodies = append(bodies, code[start:end+1])
-			}
-		}
-	}
-	return bodies
-}
-
-func cppRowRegistered(text, row string) bool {
-	pat := cppRunnerCalls(row)
-	for _, body := range cppRunnerBodies(text) {
-		if pat.MatchString(body) {
+			collectRowsFromExpr(rs.X, rows)
 			return true
-		}
+		})
 	}
-	return false
+	return rows
 }
 
-// matchingBrace returns the index of the `}` matching the `{` at open, skipping
-// string and character literals so a brace inside one cannot miscount.
-func matchingBrace(code string, open int) int {
-	depth := 0
-	for i := open; i < len(code); i++ {
-		switch code[i] {
-		case '"', '\'':
-			quote := code[i]
-			for i++; i < len(code); i++ {
-				if code[i] == '\\' {
-					i++
-					continue
-				}
-				if code[i] == quote {
+func collectRowsFromExpr(expr ast.Expr, rows map[string]bool) {
+	switch e := expr.(type) {
+	case *ast.CompositeLit:
+		collectRowsFromComposite(e, rows)
+	case *ast.Ident:
+		if e.Obj == nil {
+			return
+		}
+		switch decl := e.Obj.Decl.(type) {
+		case *ast.ValueSpec:
+			idx := -1
+			for i, name := range decl.Names {
+				if name.Name == e.Name {
+					idx = i
 					break
 				}
 			}
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return i
+			if idx >= 0 && idx < len(decl.Values) {
+				collectRowsFromExpr(decl.Values[idx], rows)
+			}
+		case *ast.AssignStmt:
+			idx := -1
+			for i, lhs := range decl.Lhs {
+				if id, ok := lhs.(*ast.Ident); ok && id.Name == e.Name {
+					idx = i
+					break
+				}
+			}
+			if idx >= 0 && idx < len(decl.Rhs) {
+				collectRowsFromExpr(decl.Rhs[idx], rows)
 			}
 		}
 	}
-	return -1
 }
 
-// stripCppComments blanks the C++ harness's comment text, leaving string and
-// character literals intact. It is string-aware on purpose: deleting `//`, `/*`
-// and `#` blindly (as the old helper did) corrupts a literal that contains one.
-func stripCppComments(text string) string {
+func collectRowsFromComposite(cl *ast.CompositeLit, rows map[string]bool) {
+	for _, elt := range cl.Elts {
+		switch e := elt.(type) {
+		case *ast.CompositeLit:
+			collectRowsFromComposite(e, rows)
+		case *ast.KeyValueExpr:
+			if key, ok := e.Key.(*ast.Ident); ok && (key.Name == "row" || key.Name == "name") {
+				if lit, ok := e.Value.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					if s, err := strconv.Unquote(lit.Value); err == nil {
+						rows[s] = true
+					}
+				}
+			}
+		}
+	}
+}
+
+// maskCppCommentsAndLiterals replaces comment contents, string literals, and
+// character literals with spaces (preserving newlines), ensuring comments and
+// literal text cannot be misidentified as code.
+func maskCppCommentsAndLiterals(text string) string {
 	out := []byte(text)
 	for i := 0; i < len(out); {
 		switch {
@@ -443,21 +408,126 @@ func stripCppComments(text string) string {
 			}
 		case out[i] == '"' || out[i] == '\'':
 			quote := out[i]
-			for i++; i < len(out); i++ {
+			out[i] = ' '
+			i++
+			for i < len(out) {
 				if out[i] == '\\' {
-					i++
+					out[i] = ' '
+					if i+1 < len(out) {
+						if out[i+1] != '\n' {
+							out[i+1] = ' '
+						}
+						i += 2
+					} else {
+						i++
+					}
 					continue
 				}
 				if out[i] == quote {
+					out[i] = ' '
 					i++
 					break
 				}
+				if out[i] != '\n' {
+					out[i] = ' '
+				}
+				i++
 			}
 		default:
 			i++
 		}
 	}
 	return string(out)
+}
+
+func matchingBrace(code string, open int) int {
+	depth := 0
+	for i := open; i < len(code); i++ {
+		switch code[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// extractCppFunctions extracts function definitions from masked C++ source text.
+func extractCppFunctions(maskedCode string) map[string]string {
+	fnHeader := regexp.MustCompile(`(?m)(?:^|[;{}])\s*(?:[A-Za-z0-9_:<*&>\s]+?\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{`)
+	fns := make(map[string]string)
+	for _, m := range fnHeader.FindAllStringSubmatchIndex(maskedCode, -1) {
+		name := maskedCode[m[2]:m[3]]
+		open := strings.IndexByte(maskedCode[m[0]:], '{')
+		if open < 0 {
+			continue
+		}
+		start := m[0] + open
+		end := matchingBrace(maskedCode, start)
+		if end > start {
+			fns[name] = maskedCode[start : end+1]
+		}
+	}
+	return fns
+}
+
+// isCppCall reports whether `name()` is called inside body, excluding type declarations.
+func isCppCall(body, name string) bool {
+	re := regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(?:([A-Za-z0-9_]+)\s+)?` + regexp.QuoteMeta(name) + `\s*\(\s*\)`)
+	matches := re.FindAllStringSubmatch(body, -1)
+	for _, m := range matches {
+		prefix := strings.TrimSpace(m[1])
+		switch prefix {
+		case "void", "int", "bool", "char", "auto", "float", "double", "unsigned", "signed", "struct", "extern":
+			continue // declaration
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+var rowCallPat = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(?:([A-Za-z0-9_]+)\s+)?([A-Za-z0-9_]+?)(?:_hostile)?_case\s*\(\s*\)\s*;`)
+
+// extractCppRegisteredRows extracts rows registered in a C++ harness. Calls
+// must be within verified runners invoked from main or within main itself.
+func extractCppRegisteredRows(text string) map[string]bool {
+	verified := getVerifiedCppRunners()
+	masked := maskCppCommentsAndLiterals(text)
+	fns := extractCppFunctions(masked)
+
+	allowed := make(map[string]bool)
+	for k, v := range verified {
+		allowed[k] = v
+	}
+	if mainBody, ok := fns["main"]; ok {
+		for fnName := range fns {
+			if isCppCall(mainBody, fnName) {
+				allowed[fnName] = true
+			}
+		}
+	}
+
+	rows := make(map[string]bool)
+	for fnName, body := range fns {
+		if !allowed[fnName] {
+			continue
+		}
+		matches := rowCallPat.FindAllStringSubmatch(body, -1)
+		for _, m := range matches {
+			prefix := strings.TrimSpace(m[1])
+			if prefix != "" {
+				continue // declaration
+			}
+			rowName := m[2]
+			rows[rowName] = true
+		}
+	}
+	return rows
 }
 
 // probed reads every leg's harness once and reports, per leg, the set of rows
@@ -481,11 +551,8 @@ func probed(t *testing.T, rows []docRow) map[string]map[string]bool {
 				}
 				continue // no harness yet: every row is owed
 			}
-			text := string(data)
-			for _, r := range rows {
-				if rowRegistered(text, r.name) {
-					out[leg][r.name] = true
-				}
+			for rName := range parseHarnessRegisteredRows(string(data)) {
+				out[leg][rName] = true
 			}
 		}
 	}
@@ -881,6 +948,16 @@ func TestEveryRowProbedNeedsARegistration(t *testing.T) {
 		{"an uncalled helper", "field_append", "void unused() { field_append_case(); }"},
 		{"an un-iterated table", "field_append",
 			"package probe\nfunc unused() { _ = []struct{ row string }{{row: \"field_append\"}} }"},
+		{"Go table ranged only in unused()", "field_append",
+			"package probe\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc unused(){for _,r:=range rows{_=r}}"},
+		{"Go shadowed rows inside TestX", "field_append",
+			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){rows:=[]int{1}; for _,r:=range rows{_=r}}"},
+		{"C++ string literal in main", "field_append",
+			`int main(){const char *s="field_append_case();";return 0;}`},
+		{"C++ arbitrary unused_cases", "field_append",
+			`int unused_cases(){field_append_case();return 0;}`},
+		{"C++ local declaration in main", "field_append",
+			`int main(){void field_append_case();return 0;}`},
 	}
 	for _, c := range negatives {
 		if rowRegistered(c.text, c.name) {
@@ -896,8 +973,14 @@ func TestEveryRowProbedNeedsARegistration(t *testing.T) {
 			"package probe\nvar rows = []struct{ row string }{{row: \"fixed_I_grow_element\"}}\nfunc TestX(t *testing.T) { for _, r := range rows { _ = r } }\n"},
 		{"a ranged Java-style table", "fixed_I_grow_element",
 			"package probe\nvar rows = []struct{ name string }{{name: \"fixed_I_grow_element\"}}\nfunc TestX(t *testing.T) { for _, r := range rows { _ = r } }\n"},
-		{"a C++ runner call", "fixed_I_grow_element",
-			"int versioning_cases() {\n    fixed_I_grow_element_case();\n    return 0;\n}\nvoid fixed_I_grow_element_case() {}\n"},
+		{"a C++ main call", "fixed_I_grow_element",
+			"int main() {\n    fixed_I_grow_element_case();\n    return 0;\n}\n"},
+		{"a C++ runner call from main", "fixed_I_grow_element",
+			"int main() {\n    versioning_cases();\n    return 0;\n}\nint versioning_cases() {\n    fixed_I_grow_element_case();\n    return 0;\n}\n"},
+		{"a C++ verified numbers runner call", "fixed_I_grow_element",
+			"int versioning_numbers_cases() {\n    fixed_I_grow_element_case();\n    return 0;\n}\n"},
+		{"a C++ verified lists runner call", "field_append",
+			"int versioning_lists_cases() {\n    field_append_case();\n    return 0;\n}\n"},
 	}
 	for _, c := range positives {
 		if !rowRegistered(c.text, c.name) {
@@ -920,6 +1003,40 @@ func TestEveryRowProbedNeedsARegistration(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("leg %s registers field_append in %v, but rowRegistered does not see it", leg, versioningHarnesses[leg])
+		}
+	}
+}
+
+// TestStellaExecutionRoot verifies the five execution-root false positive cases
+// identified in the review of card 1022c.
+func TestStellaExecutionRoot(t *testing.T) {
+	negatives := []struct {
+		name, text string
+	}{
+		{
+			"Go package table ranged only in unused()",
+			"package probe\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc unused(){for _,r:=range rows{_=r}}",
+		},
+		{
+			"Go shadowed rows inside TestX",
+			"package probe\nimport \"testing\"\nvar rows=[]struct{row string}{{row:\"field_append\"}}\nfunc TestX(t *testing.T){rows:=[]int{1}; for _,r:=range rows{_=r}}",
+		},
+		{
+			"C++ string literal in main",
+			`int main(){const char *s="field_append_case();";return 0;}`,
+		},
+		{
+			"C++ arbitrary unused_cases",
+			`int unused_cases(){field_append_case();return 0;}`,
+		},
+		{
+			"C++ local declaration in main",
+			`int main(){void field_append_case();return 0;}`,
+		},
+	}
+	for _, c := range negatives {
+		if rowRegistered(c.text, "field_append") {
+			t.Errorf("rowRegistered returned true, want false for %s:\n%s", c.name, c.text)
 		}
 	}
 }
