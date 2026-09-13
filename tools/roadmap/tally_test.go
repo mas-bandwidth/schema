@@ -16,7 +16,7 @@ func isValidCell(cell string, inGenerated bool) bool {
 	if !inGenerated {
 		return cell == "✅" || cell == "❌"
 	}
-	return cell == "" || generatedCellRx.MatchString(cell)
+	return generatedCellRx.MatchString(cell)
 }
 
 func checkRoadmapText(raw string) error {
@@ -105,7 +105,7 @@ func TestGeneratedCellGrammar(t *testing.T) {
 		"✅ 100%", "100%", "50%", "0%",
 		"?", "? (≥ 0%)", "? (≥ 50%)", "? (≥ 14%)",
 		"1/1", "3/3 (100%)", "≥ 1/3", "≥ 1/3 (≥ 33%)", "≥ 0/23 (≥ 0%)",
-		"✅", "❌", "",
+		"✅", "❌",
 	}
 	for _, c := range validGenerated {
 		if !isValidCell(c, true) {
@@ -113,7 +113,7 @@ func TestGeneratedCellGrammar(t *testing.T) {
 		}
 	}
 
-	invalidGenerated := []string{"foo", "unknown", "progress", "?unknown?"}
+	invalidGenerated := []string{"", "foo", "unknown", "progress", "?unknown?"}
 	for _, c := range invalidGenerated {
 		if isValidCell(c, true) {
 			t.Errorf("expected %q to be invalid inside generated block", c)
