@@ -290,6 +290,14 @@ jobs:
         run: go mod tidy -diff
       - name: go vet
         run: go vet ./...
+      # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
+      # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
+      # test exits 0 — so a make target running a bare `go test` on such a
+      # package goes GREEN HAVING RUN NOTHING. Fourteen did. This scan fails any
+      # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
+      # because the regression it catches is somebody adding the fifteenth.
+      - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
+        run: make slow-gate-scan
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
       # tree — this one included: every `uses:` names a full commit SHA with the
       # tag in a trailing comment, nothing runs @latest, and every csproj

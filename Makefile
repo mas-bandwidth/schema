@@ -4816,8 +4816,13 @@ tables-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/ref-ordinal-nc/log; exit 1; \
 	fi
@@ -4846,8 +4851,13 @@ tables-ref-ordinal-shared-negative-control:
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-shared-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the shared-id driver did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-shared-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
 		cat build/ref-ordinal-shared-nc/log; exit 1; \
 	fi
@@ -6138,3 +6148,51 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
 include make/checks/reference-review.mk
+
+# ---------------------------------------------------------------------------
+# THE SLOW-GATE SCAN (schema#988, G5) ---------------------------------------
+#
+# internal/slowtest.Gate SKIPS a test that shells out to a foreign toolchain or
+# reads the C++ reference corpus unless SCHEMA_SLOW=1 or SCHEMA_REQUIRE_CORPUS
+# is set — AND A SKIPPED TEST MAKES `go test` EXIT 0. So a make target that runs
+# a bare `go test` on such a package GOES GREEN HAVING RUN NOTHING. Fourteen
+# positive gate targets did, for a day, while internal/slowtest's own package
+# comment said every make gate set the variable. THE COMMENT WAS THE BUG: a
+# claim about this Makefile belongs in a check.
+#
+# slow-gate-scan IS THAT CHECK and it costs milliseconds, so it rides `test`:
+# every recipe line in Makefile, make/*.mk and make/checks/*.mk that runs
+# `go test` on a package holding gated tests must set SCHEMA_SLOW=1, set
+# SCHEMA_REQUIRE_CORPUS, or go through test/slowgate/proof. Anything else fails
+# BY NAME. A line deliberately left as it is must be named in
+# make/slow-gate-exceptions.txt WITH A REASON, and an entry there that matches
+# no line any more fails too — a stale excuse is how the next bare `go test`
+# slips in behind a line nobody reads.
+.PHONY: slow-gate-scan
+slow-gate-scan:
+	go run ./tools/slowgatescan
+
+test: slow-gate-scan
+
+# AND THE ACCOUNTING, test by test rather than target by target: a plain
+# `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
+# point) is read back and every test that skipped at the gate is placed in one
+# of three buckets — run by a make target that sets the variable, run only by
+# ci-full.yml's SCHEMA_SLOW=1 steps, or run by NOBODY. The third bucket is the
+# failure. The whole table lands in build/slowgate/coverage.tsv so the
+# accounting is READ, not believed.
+#
+# It costs one plain `go test ./...` — 27 s with a warm build cache, 2 m 35 s
+# cold, measured on the Studio — so it is NOT on `test`: it rides ci-full.yml
+# beside the two steps it credits. Nothing is MOVED to nightly by this; the scan
+# above, which is the gate, is on `test`.
+#
+# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
+# which tests the gate skipped, and it must still read that when some unrelated
+# test is red. The red itself is `test`'s to report, not this target's, and the
+# accounting below exits nonzero on its own finding.
+.PHONY: slow-gate-coverage
+slow-gate-coverage:
+	@mkdir -p build/slowgate
+	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
