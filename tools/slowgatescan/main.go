@@ -44,6 +44,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -261,7 +262,7 @@ func workflowSteps(root string) ([]ciStep, error) {
 func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	// These settings can affect package resolution or test execution outside the
 	// command itself. This scanner does not resolve inherited workflow/job state.
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
 		switch key {
 		case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT":
@@ -495,16 +496,16 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 	cmd = strings.TrimSpace(cmd)
 	// Only this known assignment is supported. GOFLAGS and arbitrary assignments
 	// can change whether tests execute, so they must never be silently skipped.
-	if strings.HasPrefix(cmd, "env ") {
-		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, "env "))
+	if after, ok := strings.CutPrefix(cmd, "env "); ok {
+		cmd = strings.TrimSpace(after)
 	}
 	fields := strings.Fields(cmd)
 	if len(fields) == 0 {
 		return nil, false, false
 	}
 	slow := stepEnvSlow
-	if strings.HasPrefix(fields[0], "SCHEMA_SLOW=") {
-		value := strings.TrimPrefix(fields[0], "SCHEMA_SLOW=")
+	if after, ok := strings.CutPrefix(fields[0], "SCHEMA_SLOW="); ok {
+		value := after
 		switch value {
 		case "1", "'1'", `"1"`:
 			slow = true
@@ -586,8 +587,8 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 			if pattern == "./..." || pattern == pkg {
 				return true
 			}
-			if strings.HasSuffix(pattern, "/...") {
-				base := strings.TrimSuffix(pattern, "/...")
+			if before, ok := strings.CutSuffix(pattern, "/..."); ok {
+				base := before
 				if pkg == base || strings.HasPrefix(pkg, base+"/") {
 					return true
 				}
@@ -631,8 +632,8 @@ func recipeMatchesPkg(r recipe, pkg string) bool {
 		if rp == "./..." {
 			return true
 		}
-		if strings.HasSuffix(rp, "/...") {
-			base := strings.TrimSuffix(rp, "/...")
+		if before, ok := strings.CutSuffix(rp, "/..."); ok {
+			base := before
 			if pkg == base || strings.HasPrefix(pkg, base+"/") {
 				return true
 			}
@@ -683,10 +684,8 @@ func matchException(exceptions []exception, r recipe) int {
 		if e.target != r.target {
 			continue
 		}
-		for _, p := range r.packages {
-			if p == e.pkg {
-				return i
-			}
+		if slices.Contains(r.packages, e.pkg) {
+			return i
 		}
 	}
 	return -1
@@ -807,7 +806,7 @@ func packagesOf(cmd string, gated map[string]bool) []string {
 	}
 	var found []string
 	seen := map[string]bool{}
-	for _, tok := range strings.Fields(cmd) {
+	for tok := range strings.FieldsSeq(cmd) {
 		tok = strings.Trim(tok, "\"'")
 		spelled := ""
 		switch {
@@ -882,8 +881,8 @@ func normalizePkg(pkg string) string {
 		return ""
 	}
 	for _, mod := range []string{"github.com/mas-bandwidth/schema/v2/", "github.com/mas-bandwidth/schema/"} {
-		if strings.HasPrefix(pkg, mod) {
-			pkg = strings.TrimPrefix(pkg, mod)
+		if after, ok := strings.CutPrefix(pkg, mod); ok {
+			pkg = after
 			break
 		}
 	}
