@@ -26,7 +26,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	// Remove the remainder of the first comment line and YAML indentation.
 	_, selector, _ = strings.Cut(selector, "\n")
 	var script strings.Builder
-	for _, line := range strings.Split(selector, "\n") {
+	for line := range strings.SplitSeq(selector, "\n") {
 		script.WriteString(strings.TrimPrefix(line, "          "))
 		script.WriteByte('\n')
 	}
