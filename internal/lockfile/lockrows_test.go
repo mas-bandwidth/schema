@@ -790,7 +790,7 @@ func TestLockLineageRecordIsTheEntrysLayout(t *testing.T) {
 		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
 			continue
 		}
-		for _, was := range strings.Fields(line) {
+		for was := range strings.FieldsSeq(line) {
 			if strings.HasPrefix(was, "record=") {
 				lines[i] = strings.Replace(line, was, "record=7", 1)
 				edited = true
@@ -828,7 +828,7 @@ func wireOf(t *testing.T, lines []string) string {
 		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
 			continue
 		}
-		for _, tok := range strings.Fields(line) {
+		for tok := range strings.FieldsSeq(line) {
 			if after, ok := strings.CutPrefix(tok, "wire=0x"); ok {
 				return after
 			}
@@ -863,7 +863,7 @@ func TestLockLineageRecordBelowOneByte(t *testing.T) {
 			continue
 		}
 		edit := line
-		for _, was := range strings.Fields(line) {
+		for was := range strings.FieldsSeq(line) {
 			if strings.HasPrefix(was, "record=") {
 				edit = strings.Replace(edit, was, "record=0", 1)
 				edited = true
