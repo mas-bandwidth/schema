@@ -1542,14 +1542,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cpp/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cpp/R13"))
     (:id "plan-selection/cpp"
       :type :work-set
       :children ("cpp/F10"
@@ -1614,14 +1613,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "c/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("c/R13"))
     (:id "plan-selection/c"
       :type :work-set
       :children ("c/F10"
@@ -1686,14 +1684,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cs/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cs/R13"))
     (:id "plan-selection/cs"
       :type :work-set
       :children ("cs/F10"
@@ -1758,14 +1755,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "go/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("go/R13"))
     (:id "plan-selection/go"
       :type :work-set
       :children ("go/F10"
@@ -1830,14 +1826,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "rust/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("rust/R13"))
     (:id "plan-selection/rust"
       :type :work-set
       :children ("rust/F10"
@@ -1902,14 +1897,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "java/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("java/R13"))
     (:id "plan-selection/java"
       :type :work-set
       :children ("java/F10"
@@ -1974,14 +1968,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "js/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("js/R13"))
     (:id "plan-selection/js"
       :type :work-set
       :children ("js/F10"
@@ -2046,14 +2039,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "dart/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("dart/R13"))
     (:id "plan-selection/dart"
       :type :work-set
       :children ("dart/F10"
@@ -2118,14 +2110,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "elixir/W15"
-      :type :task
+      :type :work-set
       :title "REFUSE is total"
-      :state :unknown
-      :evidence ()
       :audit-item "W15"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("elixir/R13"))
     (:id "plan-selection/elixir"
       :type :work-set
       :children ("elixir/F10"
@@ -2163,14 +2154,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cpp/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cpp/R25"))
     (:id "cpp/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2235,14 +2225,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "c/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("c/R25"))
     (:id "c/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2307,14 +2296,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cs/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cs/R25"))
     (:id "cs/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2379,14 +2367,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "go/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("go/R25"))
     (:id "go/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2451,14 +2438,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "rust/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("rust/R25"))
     (:id "rust/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2523,14 +2509,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "java/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("java/R25"))
     (:id "java/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2595,14 +2580,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "js/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("js/R25"))
     (:id "js/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2667,14 +2651,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "dart/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("dart/R25"))
     (:id "dart/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -2739,14 +2722,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "elixir/F11"
-      :type :task
+      :type :work-set
       :title "plan_too_large"
-      :state :unknown
-      :evidence ()
       :audit-item "F11"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("elixir/R25"))
     (:id "elixir/R25"
       :type :task
       :title "plan_too_large when the plan does not fit the caller's capacity"
@@ -3189,14 +3171,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cpp/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "implemented-asserted"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cpp/R14"))
     (:id "fixed-closure/cpp"
       :type :work-set
       :children ("cpp/R6"
@@ -3231,14 +3212,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "c/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("c/R14"))
     (:id "fixed-closure/c"
       :type :work-set
       :children ("c/R6"
@@ -3273,14 +3253,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "cs/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("cs/R14"))
     (:id "fixed-closure/cs"
       :type :work-set
       :children ("cs/R6"
@@ -3315,14 +3294,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "go/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("go/R14"))
     (:id "fixed-closure/go"
       :type :work-set
       :children ("go/R6"
@@ -3357,14 +3335,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "rust/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("rust/R14"))
     (:id "fixed-closure/rust"
       :type :work-set
       :children ("rust/R6"
@@ -3399,14 +3376,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "java/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "weak"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("java/R14"))
     (:id "fixed-closure/java"
       :type :work-set
       :children ("java/R6"
@@ -3441,14 +3417,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "js/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("js/R14"))
     (:id "fixed-closure/js"
       :type :work-set
       :children ("js/R6"
@@ -3483,14 +3458,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "dart/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("dart/R14"))
     (:id "fixed-closure/dart"
       :type :work-set
       :children ("dart/R6"
@@ -3525,14 +3499,13 @@
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
       :note "Historical report at b7ab66a8; current completion has not been reconciled.")
     (:id "elixir/W10"
-      :type :task
+      :type :work-set
       :title "entry bounded by writer's record size"
-      :state :unknown
-      :evidence ()
       :audit-item "W10"
       :reported-state "owed"
       :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854"
-      :note "Historical report at b7ab66a8; current completion has not been reconciled.")
+      :note "Same obligation retained under the original audit ID; shared leaf, not duplicate work."
+      :children ("elixir/R14"))
     (:id "fixed-closure/elixir"
       :type :work-set
       :children ("elixir/R6"
