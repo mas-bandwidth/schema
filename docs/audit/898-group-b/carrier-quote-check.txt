@@ -1,0 +1,6 @@
+go: rows=86 exact=56 within±3=4 paraphrase-or-unlocated=2 nofile=0 no-evidence-path=24
+    E4 R21
+cs: rows=86 exact=34 within±3=21 paraphrase-or-unlocated=11 nofile=0 no-evidence-path=20
+    E3 E5 E9 C5 C8 C14 W5 W6 W13 W14 R5
+java: rows=86 exact=43 within±3=26 paraphrase-or-unlocated=1 nofile=0 no-evidence-path=16
+    F8
