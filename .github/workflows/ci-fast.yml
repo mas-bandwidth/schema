@@ -206,6 +206,14 @@ jobs:
           # package path `go test` takes, plus the codegen package of each
           # selected leg — a make include or a generated tree changing is a
           # reason to run that leg's harness even with no .go file in the diff.
+          #
+          # ONLY A PACKAGE OF THE MAIN MODULE, the set `./...` names. A
+          # generated tree (generated/go, generated/bench/go, test/go) is its
+          # own module, and a testdata/ directory is invisible to the go tool;
+          # a .go file there is the leg gate's business, and naming its
+          # directory here fails by name — #958 and #960, go-test-touched:
+          #   main module (github.com/mas-bandwidth/schema/v2) does not
+          #   contain package .../generated/go
           if [ "$broad" = yes ]; then
             packages="./..."
           else
@@ -213,6 +221,8 @@ jobs:
             for f in $files; do
               case "$f" in
                 *.go) d=$(dirname "$f"); [ -d "$d" ] || continue
+                      case "/$d/" in */testdata/*) continue ;; esac
+                      m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; m=$(dirname "$m"); done
                       case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac ;;
               esac
             done
