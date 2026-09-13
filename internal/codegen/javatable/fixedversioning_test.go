@@ -81,6 +81,7 @@ var versioningRows = []versioningRow{
 	{name: "bytes_grow"},
 	{name: "constant_grow"},
 	{name: "fixed_I_grow", widen: true},
+	{name: "fixed_I_grow_element", widen: true},
 	{name: "float_widen", widen: true},
 	{name: "int_widen", widen: true},
 	{name: "optional_add"},

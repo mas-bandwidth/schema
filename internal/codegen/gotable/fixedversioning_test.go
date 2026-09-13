@@ -80,6 +80,19 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+	if n != 1 {
+		t.Fatalf("the fixed_I_grow_element file carries one record, not %d", n)
+	}
+	want := []int32{-1, -128, 0, 112}
+	for k := range want {
+		if int32(back[0].Vals[k]) != want[k] {
+			t.Fatalf("slot %d did not land its raw scaled value: %+v", k, back[0])
+		}
+	}
+	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
+		t.Fatalf("the element row moved a neighbour: %+v", back[0])
+	}`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `

@@ -96,6 +96,14 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+  const want = <int>[-1, -128, 0, 112];
+  for (var i = 0; i < 4; i++) {
+    check(values[0].vals[i] == want[i],
+        'slot $i is not the raw scaled value the writer packed: ${values[0].vals[i]}');
+  }
+  check(values[0].lead == 0xAAAAAAAA && values[0].trail == 0xBBBBBBBB,
+      'fixed_I_grow_element moved a neighbour: ${values[0].lead} ${values[0].trail}');`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
