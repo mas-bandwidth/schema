@@ -274,14 +274,37 @@ func parseLineage(line, table string) (LineageEntry, error) {
 	// is honestly ZERO, and a flat `record < 1` would fail the build over a lock
 	// that is right. The range is for the entry too short to carry an entry 0,
 	// where there is nothing to compare against and `record=0` used to ride in.
-	if len(e.Layout) >= lineageEntry0SizeAt+4 {
+	//
+	// AND THE LAYOUT'S OWN SHAPE IS NOT THIS LADDER'S BUSINESS. [ValidateLayout]
+	// (internal/lockfile/layout.go) owns §1.1's seven rules and names each one —
+	// `layout_malformed`, `layout_count_mismatch`, `layout_kind_unknown`,
+	// `layout_record_too_large` and the rest. Entry 0's size is only an ANSWER
+	// to compare `record=` against on a layout those rules ALREADY ACCEPT: over
+	// a layout they refuse, entry 0's number is itself untrusted, and the
+	// refusal the reader needs is the rule's own name, not a disagreement
+	// between two halves of a line that is broken further up. So this ladder
+	// runs BELOW the rules and never over them — a layout the rules refuse is
+	// named by the layout checks at the foot of this function and by
+	// diffLineage's own ValidateLayout pass. The RANGE rung is the exception and
+	// stands FIRST: a layout too short to carry an entry 0 has no number to be
+	// untrusted, so `record=0` is still refused there by name.
+	switch {
+	case len(e.Layout) < lineageEntry0SizeAt+4:
+		// Nothing to compare against: the RANGE rung, and the only place
+		// `record=0` ever rode in.
+		if e.Record < 1 {
+			return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout too short to carry an entry 0 — the record size IS the root entry's constant BODY length and is never less than one byte, so this entry is a LOCK BUG and the build fails here (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+				table, e.Wire, e.Record)
+		}
+	case ValidateLayout(e.Layout) != "":
+		// The layout carries an entry 0 but §1.1's rules refuse the layout
+		// itself, so entry 0's number is untrusted and the refusal belongs to
+		// the rule by its own name, downstream.
+	default:
 		if root := int64(le32(e.Layout[lineageEntry0SizeAt:])); root != e.Record {
 			return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout whose entry 0 accounts for %d bytes — the record size IS the root entry's size, so the two halves of this line disagree (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
 				table, e.Wire, e.Record, root)
 		}
-	} else if e.Record < 1 {
-		return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout too short to carry an entry 0 — the record size IS the root entry's constant BODY length and is never less than one byte, so this entry is a LOCK BUG and the build fails here (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
-			table, e.Wire, e.Record)
 	}
 	if got := lineageWireHash(e.Layout, e.Digest); got != e.Wire {
 		return LineageEntry{}, fmt.Errorf("this lineage entry records wire=0x%016x over bytes that hash to 0x%016x — the wire hash IS the hash of the layout bytes and the definitions digest, so the two halves of this line disagree",

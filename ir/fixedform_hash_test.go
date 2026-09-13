@@ -272,6 +272,13 @@ func TestTableFixedDefinitionsDigestFloatBoundIsItsFloat64Bits(t *testing.T) {
 		'R',
 		0, 0, 0, 0, 0, 0, 0xd0, 0x3f, // 0.25
 		0, 0, 0, 0, 0, 0, 0xe0, 0x3f, // 0.5
+		// 'Q' rides beside every float range's 'R' — the RESOLUTION row, the
+		// step as an f64's bits. This field is not a compressed float, so the
+		// step is 0.0 and the row is eight zero bytes; the row is here all the
+		// same, because the digest's shape does not branch on whether a float
+		// happens to be compressed.
+		'Q',
+		0, 0, 0, 0, 0, 0, 0, 0, // resolution 0.0
 	}
 	if got := TableFixedDefinitionsDigest(st); !bytes.Equal(got, want) {
 		t.Fatalf("a float bound rides as its float64 bits: got %x, want %x", got, want)
