@@ -25,6 +25,23 @@
 (defparameter *start-marker* "<!-- nova-work:fixed-tables:start -->")
 (defparameter *end-marker* "<!-- nova-work:fixed-tables:end -->")
 
+;;; UTF-8 file I/O avoiding NUL padding or byte-vs-character length mismatches
+
+(defun read-file-to-string (pathname)
+  (with-open-file (in pathname :direction :input :element-type 'character :external-format :utf-8)
+    (let ((len (file-length in)))
+      (when (and len (> len *max-file-size*))
+        (error "File ~a exceeds maximum allowed size (~D bytes)" pathname *max-file-size*)))
+    (with-output-to-string (out)
+      (let ((buf (make-string 4096)))
+        (loop for n = (read-sequence buf in)
+              while (plusp n)
+              do (write-sequence buf out :end n))))))
+
+(defun write-string-to-file (pathname string)
+  (with-open-file (out pathname :direction :output :if-exists :supersede :if-does-not-exist :error :external-format :utf-8)
+    (write-string string out)))
+
 ;;; Restricted reader setup
 
 (defun make-restricted-readtable ()
@@ -59,18 +76,29 @@
   (let ((*readtable* (make-restricted-readtable))
         (*read-eval* nil))
     (with-input-from-string (s str)
-      (read s t nil))))
+      (let ((form (read s t nil)))
+        ;; Require exactly one top-level form; reject trailing garbage / multiple forms
+        (let ((next (read s nil :eof)))
+          (unless (eq next :eof)
+            (error "Trailing data or multiple top-level forms in restricted reader input")))
+        form))))
 
 (defun read-restricted-file (pathname)
-  (with-open-file (s pathname :direction :input :element-type :default)
-    (let ((len (file-length s)))
-      (when (and len (> len *max-file-size*))
-        (error "File ~a exceeds maximum allowed size (~D bytes)" pathname *max-file-size*)))
-    (let ((*readtable* (make-restricted-readtable))
-        (*read-eval* nil))
-      (read s t nil))))
+  (let ((content (read-file-to-string pathname)))
+    (read-restricted-from-string content)))
 
-;;; AST depth and structure checks
+;;; Plist and AST structural validation
+
+(defun validate-plist-no-duplicates (plist context)
+  (unless (and (listp plist) (evenp (length plist)))
+    (error "Malformed property list in ~a: ~s" context plist))
+  (let ((seen (make-hash-table :test 'eq)))
+    (loop for (key val) on plist by #'cddr do
+      (unless (keywordp key)
+        (error "Non-keyword property key ~s in ~a" key context))
+      (when (gethash key seen)
+        (error "Duplicate property key ~s in ~a" key context))
+      (setf (gethash key seen) t))))
 
 (defun check-ast-depth (form depth max-depth)
   (when (> depth max-depth)
@@ -80,39 +108,41 @@
     (check-ast-depth (cdr form) depth max-depth)))
 
 (defun validate-root (sexp)
-  (unless (and (listp sexp) (evenp (length sexp)))
-    (error "Root form must be a property list"))
+  (validate-plist-no-duplicates sexp "root form")
   (check-ast-depth sexp 0 *max-ast-depth*)
   (let ((schema (getf sexp :schema))
         (root (getf sexp :root))
         (nodes (getf sexp :nodes)))
     (unless (eql schema 1)
       (error "Unsupported schema version ~s (expected 1)" schema))
-    (unless (stringp root)
-      (error "Root property must be a string: ~s" root))
-    (unless (listp nodes)
-      (error "Nodes property must be a list: ~s" nodes))
+    (unless (and (stringp root) (> (length (string-trim " " root)) 0))
+      (error "Missing or invalid non-empty string :root in root form"))
+    (unless (and (listp nodes) nodes)
+      (error "Nodes property must be a non-empty list"))
     (when (> (length nodes) *max-node-count*)
       (error "Node count ~D exceeds maximum allowed limit ~D" (length nodes) *max-node-count*))
     nodes))
 
-(defun build-and-validate-node-table (nodes)
+(defun build-and-validate-node-table (nodes root-id)
   (let ((table (make-hash-table :test 'equal)))
-    ;; Step 1: ensure valid plists and unique IDs
+    ;; Step 1: Ensure valid plists with no duplicate keys, unique IDs, known types
     (dolist (node nodes)
-      (unless (and (listp node) (evenp (length node)))
-        (error "Node must be a property list: ~s" node))
+      (validate-plist-no-duplicates node "node")
       (let ((id (getf node :id))
             (type (getf node :type)))
-        (unless (and (stringp id) (> (length id) 0))
+        (unless (and (stringp id) (> (length (string-trim " " id)) 0))
           (error "Node missing valid non-empty string :id: ~s" node))
-        (unless (keywordp type)
-          (error "Node ~s missing keyword :type" id))
+        (unless (member type '(:task :work-set :roadmap))
+          (error "Unsupported work node type ~s in node ~s" type id))
         (when (gethash id table)
           (error "Duplicate node ID: ~s" id))
         (setf (gethash id table) node)))
 
-    ;; Step 2: structural validation per node type
+    ;; Verify declared root exists in the node table
+    (unless (gethash root-id table)
+      (error "Declared :root node ~s not found in :nodes" root-id))
+
+    ;; Step 2: Structural validation per node type
     (maphash
      (lambda (id node)
        (let ((type (getf node :type)))
@@ -127,10 +157,8 @@
                 (unless (gethash c table)
                   (error "Dangling reference: child ~s in work-set ~s does not exist" c id)))))
            (:task
-            (let ((title (getf node :title))
-                  (state (getf node :state))
+            (let ((state (getf node :state))
                   (evidence (getf node :evidence)))
-              (declare (ignore title))
               (unless (member state '(:unknown :todo :doing :done))
                 (error "Task ~s has invalid state: ~s" id state))
               (when (eq state :done)
@@ -190,7 +218,7 @@
                       (error "Duplicate cell coordinates (~s, ~s) in roadmap ~s" r c id))
                     (setf (gethash coord coords) t))))
 
-              ;; Check completeness (no missing cells)
+              ;; Completeness check
               (maphash
                (lambda (r-id ignore-r)
                  (declare (ignore ignore-r))
@@ -202,12 +230,20 @@
                   col-ids))
                row-ids)))
            (otherwise
-            ;; Tolerate other metadata node types
             nil))))
      table)
+
+    ;; Step 3: Validate entire graph for cycles (including disconnected subgraphs)
+    (let ((memo (make-hash-table :test 'equal)))
+      (maphash
+       (lambda (id node)
+         (declare (ignore node))
+         (collect-work-leaves id table memo nil 0))
+       table))
+
     table))
 
-;;; DFS folding with cycle detection and memoization
+;;; DFS folding with cycle detection, depth bound, and memoization
 
 (defun collect-work-leaves (work-node-id table memo visiting depth)
   (when (> depth *max-dfs-depth*)
@@ -239,8 +275,46 @@
                  (let ((sorted (sort accum #'string<)))
                    (setf (gethash work-node-id memo) sorted)
                    sorted)))
+              ((eq type :roadmap)
+               ;; Recursive roadmap support: traverse its cell work references
+               (let ((cells (getf node :cells))
+                     (accum nil))
+                 (unless cells
+                   (error "Empty roadmap: ~s" work-node-id))
+                 (dolist (cell cells)
+                   (let ((cell-work-id (third cell)))
+                     (let ((child-leaves (collect-work-leaves cell-work-id table memo (cons work-node-id visiting) (1+ depth))))
+                       (dolist (leaf child-leaves)
+                         (pushnew leaf accum :test 'equal)))))
+                 (let ((sorted (sort accum #'string<)))
+                   (setf (gethash work-node-id memo) sorted)
+                   sorted)))
               (t
                (error "Unsupported work node type ~s in node ~s" type work-node-id))))))))
+
+;;; Finding the targeted roadmap via reachability from :root
+
+(defun find-reachable-roadmap (root-id table &optional target-id)
+  (let ((visited (make-hash-table :test 'equal)))
+    (labels ((walk (node-id)
+               (when (gethash node-id visited)
+                 (return-from walk nil))
+               (setf (gethash node-id visited) t)
+               (let ((node (gethash node-id table)))
+                 (when node
+                   (let ((type (getf node :type)))
+                     (when (eq type :roadmap)
+                       (when (or (null target-id) (string= (getf node :id) target-id))
+                         (return-from find-reachable-roadmap node)))
+                     (case type
+                       (:work-set
+                        (dolist (c (getf node :children))
+                          (walk c)))
+                       (:roadmap
+                        (dolist (cell (getf node :cells))
+                          (walk (third cell))))))))))
+      (walk root-id)))
+  nil)
 
 ;;; Progress evaluation
 
@@ -268,8 +342,8 @@
           (otherwise (error "Unrecognized state ~s for task ~s" state id)))))
     (cond
       ((= done total)
-       ;; All required leaves done => green 100%
-       (make-cell-eval :text "100%" :is-green t :has-unknown nil))
+       ;; All required leaves done => visible green indicator + 100%
+       (make-cell-eval :text "✅ 100%" :is-green t :has-unknown nil))
       ((zerop unknown)
        ;; Known incomplete cell => done/total percentage
        (let ((pct (floor (* 100 done) total)))
@@ -323,7 +397,7 @@
         (format out " |~%")))
 
     ;; Summary row (Final language row)
-    ;; "Final language row = green cells/n features, not average cell percentages; if any unknown cell remains, clearly label as verified lower bound rather than an estimate."
+    ;; "output green/n AND computed percentage, labelled lower bound if unknown remains."
     (let ((n-features (length rows)))
       (format out "| complete")
       (dolist (col cols)
@@ -337,9 +411,10 @@
                 (incf green-count))
               (when (cell-eval-has-unknown eval)
                 (setf col-unknown t))))
-          (if col-unknown
-              (format out " | ≥ ~D/~D" green-count n-features)
-              (format out " | ~D/~D" green-count n-features))))
+          (let ((pct (floor (* 100 green-count) n-features)))
+            (if col-unknown
+                (format out " | ≥ ~D/~D (≥ ~D%)" green-count n-features pct)
+                (format out " | ~D/~D (~D%)" green-count n-features pct)))))
       (format out " |~%"))
 
     ;; Link to source data
@@ -360,7 +435,7 @@
            (cleaned-table (string-trim '(#\Newline #\Space #\Tab) table-string)))
       (format nil "~a~%~%~a~%~%~a" prefix cleaned-table suffix))))
 
-(defun render-to-roadmap-file (sexp-path roadmap-path check-only)
+(defun render-to-roadmap-file (sexp-path roadmap-path check-only &optional target-roadmap-id)
   (unless (probe-file sexp-path)
     (error "Source file not found: ~a" sexp-path))
   (unless (probe-file roadmap-path)
@@ -368,18 +443,18 @@
 
   (let* ((sexp (read-restricted-file sexp-path))
          (nodes (validate-root sexp))
-         (table (build-and-validate-node-table nodes))
-         ;; Find the roadmap node
-         (roadmap (find-if (lambda (n) (eq (getf n :type) :roadmap)) nodes)))
+         (root-id (getf sexp :root))
+         (table (build-and-validate-node-table nodes root-id))
+         ;; Select target roadmap reachable from :root (ignoring unreachable decoys)
+         (roadmap (find-reachable-roadmap root-id table (or target-roadmap-id "fixed-tables"))))
     (unless roadmap
-      (error "No :roadmap node found in source data"))
+      ;; Fallback: any reachable roadmap from :root
+      (setf roadmap (find-reachable-roadmap root-id table nil)))
+    (unless roadmap
+      (error "No :roadmap node reachable from root ~s" root-id))
 
     (let* ((table-string (render-table-string roadmap table sexp-path))
-           (existing-text
-             (with-open-file (in roadmap-path :direction :input :element-type :default)
-               (let ((seq (make-string (file-length in))))
-                 (read-sequence seq in)
-                 seq)))
+           (existing-text (read-file-to-string roadmap-path))
            (updated-text (update-roadmap-text existing-text table-string)))
       (if check-only
           (if (string= existing-text updated-text)
@@ -390,8 +465,7 @@
                 (format *error-output* "DRIFT: ~a differs from generated roadmap table from ~a~%" roadmap-path sexp-path)
                 1))
           (progn
-            (with-open-file (out roadmap-path :direction :output :if-exists :supersede :if-does-not-exist :error)
-              (write-string updated-text out))
+            (write-string-to-file roadmap-path updated-text)
             (format t "Rendered roadmap table from ~a to ~a~%" sexp-path roadmap-path)
             0)))))
 
@@ -415,14 +489,14 @@
       ;; Test 1: Shared leaf deduplication
       (test "shared leaf deduplication"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "ws-root" :nodes
                          ((:id "task-shared" :type :task :title "Shared" :state :done :evidence ("commit 123"))
                           (:id "task-unique" :type :task :title "Unique" :state :done :evidence ("commit 456"))
                           (:id "ws-1" :type :work-set :children ("task-shared" "task-unique"))
                           (:id "ws-2" :type :work-set :children ("task-shared"))
                           (:id "ws-root" :type :work-set :children ("ws-1" "ws-2")))))
                  (nodes (validate-root sexp))
-                 (table (build-and-validate-node-table nodes))
+                 (table (build-and-validate-node-table nodes "ws-root"))
                  (memo (make-hash-table :test 'equal))
                  (leaves (collect-work-leaves "ws-root" table memo nil 0)))
             (unless (= (length leaves) 2)
@@ -430,34 +504,32 @@
             (let ((eval (evaluate-cell leaves table)))
               (unless (cell-eval-is-green eval)
                 (error "Expected cell to be green"))
-              (unless (string= (cell-eval-text eval) "100%")
-                (error "Expected 100%, got ~s" (cell-eval-text eval)))))))
+              (unless (string= (cell-eval-text eval) "✅ 100%")
+                (error "Expected ✅ 100%, got ~s" (cell-eval-text eval)))))))
 
-      ;; Test 2: Cycle rejection
+      ;; Test 2: Cycle rejection (including disconnected cycle)
       (test "cycle rejection"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
-                         ((:id "ws-1" :type :work-set :children ("ws-2"))
-                          (:id "ws-2" :type :work-set :children ("ws-1")))))
+          (let* ((sexp '(:schema 1 :root "ws-a" :nodes
+                         ((:id "ws-a" :type :work-set :children ("ws-b"))
+                          (:id "ws-b" :type :work-set :children ("ws-a")))))
                  (nodes (validate-root sexp))
-                 (table (build-and-validate-node-table nodes))
-                 (memo (make-hash-table :test 'equal))
                  (caught nil))
             (handler-case
-                (collect-work-leaves "ws-1" table memo nil 0)
+                (build-and-validate-node-table nodes "ws-a")
               (error () (setf caught t)))
             (unless caught
-              (error "Failed to detect cycle between ws-1 and ws-2")))))
+              (error "Failed to detect cycle between ws-a and ws-b")))))
 
       ;; Test 3: Dangling reference rejection
       (test "dangling reference rejection"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "ws-1" :nodes
                          ((:id "ws-1" :type :work-set :children ("nonexistent")))))
                  (nodes (validate-root sexp))
                  (caught nil))
             (handler-case
-                (build-and-validate-node-table nodes)
+                (build-and-validate-node-table nodes "ws-1")
               (error () (setf caught t)))
             (unless caught
               (error "Failed to detect dangling reference")))))
@@ -465,7 +537,7 @@
       ;; Test 4: Missing matrix cell rejection
       (test "missing matrix cell rejection"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "rm" :nodes
                          ((:id "t1" :type :task :title "T1" :state :todo :evidence ())
                           (:id "rm" :type :roadmap :title "RM"
                            :rows (("r1" "Row 1") ("r2" "Row 2"))
@@ -474,7 +546,7 @@
                  (nodes (validate-root sexp))
                  (caught nil))
             (handler-case
-                (build-and-validate-node-table nodes)
+                (build-and-validate-node-table nodes "rm")
               (error () (setf caught t)))
             (unless caught
               (error "Failed to detect missing matrix cell")))))
@@ -482,12 +554,12 @@
       ;; Test 5: Empty checklist rejection
       (test "empty checklist rejection"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "ws-empty" :nodes
                          ((:id "ws-empty" :type :work-set :children ()))))
                  (nodes (validate-root sexp))
                  (caught nil))
             (handler-case
-                (build-and-validate-node-table nodes)
+                (build-and-validate-node-table nodes "ws-empty")
               (error () (setf caught t)))
             (unless caught
               (error "Failed to reject empty work-set")))))
@@ -495,12 +567,12 @@
       ;; Test 6: Done task without evidence rejection
       (test "done leaf without evidence rejection"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "t-done-no-ev" :nodes
                          ((:id "t-done-no-ev" :type :task :title "T" :state :done :evidence ()))))
                  (nodes (validate-root sexp))
                  (caught nil))
             (handler-case
-                (build-and-validate-node-table nodes)
+                (build-and-validate-node-table nodes "t-done-no-ev")
               (error () (setf caught t)))
             (unless caught
               (error "Failed to reject done task without evidence")))))
@@ -518,7 +590,7 @@
       ;; Test 8: Nested completion and partial-vs-green rollup
       (test "nested completion and partial-vs-green rollup"
         (lambda ()
-          (let* ((sexp '(:schema 1 :root "schema" :nodes
+          (let* ((sexp '(:schema 1 :root "roadmap-test" :nodes
                          ((:id "t-done-1" :type :task :title "T1" :state :done :evidence ("PR #1"))
                           (:id "t-done-2" :type :task :title "T2" :state :done :evidence ("PR #2"))
                           (:id "t-todo" :type :task :title "T3" :state :todo :evidence ())
@@ -539,22 +611,17 @@
                                    ("f3" "col-a" "ws-unknown")
                                    ("f3" "col-b" "ws-all-done"))))))
                  (nodes (validate-root sexp))
-                 (table (build-and-validate-node-table nodes))
+                 (table (build-and-validate-node-table nodes "roadmap-test"))
                  (rm (find-if (lambda (n) (eq (getf n :type) :roadmap)) nodes))
                  (rendered (render-table-string rm table "docs/roadmap.sexp")))
 
-            ;; Verify Lang A:
-            ;; f1: 100%
-            ;; f2: 50%
-            ;; f3: ? (≥ 50%)
-            ;; complete row: ≥ 1/3 (since col-a has an unknown cell)
-            (unless (search "| Feature 1 | 100% | 100% |" rendered)
+            (unless (search "| Feature 1 | ✅ 100% | ✅ 100% |" rendered)
               (error "Feature 1 row missing or incorrect: ~s" rendered))
-            (unless (search "| Feature 2 | 50% | 100% |" rendered)
+            (unless (search "| Feature 2 | 50% | ✅ 100% |" rendered)
               (error "Feature 2 row missing or incorrect: ~s" rendered))
-            (unless (search "| Feature 3 | ? (≥ 50%) | 100% |" rendered)
+            (unless (search "| Feature 3 | ? (≥ 50%) | ✅ 100% |" rendered)
               (error "Feature 3 row missing or incorrect: ~s" rendered))
-            (unless (search "| complete | ≥ 1/3 | 3/3 |" rendered)
+            (unless (search "| complete | ≥ 1/3 (≥ 33%) | 3/3 (100%) |" rendered)
               (error "Complete row missing or incorrect: ~s" rendered))
             (unless (search "[Source data](docs/roadmap.sexp)" rendered)
               (error "Source data link missing: ~s" rendered)))))
@@ -573,47 +640,123 @@
             (unless (and caught-quote caught-backquote)
               (error "Failed to reject quote or backquote")))))
 
-      ;; Test 10: Marker update idempotence
-      (test "marker update idempotence"
+      ;; Test 10: Single top-level form requirement
+      (test "single top-level form requirement"
         (lambda ()
-          (let* ((template (format nil "Header~%~%<!-- nova-work:fixed-tables:start -->~%Old Table~%<!-- nova-work:fixed-tables:end -->~%~%Footer~%"))
-                 (table-content (format nil "| feature | c |~%|---|---|~%| f1 | 100% |~%| complete | 1/1 |~%~%[Source data](docs/roadmap.sexp)"))
-                 (res1 (update-roadmap-text template table-content))
-                 (res2 (update-roadmap-text res1 table-content)))
-            (unless (string= res1 res2)
-              (error "Marker update is not idempotent"))
-            (unless (search "Header" res1)
-              (error "Header lost"))
-            (unless (search "Footer" res1)
-              (error "Footer lost"))
-            (unless (search "| f1 | 100% |" res1)
-              (error "Table content missing")))))
+          (let ((caught nil))
+            (handler-case
+                (read-restricted-from-string "(:schema 1 :root \"s\" :nodes ()) (:extra form)")
+              (error () (setf caught t)))
+            (unless caught
+              (error "Failed to reject multiple top-level forms")))))
 
-      ;; Test 11: Disk fixture files in tools/roadmap/testdata/
+      ;; Test 11: Duplicate plist key rejection
+      (test "duplicate plist key rejection"
+        (lambda ()
+          (let ((caught nil))
+            (handler-case
+                (validate-plist-no-duplicates '(:schema 1 :root "s" :root "s2") "test")
+              (error () (setf caught t)))
+            (unless caught
+              (error "Failed to reject duplicate plist key")))))
+
+      ;; Test 12: Missing :root property rejection
+      (test "missing :root property rejection"
+        (lambda ()
+          (let ((caught nil))
+            (handler-case
+                (validate-root '(:schema 1 :nodes ()))
+              (error () (setf caught t)))
+            (unless caught
+              (error "Failed to reject missing :root")))))
+
+      ;; Test 13: Unknown work node type rejection
+      (test "unknown work node type rejection"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "bad" :nodes
+                         ((:id "bad" :type :unsupported-type :title "Bad"))))
+                 (nodes (validate-root sexp))
+                 (caught nil))
+            (handler-case
+                (build-and-validate-node-table nodes "bad")
+              (error () (setf caught t)))
+            (unless caught
+              (error "Failed to reject unsupported work node type")))))
+
+      ;; Test 14: Reachable roadmap selection and decoy rejection
+      (test "reachable roadmap selection and decoy rejection"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "root-goal" :nodes
+                         ((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
+                          (:id "real-roadmap" :type :roadmap :title "Real"
+                           :rows (("r1" "Row 1")) :columns (("c1" "Col 1")) :cells (("r1" "c1" "t-done")))
+                          (:id "decoy-roadmap" :type :roadmap :title "Decoy"
+                           :rows (("r1" "Row 1")) :columns (("c1" "Col 1")) :cells (("r1" "c1" "t-done")))
+                          (:id "root-goal" :type :work-set :children ("real-roadmap")))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "root-goal"))
+                 (selected (find-reachable-roadmap "root-goal" table "real-roadmap"))
+                 (decoy-selected (find-reachable-roadmap "root-goal" table "decoy-roadmap")))
+            (unless (and selected (string= (getf selected :id) "real-roadmap"))
+              (error "Failed to find reachable roadmap 'real-roadmap'"))
+            (when decoy-selected
+              (error "Unreachable decoy roadmap was incorrectly selected")))))
+
+      ;; Test 15: Recursive roadmap inside work-set leaves
+      (test "recursive roadmap inside work-set leaves"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "nested-rm" :nodes
+                         ((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
+                          (:id "nested-rm" :type :roadmap :title "Nested"
+                           :rows (("r1" "R1")) :columns (("c1" "C1")) :cells (("r1" "c1" "t-done")))
+                          (:id "outer-ws" :type :work-set :children ("nested-rm")))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "nested-rm"))
+                 (memo (make-hash-table :test 'equal))
+                 (leaves (collect-work-leaves "outer-ws" table memo nil 0)))
+            (unless (equal leaves '("t-done"))
+              (error "Expected leaves ('t-done'), got ~s" leaves)))))
+
+      ;; Test 16: Two-write idempotence and zero NUL bytes on real UTF-8 content
+      (test "two-write idempotence and zero NUL bytes"
+        (lambda ()
+          (let* ((utf8-sample (format nil "# Heading with Unicode: ✅ ❌ 🚀~%~%<!-- nova-work:fixed-tables:start -->~%OLD~%<!-- nova-work:fixed-tables:end -->~%~%Trailing text with symbols: §1.1 — © 2026~%"))
+                 (table-content (format nil "| feature | c |~%|---|---|~%| f1 | ✅ 100% |~%| complete | 1/1 (100%) |~%~%[Source data](docs/roadmap.sexp)"))
+                 (pass1 (update-roadmap-text utf8-sample table-content))
+                 (pass2 (update-roadmap-text pass1 table-content)))
+            (unless (string= pass1 pass2)
+              (error "Marker update is not idempotent across multiple writes"))
+            (when (find (code-char 0) pass1)
+              (error "Rendered output contains NUL characters"))
+            (unless (search "§1.1 — © 2026" pass1)
+              (error "Trailing Unicode text corrupted or missing"))
+            (unless (search "✅ ❌ 🚀" pass1)
+              (error "Heading Unicode characters corrupted or missing")))))
+
+      ;; Test 17: Disk fixture suite from testdata/
       (test "disk fixtures in tools/roadmap/testdata/"
         (lambda ()
           ;; valid_rollup.sexp
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/valid_rollup.sexp"))
                  (nodes (validate-root sexp))
-                 (table (build-and-validate-node-table nodes))
-                 (rm (find-if (lambda (n) (eq (getf n :type) :roadmap)) nodes))
+                 (root-id (getf sexp :root))
+                 (table (build-and-validate-node-table nodes root-id))
+                 (rm (find-reachable-roadmap root-id table "roadmap-pilot"))
                  (rendered (render-table-string rm table "docs/roadmap.sexp")))
-            (unless (search "| Feature 1 | 100% | 100% |" rendered)
+            (unless (search "| Feature 1 | ✅ 100% | ✅ 100% |" rendered)
               (error "valid_rollup Feature 1 failed"))
-            (unless (search "| Feature 2 | 50% | 100% |" rendered)
+            (unless (search "| Feature 2 | 50% | ✅ 100% |" rendered)
               (error "valid_rollup Feature 2 failed"))
-            (unless (search "| Feature 3 | ? (≥ 50%) | 100% |" rendered)
+            (unless (search "| Feature 3 | ? (≥ 50%) | ✅ 100% |" rendered)
               (error "valid_rollup Feature 3 failed"))
-            (unless (search "| complete | ≥ 1/3 | 3/3 |" rendered)
+            (unless (search "| complete | ≥ 1/3 (≥ 33%) | 3/3 (100%) |" rendered)
               (error "valid_rollup complete row failed")))
 
           ;; cycle.sexp
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/cycle.sexp"))
                  (nodes (validate-root sexp))
-                 (table (build-and-validate-node-table nodes))
-                 (memo (make-hash-table :test 'equal))
                  (caught nil))
-            (handler-case (collect-work-leaves "ws-a" table memo nil 0)
+            (handler-case (build-and-validate-node-table nodes (getf sexp :root))
               (error () (setf caught t)))
             (unless caught (error "Failed to reject cycle.sexp")))
 
@@ -621,7 +764,7 @@
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/dangling_ref.sexp"))
                  (nodes (validate-root sexp))
                  (caught nil))
-            (handler-case (build-and-validate-node-table nodes)
+            (handler-case (build-and-validate-node-table nodes (getf sexp :root))
               (error () (setf caught t)))
             (unless caught (error "Failed to reject dangling_ref.sexp")))
 
@@ -629,7 +772,7 @@
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/missing_cell.sexp"))
                  (nodes (validate-root sexp))
                  (caught nil))
-            (handler-case (build-and-validate-node-table nodes)
+            (handler-case (build-and-validate-node-table nodes (getf sexp :root))
               (error () (setf caught t)))
             (unless caught (error "Failed to reject missing_cell.sexp")))
 
@@ -637,7 +780,7 @@
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/empty_checklist.sexp"))
                  (nodes (validate-root sexp))
                  (caught nil))
-            (handler-case (build-and-validate-node-table nodes)
+            (handler-case (build-and-validate-node-table nodes (getf sexp :root))
               (error () (setf caught t)))
             (unless caught (error "Failed to reject empty_checklist.sexp")))
 
@@ -645,7 +788,7 @@
           (let* ((sexp (read-restricted-file "tools/roadmap/testdata/done_no_evidence.sexp"))
                  (nodes (validate-root sexp))
                  (caught nil))
-            (handler-case (build-and-validate-node-table nodes)
+            (handler-case (build-and-validate-node-table nodes (getf sexp :root))
               (error () (setf caught t)))
             (unless caught (error "Failed to reject done_no_evidence.sexp")))
 

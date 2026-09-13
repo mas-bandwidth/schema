@@ -1,5 +1,5 @@
 (:schema 1
- :root "schema"
+ :root "roadmap-pilot"
  :nodes
  ((:id "task-shared"
    :type :task
@@ -36,7 +36,7 @@
   (:id "roadmap-pilot"
    :type :roadmap
    :title "Fixed tables"
-   :scope-revision "4a30359e"
+   :scope-revision 1
    :source-revision "8ea5ed8e"
    :rows (("f1" "Feature 1")
           ("f2" "Feature 2")
