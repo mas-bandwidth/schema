@@ -410,7 +410,7 @@
         (format out " |~%")))
 
     ;; Summary row (Final language row)
-    ;; "Output verified features / all features and an approximate whole percent."
+    ;; "Output the verified feature percentage; keep counts in the source work set."
     (let ((n-features (length rows)))
       (format out "| complete")
       (dolist (col cols)
@@ -422,7 +422,7 @@
               (when (cell-eval-is-green eval)
                 (incf green-count))))
           (let ((pct (floor (* 100 green-count) n-features)))
-            (format out " | ~D/~D (~D%)" green-count n-features pct))))
+            (format out " | ~D%" pct))))
       (format out " |~%"))
 
     ;; Link to source data
@@ -663,7 +663,7 @@
               (error "Feature 2 row missing or incorrect: ~s" rendered))
             (unless (search "| Feature 3 | ❌ | ✅ |" rendered)
               (error "Feature 3 row missing or incorrect: ~s" rendered))
-            (unless (search "| complete | 1/3 (33%) | 3/3 (100%) |" rendered)
+            (unless (search "| complete | 33% | 100% |" rendered)
               (error "Complete row missing or incorrect: ~s" rendered))
             (unless (search "[Source data](docs/roadmap.sexp)" rendered)
               (error "Source data link missing: ~s" rendered)))))
@@ -791,7 +791,7 @@
               (error "valid_rollup Feature 2 failed"))
             (unless (search "| Feature 3 | ❌ | ✅ |" rendered)
               (error "valid_rollup Feature 3 failed"))
-            (unless (search "| complete | 1/3 (33%) | 3/3 (100%) |" rendered)
+            (unless (search "| complete | 33% | 100% |" rendered)
               (error "valid_rollup complete row failed")))
 
           ;; cycle.sexp

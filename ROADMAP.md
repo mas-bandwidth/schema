@@ -123,7 +123,7 @@ gates. The total is a verified lower bound while audit reconciliation remains op
 | String, byte-buffer and flags defaults | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| complete | 13/57 (22%) | 10/57 (17%) | 16/57 (28%) | 3/57 (5%) | 15/57 (26%) | 15/57 (26%) | 22/57 (38%) | 24/57 (42%) | 11/57 (19%) |
+| complete | 22% | 17% | 28% | 5% | 26% | 26% | 38% | 42% | 19% |
 
 [Source data](docs/roadmap.sexp)
 
