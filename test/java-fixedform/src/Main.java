@@ -757,6 +757,82 @@ public final class Main {
     }
 
     // ------------------------------------------------------------------
+    // THE FIVE FORM-HEADER PROBES (schema#876, card 411411)
+    // ------------------------------------------------------------------
+    //
+    // docs/FIXED-FORM-ALGORITHM.md §5.3 step 1 and docs/SPEC-TABLES.md §3.4:
+    // THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH. A fixed reader given `1`
+    // answers previous_form, given `2` message_form_as_file, and given a byte
+    // no form defines newer_form — WHATEVER THE FILE'S LENGTH. The lengths
+    // below are the REAL lengths of the two forms this reader names: a
+    // committed form-1 file is TEN bytes and a form-2 batch THREE. A reader
+    // that measured first would answer malformed for both of the forms it is
+    // supposed to name. THE MODEL IS test/elixir-fixedform/main.exs.
+    //
+    // Each probe runs the reader on the EXACT input, asserts the report's two
+    // halves jointly (the named answer and nothing else claiming a read), and
+    // asserts the destination was NOT written: it is pre-poisoned first and
+    // compared unchanged after the refusal.
+    static void expectHeaderOutcome(byte[] file, tblfx1.TableFixed.Reason want,
+                                    boolean wantMalformed, String what) {
+        final tblfx1.FxRootFixed.Value v = new tblfx1.FxRootFixed.Value();
+        v.keep = 0x5EED;
+        v.nested.a = 0x1234;
+        v.nested.b = 0x4321;
+        final tblfx1.FxRootFixed.Value[] dest = { v };
+        final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
+        final int n = tblfx1.FxRootFixed.load(dest, 1, file,
+                tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
+        check(n < 0, what + ": no record was read (got n=" + n + ")");
+        if (wantMalformed) {
+            check(r.malformed && !r.refused && r.reason == tblfx1.TableFixed.Reason.none,
+                    what + ": the report is damage and names no reason (refused=" + r.refused
+                            + ", malformed=" + r.malformed + ", reason=" + r.reason + ")");
+        } else {
+            check(r.refused && r.reason == want && !r.malformed,
+                    what + ": the report is the name " + want + " and never damage (refused="
+                            + r.refused + ", malformed=" + r.malformed + ", reason=" + r.reason + ")");
+        }
+        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0
+                        && r.layoutHash == 0,
+                what + ": no counter claims a read happened");
+        check(v.keep == 0x5EED && v.nested.a == 0x1234 && v.nested.b == 0x4321,
+                what + ": the destination record was not written");
+    }
+
+    static void formHeaderProbes(String dir) {
+        final byte[] fx1 = slurp(dir, "fx1.bin");
+
+        // 1. empty-file: there is no first byte to earn a name, so the residue.
+        expectHeaderOutcome(new byte[0], null, true,
+                "empty-file: zero bytes is malformed, with no reason");
+
+        // 2. short-form1: a TEN-byte form-1 file, the form's own real length.
+        expectHeaderOutcome(new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+                tblfx1.TableFixed.Reason.previousForm, false,
+                "short-form1: a TEN-byte form-1 file is previous_form, not malformed");
+
+        // 3. short-form2: a THREE-byte form-2 batch, the form's own real length.
+        expectHeaderOutcome(new byte[] { 2, 1, 0 },
+                tblfx1.TableFixed.Reason.messageFormAsFile, false,
+                "short-form2: a THREE-byte form-2 batch is message_form_as_file, not malformed");
+
+        // 4. unassigned-form0: form byte 0 on the otherwise valid fixture tail.
+        //    No form defines 0, and the registry is ordered, so it is newer.
+        final byte[] form0 = fx1.clone();
+        form0[0] = 0;
+        expectHeaderOutcome(form0, tblfx1.TableFixed.Reason.newerForm, false,
+                "unassigned-form0: form byte 0 on a valid fixture tail is newer_form, not malformed");
+
+        // 5. reserved-byte3: a valid form-3 fixture with reserved byte 3 set
+        //    nonzero. The seven reserved bytes are REFUSED, not ignored.
+        final byte[] reserved3 = fx1.clone();
+        reserved3[3] = 1;
+        expectHeaderOutcome(reserved3, null, true,
+                "reserved-byte3: a nonzero reserved byte 3 is malformed");
+    }
+
+    // ------------------------------------------------------------------
     // THE LAYOUT'S OWN VALIDATION, ONE CASE PER NAMED RULE
     // ------------------------------------------------------------------
     //
@@ -969,6 +1045,7 @@ public final class Main {
         retired("layoutValidation",
                 "§1.1's seven rules: they are the LOCK's validation of what it records and the oracle's of the corpus (§5.6); under a KNOWN hash a malformation is one name, layout_malformed, which the harness's hash_known_bytes_differ row asserts");
         negativeControls(dir);
+        formHeaderProbes(dir);
         if (retirements != 0) {
             System.out.println(retirements + " case(s) retired by §5.6, each named above");
         }
