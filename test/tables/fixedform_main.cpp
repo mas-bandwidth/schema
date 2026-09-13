@@ -529,6 +529,116 @@ static void layout_validation()
 
 // ---------------------------------------------------------------------------
 
+// THE FORM BYTE IS READ BEFORE THE TWENTY-BYTE MINIMUM (docs/FIXED-FORM-ALGORITHM.md
+// §5.3 step 1, docs/SPEC-TABLES.md §3.4). The five cases below are the exact
+// inputs the Elixir model carries (test/elixir-fixedform/main.exs): a file with
+// no first byte, the REAL ten- and three-byte lengths of the two forms this
+// reader names, the unassigned byte `0` with an otherwise valid tail, and a
+// reserved byte set nonzero on a valid form-3 file. A short-form case asserted
+// on a FULL-LENGTH buffer would prove nothing about the order, so each uses the
+// exact input and nothing longer.
+//
+// EVERY CASE ALSO ASSERTS THE REPORT'S TWO ANSWERS JOINTLY and that REFUSE
+// writes nothing: the destination is poisoned first and compared unchanged.
+static void form_header_cases()
+{
+    tblfx1::FxRoot own;
+    tblfx1::FxRootReset( own );
+    std::vector<uint8_t> good( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &own, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
+           "form header: the valid form-3 fixture saves" );
+    std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+
+    // EMPTY FILE — zero bytes, so there is no first byte to earn a name: the
+    // residue, `malformed`, with nothing decoded and nothing written.
+    {
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.malformed && !r.refused, "empty-file: zero bytes is malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "empty-file: malformed moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "empty-file: malformed writes nothing to the destination" );
+    }
+
+    // SHORT-FORM1 — a committed form-1 file is TEN bytes: `previous_form`, the
+    // VARIABLE form being OLDER, and never `malformed`.
+    {
+        const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::previous_form && !r.malformed,
+               "short-form1: a ten-byte form-1 file is previous_form, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "short-form1: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "short-form1: the refusal writes nothing to the destination" );
+    }
+
+    // SHORT-FORM2 — a form-2 batch is THREE bytes: `message_form_as_file`, not
+    // `malformed`, and not `newer_form` either.
+    {
+        const uint8_t short2[3] = { 2, 1, 0 };
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::message_form_as_file && !r.malformed,
+               "short-form2: a three-byte form-2 batch is message_form_as_file, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "short-form2: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "short-form2: the refusal writes nothing to the destination" );
+    }
+
+    // UNASSIGNED-FORM0 — the byte `0` is one no form defines, and the registry
+    // is ORDERED, so it is named by where it sits and not by its value:
+    // `newer_form`, on an otherwise valid fixture tail.
+    {
+        std::vector<uint8_t> zero = good;
+        zero[0] = 0;
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::newer_form && !r.malformed,
+               "unassigned-form0: form byte 0 is newer_form, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "unassigned-form0: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "unassigned-form0: the refusal writes nothing to the destination" );
+    }
+
+    // RESERVED-BYTE3 — the seven bytes after the form byte are refused and not
+    // ignored, so that they stay spendable later. Byte 3 set nonzero on a valid
+    // form-3 file is `malformed`, with no name.
+    {
+        std::vector<uint8_t> reserved = good;
+        reserved[3] = 1;
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.malformed && !r.refused,
+               "reserved-byte3: a nonzero reserved byte 3 is malformed, not a named refusal" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "reserved-byte3: malformed moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "reserved-byte3: malformed writes nothing to the destination" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 static void fuzz_case()
 {
     // A LAYOUT IS A STRANGER'S BYTES, AND THAT IS THIS FORM'S WHOLE RISK. The
@@ -2409,6 +2519,7 @@ int main( int argc, char ** argv )
     guard_width_case();
     cache_case();
     layout_validation();
+    form_header_cases();
     record_bound_case();
     count_clamp_case();
     plan_partition_case();
