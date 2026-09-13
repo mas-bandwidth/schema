@@ -35,6 +35,7 @@ package lockfile
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -247,15 +248,19 @@ func parseLineage(line string) (LineageEntry, error) {
 	if !seen["wire"] || !seen["bytes"] || !seen["record"] {
 		return LineageEntry{}, fmt.Errorf("a lineage line is `lineage wire=0x... record=N bytes=<hex> [digest=<hex>] [retired] [reason=<text>]`")
 	}
-	if len(e.Layout) == 0 {
-		return LineageEntry{}, fmt.Errorf("a lineage entry carries the layout's bytes; a reader compares a file's layout to them and never parses its own copy (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b)")
-	}
 	// THE ENTRY IS ONE STATEMENT MADE TWICE, like the layout= hash over the
 	// field lines: the wire hash IS fnv1a64 over these bytes and this digest,
 	// so a hand that moves either without the other is caught here.
 	if got := lineageWireHash(e.Layout, e.Digest); got != e.Wire {
 		return LineageEntry{}, fmt.Errorf("this lineage entry records wire=0x%016x over bytes that hash to 0x%016x — the wire hash IS the hash of the layout bytes and the definitions digest, so the two halves of this line disagree",
 			e.Wire, got)
+	}
+	if len(e.Layout) < layoutHeaderBytes {
+		return LineageEntry{}, fmt.Errorf("lineage wire=0x%016x carries malformed layout: layout_malformed", e.Wire)
+	}
+	count := binary.LittleEndian.Uint32(e.Layout[0:4])
+	if count == 0 || int64(count)*int64(layoutEntryBytes)+int64(layoutHeaderBytes) != int64(len(e.Layout)) {
+		return LineageEntry{}, fmt.Errorf("lineage wire=0x%016x carries malformed layout: layout_count_mismatch", e.Wire)
 	}
 	return e, nil
 }
@@ -443,6 +448,16 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 	if len(lk.Lineage) == 0 {
 		return fmt.Errorf("fixed table %s: the lock carries no lineage for it — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7); write it with `schema lock` (docs/SPEC-TABLES.md §2.10)",
 			lk.Name)
+	}
+	if lv != nil && lv.FixedEmitted {
+		for _, e := range lk.Lineage {
+			if e.Record > ir.TableFixedRecordMaxBytes {
+				continue
+			}
+			if reason := ValidateLayout(e.Layout); reason != "" {
+				return fmt.Errorf("fixed table %s: lineage wire=0x%016x carries malformed layout: %s", lk.Name, e.Wire, reason)
+			}
+		}
 	}
 	if policy != Current || len(lv.Lineage) != 1 {
 		return nil
