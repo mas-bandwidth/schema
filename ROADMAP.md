@@ -49,8 +49,10 @@ Built, partial, unstarted and evidence-reconciliation states remain in the sourc
 data; this view shows completion only. Nothing is complete until its required
 acceptance is verified.
 
-Source assessments use `e3e88a46`, landed as `9785a76c`; later fixes receive credit
-when their evidence is reconciled. Detailed implementation findings, test
+Ordinary capability assessments use `e3e88a46`, landed as `9785a76c`. The 27 named-form
+refusal subtasks (three per language) are now verified at `e4b9147f` against their exact
+assertions and successful native CI jobs. Remaining framing obligations keep that
+feature row incomplete; later fixes receive credit as their evidence is reconciled. Detailed implementation findings, test
 references, remaining work and subtask counts live inside each cell in the source
 data.
 
