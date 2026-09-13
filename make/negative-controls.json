@@ -79,8 +79,8 @@
     },
     {
       "name": "base-conformance",
-      "when": "pull-request",
-      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row. SPLIT AGAIN 2026-09-13: 108 s on both runs 34781248523 and 34781410031, the only row that missed 90 s on either, so the reference-surface control runs as its own row. SPLIT ONCE MORE 2026-09-13: still 112 s on run 34781563559 after the reference-surface control left it, so the block-dump sabotage runs as its own row too.",
+      "when": "nightly",
+      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. SPLIT 2026-09-13 (the law): the group measured 160 s as one job on run 34780321366, against a 120 s rule, so base-conformance-go now runs as its own row. SPLIT AGAIN 2026-09-13: 108 s on both runs 34781248523 and 34781410031, the only row that missed 90 s on either, so the reference-surface control runs as its own row. SPLIT ONCE MORE 2026-09-13: still 112 s on run 34781563559 after the reference-surface control left it, so the block-dump sabotage runs as its own row too. MOVED NIGHTLY 2026-09-13: 108 s, 112 s and 112 s as a job across runs 34781248523, 34781563559 and 34781712797, and by then it was ONE control — the sabotaged C++ reference, which rebuilds that reference before the harness can ask it anything. A one-control row that still misses the rule is the rule's own nightly case. It runs whole in certify.yml under this group name.",
       "targets": [
         "conformance-negative-control"
       ]
