@@ -126,19 +126,21 @@ zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
 ```cpp
-enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Count = 3, Max = 3 };
+enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
 ```
 
 On the wire it costs `bitsRequired(variant count)` — 2 bits here, for four
 values. `None` is one of those values, so an enum whose declared variant
 count is a power of two pays one bit for it: four declared variants are five
-wire values and cost 3 bits, not 2. Declaring `enum E | max = 15` (its variant
-list on the next line) reserves
-headroom so you can
-add variants later without moving the field width.
+wire values and cost 3 bits, not 2. An enum takes no `| max`: the width
+follows the variant count, and adding a variant that crosses a power of two
+widens the field. Forward compatibility lives elsewhere: on the packet wire
+both peers share one schema, and on the table wire the field's width is
+recorded per version (the lock file's `width=` line, SPEC-TABLES.md), so a
+newer reader reads the older width.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
-schema expressions: the highest wire-legal value, and (headroom aside) the
+schema expressions: the highest wire-legal value, and the
 count of real variants under the sentinel-zero convention. All nine targets
 spell it their own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 `ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
@@ -148,15 +150,10 @@ carries it too, so ranges and asserts reference the enum directly instead of
 a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
-The `Count` member beside it is the **declared variant count**, `None`
-excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
-(Go), `ShipType::COUNT` (Rust), `ShipType.Count` (JS), `SHIP_TYPE_COUNT` (C),
-`ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
-`E.Count` in schema expressions. Without headroom `Count` and `Max` are the
-same number. Under `| max = 15` they are 3 and 15, and that difference is
-what the two words are for. `Count` is a reserved variant name too, and every
-union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
-on every union for the same reason.
+`Max` is the enum's only exported number. An enum has no `Count`: its
+declared variant count is `Max`, and one number gets one name. A flags
+declaration exports `Count` instead, since it has no `Max`. `Count` is not a
+reserved variant name on an enum, and not a reserved arm name on a union.
 
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
@@ -164,11 +161,10 @@ call either way.
 
 **Two loop rules, and they are the whole story:**
 
-- A loop over the **declared variants** runs from `1` to `Count` inclusive.
+- A loop over the **declared variants** runs from `1` to `Max` inclusive.
 - A loop over **every ordinal**, `None` included, runs from `0` to `Max`
   inclusive.
-- **Size storage and keyed arrays by `Max`** — the extent is what has to fit,
-  headroom and all.
+- **Size storage and keyed arrays by `Max`** — the extent is what has to fit.
 
 Every target also generates a **debug/log name function**, and the spelling is
 each target's own: `EnumName(value)` in C++ (overloaded per enum),
@@ -195,8 +191,8 @@ inline constexpr int64_t CapabilitiesCount = 3;
 ```
 
 The declared variant count is exported as `Count` and usable in schema
-expressions as `Capabilities.Count` — the same word an enum carries, meaning
-the same thing. Flags have no `.Max` — the variants are
+expressions as `Capabilities.Count`; an enum's count is its `Max` and it
+carries no `Count`. Flags have no `.Max` — the variants are
 independent bits, not a range with a top; the compiler refuses `.Max` on a
 flags type and names `.Count` instead.
 
@@ -247,11 +243,11 @@ type Collider
 **Every union has an implicit `None = 0`** — the empty union, in band, so a
 default-constructed union carries "no shape" without a has-flag. The
 compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
-declared order, then `Count` and `Max`), and the wire is the tag in minimal
+declared order, then `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
 
 ```cpp
-enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Count = 4, Max = 4 };
+enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
 
 struct ColliderShape
 {
@@ -790,14 +786,11 @@ That covers ranges, counts past an array bound, string lengths past their
 maximum, enum values outside the declared range, and reads that run past the
 end of the buffer.
 
-One precision worth having: an enum read is bounded by the enum's declared
-**max**, not by its variant count. For a plain `enum E { A, B, C }` those are
-the same thing and a non-variant cannot survive a read. But `enum E | max = 15`
-(variants `{ A, B }` on the next line) deliberately reserves headroom so
-variants can be added later without
-moving the field width — and a read of that enum accepts anything in `[0, 15]`.
-That is the point of the headroom, but it means a value you have not defined
-yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all nine languages, because
+One precision worth having: an enum read is bounded by the enum's variant
+count, not by the field's width. For `enum E { A, B, C, D }` the wire range
+is `[0, 4]`, `None` included, in 3 bits; 5, 6 and 7 fit the width and are
+refused. A value you have not named cannot
+survive a read, so a `switch` over an enum needs no default arm for one. The same VALIDATION rules hold in all nine languages, because
 the same compiler wrote all nine — the buffer-slack contract above is the one
 thing that differs per language.
 
@@ -1855,8 +1848,8 @@ Only the table wire keys the slots.
 
 **And a positional array whose bound comes from an enum is REFUSED in a table
 body and a union arm, by name**, with `[E]T` named as the fix. The refusal
-follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it, at any depth of
+follows where the bound comes from and not how it is spelled, so `[E.Max]T`
+and `[N]T` under a `const N = E.Max` all take it, at any depth of
 constant arithmetic. The diagnostic names the constant where the bound reaches
 the enum through one, and an arm's names the arm and the table that reaches
 the union.
@@ -1872,8 +1865,8 @@ open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
 today.*
 
 A key enum counts as part of the table closure: it rides by variant name, so
-`| max` headroom and colliding variant names are refused for it too, with the
-diagnostic naming the field that keys on it.
+colliding variant names are refused for it too, with the diagnostic naming
+the field that keys on it.
 
 **On the TABLE wire the two spellings are different encodings**, and changing
 a table field from one to the other is a wire break, not a refactor: the keyed

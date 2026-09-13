@@ -679,7 +679,7 @@ If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
                                                                  // as variants first)
 
 IntExpr     = integer expression over literals, const names, and enum max
-              references ( ident "." "Max" | ident "." "Count" ):
+              references ( ident "." "Max" on an enum | ident "." "Count" on a flags declaration ):
               "+" "-" "*" "/" "%", unary "-", parentheses.
 FloatExpr   = float expression over float literals, int literals and const names:
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
@@ -756,25 +756,23 @@ FloatExpr   = float expression over float literals, int literals and const names
   makes a typed constant** — `const MaxBounds uint64 = 12000` — which pins
   the exported type in every target.
 - **Enum max references:** **`E.Max`** in any integer expression names enum
-  `E`'s max — the derived count, or the widened `| max = K` — the same number
+  `E`'s max — the derived variant count — the same number
   the enum's wire range and storage derive from. The count of wire values is
   `E.Max + 1` by ordinary constant arithmetic; the count of real (non-`None`)
   variants is `E.Max` (see the sentinel-zero convention below), and that is
   the count an enum-indexed array is sized to: `[E.Max]T`, or the `[E]T`
-  spelling that resolves to it (SPEC-TABLES.md §2.4). Under `max` headroom
-  the reserved values above the last variant are wire-legal and name no slot.
+  spelling that resolves to it (SPEC-TABLES.md §2.4). Every wire value names
+  a variant or `None`; there are no reserved values above the last variant.
   It works on the generated tag set
   too (a union's `<Union>Type.Max` — §4.8); generated sets resolve in
   constant expressions and nowhere else.
 - **Declared-count references:** **`.Count`** in any integer expression names
-  the DECLARED variant count of an enum or a flags declaration — one word
-  meaning one thing in both. `E.Count` excludes an enum's implicit `None`;
-  `F.Count` counts the named bits. Under `| max = K` headroom the count and
-  the extent part — an enum's `Max` is the widened extent and a flags
-  declaration's wire width is K, while `Count` stays the count — and without
-  headroom `E.Count` equals `E.Max`. `[..E.Count]T` is therefore a counted
-  array over the declared variants, where `[E.Max]T` is the keyed array with
-  one slot per admitted ordinal. **Flags
+  the DECLARED variant count of a flags declaration: `F.Count` counts the
+  named bits, and under `| max = K` headroom the wire width is K while
+  `F.Count` stays the count. An enum has no `.Count`: its variant count is
+  its `Max`, so `[..E.Max]T` is a counted array over the declared variants,
+  where `[E.Max]T` is the keyed array with one slot per admitted ordinal.
+  **Flags
   have `F.Count`, not `F.Max`** — a flags declaration is a set of
   independent bits, not a range with a top, so max-of-what is exactly the
   confusion `.Max` would invite and the compiler refuses it naming the
@@ -793,9 +791,12 @@ FloatExpr   = float expression over float literals, int literals and const names
   hand-written recursive descent is the intended implementation.
 - **Enum variants** are comma-separated identifiers, trailing comma allowed.
   **Every enum has `None = 0` implicitly — universal, never declared.**
-  Declared variants pack tightly from 1; max derives as the count; the
-  `| max = K` headroom attribute can widen the wire. **Enum storage derives
-  from the enum's own max** — the smallest unsigned integer that fits.
+  Declared variants pack tightly from 1; max derives as the count. An enum
+  takes no `| max` attribute: its wire width derives from its variant count
+  alone, `None` included, and nothing widens it. **Enum storage derives
+  from the enum's own max** — the smallest unsigned integer that fits. **An
+  enum reads as one of its variants or the read fails**: a wire value above
+  max is refused, so no unnamed enum value exists in any target.
 - **Canonical form only.** Enums are always `0 = None`, then `[1, max]`,
   dense. There are no explicit variant values and no sparse enums.
 - **The enum family is two declaration forms:**
@@ -812,8 +813,8 @@ FloatExpr   = float expression over float literals, int literals and const names
     variant, and the storage is `uint64`. Each target exports one mask
     constant per variant (`1 << bit`),
     because mask tests are how flag state is consumed, **plus the `Count`
-    constant** — the declared variant count, spelled per target beside the
-    enum extents — the spelling is each target's own, and all nine emit it:
+    constant** — the declared variant count, the one `.Count` in the
+    language — the spelling is each target's own, and all nine emit it:
     `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C and Rust;
     `capsCount` in Dart and Java; `caps_count/0` in Elixir.
     **`flags` is a
@@ -879,8 +880,8 @@ sequence    uint16
   fresh value holds, so it belongs to the definition, not the
   qualification: `w fixed(2, 30) = 1.0 | min = -1, max = 1`.
 - **Declaration lines take the same section**: a tag or a native-type
-  binding, an enum's or flags' `max` headroom —
-  `type Quat | quat4`, `enum Weapon | max = 15`, `flags Damage | max = 8` —
+  binding, a flags declaration's `max` headroom —
+  `type Quat | quat4`, `flags Damage | max = 8` —
   and the body brace opens on the next line — with a qualification section
   that is forced (the section runs to the end of the line), and everywhere
   else it is the Allman house style (§4.1):
@@ -892,8 +893,8 @@ sequence    uint16
       ...
   }
 
-  enum Weapon | max = 15
-  { Laser, Missile, Railgun }
+  flags Damage | max = 8
+  { Fire, Ice, Poison }
   ```
 
   A one-line body (`{ Laser, Missile }`, `type Box { x uint8 }`) stays
@@ -917,7 +918,7 @@ sequence    uint16
 - **The line between positional and attribute:** a *size* that defines the
   type's shape stays positional — `bits(64)`, `string(64)`, `wstring(64)`,
   `bytes(N)`, `fixed(I, F)`, array bounds. A *constraint or refinement* of a
-  named type is a qualifier. The enum's `| max = 15` is the same syntax; it is one
+  named type is a qualifier. A flags declaration's `| max = 8` is the same syntax; it is one
   general mechanism. The glyph is deliberately the language's own — a DSL
   owns its spelling, and familiarity to other languages' readers is not a
   design constraint where clarity is better served ("let's be bold and do
@@ -1140,32 +1141,24 @@ extent as a member named `Max` in the target's own convention: `E::Max`
 (C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
-sentinel-zero convention is the count of real variants when no `max`
-headroom widens it. Application code states ranges and asserts directly
+sentinel-zero convention is the count of real variants. Application code
+states ranges and asserts directly
 against it (`ShipType`'s wire range is `[0, ShipType.Max]`, its real
 variants `[1, ShipType.Max]`) instead of exporting a hand-declared count
 constant that re-derives it. `Max` is therefore a reserved variant name —
 declaring a variant named `Max` is refused at check time, exactly as `None`
 is.
 
-**The declared count is exported too.** Every declared enum carries its
-**`Count`** beside its `Max`: the number of DECLARED variants, excluding the
-implicit `None`. It is the same number `E.Count` names in schema expressions
-(§4.2), it equals `Max` when no `| max = K` headroom widens the enum, and it
-is below `Max` when one does — which is the whole reason it is exported. All
-nine targets spell it their own way, the spelling each already uses for a
-flags declaration's `Count`: `E::Count` (C++), `E.Count` (C#), `ECount`
-(Go), `E::COUNT` (Rust), `E.Count` (JS), `E_COUNT` (C), `E.count` (Dart and
-Java), `E.count/0` (Elixir). `Count` is a reserved variant name for the same
-reason `Max` is, and it is a claimed name under §4.6 — a declaration whose
-generated symbol would collide with an enum's `Count` is refused, naming the
-enum. A union's generated `<Union>Type` tag enum carries `Count`
-beside `Max` too, in the same nine spellings (§4.8), so a tag enum and a
-declared enum present one surface to a reader. A tag set takes no headroom, so
-its `Count` and its `Max` are one number, and the member is there because the
-surface is uniform rather than because the two numbers ever differ. A
-TABLE-CLOSURE union's tag shape is a different emitter, written beside the
-tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
+**`Max` is the enum's only exported number.** An enum exports no `Count`:
+its declared variant count is its `Max`, and one number needs one name. A
+flags declaration exports `Count` (§4.2) because it has no `Max`. A union's
+generated `<Union>Type` tag enum carries `Max` in the same nine spellings
+(§4.8) and no `Count` either, so a tag enum and a declared enum present one
+surface to a reader. A TABLE-CLOSURE union's tag shape is a different
+emitter, written beside the tables, and it carries the same members
+(docs/SPEC-TABLES.md §2.6). `Count` is not a reserved variant name on an
+enum and not a reserved arm name on a union; only a flags declaration claims
+it (§4.6).
 
 ### 4.3 Field types and their wire encodings
 
@@ -1221,7 +1214,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
 | `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
-| `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
+| `f Weapon` (an enum) | minimal bits for [0, max], max being the variant count; read rejects above max, so an unnamed value never reaches the object | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
 | `f Shape` (a `union`, §4.8) | tag in minimal bits for [0, variant count] (0 = None, no payload), then the selected variant's payload only; read rejects a tag above the count | `serialize_int` over [0, count] + the selected arm's own call: `serialize_object` for a declared `type`, this table's row for that arm's type otherwise, and no call at all for a payload-free arm |
@@ -1432,14 +1425,14 @@ All compile errors with positions:
   and no unit declares `ProtocolId`. The checker likewise refuses user names
   that collide with per-declaration generated symbols
   (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
-  names, an enum's `Max` and `Count`, a flags declaration's `Count`, a
+  names, an enum's `Max`, a flags declaration's `Count`, a
   union's generated tag surface). Diagnostics name the generated
   artifact that claims the name. A short list of unit-scope names is claimed
   on the table layer's behalf as well, most of it only in a unit that declares
   a `table` and a handful of reflection spellings in every unit;
   SPEC-TABLES.md §11 states which is which and why, and a schema that declares
   no `table` is refused none of the rest.
-- Enum `| max = K` below the variant count.
+- `| max = K` on an enum: an enum takes no headroom (§4.2).
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
   unique names keep the flattened generated output unambiguous.)
@@ -1648,17 +1641,13 @@ union Value
   disagree with the tag. **Reserved variant names are checked over the
   EXPORTED spelling**: any variant whose exported form (the field-name
   mapping) is `None` or `Max` is refused — `none` and `max` included, not
-  just the literal spellings. **`Count` is refused the same way**, on every
-  union: each tag enum carries the member (below), the packet shape and the
-  table-closure shape alike, so an arm exporting `Count` defines it twice
-  wherever the union lands. The reservation reaches where the member exists,
-  and the member exists on every union (docs/SPEC-TABLES.md §2.6).
+  just the literal spellings. `Count` is not reserved on a union: no tag
+  enum carries a `Count` member.
 - **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
   each variant **in declared order**
   (exported spelling per target, the field-name mapping), dense from 1, then
-  the exported `Count` (the declared variant count, `None` excluded) and the
-  exported `Max` extent. Storage is per the enum storage rule, the
-  smallest unsigned integer fitting max. A tag enum carries the same four
+  the exported `Max` extent. Storage is per the enum storage rule, the
+  smallest unsigned integer fitting max. A tag enum carries the same three
   parts a declared enum carries, so a reader logging which message arrived
   reaches for the enum's own surface and finds it. Declared order, not sorted: a
   union is one declaration whose author states the order, exactly as an
@@ -1681,25 +1670,24 @@ union Value
   path and no write path, and no generated code calls it. Each target spells
   it its own way, for the tag enum `WeaponFireType`:
 
-  | target | count member | debug name |
-  |---|---|---|
-  | c | `WEAPON_FIRE_TYPE_COUNT` | `enum_name_weapon_fire_type` |
-  | cpp | `WeaponFireType::Count` | `EnumName`, overloaded on the enum |
-  | cs | `WeaponFireType.Count` | `EnumNameWeaponFireType(ulong)` |
-  | dart | `WeaponFireType.count` | `enumNameWeaponFireType(int)` |
-  | elixir | `count/0` on the tag module | `enum_name_weapon_fire_type/1` |
-  | go | `WeaponFireTypeCount` | `EnumNameWeaponFireType(uint64)` |
-  | java | `WeaponFireType.count` | `enumNameWeaponFireType(long)` |
-  | js | `WeaponFireType.Count` | `EnumNameWeaponFireType(value)` |
-  | rust | `WeaponFireType::COUNT` | `enum_name_weapon_fire_type` |
+  | target | debug name |
+  |---|---|
+  | c | `enum_name_weapon_fire_type` |
+  | cpp | `EnumName`, overloaded on the enum |
+  | cs | `EnumNameWeaponFireType(ulong)` |
+  | dart | `enumNameWeaponFireType(int)` |
+  | elixir | `enum_name_weapon_fire_type/1` |
+  | go | `EnumNameWeaponFireType(uint64)` |
+  | java | `enumNameWeaponFireType(long)` |
+  | js | `EnumNameWeaponFireType(value)` |
+  | rust | `enum_name_weapon_fire_type` |
 
 - **A TABLE-CLOSURE union's tag shape carries the same surface.** It is a
   different emitter, written beside the tables rather than among the packet
   declarations (docs/SPEC-TABLES.md §2.6), and it emits `None`, the variants,
-  `Count`, `Max` and the debug-name function, because it is the same construct
+  `Max` and the debug-name function, because it is the same construct
   to a reader. The table layer is the C++ reference's, so the shape has one
-  emitter where the packet shape has nine. `Count` is a compile error as an arm
-  name on every union, for the one reason: the member exists.
+  emitter where the packet shape has nine.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant
@@ -1900,15 +1888,6 @@ NAME rather than falling into a generic parse error:
 - **`doc`** (the attribute) — documentation is not an attribute: it is the
   `///` doc comment above the item (§4.1), and one text has one spelling.
   `| doc = "..."` is refused with the comment form named.
-- **`Count` as an arm name on any union.** The generated tag enum
-  carries the declared variant count as the member `Count` (§4.8), so the arm
-  would define the member twice, which C++ and C# refuse outright as a
-  redefinition. The refusal is over the EXPORTED spelling, so `count` is
-  refused too, and the diagnostic names the tag enum that claims the name. It
-  is the same reservation `None` and `Max` carry, for the same reason.
-  A table-closure union's tag shape carries the member too
-  (docs/SPEC-TABLES.md §2.6), so the reservation reaches it and one rule
-  covers both shapes.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -2321,10 +2300,10 @@ Per `type`, per target:
    buffer is fixed at its declared capacity with a used length/count beside
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
-   Enums are integer-backed named types in every target because `| max = ...`
-   headroom makes non-variant values wire-legal; a native Rust `enum` cannot
-   hold them — C#'s `enum E : uint` can, natively, which is why it needs no
-   newtype.
+   An enum's representation is the target's choice — today an integer-backed
+   named type in every target (a Rust newtype, C#'s `enum E : uint`). Nothing
+   on the wire requires it: a wire value above max is refused on read (§4.2),
+   so no unnamed enum value is ever representable on the read side.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
    wire order.
@@ -2344,7 +2323,7 @@ Per `type`, per target:
    every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
-   (`None = 0`, then the variants in declared order, then `Count` and `Max`)
+   (`None = 0`, then the variants in declared order, then `Max`)
    with its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
