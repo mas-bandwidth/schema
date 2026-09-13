@@ -1,0 +1,220 @@
+#!/bin/sh
+# THE GENERATED-TREE VERIFIER'S OWN LIFECYCLE CONTROLS (issue #898, gate G3).
+# These drive test/generated-tree/verify — the real verifier, not its compare
+# half — in a disposable Git fixture with one generation rule, to prove the two
+# things a prepared-directory control cannot: that a previous run's preserved
+# original tree is RECOVERED and never destroyed (even across a real SIGKILL),
+# and that a staged edit does not pass as committed.
+#
+#   usage: verify-control <case>
+#
+#   kill-retry          SIGKILL the whole verifier process group after the
+#                       original is in build/generated-tree/prev and the
+#                       replacement tree exists; a second invocation must name
+#                       the state and leave the original bytes standing.
+#   regeneration-fails  a normal failure: the original tree is restored and the
+#                       run exits non-zero.
+#   second-invocation   two normal invocations in a row; the second must not be
+#                       refused by the first run's leftover state.
+#   staged-difference   HEAD holds old bytes, the index and the file hold new
+#                       ones; verify must exit non-zero and never print the
+#                       committed-emission sentence.
+set -eu
+
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+
+mode=${1:?usage: verify-control <case>}
+case "$mode" in
+kill-retry|regeneration-fails|second-invocation|staged-difference) ;;
+*) printf 'unknown control: %s\n' "$mode" >&2; exit 1 ;;
+esac
+
+work=build/generated-tree/vc/$mode
+rm -rf "$work"
+mkdir -p "$work"
+fixture=$work/fixture
+mkdir -p "$fixture/generated/go" "$fixture/test/generated-tree" "$fixture/make" "$fixture/bin"
+cp "$repo/test/generated-tree/verify" "$fixture/test/generated-tree/verify"
+cp "$repo/test/generated-tree/compare" "$fixture/test/generated-tree/compare"
+chmod +x "$fixture/test/generated-tree/verify" "$fixture/test/generated-tree/compare"
+: > "$fixture/test/generated-tree/not-emitted"
+: > "$fixture/make/empty.mk"
+: > "$fixture/bin/schema"
+
+cat > "$fixture/.gitignore" <<'EOF'
+/build/
+generated/**/.stamp
+/bin/
+EOF
+
+# The committed tree and the generation rule differ per case: write the
+# committed file, the Makefile, and the first commit.
+case "$mode" in
+kill-retry)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go build
+	@printf 'synthetic emission\n' > generated/go/ATable.go
+	@touch build/replacement-exists
+	@sleep 8
+	@touch generated/go/.stamp
+EOF
+	;;
+regeneration-fails)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@printf 'regeneration fails on purpose\n' >&2
+	@exit 1
+EOF
+	;;
+second-invocation)
+	printf 'committed original bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go
+	@printf 'committed original bytes\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+staged-difference)
+	printf 'committed old bytes\n' > "$fixture/generated/go/ATable.go"
+	cat > "$fixture/Makefile" <<'EOF'
+generated/go/.stamp:
+	@mkdir -p generated/go
+	@printf 'synthetic emission\n' > generated/go/ATable.go
+	@touch generated/go/.stamp
+EOF
+	;;
+esac
+
+git -C "$fixture" init -q
+git -C "$fixture" config user.name test
+git -C "$fixture" config user.email test@example.com
+git -C "$fixture" add -A
+git -C "$fixture" commit -q -m fixture
+
+# staged-difference stages a change after the first commit, so HEAD carries the
+# old bytes and the index and the file carry the new ones.
+if [ "$mode" = staged-difference ]; then
+	printf 'synthetic emission\n' > "$fixture/generated/go/ATable.go"
+	git -C "$fixture" add generated/go/ATable.go
+fi
+
+fail=0
+
+wait_for() {
+	# wait_for <relpath> <tenths> — poll for a path under the fixture.
+	i=0
+	while [ "$i" -lt "${2:?}" ]; do
+		[ -e "$fixture/$1" ] && return 0
+		sleep 0.1
+		i=$(( i + 1 ))
+	done
+	return 1
+}
+
+assert_file_is() {
+	got=$(cat "$fixture/$1" 2>/dev/null || true)
+	if [ "$got" != "$2" ]; then
+		printf 'ASSERTION FAILED: %s has %s, want %s\n' "$1" "$got" "$2" >&2
+		return 1
+	fi
+}
+
+assert_contains() {
+	grep -Fq "$2" "$work/$1" 2>/dev/null || {
+		printf 'ASSERTION FAILED: %s does not say %s\n' "$1" "$2" >&2
+		return 1
+	}
+}
+
+assert_not_contains() {
+	if grep -Fq "$2" "$work/$1" 2>/dev/null; then
+		printf 'ASSERTION FAILED: %s must not say %s\n' "$1" "$2" >&2
+		return 1
+	fi
+	return 0
+}
+
+run_verify() { ( cd "$fixture" && sh test/generated-tree/verify "$@" ); }
+
+case "$mode" in
+kill-retry)
+	# The verifier must run in its own process group so the whole group — the
+	# shell and the make it spawned — can be SIGKILLed as one.
+	( cd "$fixture" && exec python3 -c 'import os,sys; os.setpgrp(); os.execvp("sh", ["sh","test/generated-tree/verify"])' ) > "$work/run1.log" 2>&1 &
+	vpid=$!
+
+	wait_for build/generated-tree/prev/go/ATable.go 100 || { printf 'the original never reached prev\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
+
+	wait_for build/replacement-exists 100 || { printf 'the replacement tree never appeared\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	kill -KILL -"$vpid"
+	wait "$vpid" 2>/dev/null || true
+
+	# The preserved original must still hold its exact bytes after the kill.
+	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
+
+	# The second invocation must recover (not destroy) the original, and name
+	# the state it recovered from. The committed tree is stale against the
+	# emission here, so the retry is right to exit non-zero — but the original
+	# bytes must still stand under the fixture.
+	run_verify > "$work/run2.log" 2>&1 || rc2=$?
+	assert_contains run2.log 'RECOVERED' || fail=1
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	if [ "${rc2:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: the retry exited 0, but the committed tree is stale against the emission\n' >&2
+		fail=1
+	fi
+	printf 'verify-control kill-retry: the SIGKILLed run left the original in prev, and the retry RECOVERED it, named the state, and left the original bytes standing\n'
+	;;
+
+regeneration-fails)
+	run_verify > "$work/run1.log" 2>&1 || rc=$?
+	if [ "${rc:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: a failing regeneration must exit non-zero\n' >&2
+		fail=1
+	fi
+	assert_contains run1.log 'the regeneration itself failed' || fail=1
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	if [ -e "$fixture/build/generated-tree/prev" ]; then
+		printf 'ASSERTION FAILED: the original was not restored from prev\n' >&2
+		fail=1
+	fi
+	printf 'verify-control regeneration-fails: the original tree is restored and the run exits non-zero\n'
+	;;
+
+second-invocation)
+	run_verify > "$work/run1.log" 2>&1 || { printf 'first invocation failed unexpectedly\n' >&2; cat "$work/run1.log" >&2; exit 1; }
+	run_verify > "$work/run2.log" 2>&1 || { printf 'second invocation failed unexpectedly\n' >&2; cat "$work/run2.log" >&2; exit 1; }
+	assert_not_contains run2.log 'REFUSED' || fail=1
+	assert_file_is generated/go/ATable.go 'committed original bytes' || fail=1
+	printf 'verify-control second-invocation: two normal invocations, and the second is not refused by the first run leftover state\n'
+	;;
+
+staged-difference)
+	run_verify > "$work/run1.log" 2>&1 || rc=$?
+	if [ "${rc:-0}" -eq 0 ]; then
+		printf 'ASSERTION FAILED: a staged-only difference must exit non-zero in committed mode\n' >&2
+		fail=1
+	fi
+	assert_contains run1.log 'NOT COMMITTED' || fail=1
+	assert_not_contains run1.log 'the committed generated/ tree is what this compiler emits.' || fail=1
+
+	# The separately named staged mode may agree, but it may never claim the
+	# committed emission is current.
+	run_verify --staged > "$work/run2.log" 2>&1 || { printf '--staged mode failed unexpectedly\n' >&2; cat "$work/run2.log" >&2; exit 1; }
+	assert_not_contains run2.log 'the committed generated/ tree is what this compiler emits.' || fail=1
+	assert_contains run2.log 'staged mode' || fail=1
+	printf 'verify-control staged-difference: a staged-only difference reds in committed mode and never prints the committed-emission sentence\n'
+	;;
+esac
+
+if [ "$fail" -ne 0 ]; then
+	printf 'verify-control %s FAILED\n' "$mode" >&2
+	exit 1
+fi
+
+printf 'generated-tree verify control: %s is green\n' "$mode"
