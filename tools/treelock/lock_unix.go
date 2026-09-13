@@ -4,9 +4,13 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"syscall"
 )
+
+// ErrWindowsUnsupported documents the Windows refusal error for cross-platform verification.
+var ErrWindowsUnsupported = fmt.Errorf("treelock: kernel exclusivity locking is unsupported on windows; refusing execution without verified lock")
 
 func isAlive(pidStr string) bool {
 	pid, err := strconv.Atoi(pidStr)
@@ -23,4 +27,8 @@ func acquireFlock(fd uintptr) error {
 
 func isLockBlocked(err error) bool {
 	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
+}
+
+func checkWindowsFlockRefusal() error {
+	return ErrWindowsUnsupported
 }

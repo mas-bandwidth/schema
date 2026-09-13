@@ -100,7 +100,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "REFUSED — another generated-tree verification (pid %s) holds %s; not touching either tree.\n", ownerPid, name)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "treelock: flock %s: %v\n", *lockPath, err)
+		if strings.HasPrefix(err.Error(), "treelock:") {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "treelock: flock %s: %v\n", *lockPath, err)
+		}
 		os.Exit(1)
 	}
 

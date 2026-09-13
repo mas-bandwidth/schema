@@ -3,9 +3,14 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"syscall"
 )
+
+// ErrWindowsUnsupported is returned when acquireFlock is called on Windows,
+// as kernel exclusivity locking is not yet implemented or certified on Windows.
+var ErrWindowsUnsupported = fmt.Errorf("treelock: kernel exclusivity locking is unsupported on windows; refusing execution without verified lock")
 
 func isAlive(pidStr string) bool {
 	pid, err := strconv.Atoi(pidStr)
@@ -22,10 +27,16 @@ func isAlive(pidStr string) bool {
 }
 
 func acquireFlock(fd uintptr) error {
-	// Runtime certification not claimed on Windows; compilation passes cleanly.
-	return nil
+	// Obligation retained: Windows platform locking (e.g. LockFileEx) and certification
+	// are not yet implemented. Refuse explicitly before launching any command or claiming
+	// unearned lock ownership.
+	return ErrWindowsUnsupported
 }
 
 func isLockBlocked(err error) bool {
 	return false
+}
+
+func checkWindowsFlockRefusal() error {
+	return ErrWindowsUnsupported
 }

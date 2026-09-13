@@ -188,3 +188,16 @@ func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 		t.Fatalf("reclaimer failed to acquire lock after child death: %v\n%s", err, out)
 	}
 }
+
+func TestTreelockWindowsRefusal(t *testing.T) {
+	// Obligation retained: Windows platform locking and certification are not yet implemented.
+	// Verify that the Windows flock implementation explicitly refuses execution with an error
+	// and never claims successful unearned ownership without a verified lock.
+	err := checkWindowsFlockRefusal()
+	if err == nil {
+		t.Fatal("expected Windows flock refusal check to return an error, got nil (never claim unearned ownership)")
+	}
+	if !strings.Contains(err.Error(), "unsupported on windows") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
