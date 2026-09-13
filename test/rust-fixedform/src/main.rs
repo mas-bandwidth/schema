@@ -595,6 +595,144 @@ fn the_negative_controls(dir: &str) {
     }
 }
 
+// THE FORM-HEADER CASES (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §5.3 steps 1 and 2). THE LOAD ORDER IS LOAD-BEARING: the form byte is read
+// BEFORE the file's length, so a file too short to be a form-3 header is still
+// refused by the name its FIRST byte earns — a committed form-1 file is TEN
+// bytes and a committed form-2 batch THREE, and a reader that measured first
+// would answer `malformed` for every real file of the two forms it is supposed
+// to name. Only a file with NO first byte at all is `malformed` before the byte
+// is read, and the twenty-byte minimum is the step AFTER it. The reserved bytes
+// are refused rather than ignored, which keeps them spendable later.
+//
+// FIVE EXACT INPUTS, ported from test/elixir-fixedform/main.exs (the model):
+//   empty-file      zero bytes
+//   short-form1     a ten-byte form-1 file
+//   short-form2     a three-byte form-2 batch
+//   unassigned-form0 form byte 0 with the otherwise valid fixture tail
+//   reserved-byte3  a valid form-3 fixture with reserved byte 3 set nonzero
+// Each probe asserts the report is ONE answer (a named reason XOR `malformed`,
+// never both, no counter moved) AND that REFUSE IS TOTAL: the destination is
+// pre-poisoned and must come back byte for byte unchanged.
+
+const PROBE_ROWS: usize = 8;
+
+/// THE DESTINATION, PRE-POISONED. A refusal is TOTAL (§5.3): no plan runs and
+/// not one destination byte is written. A generated row is `#[repr(C)]` with no
+/// niche — every bit pattern is a value of the type — so the poison goes in
+/// through a byte pointer and the read-back is those same bytes.
+fn poisoned_rows() -> [tblfx1::FxRootRow; PROBE_ROWS] {
+    let mut values = [tblfx1::FxRootRow::default(); PROBE_ROWS];
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(
+            values.as_mut_ptr() as *mut u8,
+            std::mem::size_of_val(&values),
+        )
+    };
+    bytes.fill(0x5A);
+    values
+}
+
+fn rows_bytes(values: &[tblfx1::FxRootRow]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            values.as_ptr() as *const u8,
+            std::mem::size_of_val(values),
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FormProbe {
+    /// A named refusal: `refused` with this reason, `malformed` clear.
+    Named(tblfx1::TableFixedReason),
+    /// The residue: `malformed` set, no named reason, not a refusal by name.
+    Malformed,
+}
+
+fn form_probe(label: &str, file: &[u8], want: FormProbe) {
+    let mut values = poisoned_rows();
+    let before = rows_bytes(&values).to_vec();
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut values, file, &mut plan, &mut remap, &mut report);
+    check(n.is_none(), &format!("{label}: refused"));
+    check(
+        report.unknown == 0
+            && report.kind_mismatch == 0
+            && report.widened == 0
+            && report.clamped == 0,
+        &format!("{label}: no counter moved"),
+    );
+    match want {
+        FormProbe::Named(reason) => {
+            check(
+                report.refused && report.reason == reason && !report.malformed,
+                &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
+            );
+        }
+        FormProbe::Malformed => {
+            check(
+                report.malformed && !report.refused,
+                &format!("{label}: `malformed`, and no named reason claims the read"),
+            );
+        }
+    }
+    check(
+        rows_bytes(&values) == before.as_slice(),
+        &format!("{label}: not one destination byte was written"),
+    );
+}
+
+fn the_form_header_probes(dir: &str) {
+    // 1. EMPTY-FILE: ZERO BYTES. There is no first byte to earn a name, so this
+    //    is the residue, `malformed`, and not a named refusal.
+    form_probe("empty-file (zero bytes)", &[], FormProbe::Malformed);
+
+    // 2. SHORT-FORM1: A TEN-BYTE FORM-1 FILE, the size a committed variable-form
+    //    file actually is. The form byte is read FIRST, so this is
+    //    `previous_form` and NOT `malformed`.
+    form_probe(
+        "short-form1 (a ten-byte form-1 file)",
+        &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        FormProbe::Named(tblfx1::TableFixedReason::PreviousForm),
+    );
+
+    // 3. SHORT-FORM2: A THREE-BYTE FORM-2 BATCH, the size a committed message
+    //    batch actually is. `message_form_as_file`, and NOT `malformed`.
+    form_probe(
+        "short-form2 (a three-byte form-2 batch)",
+        &[2, 1, 0],
+        FormProbe::Named(tblfx1::TableFixedReason::MessageFormAsFile),
+    );
+
+    // 4. UNASSIGNED-FORM0: form byte 0 over the OTHERWISE VALID fixture tail.
+    //    0 is a byte no form defines, and the registry is ORDERED, so this is
+    //    `newer_form` and NOT `malformed`.
+    {
+        let mut form0 = slurp(dir, "fx1.bin");
+        form0[0] = 0;
+        form_probe(
+            "unassigned-form0 (form byte 0, the valid fixture tail behind it)",
+            &form0,
+            FormProbe::Named(tblfx1::TableFixedReason::NewerForm),
+        );
+    }
+
+    // 5. RESERVED-BYTE3: a valid form-3 fixture with reserved byte 3 set
+    //    nonzero. The reserved bytes are REFUSED, not ignored: `malformed`.
+    {
+        let mut reserved = slurp(dir, "fx1.bin");
+        reserved[3] = 1;
+        form_probe(
+            "reserved-byte3 (a valid form-3 fixture, reserved byte 3 set nonzero)",
+            &reserved,
+            FormProbe::Malformed,
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4). It is
 // the one structure a reader must parse before it knows anything at all, so
@@ -2134,6 +2272,7 @@ fn main() {
     the_text_under_an_arm();
     the_enum_extent();
     the_negative_controls(&dir);
+    the_form_header_probes(&dir);
     the_layout_validation();
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
