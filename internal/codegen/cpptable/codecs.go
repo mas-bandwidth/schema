@@ -2341,7 +2341,31 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	} else {
 		g.pf("inline const TableTypeInfo * %sTableType()\n{\n", st.Name)
 	}
+	// THE SIDE TABLES TAKE THE LINKAGE OF THE THING THAT NAMES THEM. A
+	// hoisted descriptor's rows and info are `inline` variables, so each is
+	// one entity shared by every unit that includes this header, and the
+	// linker keeps ONE unit's copy of each. A `static` tag list or wide range
+	// beside them is a DIFFERENT entity in every unit, which is an ODR
+	// violation the moment an inline variable's initializer names it
+	// ([basic.def.odr]: corresponding names in the several definitions must
+	// refer to the same entity) — and GCC makes it a link error rather than a
+	// silent one, because it places such an array inside the COMDAT group of
+	// the inline variable that references it, and the group the linker
+	// discards takes the array with it while a non-group reference in the
+	// same unit survives:
+	//
+	//   `tabledemo::WeaponConfig_tags' referenced in section `.data.rel.local'
+	//   ... defined in discarded section `...[tabledemo::WeaponConfigTableInfo]'
+	//
+	// So the hoisted side tables are `inline` too: one entity, its own
+	// COMDAT, and no group whose discarding can strand a reference. A
+	// FUNCTION-LOCAL descriptor keeps `static` — a static local of an inline
+	// function is already one entity per program, and `inline` is not a
+	// storage class a block-scope declaration may carry.
 	qualifier := "static const"
+	if hoisted {
+		qualifier = "inline const"
+	}
 	infoQualifier := "static const"
 	switch {
 	case len(st.Fields) > 0:
