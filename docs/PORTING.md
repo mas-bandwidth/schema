@@ -1121,7 +1121,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ❌ #414 (the scan, no control) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
