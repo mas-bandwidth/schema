@@ -14668,6 +14668,21 @@ break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
 rewrites nothing.
 
+**A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
+reused** (issue #441). The `## retired` section records every field, enum
+variant and union arm a `--update` removes — its vocabulary, its
+fully-qualified name, the wire id it rode under and the day it was retired —
+and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
+history, so this is the one record in the file the live projection cannot
+regenerate. A declaration re-added under a retired name — or under a NEW name
+whose wire id is a retired one, which a `was` naming the old spelling produces
+— decodes old bytes as plausible new values, and the reader keys stored data on
+exactly that name hash, so the check REFUSES and names the ledger entry. The
+reuse is legal once it is deliberate: `--update --reason "..."` writes
+`revived=<date>` on the entry, which is the acknowledgment, and the entry
+itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
+cost.
+
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one
 clock is the only workable choice — and an unlabelled date is read in the
@@ -14679,10 +14694,11 @@ rewrite, and nothing reads a date back.
 **`--update` works on a baseline the checker cannot read.** A corrupt file,
 another unit's file, or one written under a rendering version this compiler
 does not write, all refuse on check and name `--update` as the remedy — so
-the remedy runs: it salvages the `## history` lines verbatim, regenerates
-the projection from the unit as it stands, and records in the history that
-the previous projection could not be diffed. The one artifact in the file
-that cannot be regenerated is never the price of repairing it.
+the remedy runs: it salvages the `## history` lines and the `## retired`
+ledger verbatim, regenerates the projection from the unit as it stands, and
+records in the history that the previous projection could not be diffed. The
+one artifact in the file that cannot be regenerated is never the price of
+repairing it.
 
 ### 18.5 What it does not cover
 
