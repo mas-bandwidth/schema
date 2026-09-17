@@ -239,6 +239,39 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+# THE RUST SOAK (docs/PORTING.md I9, schema#416). The block reader re-opened
+# over the corpus's images for SOAK_SECONDS, with the global allocator's count
+# read around the measured loop — a matched allocation/free pair per iteration
+# leaves the live bytes flat, so the COUNT is the gate. A short run is
+# `make tables-rust-soak SOAK_SECONDS=2`; the hour is the release act
+# `tables-rust-release`.
+.PHONY: tables-rust-soak
+tables-rust-soak: build/conformance-rust build/conformance/manifest.txt
+	./build/conformance-rust build/conformance/manifest.txt soak $(SOAK_SECONDS)
+
+# ITS NEGATIVE CONTROL: one allocation per iteration must turn the count gate
+# red while the block reader keeps opening the same images.
+.PHONY: tables-rust-soak-negative-control
+tables-rust-soak-negative-control: build/conformance-rust build/conformance/manifest.txt
+	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt soak 2 \
+			> build/rust-soak-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the soak stayed green with one allocation per iteration"; \
+		cat build/rust-soak-control.log; exit 1; \
+	fi
+	@grep -q "SOAK FAILED" build/rust-soak-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the allocation"; \
+		  cat build/rust-soak-control.log; exit 1; }
+	@grep -m1 "SOAK FAILED" build/rust-soak-control.log
+	@echo "negative control: one allocation per iteration turns the Rust soak red on the count"
+
+# THE RUST RELEASE TIER (certify.yml discovers every `tables-<lang>-release`
+# target by name and runs it). The hour soak and its control; the wire fuzzers
+# stay the block and cook fuzzers' business.
+.PHONY: tables-rust-release
+tables-rust-release:
+	$(MAKE) tables-rust-soak SOAK_SECONDS=3600
+	$(MAKE) tables-rust-soak-negative-control
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).

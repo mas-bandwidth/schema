@@ -1771,9 +1771,19 @@ static partial class Program
         }
     }
 
-    static int Main()
+    static int Main(string[] args)
     {
         goldenDir = FindGoldenDir();
+
+        // THE SOAK (docs/PORTING.md I9, schema#416): `--soak <seconds>` runs the
+        // allocation-count gate instead of the one-shot conformance checks.
+        if (args.Length >= 1 && args[0] == "--soak")
+        {
+            int seconds = 2;
+            if (args.Length >= 2) { int.TryParse(args[1], out seconds); }
+            RunSoak(seconds);
+            return 0;
+        }
 
         TestWireContracts();
         TestVocabularyDistinctness();

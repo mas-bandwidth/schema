@@ -596,6 +596,18 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "tables-cpp-soak-negative-control",
+      "reason": "the C++ soak's control (schema#416): it compiles the counting-operator-new soak a second time and runs it for two seconds, which is about 30 s on the author's machine, and the release act `tables-cpp-release` runs it beside the hour soak. A pull-request job that re-ran it would pay the compile twice to prove what the release tier proves once."
+    },
+    {
+      "target": "tables-cs-soak-negative-control",
+      "reason": "the C# soak's control (schema#416): it runs the C# conformance project a second time with SOAK_SABOTAGE planted, under the dotnet pin, and the release act `tables-cs-release` runs it beside the hour soak. It belongs to the release tier rather than to the pull-request leg's two-minute budget."
+    },
+    {
+      "target": "tables-rust-soak-negative-control",
+      "reason": "the Rust soak's control (schema#416): it runs the conformance driver's `soak` surface with SOAK_SABOTAGE planted, and it needs both the Rust toolchain and the derived conformance manifest the soak reads. The release act `tables-rust-release` runs it beside the hour soak, so it is named here rather than placed in the rust group, which carries no manifest build."
     }
   ]
 }

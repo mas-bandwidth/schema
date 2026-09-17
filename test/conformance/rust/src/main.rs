@@ -16,11 +16,42 @@
 // a separate process to own, and one exec per surface is what keeps the leg
 // inside the two-minute rule (#320).
 
-use std::alloc::{Layout, alloc_zeroed, dealloc};
+use std::alloc::{GlobalAlloc, Layout, System, alloc_zeroed, dealloc};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// THE SOAK'S INSTRUMENT (docs/PORTING.md I9, schema#416): every global
+// allocation is counted, and the count over the measured loop must not move.
+// A live-byte sample answers "does this leak"; a path that allocates and frees
+// the same bytes every iteration reads flat forever, so the COUNT is what the
+// block read path's no-allocation claim is gated on.
+static SOAK_ALLOCS: AtomicU64 = AtomicU64::new(0);
+
+struct SoakCounter;
+
+unsafe impl GlobalAlloc for SoakCounter {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        SOAK_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        SOAK_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        SOAK_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc_zeroed(layout) }
+    }
+}
+
+#[global_allocator]
+static SOAK_ALLOCATOR: SoakCounter = SoakCounter;
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -763,6 +794,71 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 
 // ---------------------------------------------------------------------------
 
+// THE RUST SOAK (docs/PORTING.md I9, schema#416): the generated BLOCK reader
+// re-opened over the corpus's images in a loop for the given seconds, with the
+// global allocator's count read around it. Opening a block is pointing into the
+// CALLER's buffer — nothing per row, nothing per open — so the count must not
+// move. The negative control sets SOAK_SABOTAGE=1, which plants a matched
+// allocation per iteration: the live bytes return to where they were and only
+// the count can see it.
+//
+//   driver <manifest> soak <seconds>
+fn surface_soak(manifest: &Manifest, seconds: &str) {
+    let seconds: f64 = seconds.parse().unwrap_or(2.0);
+    // every buffer is the CALLER's, allocated once before the clock
+    let mut fixtures: Vec<(String, Aligned, u64)> = Vec::new();
+    for f in manifest.of_kind("block") {
+        let data = slurp(&f[3]);
+        let storage = Aligned::new(&data, -1);
+        fixtures.push((f[1].clone(), storage, data.len() as u64));
+    }
+    if fixtures.is_empty() {
+        fail("the soak has no block fixture to read");
+    }
+    let open_all = |fixtures: &Vec<(String, Aligned, u64)>| {
+        for (name, storage, bytes) in fixtures {
+            let ok = unsafe {
+                if name.starts_with("block_render") {
+                    blockdemo::RenderFrameBlock::open(storage.base, *bytes).is_some()
+                } else if name.starts_with("block_padded") {
+                    blockdemo::PaddedFrameBlock::open(storage.base, *bytes).is_some()
+                } else {
+                    fail(&format!("no block named {name}"))
+                }
+            };
+            if !ok {
+                fail(&format!("{name} did not open"));
+            }
+        }
+    };
+    open_all(&fixtures); // warm pass, charged to the setup
+
+    let sabotage = std::env::var("SOAK_SABOTAGE").is_ok();
+    let start = std::time::Instant::now();
+    SOAK_ALLOCS.store(0, Ordering::Relaxed);
+    let mut iterations: u64 = 0;
+    while start.elapsed().as_secs_f64() < seconds {
+        open_all(&fixtures);
+        if sabotage {
+            // NEGATIVE CONTROL: a matched allocation/free per iteration, so the
+            // live bytes stay flat and only the COUNT moves.
+            let planted = vec![0u8; 64];
+            std::hint::black_box(&planted);
+        }
+        iterations += 1;
+    }
+    let allocs = SOAK_ALLOCS.load(Ordering::Relaxed);
+    if allocs != 0 {
+        fail(&format!(
+            "SOAK FAILED: the block read path made {allocs} allocation(s) over {iterations} iteration(s) — \
+             it allocates NOTHING, and a live-byte sample cannot see a matched allocation/free pair"
+        ));
+    }
+    println!(
+        "rust tables soak: ZERO allocator calls over {iterations} iteration(s) — the block read path allocates nothing"
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
@@ -781,6 +877,15 @@ fn main() {
             // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
             "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
+        return;
+    }
+    if surface == "soak" {
+        // the soak takes SOAK_SECONDS where every other surface takes an outdir
+        if args.len() < 4 {
+            eprintln!("usage: {} <manifest> soak <seconds>", args[0]);
+            exit(2);
+        }
+        surface_soak(&manifest, &args[3]);
         return;
     }
     if args.len() < 4 {
