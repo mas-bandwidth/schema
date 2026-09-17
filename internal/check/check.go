@@ -807,12 +807,11 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	return big.NewInt(en.Max), true
 }
 
-// declaredCount resolves E.Count (SPEC §4.2): the DECLARED variant count of
+// declaredCount resolves F.Count (SPEC §4.2): the DECLARED variant count of
 // an enum or a flags declaration — one word meaning one thing in both. It
-// excludes an enum's implicit None, and it is not the wire extent: under
-// | max = K headroom an enum's Max and a flags declaration's wire width rise
-// above the count, and Count stays the count. Unlike .Max it needs no bound,
-// so an enum whose | max = ... failed to resolve still answers it exactly.
+// excludes an enum's implicit None. An enum takes no | max, so its Count and
+// Max are one number; a flags declaration's wire width may rise above the
+// count under | max = K while Count stays the count.
 func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
@@ -925,31 +924,17 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	// variants are known keeps compiling and spends nothing on the wire, and a
 	// field typed by it round-trips as None without the schema having to
 	// invent a placeholder variant to satisfy the compiler.
+	// An enum takes no | max (schema#1004): its wire width derives from its
+	// variant count alone, so every wire value names a variant or the implicit
+	// None and no unnamed value can exist — a value above the count fails the
+	// ordinary range check on read in every target. There is no headroom to
+	// reserve, so the attribute is refused by name rather than silently
+	// widening the enum (SPEC §4.2). A flags declaration keeps | max: it is a
+	// mask over independent bits, not a range with a top.
 	max := int64(len(variants))
 	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, map[string]bool{"max": true})
 	for _, a := range valued {
-		v, ok := c.evalInt(a.Value)
-		if !ok {
-			// the bound never resolved (a cycle, an undefined name, a bad
-			// expression — all already reported). Mark the enum degraded so
-			// dependents do not inherit the fallback count and report a
-			// CASCADE error naming a max the author never wrote.
-			if c.failedEnum == nil {
-				c.failedEnum = map[string]bool{}
-			}
-			c.failedEnum[d.Name] = true
-			continue
-		}
-		if !v.IsInt64() || v.Int64() < max {
-			c.errf(a.Pos, "enum %s | max = %s is below its variant count %d (SPEC §4.6)", d.Name, v, max)
-			continue
-		}
-		if v.Int64() > math.MaxInt32 {
-			// the enum wire rides the 32-bit ranged call in every target
-			c.errf(a.Pos, "enum %s | max = %s exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
-			continue
-		}
-		max = v.Int64()
+		c.errf(a.Pos, "enum %s: | max is not an enum attribute — an enum takes no headroom, its wire width derives from its variant count (SPEC §4.2)", d.Name)
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
 		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
@@ -2897,11 +2882,10 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 		return ast.Pos{}
 	}
 	for _, name := range sortedKeys(enums) {
+		// An enum takes no | max at all (schema#1004), so the table wire's
+		// headroom refusal that used to live here is now the declaration-site
+		// refusal in resolveEnum; only the identity collisions remain.
 		e := enums[name]
-		if e.Max > int64(len(e.Variants)) {
-			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (docs/SPEC-TABLES.md §5)",
-				name, e.Max, reachedBy[name], name)
-		}
 		seen := map[uint64]string{}
 		for i, v := range e.Variants {
 			// THE EFFECTIVE NAME: a variant renamed under `was` rides under

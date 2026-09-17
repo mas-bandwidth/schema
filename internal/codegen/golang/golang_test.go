@@ -78,13 +78,14 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 }
 
 // Every generated enum surface carries its extent as the member Max (SPEC
-// §4.2 — the exported-extent rule): declared enums (headroom
-// included) and the generated <Union>Type tag enum alike, in each target's
-// own convention. Call sites then state ranges against E.Max's generated
-// twin instead of a hand-declared count constant.
+// §4.2 — the exported-extent rule): declared enums and the generated
+// <Union>Type tag enum alike, in each target's own convention. An enum takes
+// no | max, so Max is always the variant count (schema#1004). Call sites then
+// state ranges against E.Max's generated twin instead of a hand-declared
+// count constant.
 func TestEnumExtentEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon { Laser, Missile, Railgun }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
 		"union Shape {\n    box  Box\n    ball Ball\n}\n"
@@ -121,27 +122,27 @@ func TestEnumExtentEmitted(t *testing.T) {
 	addTarget("Go", goFiles, goErr,
 		expectation{"WeaponMax", 1},
 		expectation{"ShapeTypeMax", 1},
-		expectation{"= 15 // the exported extent (SPEC §4.2)", 1},
+		expectation{"= 3 // the exported extent (SPEC §4.2)", 1},
 		expectation{"= 2 // the exported extent (SPEC §4.2)", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
-		expectation{"pub const MAX: Weapon = Weapon(15);", 1},
+		expectation{"pub const MAX: Weapon = Weapon(3);", 1},
 		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
-		expectation{"Max = 15,", 1}, // Weapon
-		expectation{"Max = 2,", 1})  // ShapeType
+		expectation{"Max = 3,", 1}, // Weapon
+		expectation{"Max = 2,", 1}) // ShapeType
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"Max: 15,", 1},
+		expectation{"Max: 3,", 1},
 		expectation{"Max: 2,", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
-		expectation{"#define WEAPON_MAX 15", 1},
+		expectation{"#define WEAPON_MAX 3", 1},
 		expectation{"#define SHAPE_TYPE_MAX 2", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
-		expectation{"Max = 15,", 1},
+		expectation{"Max = 3,", 1},
 		expectation{"Max = 2,", 1})
 
 	for _, tgt := range targets {
@@ -159,13 +160,11 @@ func TestEnumExtentEmitted(t *testing.T) {
 
 // Every generated enum carries its DECLARED variant count as the member
 // Count beside the extent Max (SPEC §4.2), in each target's own idiom and in
-// all nine. Without headroom the two numbers coincide; under | max = K they
-// part, and that is the case a loop written against Max alone gets wrong —
-// so both enums are pinned here, and Count < Max is asserted on the widened
-// one.
+// all nine. An enum takes no | max (schema#1004), so the two numbers
+// coincide, and both are pinned on both enums here.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon { Laser, Missile }\n\n" +
 		"enum Team { Red, Blue, Green }\n\n" +
 		"type Box {\n    w Weapon\n    t Team\n}\n"
 	f, perrs := parser.Parse("Counts.schema", []byte(src))
@@ -179,8 +178,8 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
-	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) >= max {
-		t.Fatalf("Weapon: Count = %d, Max = %d — the headroom case must have Count < Max", got, max)
+	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) != max {
+		t.Fatalf("Weapon: Count = %d, Max = %d — an enum takes no headroom, so Count and Max are one number", got, max)
 	}
 
 	type expectation struct {
@@ -205,47 +204,47 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	addTarget("Go", collapseColumns(goFiles), goErr,
 		expectation{"WeaponCount Weapon = 2 // the declared variant count (SPEC §4.2)", 1},
 		expectation{"TeamCount Team = 3 // the declared variant count (SPEC §4.2)", 1},
-		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
+		expectation{"WeaponMax Weapon = 2 // the exported extent (SPEC §4.2)", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const COUNT: Weapon = Weapon(2);", 1},
 		expectation{"pub const COUNT: Team = Team(3);", 1},
-		expectation{"pub const MAX: Weapon = Weapon(15);", 1})
+		expectation{"pub const MAX: Weapon = Weapon(2);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"Count = 2,", 1},
 		expectation{"Count = 3,", 1},
-		expectation{"Max = 15,", 1})
+		expectation{"Max = 2,", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"Count: 2,", 1},
 		expectation{"Count: 3,", 1},
-		expectation{"Max: 15,", 1})
+		expectation{"Max: 2,", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
 		expectation{"#define WEAPON_COUNT 2", 1},
 		expectation{"#define TEAM_COUNT 3", 1},
-		expectation{"#define WEAPON_MAX 15", 1})
+		expectation{"#define WEAPON_MAX 2", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
 		expectation{"Count = 2,", 1},
 		expectation{"Count = 3,", 1},
-		expectation{"Max = 15,", 1})
+		expectation{"Max = 2,", 1})
 	dartFiles, dartErr := dart.Generate(u)
 	addTarget("Dart", dartFiles, dartErr,
 		expectation{"static const int count = 2;", 1},
 		expectation{"static const int count = 3;", 1},
-		expectation{"static const int max = 15;", 1})
+		expectation{"static const int max = 2;", 1})
 	javaFiles, javaErr := java.Generate(u)
 	addTarget("Java", javaFiles, javaErr,
 		expectation{"public static final byte count = 2;", 1},
 		expectation{"public static final byte count = 3;", 1},
-		expectation{"public static final byte max = 15;", 1})
+		expectation{"public static final byte max = 2;", 1})
 	elixirFiles, elixirErr := elixir.Generate(u)
 	addTarget("Elixir", elixirFiles, elixirErr,
 		expectation{"def count, do: 2", 1},
 		expectation{"def count, do: 3", 1},
-		expectation{"def max, do: 15", 1})
+		expectation{"def max, do: 2", 1})
 
 	for _, tgt := range targets {
 		if tgt.genErr != nil {
