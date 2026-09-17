@@ -41,6 +41,16 @@
 #   --render FILE print the ruled headline table from an existing results CSV
 #                 and exit — no builds, no timed runs (the same table the
 #                 --quick tail prints, from the same bench/render.awk)
+#   --pgo         build the C and C++ legs two-pass clang PGO (#176): an
+#                 instrumented -fprofile-instr-generate build, one --quick
+#                 --bare profile run with LLVM_PROFILE_FILE set, an
+#                 llvm-profdata merge, then a release rebuild with
+#                 -fprofile-instr-use and -mcpu=native. The `# pgo:` preamble
+#                 line records the divergence; the other legs are untouched.
+#                 The recipe lives in the driver because COMMON_FLAGS resolves
+#                 the SERIALIZE include path here — a hand build outside
+#                 run.sh must set SERIALIZE or the generated headers cannot
+#                 find serialize.h. LLVM_PROFDATA overrides the merge tool.
 #   --bare        rows only, no preamble — for the driver's per-round files
 #   --reuse-build reuse existing C/C++ bench binaries instead of recompiling
 #                 (the driver builds once at pass start and reuses per round)
@@ -88,6 +98,7 @@ BARE=0
 REUSE=0
 INLINE=0
 QUICK=0
+PGO=0
 CXX_BIN="${CXX:-c++}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -100,6 +111,7 @@ while [ $# -gt 0 ]; do
         --reuse-build) REUSE=1 ;;
         --inline) INLINE=1 ;;
         --quick) QUICK=1 ;;
+        --pgo) PGO=1 ;;
         --render) RENDER="$2"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -285,6 +297,32 @@ fi
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
 C_DEBUG_FLAGS="-O0 -g $C_COMMON_FLAGS"
 
+# ---- two-pass PGO for the native-tier C/C++ legs (#176) ----
+# The C and C++ legs compile the same word-codec shape; by default both build
+# without PGO, which is one of the three named terms of the c/cpp tie. --pgo
+# runs clang's profile-guided pipeline on both legs: instrument with
+# -fprofile-instr-generate, one profile run, merge, rebuild with
+# -fprofile-instr-use and -mcpu=native. The recipe lives in the driver because
+# COMMON_FLAGS resolves the SERIALIZE include path here; a hand build outside
+# run.sh has to set SERIALIZE (or pass -I) or the generated headers cannot
+# find serialize.h.
+PGO_NOTE="off"
+PGO_PROFILE_DIR="build/bench/pgo"
+PROF_DATA=""
+if [ "$PGO" = 1 ]; then
+    if [ -n "${LLVM_PROFDATA:-}" ]; then
+        PROF_DATA="$LLVM_PROFDATA"
+    elif command -v xcrun >/dev/null 2>&1 && xcrun --find llvm-profdata >/dev/null 2>&1; then
+        PROF_DATA="xcrun llvm-profdata"
+    elif command -v llvm-profdata >/dev/null 2>&1; then
+        PROF_DATA="llvm-profdata"
+    else
+        echo "--pgo needs llvm-profdata (clang's -fprofile-instr-generate/-use; set LLVM_PROFDATA to its path)" >&2
+        exit 1
+    fi
+    PGO_NOTE="two-pass clang PGO: -fprofile-instr-generate, one profile run, llvm-profdata merge, -fprofile-instr-use, -mcpu=native (c and cpp)"
+fi
+
 emit_preamble() {
     local build="$1"
     {
@@ -297,6 +335,7 @@ emit_preamble() {
         echo "# cpp flags: $([ "$build" = Release ] && echo "$RELEASE_FLAGS" || echo "$DEBUG_FLAGS")"
         echo "# c compiler: $($CC_BIN --version 2>/dev/null | head -1)"
         echo "# c flags: $([ "$build" = Release ] && echo "$C_RELEASE_FLAGS" || echo "$C_DEBUG_FLAGS") (serialize.c compiled in, no LTO)"
+        echo "# pgo: $PGO_NOTE"
         echo "# go: ${GO_VERSION:-not present} (go run, default optimized build)"
         echo "# rust: ${RUST_VERSION:-not present} (cargo run --release at opt-level ${OPT_LEVEL#O}, no LTO)"
         echo "# dotnet: ${DOTNET_VERSION:-not present} (dotnet run -c Release, workstation GC)"
@@ -412,6 +451,17 @@ fi
 if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
     if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_cpp ]; then
         echo "== cpp: reusing build/bench/schema_bench_cpp ==" >&2
+    elif [ "$PGO" = 1 ]; then
+        mkdir -p "$PGO_PROFILE_DIR"
+        rm -f "$PGO_PROFILE_DIR/cpp.profraw" "$PGO_PROFILE_DIR/cpp.profdata"
+        echo "== cpp: pgo pass 1 (instrumented build) ==" >&2
+        $CXX_BIN $RELEASE_FLAGS -fprofile-instr-generate bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_pgo
+        echo "== cpp: pgo profile run ==" >&2
+        LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/cpp.profraw" $PIN ./build/bench/schema_bench_cpp_pgo --csv --quick --bare >/dev/null
+        echo "== cpp: pgo merge ==" >&2
+        $PROF_DATA merge -output="$PGO_PROFILE_DIR/cpp.profdata" "$PGO_PROFILE_DIR/cpp.profraw"
+        echo "== cpp: build (Release, PGO) ==" >&2
+        $CXX_BIN $RELEASE_FLAGS -fprofile-instr-use="$PGO_PROFILE_DIR/cpp.profdata" -mcpu=native bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
     else
         echo "== cpp: build (Release) ==" >&2
         $CXX_BIN $RELEASE_FLAGS bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp
@@ -439,6 +489,17 @@ if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
     else
         if [ "$REUSE" = 1 ] && [ -x build/bench/schema_bench_c ]; then
             echo "== c: reusing build/bench/schema_bench_c ==" >&2
+        elif [ "$PGO" = 1 ]; then
+            mkdir -p "$PGO_PROFILE_DIR"
+            rm -f "$PGO_PROFILE_DIR/c.profraw" "$PGO_PROFILE_DIR/c.profdata"
+            echo "== c: pgo pass 1 (instrumented build) ==" >&2
+            $CC_BIN $C_RELEASE_FLAGS -fprofile-instr-generate bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c_pgo -lm
+            echo "== c: pgo profile run ==" >&2
+            LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/c.profraw" $PIN ./build/bench/schema_bench_c_pgo --csv --quick --bare >/dev/null
+            echo "== c: pgo merge ==" >&2
+            $PROF_DATA merge -output="$PGO_PROFILE_DIR/c.profdata" "$PGO_PROFILE_DIR/c.profraw"
+            echo "== c: build (Release, PGO) ==" >&2
+            $CC_BIN $C_RELEASE_FLAGS -fprofile-instr-use="$PGO_PROFILE_DIR/c.profdata" -mcpu=native bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c -lm
         else
             echo "== c: build (Release) ==" >&2
             $CC_BIN $C_RELEASE_FLAGS bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c -lm

@@ -44,7 +44,20 @@ backends' GENERATED codecs over the same shape under the same contract
                                  # refuses if a build would not — §3.5, verified
                                  # per pass by bench/tools/verify-runtime-paths.sh)
     BENCH_OPT_LEVEL=O2 bench/run.sh              # the C/C++ O2 leg (§3.3)
+    bench/run.sh --pgo                           # two-pass clang PGO + -mcpu=native
+                                                 # on the C/C++ legs only (#176)
     BENCH_NOISE="NOISY: ..." bench/run.sh        # free-text supplement — load capture is automatic
+
+`--pgo` (#176) is the native-tier tie-breaker lever: an instrumented
+`-fprofile-instr-generate` build of each C/C++ leg, one `--quick --bare`
+profile run with `LLVM_PROFILE_FILE` set, an `llvm-profdata merge`, then a
+release rebuild with `-fprofile-instr-use` and `-mcpu=native`. The other
+legs are untouched, and the `# pgo:` preamble line records the divergence so
+a PGO sitting is never divided against a default one unlabelled. The recipe
+lives in the driver because `COMMON_FLAGS` resolves the `SERIALIZE` include
+path there; a hand build outside `run.sh` has to set `SERIALIZE` (or pass
+`-I`) or the generated headers cannot find `serialize.h`. `LLVM_PROFDATA`
+overrides the merge tool.
 
 `make bench` runs the Release pass.
 
