@@ -1,9 +1,10 @@
 # schema — `make` builds the compiler (bin/schema) and nothing else: no
 # serialize checkouts, no language toolchains, no generation. The full
-# nine-language conformance chain is `make test`, and it needs the sibling
-# runtime checkouts and toolchains documented below.
+# nine-language conformance chain is `make test-full`, and it needs the sibling
+# runtime checkouts and toolchains documented below. `make help` lists the one
+# entry: build, test, test-full, lint, check and clean.
 #
-# THE TOOLCHAIN GATE (issue #599). `make test` REFUSES BY NAME when a pinned
+# THE TOOLCHAIN GATE (issue #599). `make test-full` REFUSES BY NAME when a pinned
 # toolchain a make/<lang>.mk names does not resolve. It probes EVERY registered
 # leg and names every one that does not resolve in the same run, with the path
 # each pin looked in, rather than stopping at the first and making a fresh
@@ -14,7 +15,7 @@
 #
 # To run the chain without a leg, name the skip ON PURPOSE:
 #
-#   make test SCHEMA_SKIP_LEGS=js,dart
+#   make test-full SCHEMA_SKIP_LEGS=js,dart
 #
 # Every named leg prints its skip in the toolchain gate, in the conformance
 # matrix, in the two-language gates and in the leg loop, and is not run.
@@ -42,7 +43,7 @@ CXXFLAGS  += -I$(SERIALIZE)
 # THE SKIP LIST (issue #599): the legs whose toolchain is absent ON PURPOSE,
 # comma separated, empty by default and empty in every .github workflow. A leg
 # named here prints its skip and does not run; a leg NOT named here whose pin
-# does not resolve stops `make test` by name.
+# does not resolve stops `make test-full` by name.
 SCHEMA_SKIP_LEGS ?=
 skip_comma  := ,
 skip_empty  :=
@@ -64,12 +65,12 @@ unless_skipped = $(if $(filter $(1),$(SKIPPED_LEGS)),,$(2))
 # resolves the pin's own value; a leg whose pin carries an environment prefix
 # passes its own probe as the fourth argument.
 toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
-		echo "make test REFUSES: the $(1) leg's pinned $(2) does not resolve"; \
+		echo "make test-full REFUSES: the $(1) leg's pinned $(2) does not resolve"; \
 		echo '  $(2) = $(3)'; \
 		echo "  test-$(1) would have been SKIPPED, and a leg that skips is a gate with no blade (issue $(skip_hash)599)"; \
 		echo "  make/$(1).mk names the pinned toolchain and where it comes from; install it,"; \
-		echo "  or override the pin ($(2)=... make test), or name the skip on purpose:"; \
-		echo "      make test SCHEMA_SKIP_LEGS=$(1)"; \
+		echo "  or override the pin ($(2)=... make test-full), or name the skip on purpose:"; \
+		echo "      make test-full SCHEMA_SKIP_LEGS=$(1)"; \
 		exit 1; }
 
 # cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
@@ -108,11 +109,119 @@ SCHEMAS_TABLES_VOCAB := $(wildcard tables/vocab/*.schema)
 SCHEMAS_TABLES_VOCAB9 := $(wildcard tables/vocab9/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
-# act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the
+# act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test-full` runs the
 # short forms with an explicit value.
 SOAK_SECONDS ?= 3600
 
 all: bin/schema
+
+# ---------------------------------------------------------------------------
+# THE ONE ENTRY (Glenn, 2026-09-17): Makefiles, "an oldie but a goodie". Every
+# card, every contributor and every job in .github/workflows runs the same
+# commands from this one place, so shell never drifts between a card and CI.
+#
+#   make build      the compiler: `go build ./...` and bin/schema
+#   make test       the fast tier: vet, the Go suite and the Go-only controls
+#   make test-full  the full nine-language conformance chain
+#   make lint       gofmt, go mod tidy, the CI self-lints and the script checks
+#   make check      everything CI runs: build, test and lint, the shape gate,
+#                   the negative-control enumeration and the corpus check
+#   make clean      remove ./bin and ./scratch (an explicit list)
+#
+# `make help` lists them. CI's jobs call these targets; the Go test in
+# internal/ci refuses a build, test or lint command in ci.yml that is not a
+# make invocation, so the two cannot drift apart again.
+# ---------------------------------------------------------------------------
+.PHONY: build vet test test-full lint check check-corpus clean help
+.PHONY: fmt-check tidy-check ci-self-test modernize scripts-check ledger-check render-smoke
+.PHONY: vuln negativecontrols-check
+
+help:
+	@echo "schema targets:"
+	@echo "  build      build the compiler (go build ./... and bin/schema)"
+	@echo "  test       the fast tier: vet, the Go suite and the Go-only controls"
+	@echo "  test-full  the full nine-language conformance chain"
+	@echo "  lint       gofmt, go mod tidy, the CI self-lints and the script checks"
+	@echo "  check      everything CI runs: build, test, lint and the layout checks"
+	@echo "  clean      remove ./bin and ./scratch (an explicit list)"
+
+# `go build ./...` compiles every package; bin/schema is the compiler itself.
+# ci.yml's windows job runs `go build ./...`, its msvc job builds bin/schema.exe.
+build: bin/schema
+	go build ./...
+
+# THE FAST TIER: exactly what ci.yml's go-test job runs. `go vet` rides with
+# the suite because an emitter codebase built out of format strings is where
+# printf-verb mismatches land (issue #31), and the projection controls and the
+# toolchain gate's control are Go-only and take seconds.
+vet: bin/schema
+	go vet ./...
+
+test: vet
+	go test ./...
+	$(MAKE) projection-variant-order-negative-control
+	$(MAKE) projection-wire-law-negative-control
+	$(MAKE) projection-union-arm-order-negative-control
+	$(MAKE) toolchain-negative-control
+
+# THE FULL CHAIN is `test-full`, assembled by its prerequisites further down
+# this file and in make/*.mk: the nine-language conformance chain, the wire
+# goldens and every negative control that needs a language toolchain. It is
+# what certification runs.
+
+# THE LINT JOB, one target. gofmt and `go mod tidy` check the tree in place;
+# internal/ci is the workflow gate (CI lints itself); modernize is the same
+# pinned pass ci.yml runs; the script checks and the bench ledger/render smoke
+# are the lint job's non-Go steps.
+fmt-check:
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then \
+		echo "$$out"; \
+		echo "gofmt differs — run gofmt -w on the files above"; \
+		exit 1; \
+	fi
+
+tidy-check:
+	go mod tidy -diff
+
+ci-self-test:
+	go test ./internal/ci/
+
+modernize:
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
+
+scripts-check:
+	bash -n bench/run.sh
+
+ledger-check:
+	go run ./bench/tools ledger --check > /dev/null
+
+render-smoke:
+	@csv=$$(ls bench/results/*.csv | tail -1); \
+	out=$$(./bench/run.sh --render "$$csv" 2>&1); \
+	echo "$$out"; \
+	echo "$$out" | grep -q "language        %" || { echo "render printed no table header"; exit 1; }; \
+	rows=$$(echo "$$out" | grep -cE "^  [a-z]+ "); \
+	[ "$$rows" -ge 1 ] || { echo "render printed zero language rows"; exit 1; }
+
+lint: fmt-check tidy-check ci-self-test modernize scripts-check ledger-check render-smoke
+
+# The vulnerability scan, pinned to a govulncheck release: what changes on its
+# own is the database the tool fetches at run time, never the scanner (`vuln`
+# is its own ci.yml job because that verdict moves with no commit).
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+# The enumeration gate: every negative control the makefiles define is in a CI
+# tier, read out of the makefiles rather than typed into a workflow.
+negativecontrols-check:
+	go run ./tools/negativecontrols check
+
+# EVERYTHING CI RUNS, under one name: the three doors above, the one-benchmark
+# shape gate, the enumeration gate that proves every negative control is in a
+# tier, the vulnerability scan and the compiler's corpus/layout check. `make
+# check` is the whole pull request gate, and a card that runs it has run
+# everything CI will.
+check: build test lint vuln shape-gate negativecontrols-check check-corpus
 
 # The version the built binary reports. `git describe` gives the exact tag on a
 # release build and tag-commits-hash elsewhere; when this is not a git checkout
@@ -1622,7 +1731,7 @@ endif
 # project's BlockHomeGeneratedDir keeps its default and the blockhome sources
 # have to be on disk; without them the build fails on an undefined namespace
 # and the control refuses, correctly, that C# went red but not on the layout
-# check. Inside `make test` an earlier leg had already generated them, which is
+# check. Inside `make test-full` an earlier leg had already generated them, which is
 # why the omission stayed invisible until every control ran on its own.
 .PHONY: tables-block-layout-model-negative-control
 tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs/.stamp
@@ -1791,7 +1900,7 @@ else
 endif
 
 # GATE 2 (docs/SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
-# part of `make test` on purpose — a correctness suite whose verdict depends on
+# part of `make test-full` on purpose — a correctness suite whose verdict depends on
 # the machine's mood is not a correctness suite, and the estate's bench rules
 # want one bench at a time per machine and a quiet window.
 #
@@ -1883,7 +1992,7 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 # requires the harness to go RED on the reference leg.
 # The Go leg is a PREREQUISITE, not an assumption: the second half below runs
 # the harness over a substituted registry naming the Go driver, and that driver
-# execs build/conformance-go. Within `make test` the Go leg is already built by
+# execs build/conformance-go. Within `make test-full` the Go leg is already built by
 # the time this runs, which is why the omission stayed invisible; run this
 # target on its own and it fails on a missing binary rather than on its own
 # question.
@@ -3074,7 +3183,7 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 # THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
 # that does not resolve stops the chain by name here, before an hour of C++,
 # rather than in the middle of a leg with a shell's "command not found".
-test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+test-full: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
 	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
@@ -3237,7 +3346,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	./build/schema_test_ludicrous
 	./build/schema_test_bench
 	# the tables bench corpus's oracle — the generated table unit has no other
-	# consumer under `make test`, and a unit that generates but does not compile
+	# consumer under `make test-full`, and a unit that generates but does not compile
 	# is issue #80's lesson, so each leg's compile gate rides in its test-<lang>
 	./build/schema_test_bench_table
 	# EVERY REGISTERED LEG (make/<lang>.mk, TEST_LEGS): its generated trees, its
@@ -3248,7 +3357,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	@set -e; for leg in $(TEST_LEGS); do \
 		case " $(SKIPPED_LEGS) " in \
 		*" $${leg#test-} "*) \
-			echo "make test SKIPS $$leg: SCHEMA_SKIP_LEGS names the $${leg#test-} leg on purpose"; \
+			echo "make test-full SKIPS $$leg: SCHEMA_SKIP_LEGS names the $${leg#test-} leg on purpose"; \
 			continue ;; \
 		esac; \
 		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
@@ -4286,7 +4395,7 @@ bench-lock:
 # the shape or the §2.7 LCG mapping moved, and the tool refuses outright if
 # variant 0 stops equalling testdata/wire/bench_mixed.bin. Needs the
 # serialize.go checkout ($(SERIALIZE_GO)); the committed data's own gate,
-# bench/corpus/variants_test.go, needs nothing and runs in `make test`.
+# bench/corpus/variants_test.go, needs nothing and runs in `make test-full`.
 bench-variants: generated/bench/go/.stamp
 	cd bench/tools/variantgen && go run .
 
@@ -4301,7 +4410,7 @@ bench-variants: generated/bench/go/.stamp
 # game on real render data.
 #
 # The corpus DATA is produced and verified by build/schema_test_bench_table,
-# which `make test` runs. `bench-table-corpus` re-pins it: deterministic, so a
+# which `make test-full` runs. `bench-table-corpus` re-pins it: deterministic, so a
 # re-pin that changes the committed files means the shape or the vary mapping
 # moved — the same stop-the-line rule the wire goldens carry.
 bench-table-corpus: build/schema_test_bench_table
@@ -4327,7 +4436,7 @@ bench-paired-corpus: build/schema_test_bench_paired
 bench-paired-check: build/schema_test_bench_paired
 	./build/schema_test_bench_paired verify
 
-test: bench-paired-check
+test-full: bench-paired-check
 
 bench-paired-gate:
 	go run ./bench/paired -mode gate
@@ -4341,7 +4450,7 @@ bench-paired-gate:
 # else — the block settles the positions, the ids, the kinds, the record size
 # and the hash, so a leg that matches it is speaking the form and not a near
 # miss. `--gate` is the runner's no-clock mode: this is a correctness gate and
-# starts no timer, so it belongs in `make test` where the measurement above
+# starts no timer, so it belongs in `make test-full` where the measurement above
 # does not.
 build/schema_test_bench_paired_table_cpp: generated/bench/paired/cpp/.stamp bench/tables/cpp/table_main.cpp
 	@mkdir -p build
@@ -4353,14 +4462,14 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 .PHONY: tables-fixed-matched
 
-test: tables-fixed-matched
+test-full: tables-fixed-matched
 
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
 # plan-driven reader running its identity plan against straight-line
 # constant-offset loads written by hand, over the paired unit's own 64
 # records. It prints a ratio; the ruling's bound is ~1.5x. Not part of
-# `make test` — it is a clock, and clocks do not gate a build.
+# `make test-full` — it is a clock, and clocks do not gate a build.
 build/schema_bench_fixedform: generated/bench/paired/cpp/.stamp test/bench/fixedform_measure.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -O2 -Igenerated/bench/paired/cpp test/bench/fixedform_measure.cpp -o $@
@@ -4372,11 +4481,11 @@ bench-fixedform-measure: build/schema_bench_fixedform
 
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
-# emits (issue #30). `make test` regenerates every tracked generated file in
+# emits (issue #30). `make test-full` regenerates every tracked generated file in
 # place, so staleness is precisely a dirty tree afterwards — a tracked file
 # that changed, or a newly emitted file nobody committed. CI runs the same
-# two checks after its make test step.
-generated-current: test
+# two checks after its make test-full step.
+generated-current: test-full
 	@git diff --exit-code generated/ || { \
 		echo "committed generated/ tree is STALE — the current compiler emits different text."; \
 		echo "review the diff above, then commit the regenerated files."; \
@@ -4391,8 +4500,9 @@ generated-current: test
 	@echo "generated/ tree is current"
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
-# corpus commands name each unit's file rather than the directory
-check: bin/schema
+# corpus commands name each unit's file rather than the directory. It is the
+# LAYOUT CHECK the aggregate `check` target below carries.
+check-corpus: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
 	./bin/schema check examples-wide
@@ -4459,10 +4569,12 @@ fmt: bin/schema
 shape-gate:
 	go run ./bench/tools/shapegate
 
+# An EXPLICIT list, never a computed path: a clean that expands a variable into
+# rm -rf is one edit away from removing the tree. bin/ and scratch/ only.
 clean:
-	rm -rf bin build generated
+	rm -rf bin scratch
 
-.PHONY: all test check id fmt clean update-goldens bench bench-variants bench-tables bench-table-corpus bench-table-check generated-current shape-gate
+.PHONY: all test test-full check check-corpus id fmt clean update-goldens bench bench-variants bench-tables bench-table-corpus bench-table-check generated-current shape-gate
 
 # ---------------------------------------------------------------------------
 # THE TABLES CONFORMANCE HARNESS (test/conformance/README.md) ----------------
@@ -5451,7 +5563,7 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # lists below, and the aggregate targets under the include are the only places
 # the lists are read — so a port adds its file and edits nothing here.
 #
-#   TEST_LEGS          test-<lang>: the leg's whole `make test` half — its
+#   TEST_LEGS          test-<lang>: the leg's whole `make test-full` half — its
 #                      generated trees, its gates and negative controls, its
 #                      packet and table tests
 #   CONFORMANCE_LEGS   what `make conformance` builds before the harness runs
@@ -5544,7 +5656,7 @@ registry:
 # THE TOOLCHAIN GATE (issue #599), the aggregate ----------------------------
 #
 # Every leg that registered a pinned toolchain is probed here, before the chain
-# spends its hour, and a pin that does not resolve stops `make test` by name.
+# spends its hour, and a pin that does not resolve stops `make test-full` by name.
 # A leg named in SCHEMA_SKIP_LEGS is not probed and prints its skip instead, so
 # the run says which legs it did not measure rather than passing over them.
 # Nothing here lists a language: a leg registers TOOLCHAIN_LEGS, its pin name
@@ -5560,7 +5672,7 @@ PROBED_TOOLCHAIN_LEGS  := $(filter-out $(SKIPPED_LEGS),$(TOOLCHAIN_LEGS))
 .PHONY: toolchain-names
 toolchain-names:
 ifneq ($(UNKNOWN_SKIPS),)
-	@echo "make test REFUSES: SCHEMA_SKIP_LEGS names $(UNKNOWN_SKIPS), which is no registered leg"
+	@echo "make test-full REFUSES: SCHEMA_SKIP_LEGS names $(UNKNOWN_SKIPS), which is no registered leg"
 	@echo "  the registered legs are: $(REGISTERED_LEGS) (make registry prints them)"
 	@exit 1
 endif
@@ -5591,10 +5703,10 @@ toolchain: toolchain-names
 	$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
 		echo "toolchain gate: the $(leg) leg is SKIPPED on purpose, SCHEMA_SKIP_LEGS names it";) \
 	if [ -n "$$missing" ]; then \
-		echo "make test REFUSES: the pinned toolchain does not resolve for:$$missing"; \
+		echo "make test-full REFUSES: the pinned toolchain does not resolve for:$$missing"; \
 		echo "  every refusal above names its leg, its pin and the path that pin looked in"; \
 		echo "  to run the chain without those legs, name the skips on purpose:"; \
-		echo "      make test SCHEMA_SKIP_LEGS=$$(echo $(SKIPPED_LEGS) $$missing | tr ' ' ',')"; \
+		echo "      make test-full SCHEMA_SKIP_LEGS=$$(echo $(SKIPPED_LEGS) $$missing | tr ' ' ',')"; \
 		exit 1; \
 	fi; \
 	echo "$(TOOLCHAIN_GREEN)"
@@ -5644,7 +5756,7 @@ toolchain-negative-control:
 			{ echo "POSITIVE FAILED: the $(leg) leg was passed over without being named"; \
 			  cat build/toolchain-nc/skipped.log; exit 1; };)
 	@cat build/toolchain-nc/skipped.log
-	@echo "negative control: each of the $(words $(TOOLCHAIN_ALL_PINS)) registered pins ($(TOOLCHAIN_ALL_PINS)) pointed at a path that does not exist turns make test RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
+	@echo "negative control: each of the $(words $(TOOLCHAIN_ALL_PINS)) registered pins ($(TOOLCHAIN_ALL_PINS)) pointed at a path that does not exist turns make test-full RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
 
 # THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
 # the node type id every stored record carries, so W1's fleet reads under W2's
@@ -5689,7 +5801,7 @@ tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
 	./build/schema_test_fixedform_asan
 
-test: tables-fixedform
+test-full: tables-fixedform
 
 .PHONY: tables-fixedform
 

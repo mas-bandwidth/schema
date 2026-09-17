@@ -27,7 +27,7 @@ NODE ?= $(CURDIR)/dist/node-v26.7.0-darwin-arm64/bin/node
 export NODE
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
-# docs/CONTRIBUTING.md, "Adding a language"). `make test` runs this before the
+# docs/CONTRIBUTING.md, "Adding a language"). `make test-full` runs this before the
 # chain starts and refuses by name when the pin does not resolve, because a leg
 # that skips in silence is a leg whose red rides a green run.
 .PHONY: toolchain-js
@@ -344,7 +344,7 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@touch $@
 
 
-# THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
+# THE JAVASCRIPT LEG of `make test-full`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
 .PHONY: test-js
 test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp

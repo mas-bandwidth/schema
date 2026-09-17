@@ -225,7 +225,7 @@ tables-elixir-release:
 	$(MAKE) tables-elixir-block-lead
 	$(MAKE) tables-elixir-block-lead-negative-control
 
-# THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
+# THE ELIXIR LEG of `make test-full`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
 # both and the block lead gate — then the format check and the packet tests.
 # The port emits no table wire (schema#515), so there is no walk gate, no

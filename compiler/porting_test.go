@@ -152,7 +152,8 @@ func makeTargetsAfter(args string) []string {
 // it includes, and answers which targets exist and which the tree runs: a
 // prerequisite of a reached target, or a `$(MAKE) <target>` line in a reached
 // target's recipe — including one that runs every value of a list variable,
-// as `test` runs `$(TEST_LEGS)` — transitively, from the roots: `test`, every
+// as `test-full` runs `$(TEST_LEGS)` — transitively, from the roots: `test`
+// (the fast tier), `test-full` (the whole nine-language chain), every
 // `tables-<lang>-release` target (which certify.yml discovers from the same
 // files and runs by name) and every target a workflow under .github/workflows
 // invokes as `make <target>`.
@@ -239,6 +240,7 @@ func makefileReach(texts []string, workflowRoots []string) (exists, reached map[
 		}
 	}
 	walk("test")
+	walk("test-full")
 	for t := range exists {
 		if strings.HasPrefix(t, "tables-") && strings.HasSuffix(t, "-release") {
 			walk(t)
@@ -410,7 +412,7 @@ func checkPortingRegister(reg *portingRegister, tree portingTree) []string {
 					case !tree.exists[name]:
 						findings = append(findings, fmt.Sprintf("%s / %s: carried, but the Makefile has no target %q", row.Title, lang, name))
 					case !tree.reached[name]:
-						findings = append(findings, fmt.Sprintf("%s / %s: target %q exists but nothing reaches it — not `make test`, not a release target, not a workflow", row.Title, lang, name))
+						findings = append(findings, fmt.Sprintf("%s / %s: target %q exists but nothing reaches it — not `make test-full`, not a release target, not a workflow", row.Title, lang, name))
 					}
 				}
 				for _, name := range tests {

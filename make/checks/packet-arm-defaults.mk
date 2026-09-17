@@ -153,7 +153,7 @@ packet-arm-defaults-negative-controls:
 
 # Additional prerequisites preserve each existing test recipe. The root test
 # already invokes the registered language legs; no duplicate registration.
-test: packet-arm-defaults-cpp-negative-control
+test-full: packet-arm-defaults-cpp-negative-control
 test-c: packet-arm-defaults-c-negative-control
 test-go: packet-arm-defaults-go-negative-control
 test-rust: packet-arm-defaults-rust-negative-control

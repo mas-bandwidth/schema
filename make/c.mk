@@ -150,7 +150,7 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 # The flags a NEGATIVE CONTROL builds with. A control is built to be RUN ONCE
 # and thrown away — it proves a gate can go red and is never measured — so it
 # pays the warnings and skips the optimiser. On the driver's twenty-eight
-# translation units that is most of the build, and `make test` runs two of
+# translation units that is most of the build, and `make test-full` runs two of
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
@@ -885,11 +885,11 @@ tables-c-view: bin/schema test/c-tables/view_main.c
 
 test-c tables-c: tables-c-view
 
-# THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
+# THE C LEG of `make test-full` (docs/SPEC-TABLES.md; test/conformance/README.md):
 # the same corpus in C, with the two gates that hold the emitter honest, the
 # forgery fuzzer under ASan and UBSan, and a short soak.
 #
-# THE SHORT FORMS RIDE HERE AND THE LONG ONES DO NOT, because `make test` runs
+# THE SHORT FORMS RIDE HERE AND THE LONG ONES DO NOT, because `make test-full` runs
 # on every push and had three minutes of headroom before a fifth leg existed.
 # Every gate below FIRES here — the fuzzer's enumerated passes cover the
 # boundaries whatever N is, and the soak's allocator-call gate reads the same

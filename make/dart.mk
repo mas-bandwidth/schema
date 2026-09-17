@@ -239,7 +239,7 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
-# THE DART LEG of `make test`. THE DART PORT's own instruments
+# THE DART LEG of `make test-full`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
 # standalone gate and its control, the forgery fuzzer and its control — the

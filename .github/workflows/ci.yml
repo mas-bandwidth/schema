@@ -209,34 +209,23 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test
-        run: go test ./...
-
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line
       # would let a rounding change ship as one. Only a control that has gone
       # red proves a gate is watching. All three are Go-only and take seconds,
       # so they belong on the diff.
-      - name: the projection's gates go red without what they watch
-        run: |
-          make projection-variant-order-negative-control
-          make projection-wire-law-negative-control
-          make projection-union-arm-order-negative-control
-
-      # THE TOOLCHAIN GATE's control (issue #599), on the same reasoning and in
-      # the same job. `make test` is the only thing that runs the gate, and no
-      # job on a pull request runs `make test`, so until this step existed the
-      # gate that stops a missing toolchain was itself unwatched on the diff
-      # that changes it. The control needs no toolchain of its own: it points
-      # each registered pin at a path that does not exist and reads the
+      #
+      # THE TOOLCHAIN GATE's control (issue #599) rides the same target, on the
+      # same reasoning. `make test-full` is the only other thing that runs the
+      # gate, and no job on a pull request runs it, so until this step existed
+      # the gate that stops a missing toolchain was itself unwatched on the
+      # diff that changes it. The control needs no toolchain of its own: it
+      # points each registered pin at a path that does not exist and reads the
       # refusal, which is the state this runner is already in, and takes about
       # a second.
-      - name: the toolchain gate goes red without the toolchains it pins
-        run: make toolchain-negative-control
+      - name: make test — vet, the Go suite and the Go-only controls
+        run: make test
 
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
       # so that what it uploads is the cache AFTER vet and the whole test
@@ -741,22 +730,16 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: gofmt
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "$out"
-            echo "::error::gofmt differs — run gofmt -w on the files above"
-            exit 1
-          fi
+        run: make fmt-check
       - name: go mod tidy
-        run: go mod tidy -diff
+        run: make tidy-check
       # CI LINTS ITSELF (issues #470, #472). Two invariants a reader cannot hold
       # by hand across three workflow files: every `uses:` names a full commit
       # SHA and no tool runs `@latest`, and every csproj's TargetFramework
       # matches the one .NET SDK pin. It is a Go test, so `go test ./...` and
       # `make test` carry it too; this step is where the verdict is named.
       - name: CI lints itself — action pins and the .NET SDK pin
-        run: go test ./internal/ci/
+        run: make ci-self-test
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -767,9 +750,9 @@ jobs:
       # rules breaks CI deliberately, not overnight. The version is gopls's own
       # module tag; bump by hand.
       - name: modernize
-        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
+        run: make modernize
       - name: bench scripts parse
-        run: bash -n bench/run.sh
+        run: make scripts-check
       # Both locked legs (cpp and c) hold their curve on their own machine,
       # and on every (machine, corpus_id) axis the NEWEST certified pass that
       # publishes a figure keeps c inside §2.8's tie band of cpp. Older
@@ -777,17 +760,11 @@ jobs:
       # and gate nothing.
       # stdout is the series; the verdicts are on stderr and stay visible.
       - name: absolute ledger — the cpp and c curves hold, and the pair stays locked
-        run: go run ./bench/tools ledger --check > /dev/null
+        run: make ledger-check
+      # newest committed sweep: older CSVs predate the round_trip contract and
+      # the render REFUSES them by design (#175)
       - name: render smoke — the headline table renders from a committed CSV
-        run: |
-          # newest committed sweep: older CSVs predate the round_trip contract
-          # and the render REFUSES them by design (#175)
-          csv=$(ls bench/results/*.csv | tail -1)
-          out=$(./bench/run.sh --render "$csv" 2>&1)
-          echo "$out"
-          echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
-          rows=$(echo "$out" | grep -cE "^  [a-z]+ ")
-          [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
+        run: make render-smoke
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own. It rides the pull request here AND the nightly
@@ -822,7 +799,7 @@ jobs:
       # time — so the pin costs this gate nothing, and a red run can no longer
       # mean the scanner moved under us rather than a new CVE landing.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+        run: make vuln
 
   # The compiler that generates C++ for a Windows-targeting game engine, run on
   # Windows: vet + build, cheap enough to ride every pull request. What it
@@ -853,8 +830,8 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - run: go vet ./...
-      - run: go build ./...
+      - run: make vet
+      - run: make build
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds
@@ -1079,7 +1056,7 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: refuse hand-coded shape measurement
-        run: go run ./bench/tools/shapegate
+        run: make shape-gate
 
   # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
   # bench/LOCK exists, a change touching any locked prefix refuses. The lift is
@@ -1221,7 +1198,7 @@ jobs:
       # The enumeration gate, first and on its own, so a control that nothing
       # runs is named here rather than discovered by its absence from a log.
       - name: every negative control the makefiles define is in the plan
-        run: go run ./tools/negativecontrols check
+        run: make negativecontrols-check
 
       - id: plan
         name: the plan, as a matrix

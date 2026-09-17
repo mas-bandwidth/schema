@@ -3,7 +3,7 @@
 tables-reference-review:
 	go test ./compiler -run '^Test(CppVariableWideAlignment|CppCollectionWidening|FlagsElementWidening|CppHiddenUnionExtentRefusal|RepeatedArrayTailDefaults)$$' -count=1
 
-test: tables-reference-review
+test-full: tables-reference-review
 
 .PHONY: tables-reference-list-negative-control
 tables-reference-list-negative-control:
