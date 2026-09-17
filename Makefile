@@ -2960,14 +2960,16 @@ tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan 
 	./build/schema_test_hostile $(HOSTILE_MANIFEST) build/hostile-values
 	./build/schema_test_hostile_asan $(HOSTILE_MANIFEST) build/hostile-values
 
-# Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
-# `+`, which RFC 8259 does not — and the gate must go red, because a tree the
-# manifest says is REFUSED starts packing. Same overlay mechanism as the wire
-# negative control: no tracked file is ever written to.
+# Its NEGATIVE CONTROL: relax TWO rules of the text form and the gate must go
+# red, because a tree the manifest says is REFUSED starts packing — accept a
+# leading `+`, which RFC 8259 does not, and drop the zero-escape refusal, which
+# §3 and §16.3 require. Same overlay mechanism as the wire negative control:
+# no tracked file is ever written to.
 .PHONY: tables-hostile-negative-control
 tables-hostile-negative-control: tables-hostile-values
 	@mkdir -p build
-	@sed "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
+	@sed -e "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
+		-e "s/if code == 0 {/if false { \/\/ SABOTAGED/" \
 		internal/tabletext/read.go > build/read-sabotaged.gotext
 	@cmp -s build/read-sabotaged.gotext internal/tabletext/read.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -2983,6 +2985,15 @@ tables-hostile-negative-control: tables-hostile-values
 	@./bin/schema pack --root RootConfig --out build/loose.bin --tolerate \
 		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1 && \
 		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
+	@if ./build/schema-loose-numbers pack --root RootConfig --out build/zero-escape.bin --tolerate \
+		testdata/conformance/tables/json-hostile/str-zero-escape tables/examples > /dev/null 2>&1; then \
+		echo "pack hostile-value negative control: a zero escape packs once its refusal is removed"; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: removing the zero refusal left str-zero-escape refused"; exit 1; \
+	fi
+	@./bin/schema pack --root RootConfig --out build/zero-escape.bin --tolerate \
+		testdata/conformance/tables/json-hostile/str-zero-escape tables/examples > /dev/null 2>&1 && \
+		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a zero escape too"; exit 1; } || true
 
 # The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
 # encoder — elide a present `?T`, which §2.3 forbids — and the golden must go

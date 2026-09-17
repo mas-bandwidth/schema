@@ -1019,28 +1019,25 @@ static void test_text()
         CHECK( r.malformed );
     }
     {
-        // A KEY IS DATA AND A LENGTH, never a run to the first NUL (§2.8, §3):
-        // the wire and the text both carry an interior U+0000 in a string(N)
-        // key, so "a" and "a\0b" are TWO keys. A lookup that recomputes the
-        // length merges them and relabels the entry it found, which is a
-        // deletion the report never mentions.
+        // AN INTERIOR ZERO BYTE IS DAMAGE, so the text READ refuses the
+        // `\u0000` escape BY NAME (§3, §16.3): it is a code point, but a kind
+        // 12 payload carries no zero byte, and the text form may not build
+        // storage the wire cannot carry (§5). A key that measures to the first
+        // NUL never reaches storage from a text, and a read that met the escape
+        // stops there rather than relabel the entry.
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
-        CHECK_EQ( r.duplicate, 0 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( !RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
-        // and the SAME interior-zero key twice IS one key: one entry, counted
-        // duplicate, never a second entry wearing an identity the map holds
+        // and the SAME interior-zero key twice is refused on the same terms
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( r.duplicate, 1 );
+        CHECK( !RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY

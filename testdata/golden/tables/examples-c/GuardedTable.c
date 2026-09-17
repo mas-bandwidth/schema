@@ -1126,6 +1126,12 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     // CESU-8 — invalid UTF-8 — out of input that was valid
                     // JSON, so it reads as the replacement character
                     if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
+                    // AN INTERIOR ZERO CODE POINT IS DAMAGE (§3), and U+0000 IS a
+                    // code point, so the replacement rule above does not reach it:
+                    // a kind 12 payload carries no zero byte and a kind 33 none, so
+                    // the READ refuses the escape BY NAME rather than build storage
+                    // the wire cannot carry (§5).
+                    if ( code == 0 ) { in->bad = 1; return 0; }
                     unit_length = table_json_encode_utf8( code, unit );
                     break;
                 }

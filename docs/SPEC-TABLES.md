@@ -13738,27 +13738,34 @@ the point the defect ENTERS: RFC 8259 requires a JSON text to be valid UTF-8,
 so a byte in a string body that is not part of a well-formed sequence is not
 a code point either, and the READ replaces it with one `U+FFFD` exactly as a
 lone surrogate escape reads — one per sequence, counted as nothing, and then
-clamped at a code point boundary like any other. Without it the text form
-would build storage the wire cannot carry, and §5's guarantee that an
-instance a tolerant load produced is always one the reference can re-save
-would hold for the wire and not for the text. What remains is an instance
-built in code, and the writer answers for it rather than emitting a text no
-conforming parser can read.
+clamped at a code point boundary like any other. **A ZERO CODE POINT IS A CODE
+POINT, so that replacement does not reach it**: an interior zero byte is
+damage on both text kinds (§3), and the READ refuses the `\u0000` escape BY
+NAME — `malformed` — rather than build storage the wire cannot carry. Without
+these rules the text form would build storage the wire cannot carry, and §5's
+guarantee that an instance a tolerant load produced is always one the
+reference can re-save would hold for the wire and not for the text. What
+remains is an instance built in code, and the writer answers for it rather
+than emitting a text no conforming parser can read.
 
 **The two text types answer DIFFERENTLY, because the two failures are
 different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
-perfectly good code point that JSON has an escape for, so it is written
-`\u0000` and the text round-trips it exactly. A WIDE field's UNPAIRED
-SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD` per ill-formed unit. Each type then takes the other half of the
-same distinction: a narrow field's ill-formed UTF-8 sequence is not a code
-point either and writes `U+FFFD`, one per sequence, and a wide field's zero
-unit is `U+0000` and writes `\u0000`. **The rule underneath both is one
-rule** — a code point is escaped and preserved, and what is not a code point
-is replaced — and the two types are named separately only because each meets
-it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
-text this form emits must be readable by any conforming parser, not only by
-schema's own reader.
+perfectly good code point that JSON has an escape for — and it is DAMAGE on
+the wire, which carries no zero byte among a kind 12 payload and no zero unit
+among a kind 33 one (§3). So the text READ refuses the `\u0000` escape BY
+NAME, `malformed`, and the text form never round-trips it: the writer still
+spells a program-built zero `\u0000`, exactly as the wire writer still writes
+a program-built zero byte, and neither reader takes it back. A WIDE field's
+UNPAIRED SURROGATE is not a code point at all, encodes to nothing, and is
+written as one `U+FFFD` per ill-formed unit. Each type then takes the other
+half of the same distinction: a narrow field's ill-formed UTF-8 sequence is
+not a code point either and reads as `U+FFFD`, one per sequence, and a wide
+field's unpaired surrogate reads and writes the same way. **The rule
+underneath both is one rule** — what is not a code point is replaced, and what
+is a code point the WIRE cannot carry is refused — and the two types are named
+separately only because each meets it through a different defect. RFC 8259
+requires a JSON text to be valid UTF-8, and a text this form emits must be
+readable by any conforming parser, not only by schema's own reader.
 
 ### 16.4 The key: `json`
 
@@ -13789,7 +13796,8 @@ touching a stored file.
   tokens, overflow at every integer width and float width, nesting past the
   depth cap, unknown keys, duplicate keys at every kind including arrays,
   clamped strings at a multi-byte boundary, a union with two keys, an
-  enum-keyed object keyed `"None"`, a lone surrogate.
+  enum-keyed object keyed `"None"`, a lone surrogate, and a `\u0000` escape,
+  refused by name (§16.3).
 - **THE COMMENT ROWS** (§16.2), each red for one reason: a `//` before the
   first key, after the last value and between two entries, a `/* */` inside an
   array between two elements and between a key and its value, a `//` and a
