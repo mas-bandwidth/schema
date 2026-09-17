@@ -2,10 +2,28 @@ package cstable
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// A null report is DISCARDED, not constructed: the C# read path owns no
+// memory (docs/PORTING.md I1, docs/SPEC-TABLES.md "What allocates, and what
+// never does"). TableWire.Load once allocated a fresh TableReport for a null
+// report, which made a null-report read the one allocating path; the cached
+// ignored ledger is the fix, and this holds it.
+func TestNullReportLoadDoesNotAllocate(t *testing.T) {
+	if strings.Contains(tableWireSource, "if (report == null) { report = new TableReport(); }") {
+		t.Fatal("TableWire.Load constructs a TableReport for a null report — a null-report read allocates")
+	}
+	if !strings.Contains(tableWireSource, "if (report == null) { report = Ignored; }") {
+		t.Fatal("TableWire.Load does not route a null report through the cached ignored ledger")
+	}
+	if !strings.Contains(tableWireSource, "public static readonly TableReport Ignored = new TableReport();") {
+		t.Fatal("TableWire does not cache the ignored ledger a null report needs")
+	}
+}
 
 func TestIsChildScalarArray(t *testing.T) {
 	leafStruct := &ir.Struct{

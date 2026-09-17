@@ -2679,6 +2679,20 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
+# THE C++ STEADY READ-PATH ALLOCATION GATE (docs/PORTING.md I1). The counting
+# global operator new in test/tables/main.cpp is live across Load, the indexed
+# and iterated reads, Measure and Save on the richest FIXED root; the run
+# prints the count and its in-process control plants one allocation and
+# requires the instrument to see it. #562's list audit and #615/#679's retain
+# counters hold their own paths; `make test` reaches this one through
+# build/schema_test_tables.
+.PHONY: tables-cpp-alloc
+tables-cpp-alloc: build/schema_test_tables
+	@./build/schema_test_tables > build/tables-cpp-alloc.log 2>&1 || { cat build/tables-cpp-alloc.log; exit 1; }
+	@grep -q "^tables allocation audit: 0 allocation" build/tables-cpp-alloc.log || \
+		{ echo "C++ allocation gate FAILED: the steady read path allocated"; cat build/tables-cpp-alloc.log; exit 1; }
+	@echo "C++ allocation gate: Load, the reads, Measure and Save leave the global allocation count at zero"
+
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
 # read through self-relative deltas, a cooked file Open validates by walking
