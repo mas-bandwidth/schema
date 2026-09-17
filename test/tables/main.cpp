@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <new>
+#include <atomic>
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -52,6 +53,28 @@
 #include "wirebuilder.h"
 
 static int failures = 0;
+
+// ---- THE STEADY READ-PATH ALLOCATION AUDIT (docs/SPEC-TABLES.md "What
+// allocates, and what never does"; docs/PORTING.md I1) ----
+//
+// #562's list audit (test/tables/lists_main.cpp) holds the list paths and
+// #615/#679's counters hold NodeLoadRetain and NodeLoadRetainMessages; this
+// is the general FIXED-class corpus path measured at RUN TIME through the one
+// channel a source scan cannot see: a counting global operator new. Load,
+// Measure, the indexed and iterated reads and Save on the richest root must
+// leave the count where they found it. The control plants one allocation and
+// requires the count to move, so a gate that is watching nothing fails.
+static std::atomic<long long> table_allocations( 0 );
+
+void * operator new( size_t bytes )
+{
+    table_allocations.fetch_add( 1, std::memory_order_relaxed );
+    void * p = malloc( bytes != 0 ? bytes : 1 );
+    if ( p == NULL ) { abort(); }
+    return p;
+}
+void operator delete( void * p ) noexcept { free( p ); }
+void operator delete( void * p, size_t ) noexcept { free( p ); }
 
 #define CHECK( condition )                                                    \
     do                                                                        \
@@ -9151,6 +9174,43 @@ static void test_wasrows_vocabulary()
     }
 }
 
+// ---- the steady read path allocates nothing (docs/PORTING.md I1) ----
+
+static void test_allocation_audit()
+{
+    static tabledemo::RootConfig root;
+    static uint8_t wire[1u << 20];
+    build_golden_root( root );
+    const int64_t bytes = tabledemo::RootConfigSave( root, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+
+    const long long before = table_allocations.load();
+    static tabledemo::RootConfig out;
+    tabledemo::TableReport report;
+    CHECK( tabledemo::RootConfigLoad( out, wire, bytes, &report ) );
+    long long sum = 0;
+    for ( int32_t i = 0; i < out.weapons_count; i++ ) { sum += out.weapons[i].channel; }
+    for ( int32_t i = 0; i < out.profiles_count; i++ ) { sum += out.profiles[i].experience; }
+    CHECK( tabledemo::RootConfigMeasure( out ) == bytes );
+    CHECK( tabledemo::RootConfigSave( out, wire, sizeof( wire ) ) == bytes );
+    CHECK( sum != 0 );
+    const long long moved = table_allocations.load() - before;
+    CHECK( moved == 0 ); // not one allocation across Load, the reads, Measure and Save
+    printf( "tables allocation audit: %lld allocation(s) over the steady read path\n", moved );
+}
+
+// The control: the counting operator new must SEE an allocation. Without this
+// the audit above could read zero because it is measuring nothing.
+static void test_allocation_audit_can_go_red()
+{
+    static void * volatile planted = NULL;
+    const long long before = table_allocations.load();
+    planted = new int( 7 );
+    CHECK( table_allocations.load() > before ); // the instrument sees a real allocation
+    delete (int *) planted;
+    planted = NULL;
+}
+
 int main()
 {
     test_golden_wire();
@@ -9158,6 +9218,8 @@ int main()
     pin_graph_goldens();
     test_golden_reload();
     test_round_trip();
+    test_allocation_audit();
+    test_allocation_audit_can_go_red();
     test_exact_capacity();
     test_storage_invariants();
     test_bounded_elements();

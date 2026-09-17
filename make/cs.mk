@@ -410,6 +410,21 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
+# "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
+# and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
+# counter, GC.GetAllocatedBytesForCurrentThread. Setup (the golden, the value,
+# the save buffer and the caller-supplied TableReport) is separated from steady
+# work (the replay loop over that storage); the read with a supplied report,
+# the read with NO report, Measure, Save and the round trip must each measure
+# exactly zero, and the leg's own sensitivity check plants escapes on the read
+# row and on the save row and requires each installed row to move while the
+# row beside it stays green. The generator's null-report read caches one
+# ignored TableReport rather than constructing one per call.
+.PHONY: tables-cs-alloc
+tables-cs-alloc: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
@@ -445,6 +460,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-alloc
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz
 	$(MAKE) tables-cs-builder-fuzz
