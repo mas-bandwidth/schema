@@ -58,21 +58,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	for name, data := range census {
 		files["census-"+name] = data
 	}
-	ident := regexp.MustCompile(`\b(?:(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release|schema_assert|schema_fatal)[A-Za-z0-9_]*|announce(?:_measure|_read)?)\b`)
-	// the unit's own type names start with Table for a schema that declares one;
-	// the corpus here declares none, and the file base does, so the two file
-	// spellings the include lines carry are excluded by name rather than by a
-	// pattern that could hide a real hit.
-	emitted := map[string]bool{}
-	for name, data := range files {
-		if !strings.HasSuffix(name, "Table.h") && !strings.HasSuffix(name, "Table.c") &&
-			!strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.c") {
-			continue
-		}
-		for _, m := range ident.FindAllString(stripCComments(string(data)), -1) {
-			emitted[m] = true
-		}
-	}
+	emitted := cEmittedNames(files)
 	if len(emitted) == 0 {
 		t.Fatal("the scan found no Table* identifier in the emitted C at all — the scan, not the registry, is what broke")
 	}
@@ -97,6 +83,65 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 				"C names it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)
 		}
+	}
+}
+
+// cFiles generates the C target's whole output for one source.
+func cFiles(t *testing.T, src string) map[string][]byte {
+	t.Helper()
+	files, err := New().Generate(unitFromSource(t, src), "c", Options{})
+	if err != nil {
+		t.Fatalf("--lang c: %v", err)
+	}
+	return files
+}
+
+// cRuntimeIdent is the C leg's scan: every Table*, kTable*, table_*, BuildVersion
+// and schema_* identifier the generated table runtime spells, plus the
+// announcement vocabulary. The unit's own type names start with Table only for a
+// schema that declares one, and the corpus here declares none.
+var cRuntimeIdent = regexp.MustCompile(`\b(?:(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release|schema_assert|schema_fatal)[A-Za-z0-9_]*|announce(?:_measure|_read)?)\b`)
+
+// cEmittedNames collects the scan's answer over one map of generated C. Only the
+// table and block sources are read: the packet sources name no table runtime,
+// and the two file spellings those include lines carry are the unit's own, not
+// the runtime's. C comments are stripped first — the runtime documents itself in
+// prose, and prose is not an identifier.
+func cEmittedNames(files map[string][]byte) map[string]bool {
+	emitted := map[string]bool{}
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Table.h") && !strings.HasSuffix(name, "Table.c") &&
+			!strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.c") {
+			continue
+		}
+		for _, m := range cRuntimeIdent.FindAllString(stripCComments(string(data)), -1) {
+			emitted[m] = true
+		}
+	}
+	return emitted
+}
+
+// TestCTableRuntimeNameScanGoesRed is the scan's own NEGATIVE CONTROL, and it is
+// the control the Java test carries and this backend did not: a scan that has
+// gone blind passes every registry it is pointed at, so the only way to know it
+// still sees is to hand it a name nobody registered and require it to say so.
+//
+// The probe is injected into a COPY of the emitted text, as a file the scan
+// reads — a C source named ...Table.h — carrying a bare struct declaration,
+// which is exactly the shape the emitter does not use for its own runtime.
+func TestCTableRuntimeNameScanGoesRed(t *testing.T) {
+	files := cFiles(t, cRuntimeSrc)
+	sabotaged := make(map[string][]byte, len(files)+1)
+	for name, data := range files {
+		sabotaged[name] = data
+	}
+	sabotaged["ControlTable.h"] = []byte("struct TableProbe { int x; };\n")
+	emitted := cEmittedNames(sabotaged)
+	if !emitted["TableProbe"] {
+		t.Fatal("the scan did not see a TableProbe declaration — it is blind, and every green run above proves nothing")
+	}
+	if tablenames.Registered("TableProbe") {
+		t.Fatal("TableProbe is registered, so the control proves nothing — pick a name the registry does not hold")
 	}
 }
 
