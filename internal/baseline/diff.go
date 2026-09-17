@@ -169,6 +169,12 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// sees the pair. Two independent edits in one commit are legitimate, so it
 	// warns and never refuses.
 	"field-pair": RuleLoss,
+	// THE RETIRED-NAMES LEDGER (issue #441). A name or an id the baseline has
+	// recorded as retired is HAUNTED: re-adding it decodes old bytes as
+	// plausible new values, and nothing on the wire reports it — the reader
+	// keys stored data on exactly that name hash. It refuses until an
+	// acknowledged `--update --reason` writes `revived=`.
+	"retired": RuleFixed,
 }
 
 // A Finding is one difference between the committed baseline and the unit as
@@ -204,10 +210,32 @@ func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames, none)
 
 	var out []Finding
+	out = append(out, d.diffRetired()...)
 	out = append(out, d.diffTables()...)
 	out = append(out, d.diffEnums()...)
 	out = append(out, d.diffFlags()...)
 	out = append(out, d.diffUnions()...)
+	return out
+}
+
+// diffRetired refuses a live declaration that re-adds a name or wire id the
+// ledger recorded as retired (issue #441): the retired section IS the history
+// the compiler does not keep, and a reuse decodes old bytes as plausible new
+// values with no counter. An entry a `--update --reason` has revived is
+// acknowledged and judged on nothing.
+func (d *differ) diffRetired() []Finding {
+	if d.policy["retired"] != RuleFixed {
+		return nil
+	}
+	var out []Finding
+	for _, r := range d.base.Retired {
+		if r.Revived != "" || !liveMatchesRetired(d.live, r) {
+			continue
+		}
+		out = append(out, Finding{Refuse, r.Name, fmt.Sprintf(
+			"%s %s id=0x%016x was retired on %s — a re-added name or id decodes old bytes as plausible new values, and nothing on the wire reports it; if the resurrection is intended, record it: schema tables-baseline --update --reason \"...\" (issue #441, docs/SPEC-TABLES.md §18.4)",
+			r.Vocab, r.Name, r.Id, r.Date)})
+	}
 	return out
 }
 
@@ -977,6 +1005,110 @@ func findUnion(u *Unit, name string) *Union {
 		}
 	}
 	return nil
+}
+
+func findEnum(u *Unit, name string) *Enum {
+	for i := range u.Enums {
+		if u.Enums[i].Name == name {
+			return &u.Enums[i]
+		}
+	}
+	return nil
+}
+
+// retiredMatch reports whether a live declaration is the one a ledger entry
+// names: the SAME vocabulary, and the entry's name or its wire id (issue
+// #441). A name reused anywhere shares the id, because the id is the name's
+// hash, so the id half catches a collision under a new spelling.
+func retiredMatch(r Retired, vocab, name string, id uint64) bool {
+	return r.Vocab == vocab && (r.Name == name || r.Id == id)
+}
+
+// liveMatchesRetired reports whether the live projection carries the
+// declaration a retired entry names — the resurrection the ledger refuses.
+func liveMatchesRetired(live *Unit, r Retired) bool {
+	switch r.Vocab {
+	case "field":
+		for _, t := range live.Tables {
+			for _, f := range t.Fields {
+				if retiredMatch(r, "field", t.Name+"."+f.Name, f.Id) {
+					return true
+				}
+			}
+		}
+	case "enum-variant":
+		for _, e := range live.Enums {
+			for _, v := range e.Variants {
+				if retiredMatch(r, "enum-variant", e.Name+"."+v.Name, v.Id) {
+					return true
+				}
+			}
+		}
+	case "union-arm":
+		for _, un := range live.Unions {
+			for _, a := range un.Arms {
+				if retiredMatch(r, "union-arm", un.Name+"."+a.Name, a.Id) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// retirements lists the declarations the live projection no longer carries,
+// as ledger entries dated `date`: every field, enum variant and union arm whose
+// wire id was in `base` and is gone from `live` (issue #441). It is the
+// ledger's source, read by [Update] and never by [Render] — the live
+// projection cannot know what is gone.
+func retirements(base, live *Unit, date string) []Retired {
+	var out []Retired
+	for _, bt := range base.Tables {
+		lt := findTable(live, bt.Name)
+		ids := map[uint64]bool{}
+		if lt != nil {
+			for _, f := range lt.Fields {
+				ids[f.Id] = true
+			}
+		}
+		for _, bf := range bt.Fields {
+			if ids[bf.Id] {
+				continue
+			}
+			out = append(out, Retired{Vocab: "field", Name: bt.Name + "." + bf.Name, Id: bf.Id, Date: date})
+		}
+	}
+	for _, be := range base.Enums {
+		le := findEnum(live, be.Name)
+		ids := map[uint64]bool{}
+		if le != nil {
+			for _, v := range le.Variants {
+				ids[v.Id] = true
+			}
+		}
+		for _, v := range be.Variants {
+			if ids[v.Id] {
+				continue
+			}
+			out = append(out, Retired{Vocab: "enum-variant", Name: be.Name + "." + v.Name, Id: v.Id, Date: date})
+		}
+	}
+	for _, bu := range base.Unions {
+		lu := findUnion(live, bu.Name)
+		ids := map[uint64]bool{}
+		if lu != nil {
+			for _, a := range lu.Arms {
+				ids[a.Id] = true
+			}
+		}
+		for _, a := range bu.Arms {
+			if ids[a.Id] {
+				continue
+			}
+			out = append(out, Retired{Vocab: "union-arm", Name: bu.Name + "." + a.Name, Id: a.Id, Date: date})
+		}
+	}
+	return out
 }
 
 // tightenNote says what a reader loses when one of the extents tightens — the

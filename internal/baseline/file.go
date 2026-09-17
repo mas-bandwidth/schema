@@ -167,8 +167,15 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 	path := filepath.Join(dir, FileName)
 
 	live := Render(u)
+	// the ledger is machine-read, so its dates carry no space (the history
+	// heading keeps the labelled `2026-09-17 (UTC)` stamp)
+	ldate := strings.TrimSpace(date)
+	if f := strings.Fields(date); len(f) > 0 {
+		ldate = f[0]
+	}
 	data, readErr := os.ReadFile(path)
 	var entry []string
+	var newly, revived []Retired
 	switch {
 	case readErr == nil:
 		// UPDATE PARSES LENIENTLY, and it has to: every parse refusal names
@@ -176,11 +183,13 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		// corrupt file, another tool's file, or one written by a compiler
 		// whose rendering version has since moved — must be repairable
 		// WITHOUT deleting the one artifact that cannot be regenerated. The
-		// projection is regenerated from the unit either way; the history is
-		// salvaged verbatim.
+		// projection is regenerated from the unit either way; the history and
+		// the retired ledger are salvaged.
 		base, err := Parse(path, data)
 		if err != nil {
 			live.History = salvageHistory(data)
+			live.Retired = salvageRetired(data)
+			revived = ackRevivals(live, ldate)
 			// the committed file carries no machine paths: the reader of this
 			// history is on another machine, years later
 			entry = []string{
@@ -191,10 +200,21 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 			break
 		}
 		live.History = base.History
+		live.Retired = append([]Retired(nil), base.Retired...)
+		// a live name or id the ledger carries is a resurrection: this
+		// reasoned update is where it is acknowledged
+		revived = ackRevivals(live, ldate)
+		// and every declaration the unit no longer carries is retired here,
+		// appended and never dropped
+		newly = retirements(base, live, ldate)
+		live.Retired = append(live.Retired, newly...)
 		if live.Text() == string(data) {
 			return path, false, nil
 		}
 		entry = historyEntry(date, reason, Diff(base, live, DefaultTokenPolicy))
+		if len(newly) > 0 || len(revived) > 0 {
+			entry = retiredEntry(entry, newly, revived)
+		}
 	case os.IsNotExist(readErr):
 		noun := "tables"
 		if len(live.Tables) == 1 {
@@ -240,6 +260,49 @@ func salvageHistory(data []byte) []string {
 	return nil
 }
 
+// ackRevivals marks every unrevived ledger entry the live projection now
+// carries and returns those entries. `--update --reason` is the act that
+// acknowledges a resurrection, and the marker records it so the check passes
+// while the entry itself is never dropped (issue #441).
+func ackRevivals(live *Unit, date string) []Retired {
+	var revived []Retired
+	for i := range live.Retired {
+		if live.Retired[i].Revived != "" || !liveMatchesRetired(live, live.Retired[i]) {
+			continue
+		}
+		live.Retired[i].Revived = date
+		revived = append(revived, live.Retired[i])
+	}
+	return revived
+}
+
+// salvageRetired lifts the `## retired` ledger lines out of a baseline the
+// parser cannot read, so repairing the file does not cost the one record the
+// live projection cannot regenerate. It reads only the ledger's own line shape
+// and ignores anything it cannot parse.
+func salvageRetired(data []byte) []Retired {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	var u Unit
+	inLedger := false
+	for i, line := range lines {
+		if line == RetiredHeading {
+			inLedger = true
+			continue
+		}
+		if !inLedger {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") {
+			break
+		}
+		_ = u.parseMemberLine("tables.baseline", i+1, "retired", strings.Fields(line))
+	}
+	return u.Retired
+}
+
 // historyEntry is the intentional-break log's one entry: the date, the reason,
 // and one line per edit that changed what stored data means or loses. Edits the
 // wire absorbs are not listed — the projection above already records them, and
@@ -252,6 +315,32 @@ func historyEntry(date, reason string, findings []Finding) []string {
 	}
 	if len(refusals) == 0 && len(warns) == 0 {
 		entry = append(entry, "- no compatibility-affecting edits; the wire absorbs the rest")
+	}
+	return entry
+}
+
+// retiredEntry folds the ledger's own lines into a history entry: a removal
+// the wire absorbs leaves no per-edit line, so without this the entry would
+// say "no compatibility-affecting edits" while a name was retired. A revived
+// entry records the acknowledgment (issue #441).
+func retiredEntry(entry []string, newly, revived []Retired) []string {
+	if len(newly) > 0 {
+		var kept []string
+		for _, line := range entry {
+			if strings.Contains(line, "no compatibility-affecting edits") {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		entry = kept
+	}
+	for _, r := range newly {
+		entry = append(entry, fmt.Sprintf("- retired %s %s id=0x%016x — a re-added name or id is refused until this entry is acknowledged (issue #441)",
+			r.Vocab, r.Name, r.Id))
+	}
+	for _, r := range revived {
+		entry = append(entry, fmt.Sprintf("- revived %s %s id=0x%016x, retired %s — the resurrection is acknowledged and the ledger entry stands (issue #441)",
+			r.Vocab, r.Name, r.Id, r.Date))
 	}
 	return entry
 }
