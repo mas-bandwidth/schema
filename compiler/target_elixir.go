@@ -15,7 +15,10 @@ type elixirTarget struct{}
 
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
-func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (elixirTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	if err := refuseSelfContainedStream(opts, "elixir"); err != nil {
+		return nil, err
+	}
 	// Packet wide text is carried; table kind 33 remains refused.
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err

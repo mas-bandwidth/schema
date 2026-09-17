@@ -32,15 +32,19 @@ import (
 // Generate returns basename.go -> file contents for every file of the unit.
 // Go packages are order-free across files, so unlike C++ there is no topo
 // sort and no cross-file include graph to refuse.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+// Generate is GenerateMode with the default (best) codec. The stream mode is
+// passed as a variadic so a stream-mode emission is an explicit request, never
+// a silent default.
+func Generate(u *ir.Unit, stream ...bool) (map[string][]byte, error) {
 	// fixed(I, F), int128 and uint128: serialize.go carries the full surface
 	// (the two-qword Int128/Uint128 pair, SerializeInt128/SerializeUint128,
 	// SerializeFixed64/SerializeFixed128) — storage maps to the pair at 128
 	// bits, wire calls mirror the C++ macros.
+	streamOnly := len(stream) > 0 && stream[0]
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f}
+		g := &gen{unit: u, file: f, stream: streamOnly}
 		g.emitFile(f.Base == home)
 		src, err := format.Source(g.assemble())
 		if err != nil {
@@ -54,6 +58,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 type gen struct {
 	unit *ir.Unit
 	file *ir.File
+
+	// stream disables the flat word codec (flat.go): every statically-sized
+	// item takes the per-field runtime form instead, the hand-writer idiom
+	// --codec=stream exists to profile. Wire-identical by construction; the
+	// goldens gate both modes.
+	stream bool
 
 	body           strings.Builder
 	needsSerialize bool // the file emits wire functions -> import the runtime

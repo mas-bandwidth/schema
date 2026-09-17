@@ -253,6 +253,7 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		codec := fs.String("codec", compiler.CodecBest, "wire codec mode: "+compiler.CodecBest+" (each language's ruled fastest correct form) or "+compiler.CodecStream+" (the per-field hand-writer stream idiom, for profiling the runtime's stream path)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
@@ -260,7 +261,7 @@ func main() {
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, compiler.Options{"codec": *codec})
 		if err != nil {
 			fail(err)
 		}

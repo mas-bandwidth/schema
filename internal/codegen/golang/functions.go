@@ -113,6 +113,14 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // items in the per-field form, and only an item knows the base expression its
 // per-field emitter must name (see flatGroup).
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
+	if g.stream {
+		// the hand-writer form: one item, one runtime call family. Branches
+		// recurse here and take the same form.
+		for _, item := range items {
+			g.emitWriteItemDirect(item, ind)
+		}
+		return
+	}
 	seq := &flatSeq{}
 	flush := func() {
 		run := seq.run()
@@ -180,6 +188,12 @@ func (g *gen) emitWriteItemDirect(item ir.Item, ind string) {
 
 // emitReadItems is the read twin of emitWriteItems.
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
+	if g.stream {
+		for _, item := range items {
+			g.emitReadItemDirect(item, ind)
+		}
+		return
+	}
 	seq := &flatSeq{}
 	flush := func() {
 		run := seq.run()

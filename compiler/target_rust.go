@@ -15,7 +15,7 @@ type rustTarget struct{}
 
 func (rustTarget) Names() []string { return []string{"rust"} }
 
-func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (rustTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	// Packet wide text is carried; table kind 33 remains a named refusal.
 	if err := refuseWideText(u, "rust"); err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseLists(u, "rust"); err != nil {
 		return nil, err
 	}
-	files, err := rust.Generate(u)
+	files, err := rust.Generate(u, streamOnly(opts))
 	if err != nil {
 		return nil, err
 	}

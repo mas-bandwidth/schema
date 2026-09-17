@@ -15,7 +15,10 @@ type javaTarget struct{}
 
 func (javaTarget) Names() []string { return []string{"java"} }
 
-func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (javaTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	if err := refuseSelfContainedStream(opts, "java"); err != nil {
+		return nil, err
+	}
 	// Packet wide text is carried; table kind 33 remains refused.
 	if err := refuseWideText(u, "java"); err != nil {
 		return nil, err
