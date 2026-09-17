@@ -12,30 +12,28 @@ import (
 )
 
 // TestDartEmitsTableSources: the dart target adds the BLOCK and COOK read
-// halves, <Base>Block.dart and <Base>Cook.dart with their runtime homes, beside
-// the packet libraries for a unit with tables, and adds NOTHING for one
-// without. It emits no <Base>Table.dart at all: the table wire's Dart port
-// wrote the form that preceded the id-table wire and was removed rather than
-// carried (schema#514 brings the current wire to Dart).
+// halves, <Base>Block.dart and <Base>Cook.dart with their runtime homes, the
+// ID-TABLE WIRE's <Base>Table.dart (schema#514), beside the packet libraries
+// for a unit with tables, and adds NOTHING for one without.
 func TestDartEmitsTableSources(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "dart", Options{})
 	if err != nil {
 		t.Fatalf("--lang dart: %v", err)
 	}
-	blocks, cooks := 0, 0
+	blocks, cooks, wires := 0, 0, 0
 	for name := range with {
 		switch {
 		case strings.HasSuffix(name, "Table.dart"):
-			t.Errorf("--lang dart emitted %s: the previous-form table wire was removed and nothing emits <Base>Table.dart", name)
+			wires++
 		case strings.HasSuffix(name, "Block.dart"):
 			blocks++
 		case strings.HasSuffix(name, "Cook.dart"):
 			cooks++
 		}
 	}
-	if blocks == 0 || cooks == 0 {
-		t.Fatalf("--lang dart emitted %d Block.dart and %d Cook.dart files for a unit with tables; both halves are owed", blocks, cooks)
+	if blocks == 0 || cooks == 0 || wires == 0 {
+		t.Fatalf("--lang dart emitted %d Block.dart, %d Cook.dart and %d Table.dart files for a unit with tables; all three halves are owed", blocks, cooks, wires)
 	}
 	without, err := c.Generate(unitFromSource(t, packetSrc), "dart", Options{})
 	if err != nil {
