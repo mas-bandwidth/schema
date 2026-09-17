@@ -6227,7 +6227,21 @@ namespace Blockdemo
                                 else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                                 else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
                                 else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                                uint v = 0;
+                                // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped
+                                // through the writer's table while the raw is inside
+                                // the table, and THE RAW ITSELF, UNREMAPPED, once it
+                                // is past the writer's variant count. The op COUNTS
+                                // NOTHING: the generated BOUNDS PASS over storage
+                                // clamps any ordinal past THIS READER'S extent to None
+                                // and counts it clamped there, on the identity plan
+                                // and the compiled plan alike. A pass over storage
+                                // cannot tell a forged None from a real one, so the raw
+                                // value has to survive this op to reach the pass; the
+                                // lock guarantees the raw fits the reader's storage,
+                                // because widths only grow. The counter's place is the
+                                // contract: the pass counts, the op does not, and a
+                                // port that counts in both counts twice.
+                                ulong v = raw;
                                 if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                                 {
                                     ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
@@ -6236,17 +6250,6 @@ namespace Blockdemo
                                     {
                                         v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                     }
-                                    // A FORGED ORDINAL — one past the WRITER's own variant
-                                    // count — lands 0 and COUNTS HERE, which is NOT where
-                                    // §5.4 and §5.9 #27 put it. The move is OWED and it is
-                                    // not a one-line move: a bounds pass over STORAGE cannot
-                                    // tell this None from an enum or a union the writer left
-                                    // unset, so the count would simply VANISH on the compiled
-                                    // path. Either the op lands the RAW ordinal and the pass
-                                    // clamps it, or §5.4 names this one exception. Glenn's
-                                    // call; until then the number stays where this leg's own
-                                    // green fixture asserts it.
-                                    if (raw > count && report != null) { report.Clamped++; }
                                 }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
@@ -6254,7 +6257,13 @@ namespace Blockdemo
                                 }
                                 else
                                 {
-                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, report);
+                                    // NULL AND NOT report: an enum or tag slot's own
+                                    // setter holds the value to THIS READER'S extent,
+                                    // and on this leg that clamp is the storage pass's
+                                    // twin rather than a third counter. The op counts
+                                    // nothing, so the number is ClampPlanBounds's and
+                                    // is reached exactly once.
+                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, null);
                                 }
                                 break;
                             }

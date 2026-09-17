@@ -501,11 +501,11 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
                because a pass over STORAGE cannot tell a forged None from a real
                one and so the raw has to survive this op to reach it. The lock
                guarantees the raw fits the reader's storage: widths only grow. */
-            uint32_t raw = 0;
+            uint64_t raw = 0;
             memcpy( &raw, src + p->src, p->size );
-            const uint16_t * remap = (const uint16_t *) (const void *) ( base + p->aux );
-            uint32_t v = raw;
-            if ( raw != 0 && raw <= (uint32_t) remap[0] ) { v = remap[raw]; }
+            const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
+            uint64_t v = raw;
+            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }

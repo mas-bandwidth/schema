@@ -468,6 +468,12 @@ func normalizeSyntax(s string) string {
 	})
 	more := []token{
 		{"(uint32_t) table[0]", "table[0]"},
+		// The merged ordinal op casts the bound on one leg and not the other:
+		// C spells `(uint64_t) table[0]` where C++ lets the promotion stand,
+		// and C spells `(uint64_t) p.arg` where C++ compares the full-width
+		// member directly (§5.9 #27). One canonical form for both.
+		{"(uint64_t) table[0]", "table[0]"},
+		{"(uint64_t) p.arg", "p.arg"},
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
 		{"const TableFixedEntry REF p = &plan[i];", "const TableFixedEntry REF p = plan[i];"},
 		{"TableFixedFail( TableFixedCheck REF c, int why )", "TableFixedFail( TableFixedCheck REF c, TableMessageReason why )"},

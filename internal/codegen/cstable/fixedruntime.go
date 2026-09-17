@@ -1165,6 +1165,7 @@ const tableFixedWireSource = `
                         if (p.Size == 1) raw = src[(int)p.Src];
                         else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                         else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
                         // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped
                         // through the writer's table while the raw is inside
                         // the table, and THE RAW ITSELF, UNREMAPPED, once it
@@ -1179,7 +1180,7 @@ const tableFixedWireSource = `
                         // because widths only grow. The counter's place is the
                         // contract: the pass counts, the op does not, and a
                         // port that counts in both counts twice.
-                        uint v = raw;
+                        ulong v = raw;
                         if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
                             ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
@@ -1195,7 +1196,13 @@ const tableFixedWireSource = `
                         }
                         else
                         {
-                            slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, report);
+                            // NULL AND NOT report: an enum or tag slot's own
+                            // setter holds the value to THIS READER'S extent,
+                            // and on this leg that clamp is the storage pass's
+                            // twin rather than a third counter. The op counts
+                            // nothing, so the number is ClampPlanBounds's and
+                            // is reached exactly once.
+                            slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, null);
                         }
                         break;
                     }
