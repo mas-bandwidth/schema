@@ -596,6 +596,64 @@ jobs:
         run: make ${{ matrix.target }}
 
 
+  # THE C# TABLES LEG ON EVERY PULL REQUEST (issue #744).
+  #
+  # `make tables-cs-leg` (test/cs-tables) is the C# twin of tables-js-leg and
+  # the only gate that reads the whole table surface in C#, but no job here ran
+  # it: it lived in `make test`, which certify.yml runs nightly. On 2026-09-08
+  # it was red at #728's head — the counted union tail and the SharedVocabSplice
+  # cut — while every one of #728's pull-request checks was green, because two
+  # of the four benches had no dotnet that day and nothing on the pull request
+  # asked for one.
+  #
+  # The pair (Debug and Release) is about 74 s of test time; with checkout, the
+  # SDK install and the generated tree on top it would leave the two-minute
+  # rule nothing, so the leg is split. This job runs the Debug half — the whole
+  # program under test, which is what catches #728's class — and `make test`
+  # still runs `tables-cs-leg`, both configurations, nightly. A reader ruling
+  # on a C# tables change runs the full `make tables-cs-leg` by hand;
+  # docs/PORTING.md says so.
+  cs-tables:
+    name: C# tables leg (Debug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: the C# tables leg, Debug
+        run: make tables-cs-leg-debug
+
+
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any

@@ -24,7 +24,10 @@ elsewhere is a stated decision rather than an oversight. And it is read by
 every blind reader, who checks the column against the tree and not against
 memory. A lever proven in one language is only a THEORY in the next — the
 register says where to look, and the port's own measurement says whether it
-holds there.
+holds there. Before ruling on a C# tables change, run `make tables-cs-leg` by
+hand: ci.yml runs the Debug half (`make tables-cs-leg-debug`) per pull request,
+and the full pair runs in nightly certification, so the Release half is the
+reader's to run (issue #744).
 
 ## How a technique enters
 

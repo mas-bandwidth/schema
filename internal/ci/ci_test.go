@@ -1,4 +1,4 @@
-// Package ci is the gate on this repo's own continuous integration: two
+// Package ci is the gate on this repo's own continuous integration: three
 // invariants that live in .github/ rather than in Go, and that no reader can
 // hold by hand across three workflow files. It rides `go test ./...` — so the
 // go-test job, `make test` and certification all carry it — and ci.yml's lint
@@ -22,6 +22,12 @@
 // image happened to carry rather than on one the workflow installed. One pin,
 // read by both files, is what makes that unrepresentable; this test is what
 // keeps the pin and the projects the same number.
+//
+// TestTheCSharpTablesLegRunsPerPullRequest (issue #744) requires a job in the
+// pull-request gate, ci.yml, to run the C# tables leg. The leg lived only in
+// `make test` (nightly certification), so on 2026-09-08 it was red on #728's
+// head while every pull-request check was green; the fix splits the leg into
+// Debug and Release and runs Debug per commit.
 package ci
 
 import (
@@ -313,6 +319,63 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 				"The package exists on the author's disk and in no checkout. "+
 				"Commit it, and check .gitignore is not swallowing the path.", pkg, dir)
 		}
+	}
+}
+
+// makeInvocation matches one `make` invocation on a workflow line and captures
+// its argument list. The workflowMakeTargets reader in compiler/porting_test.go
+// carries the same shape for the register gate.
+var makeInvocation = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
+
+// makeTargetsAfter returns the target names in a make argument list: flags,
+// variable assignments and shell substitutions are not targets.
+func makeTargetsAfter(args string) []string {
+	var out []string
+	for _, tok := range strings.Fields(args) {
+		if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "=$\"'{}") {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// pullRequestMakeTargets reads every `make <target>` the pull-request gate,
+// ci.yml, invokes by name, comments stripped.
+func pullRequestMakeTargets(t *testing.T, root string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("ci.yml is the pull-request gate this test reads: %v", err)
+	}
+	var targets []string
+	for _, l := range lines("ci.yml", string(data)) {
+		for _, m := range makeInvocation.FindAllStringSubmatch(l.text, -1) {
+			targets = append(targets, makeTargetsAfter(m[1])...)
+		}
+	}
+	return targets
+}
+
+// TestTheCSharpTablesLegRunsPerPullRequest (issue #744) requires a pull-request
+// job to run the C# tables leg. On 2026-09-08 `make tables-cs-leg` was red at
+// #728's head — the counted union tail and the SharedVocabSplice cut — while
+// every one of #728's pull-request checks was green, because no job in ci.yml
+// ran it and `make test` reaches it only in nightly certification. Two of the
+// four benches had no dotnet that day, so the leg was easy to skip unnoticed.
+// The leg is split into Debug and Release so the per-commit job can run the
+// Debug half inside the rule; `tables-cs-leg` remains the pair `make test`
+// runs.
+func TestTheCSharpTablesLegRunsPerPullRequest(t *testing.T) {
+	var legs []string
+	for _, target := range pullRequestMakeTargets(t, repoRoot(t)) {
+		if strings.HasPrefix(target, "tables-cs-leg") {
+			legs = append(legs, target)
+		}
+	}
+	if len(legs) == 0 {
+		t.Errorf("no job in ci.yml runs a C# tables leg: `make tables-cs-leg` can be red on a pull request while every check is green (issue #744). " +
+			"Add a job that runs `make tables-cs-leg-debug`, or run `make tables-cs-leg` by hand before ruling on a C# tables change.")
 	}
 }
 
