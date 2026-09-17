@@ -31,6 +31,7 @@
 //
 // THE LAYOUT is what form 1 called the vocabulary block. It is neither §7's
 // cooked block nor §19's block form.
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -2493,6 +2494,181 @@ static void fu_oracle_case( const char * dir )
     }
 }
 
+// ---------------------------------------------------------------------------
+
+// #876's CPP FIXTURE GAPS, closed. The audit against
+// docs/FIXED-FORM-ALGORITHM.md's contract found cells of the cpp column that
+// were GAP (no assertion at all) or weak (golden-only / fuzz-only). Each case
+// below asserts the contract item BY NAME, so a port that stops honouring it
+// fails here rather than in a corpus diff nobody reads (schema#876).
+static void fixed_gaps_case()
+{
+    // A VALID FIXTURE to break: FX1's own record with every field off its
+    // default, so nothing below passes by accident.
+    tblfx1::FxRoot own;
+    tblfx1::FxRootReset( own );
+    own.keep = 4242u;
+    own.narrow = 40000u;
+    own.renamed = 321;
+    own.gone = 654;
+    own.nested.a = 111;
+    own.nested.b = 222;
+    std::memcpy( own.label, "abcdefgh", 8 ); // the whole bound, no interior NUL, for C3
+    own.label_length = 8;
+    own.marks[0] = 11; own.marks[1] = 22;
+    own.marks_count = 2;
+    own.blob[0] = 0xDE; own.blob[1] = 0xAD; own.blob[2] = 0xBE; own.blob[3] = 0xEF;
+    own.blob_length = 4;
+
+    std::vector<uint8_t> good( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &own, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
+           "#876 cpp gaps: the valid FX1 fixture saves" );
+    std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+
+    // F8 — MALFORMED, RAGGED TAIL. Bytes left over after the last whole record
+    // mean the two ends of the file have met (§2 step 6): `rest % record_bytes`
+    // is `malformed`, never a refusal and never a partial record.
+    {
+        std::vector<uint8_t> ragged = good;
+        ragged.push_back( 0x5A );
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, ragged.data(), (int64_t) ragged.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.malformed && !r.refused, "F8 ragged tail: a byte past the last whole record is malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "F8 ragged tail: malformed moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0, "F8 ragged tail: malformed writes nothing" );
+    }
+
+    // F9 — BATCH_TOO_LARGE. The file carries one record and the caller's own
+    // capacity is zero: the count is refused BY NAME before any record is
+    // decoded, and no counter moves.
+    {
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 0, good.data(), (int64_t) good.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::batch_too_large,
+               "F9 batch_too_large: one record past a zero capacity is refused by name" );
+        check( !r.malformed && r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "F9 batch_too_large: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0, "F9 batch_too_large: the refusal writes nothing" );
+    }
+
+    // E9 — `duplicate` IS NEVER RAISED by this form. The counter rides the
+    // report for the TEXT form's keyed bodies, where an id can appear twice;
+    // the fixed wire has no ids to repeat, so a lawful read and a refused read
+    // both leave it at zero.
+    {
+        tblfx1::FxRoot v;
+        tblfx1::TableReport r;
+        check( tblfx1::FxRootFixedLoad( &v, 1, good.data(), (int64_t) good.size(), plan.data(), 1024, NULL, &r ) == 1 &&
+               r.duplicate == 0, "E9 duplicate: a lawful fixed read never raises it" );
+        std::vector<uint8_t> broken = good;
+        broken[tblfx1::kTableFixedHeaderBytes] ^= 0xFFu; // the layout length word
+        tblfx1::FxRoot w;
+        tblfx1::TableReport r2;
+        tblfx1::FxRootFixedLoad( &w, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r2 );
+        check( r2.duplicate == 0, "E9 duplicate: a refused fixed read never raises it either" );
+    }
+
+    // C3 — THE TEXT LENGTH IS CLAMPED, forged in the bytes and not through the
+    // writer: a count of 0x7FFFFFFF is a thing only the wire can say. §4.5
+    // clamps it into [0, cap] in EVERY build and counts exactly one clamp. The
+    // plan's own text row names the length word (its `src`).
+    {
+        const tblfx1::TableFixedEntry * text = NULL;
+        for ( int32_t i = 0; i < tblfx1::FxRootFixedPlanCount; ++i )
+        {
+            if ( tblfx1::FxRootFixedPlan[i].op == tblfx1::kTableFixedText ) { text = &tblfx1::FxRootFixedPlan[i]; break; }
+        }
+        check( text != NULL, "C3 text length clamp: the identity plan has a text row" );
+        if ( text != NULL )
+        {
+            std::vector<uint8_t> forged = good;
+            const size_t body = (size_t) tblfx1::kTableFixedHeaderBytes + 4 + (size_t) tblfx1::FxRootFixedLayoutBytes + 8;
+            tblfx1::TableFixedPut32( forged.data() + body + text->src, 0x7FFFFFFFu );
+            tblfx1::FxRoot v;
+            tblfx1::TableReport r;
+            const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, forged.data(), (int64_t) forged.size(), plan.data(), 1024, NULL, &r );
+            check( n == 1 && r.clamped == 1, "C3 text length clamp: a length past the cap clamps once" );
+            check( v.label_length == (int32_t) text->size,
+                   "C3 text length clamp: the length lands at the payload's own span" );
+            check( !r.malformed && !r.refused, "C3 text length clamp: a clamped length is not damage" );
+        }
+    }
+
+    // W14 — THE PLAN'S dst IS offsetof, AND ITS size IS sizeof. The plan is the
+    // generated struct's ABI: a copy row lands at the field's own offset and
+    // its size is the field's own span, and a text row's aux is the buffer's
+    // own offset. This is asserted, not eyeballed, because a backend that
+    // insets one field silently breaks every port that reads a compiled plan.
+    {
+        check( tblfx1::FxRootFixedPlan[0].dst == (uint32_t) offsetof( tblfx1::FxRoot, keep ),
+               "W14 plan dst: `keep` lands at offsetof(FxRoot, keep)" );
+        check( tblfx1::FxRootFixedPlan[1].dst == (uint32_t) offsetof( tblfx1::FxRoot, renamed ),
+               "W14 plan dst: `renamed` lands at offsetof(FxRoot, renamed)" );
+        check( tblfx1::FxRootFixedPlan[1].size ==
+               (uint32_t) ( offsetof( tblfx1::FxRoot, label ) - offsetof( tblfx1::FxRoot, renamed ) ),
+               "W14 plan size: the coalesced run is the fields' own span" );
+        check( tblfx1::FxRootFixedPlan[2].aux == (uint32_t) offsetof( tblfx1::FxRoot, label ),
+               "W14 plan aux: `label`'s buffer lands at offsetof(FxRoot, label)" );
+        check( tblfx1::FxRootFixedPlan[2].dst == (uint32_t) offsetof( tblfx1::FxRoot, label_length ),
+               "W14 plan dst: `label`'s length lands at offsetof(FxRoot, label_length)" );
+        check( tblfx1::FxRootFixedPlan[4].dst == (uint32_t) offsetof( tblfx1::FxRoot, marks ) &&
+               tblfx1::FxRootFixedPlan[4].size == (uint32_t) sizeof( own.marks ),
+               "W14 plan dst/size: `marks` is offsetof and sizeof" );
+        check( tblfx1::FxRootFixedPlan[5].aux == (uint32_t) offsetof( tblfx1::FxRoot, blob ),
+               "W14 plan aux: `blob`'s buffer lands at offsetof(FxRoot, blob)" );
+    }
+
+    // W11 — bytes(N) IS LAYOUT KIND 14, an ARRAY with ONE synthetic u8 (kind 6)
+    // child, and never a text kind. The plan row already proves the array row;
+    // this reads the known LAYOUT itself, because that is the fact.
+    {
+        const uint8_t * layout = tblfx1::FxRootFixedLayout;
+        const uint32_t count = tblfx1::TableFixedGet32( layout );
+        int u8_arrays = 0;
+        for ( uint32_t i = 0; i + 1 < count; ++i )
+        {
+            const uint8_t * e = layout + 4 + (size_t) i * 17;
+            const uint8_t k = e[8];
+            const uint8_t nk = ( layout + 4 + (size_t) ( i + 1 ) * 17 )[8];
+            if ( k == 14 && nk == 6 ) { u8_arrays++; }
+        }
+        check( u8_arrays == 1,
+               "W11 bytes(N): exactly one kind-14 ARRAY row has a kind-6 u8 child, and no text kind carries it" );
+    }
+
+    // W3 — ZERO BEHIND A NARROWER ARM. UT1's union is one tag plus its WIDEST
+    // arm (ArmB), and when the narrower arm (ArmA) rides, every byte of the
+    // wider arm's storage on the wire is the TEMPLATE's zero and never a
+    // leftover from the writer's storage.
+    {
+        tblut1::UtRoot narrow;
+        tblut1::UtRootReset( narrow );
+        narrow.head = 42;
+        narrow.tail = 99;
+        narrow.pick.type = tblut1::PickType::A;
+        narrow.pick.a.n = 0x11223344;
+        std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+        check( tblut1::UtRootFixedSave( &narrow, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+               "W3 narrower arm: the ArmA record saves" );
+        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        // head is 0..3, the union tag is 4, ArmA's `n` is the four bytes at 5..8,
+        // and the wider arm's storage runs to the tail's `src`, 21.
+        bool slack_zero = true;
+        for ( size_t at = 9; at < 21; ++at ) { if ( body[at] != 0 ) { slack_zero = false; } }
+        check( body[5] == 0x44 && body[6] == 0x33 && body[7] == 0x22 && body[8] == 0x11,
+               "W3 narrower arm: the narrow arm's own bytes ride" );
+        check( slack_zero, "W3 narrower arm: every byte behind the narrow arm is the template's zero" );
+        check( body[21] == 99, "W3 narrower arm: the field after the union is untouched" );
+    }
+}
+
 int main( int argc, char ** argv )
 {
     // the reference's own oracle bytes, written by `make tables-fixedform-corpus`
@@ -2525,6 +2701,8 @@ int main( int argc, char ** argv )
     plan_partition_case();
     nested_union_case();
     fuzz_case();
+    // ---- schema#876: the cpp leg's fixture gaps, closed ----
+    fixed_gaps_case();
     // ---- rowan/corpus-manifest ----
     manifest_case( corpus );
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
