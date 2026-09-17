@@ -348,6 +348,24 @@ tables-go-containers-negative-controls:
 
 test-go: tables-go-containers tables-go-containers-negative-controls
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the Go half of the JavaScript J1
+# technique (docs/PORTING.md, schema#421): the generated accessor and the
+# generated descriptor are two independent derivations of one layout, so the
+# leg reads every field of a block and of a cook both ways and requires
+# agreement — including a pointer's SLOT, whose position is what a
+# self-relative delta is relative to (§6.3). The two controls move one
+# derivation — a generated block scalar four bytes, a cook pointer slot eight —
+# and each must turn the gate red, or the accessor half could be reading the
+# descriptors twice and nobody would know.
+.PHONY: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+tables-go-accessor-descriptor-agreement:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreement$$' -count=1
+tables-go-accessor-negative-control:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementScalarNegativeControl$$' -count=1
+tables-go-slot-negative-control:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementSlotNegativeControl$$' -count=1
+test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+
 # The disjoint fill is held under Go's thread sanitizer. Its control makes
 # every worker fill the whole array; byte identity alone cannot see that race.
 .PHONY: tables-go-block-build tables-go-block-race-negative-control tables-go-block-fill-refuser tables-go-block-fill-refuser-negative-control

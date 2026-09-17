@@ -534,6 +534,8 @@
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, and bounded retention.",
       "targets": [
         "tables-go-containers-negative-controls",
+        "tables-go-accessor-negative-control",
+        "tables-go-slot-negative-control",
         "tables-go-block-race-negative-control",
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",
