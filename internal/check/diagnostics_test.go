@@ -306,7 +306,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nenum E { A, Max }\n"},
 		{name: "a decl collides with an enum's generated Max extent (Go)", want: "generated Max extent",
 			src: "package t\nenum Team { Red }\nconst TeamMax = 3\n"},
-		{name: "enum max below variant count", want: "below its variant count",
+		{name: "enum | max is refused", want: "takes no headroom",
 			src: "package t\nenum E | max = 2\n{ A, B, C }\n"},
 		{name: "Max reference to a non-enum", want: "is not an enum",
 			src: "package t\ntype V { x uint8 }\nconst N = V.Max + 1\n"},
@@ -407,17 +407,10 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntable T { x int32 | was }\n"},
 
 		// cycle guards: every resolver that can re-enter itself must REJECT,
-		// not recurse. Before the enum guard these crashed the compiler with
-		// a raw "fatal error: stack overflow" — no diagnostic, no position.
-		{name: "enum | max = E.Max self-cycle", want: "reference cycle",
-			src: "package t\nenum Alpha | max = Alpha.Max\n{ One }\n"},
-		{name: "enum | max = E.Max mutual cycle across files", want: "reference cycle",
-			srcs: map[string]string{
-				"A_e.schema": "package t\nenum Alpha | max = Zed.Max\n{ One, Two }\n",
-				"Z_e.schema": "package t\nenum Zed | max = Alpha.Max\n{ Three }\n"},
-		},
-		{name: "enum | max = E.Max three-enum cycle", want: "reference cycle",
-			src: "package t\nenum A | max = B.Max\n{ One }\nenum B | max = C.Max\n{ Two }\nenum C | max = A.Max\n{ Three }\n"},
+		// not recurse. Before the guard these crashed the compiler with a raw
+		// "fatal error: stack overflow" — no diagnostic, no position. An
+		// enum's own resolver can no longer re-enter through | max (schema#1004
+		// removed the attribute), but consts still can.
 		{name: "constant self-cycle", want: "reference cycle",
 			src: "package t\nconst A = A + 1\n"},
 		{name: "constant mutual cycle", want: "reference cycle",
@@ -513,8 +506,6 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 | min = 0.0, max = Big, resolution = 0.1 }\n"},
 		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
 			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + " }\n"},
-		{name: "enum max above the 32-bit tag wire", want: "32-bit tag wire",
-			src: "package t\nenum E | max = 2147483648\n{ A }\ntype T { e E }\n"},
 		{name: "a decl named Schema collides with the C# Schema class", want: "C# Schema class",
 			src: "package t\ntype Schema { x uint8 }\n"},
 		{name: "a decl collides with a type's generated Zero helper (C#)", want: "both generate the symbol ZeroChat",
@@ -763,14 +754,14 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
 		{name: "F.Count in a constant expression",
 			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
-		{name: "E.Count in a constant expression, headroom included",
-			src: "package t\nenum E | max = 15\n{ A, B }\nconst N = E.Count\n"},
+		{name: "E.Count in a constant expression",
+			src: "package t\nenum E { A, B }\nconst N = E.Count\n"},
 		{name: "E.Count as an array bound",
-			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { xs [..E.Count]uint8 }\n"},
+			src: "package t\nenum E { A, B }\ntype T { xs [..E.Count]uint8 }\n"},
 		{name: "a // comment terminates the qualification section",
 			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
 		{name: "a qualified declaration's body opens on the next line",
-			src: "package t\nenum E | max = 5\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
+			src: "package t\nflags E | max = 5\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
 		{name: "both brace placements parse (Allman canonical, same-line tolerated)",
 			src: "package t\ntype A {\n    x uint8\n}\ntype B\n{\n    a bool\n    if a {\n        y uint8\n    }\n    if !a\n    {\n        z uint8\n    }\n}\n"},
 		{name: "empty type",
@@ -800,8 +791,6 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\ntype T { xs [4]uint8 | min = 0, max = 255 }\n"},
 		{name: "128-bit defaults inside their range",
 			src: "package t\ntype T {\n    a int128 = -5 | min = -10, max = 10\n    b uint128 = 7\n}\n"},
-		{name: "headroom enum with non-variant wire values",
-			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { e E }\n"},
 		{name: "field named message_type on a plain type",
 			src: "package t\ntype T { message_type uint8 }\n"},
 		{name: "a type named WriteFoo with no type Foo anywhere",

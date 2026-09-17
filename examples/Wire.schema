@@ -13,9 +13,10 @@ const HalfTurn float64 = 180.0
 const TickRate float32 = 60.0
 const SpinRate         = 1.5
 
-// enum headroom: the wire range is [0, 15] whatever the variant count, and
-// non-variant values are wire-legal (SPEC §4.2, §6.1)
-enum Weapon | max = 15
+// enums take no headroom: the wire range is [0, variant count] — Laser = 1,
+// Missile = 2, Railgun = 3 — and an unnamed value is refused on read
+// (SPEC §4.2, §6.1)
+enum Weapon
 { Laser, Missile, Railgun }
 
 // flags widening: 8 wire bits with three named so far (SPEC §4.2)

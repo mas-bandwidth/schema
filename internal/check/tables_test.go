@@ -87,8 +87,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
 		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
 			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
-		{name: "enum headroom has no name to ride under", want: "headroom value has no NAME",
-			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
 		{name: "a keyed array of unions stays a named follow-on", want: "an enum-keyed array of unions",
 			src: "package t\nenum E { A, B }\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [E]U }\n"},
 		{name: "a declaration colliding with the table runtime", want: "generated TABLE-wire runtime",
@@ -234,11 +232,9 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E { A, B }\ntable Tab { xs ?[2..E]int32 }\n"},
 		// a KEY is a closure vocabulary: it rides under a variant hash exactly
 		// as a value does, so both §5 refusals are owed to it even when the
-		// enum reaches the closure ONLY as a key
-		{name: "headroom on an enum reaching a closure only as a key", want: "reserves values above the declared variants",
-			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
-		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
-			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+		// enum reaches the closure ONLY as a key. (The headroom refusal that
+		// used to be owed here is gone: an enum takes no | max at all, so it
+		// is refused at its declaration, before any closure is built — schema#1004.)
 
 		// ---- maps, `map[K]V` (docs/SPEC-TABLES.md §2.8, §11) ----
 		//

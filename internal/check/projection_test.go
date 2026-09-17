@@ -346,16 +346,15 @@ const WideN  = Wide.Count
 }
 
 // E.Count is the DECLARED variant count of an enum, excluding the implicit
-// None (SPEC §4.2). It equals E.Max when nothing widens the enum and stays
-// the count under | max = K headroom, where Max is the extent — so the two
-// words mean one thing each, in enums and flags alike, and a bound written
-// over either folds to the number the author asked for.
+// None (SPEC §4.2). An enum takes no | max, so it equals E.Max always — the
+// two words mean one thing each, in enums and flags alike, and a bound
+// written over either folds to the number the author asked for.
 func TestEnumCountValue(t *testing.T) {
 	u := build(t, `package probe
 
 enum Plain { Laser, Missile }
 
-enum Wide | max = 15
+enum Wide
 {
     Laser,
     Missile,
@@ -375,7 +374,7 @@ type Loadout {
 	for _, tc := range []struct {
 		name string
 		want int64
-	}{{"PlainN", 2}, {"PlainM", 2}, {"WideN", 3}, {"WideM", 15}} {
+	}{{"PlainN", 2}, {"PlainM", 2}, {"WideN", 3}, {"WideM", 3}} {
 		c := u.Consts[tc.name]
 		if c == nil || c.Int == nil || c.Int.Int64() != tc.want {
 			t.Errorf("const %s: want %d, got %v — Count is the declared count and Max the extent (SPEC §4.2)", tc.name, tc.want, c)
@@ -385,8 +384,8 @@ type Loadout {
 	if got := fields[0].ArrayBound; got != 3 {
 		t.Errorf("[..Wide.Count]uint8 bound = %d, want 3 — E.Count must fold in an array bound", got)
 	}
-	if got := fields[1].ArrayBound; got != 15 {
-		t.Errorf("[Wide.Max]uint8 bound = %d, want 15 — E.Max stays the extent beside E.Count", got)
+	if got := fields[1].ArrayBound; got != 3 {
+		t.Errorf("[Wide.Max]uint8 bound = %d, want 3 — E.Max is the enum's count beside E.Count", got)
 	}
 }
 
