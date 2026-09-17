@@ -1,5 +1,8 @@
 using System;
 using System.Diagnostics;
+using Demo = Tabledemo;
+using V1 = Tblv1;
+using V2 = Tblv2;
 
 static partial class Program
 {
