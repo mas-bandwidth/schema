@@ -63,7 +63,12 @@ import (
 // top-level const initializers evaluate top to bottom, so declarations emit
 // in ir.EmissionOrder per file (the C/C++ discipline — a symbolic const
 // initializer referencing a later const would hit the temporal dead zone).
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+// Generate is GenerateMode with the default (best) codec. The stream mode is a
+// variadic explicit request: it suppresses the flat tier (flat.go) and leaves
+// the runtime tier as the emitted wire — the per-field hand-writer idiom
+// against serialize.js, wire-identical by construction.
+func Generate(u *ir.Unit, stream ...bool) (map[string][]byte, error) {
+	streamOnly := len(stream) > 0 && stream[0]
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	bases := map[string]bool{}
@@ -71,7 +76,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		bases[f.Base] = true
 	}
 	for _, f := range u.Files {
-		if bases[f.Base+"Flat"] {
+		if !streamOnly && bases[f.Base+"Flat"] {
 			return nil, fmt.Errorf("schema files %s and %sFlat collide — the JS emitter writes %sFlat.js as %s's flat-tier codec; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 		if f.Base == "serialize" {
@@ -87,10 +92,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+".js"] = g.assemble()
 	}
 	// the flat tier: BaseFlat.js beside Base.js wherever the file carries a
-	// wire surface (flat.go) — always emitted, never flag-gated: the ruling
-	// makes flat THE JavaScript path, and the runtime tier above is emitted
-	// regardless because it is the flat tier's CI oracle
-	maps.Copy(out, generateFlat(u))
+	// wire surface (flat.go) — emitted in the default mode, where the ruling
+	// makes flat THE JavaScript path, and suppressed under --codec=stream,
+	// whose whole point is the runtime tier. The runtime tier above is
+	// emitted in both modes (it is the flat tier's CI oracle).
+	if !streamOnly {
+		maps.Copy(out, generateFlat(u))
+	}
 	return out, nil
 }
 

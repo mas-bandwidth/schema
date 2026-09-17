@@ -17,7 +17,7 @@ type jsTarget struct{}
 
 func (jsTarget) Names() []string { return []string{"js", "javascript"} }
 
-func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (jsTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	// Packet wide text is carried; table kind 33 remains refused.
 	if err := refuseWideText(u, "js"); err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseLists(u, "js"); err != nil {
 		return nil, err
 	}
-	files, err := js.Generate(u)
+	files, err := js.Generate(u, streamOnly(opts))
 	if err != nil {
 		return nil, err
 	}

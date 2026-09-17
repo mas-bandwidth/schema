@@ -52,13 +52,21 @@ import (
 // Generate returns basename.cs -> file contents for every file of the unit.
 // C# compilations are order-free across files, so like Go there is no topo
 // sort and no cross-file include graph to refuse.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+// Generate is GenerateMode with the default (best) codec. The stream mode is a
+// variadic explicit request: it disables the register-resident batch cores
+// (batch.go) so every pair takes the per-field runtime form — the hand-writer
+// idiom --codec=stream exists to profile, wire-identical by construction.
+func Generate(u *ir.Unit, stream ...bool) (map[string][]byte, error) {
 	// fixed(I, F), int128 and uint128: serialize.cs carries the full surface
 	// on every TFM since the Int128Value/UInt128Value pair landed (
 	// option b) — storage maps to the pair, wire calls mirror the C++ macros.
+	streamOnly := len(stream) > 0 && stream[0]
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	batched, needCore := batchPlan(u)
+	if streamOnly {
+		batched, needCore = map[string]bool{}, map[string]bool{}
+	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore}
 		g.emitFile(g.home)

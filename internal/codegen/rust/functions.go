@@ -144,6 +144,12 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // everything else — align, arrays, strings, branches, nested calls, the
 // runtime-arithmetic families — one item at a time, per-field.
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {
+	if g.stream {
+		for _, item := range items {
+			g.emitWriteItem(item, ind)
+		}
+		return
+	}
 	var run flatRun
 	flush := func() {
 		if len(run.pieces) == 0 {
@@ -204,6 +210,12 @@ func (g *gen) emitWriteItem(item ir.Item, ind string) {
 // emitReadItems is emitWriteItems' twin: the same maximal runs take the flat
 // word codec, with one bounds check per 32-bit chunk instead of one per field.
 func (g *gen) emitReadItems(items []ir.Item, ind string) {
+	if g.stream {
+		for _, item := range items {
+			g.emitReadItem(item, ind)
+		}
+		return
+	}
 	var run flatRun
 	flush := func() {
 		if len(run.pieces) == 0 {

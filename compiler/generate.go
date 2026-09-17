@@ -82,8 +82,16 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	// the codec mode is the driver's, not a target's: an unknown spelling is
+	// refused once, here, whatever target would have read it.
+	if _, err := ParseCodec(opts); err != nil {
+		return nil, err
+	}
 	return g.Generate(u, opts)
 }
+
+// streamOnly reports whether a validated request asks for CodecStream.
+func streamOnly(opts Options) bool { return opts[codecOption] == CodecStream }
 
 // englishList joins names for a sentence: "c, cpp, cs, go, js and rust".
 func englishList(names []string) string {
