@@ -51,6 +51,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cRefOrdinalWideFields is the nested table's field count. It is above 127 on
@@ -259,6 +261,7 @@ int main( void )
 // against some other tree's copy.
 func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFail string) string {
 	t.Helper()
+	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("the generated save path is C: no cc on PATH")

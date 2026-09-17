@@ -46,6 +46,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // refOrdinalWideFields is the nested table's field count. It is above 127 on
@@ -246,6 +248,7 @@ int main()
 // emitter wrote, over elided nested tables, an enum-keyed array at every
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCppTableRefOrdinalBytes(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")
@@ -422,6 +425,7 @@ int main()
 // share its cached ordinal and remain correct across elision and re-interning,
 // both when the key uses its ordinal and when generic ref interns it first.
 func TestCppTableRefOrdinalSharedId(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")

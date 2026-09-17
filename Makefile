@@ -3252,7 +3252,11 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 			continue ;; \
 		esac; \
 		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
-	go test ./...
+	# SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT HERE (issue #1025). `make test` is
+	# the full chain and must prove the toolchain half too; a bare `go test
+	# ./...` is the fast core a child runs between edits, and internal/slowtest
+	# keeps the cc/c++/dotnet/Go-compiler tests out of it.
+	SCHEMA_SLOW=1 go test ./...
 
 
 # ---------------------------------------------------------------------------
@@ -4239,7 +4243,7 @@ update-goldens: build/schema_test_retain build/schema_test build/schema_test_lud
 	# Cook-write snapshots carry the build version too; update both byte orders
 	# through the engine after the reference wire pins have been regenerated.
 	./build/conformance-harness generate
-	go test ./...
+	SCHEMA_SLOW=1 go test ./...
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
 # runs whichever language runners are available, Release flags, results CSV

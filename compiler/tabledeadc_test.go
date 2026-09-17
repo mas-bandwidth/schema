@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Card C-6: Stop emitting check_default where no probe can set it.
@@ -65,6 +67,7 @@ fixed table Outer
 
 func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 	t.Helper()
+	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("generated C execution requires cc")
