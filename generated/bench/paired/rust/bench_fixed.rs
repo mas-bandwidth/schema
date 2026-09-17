@@ -742,12 +742,12 @@ pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32
         value.player_name_length = 0;
         *damaged += 1;
     }
-    *clamped += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
-    value.aim_x = value.aim_x.clamp(-1.0_f32, 1.0_f32);
-    *clamped += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
-    value.aim_y = value.aim_y.clamp(-1.0_f32, 1.0_f32);
-    *clamped += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
-    value.aim_z = value.aim_z.clamp(-1.0_f32, 1.0_f32);
+    *clamped += ((!(value.aim_x >= -1.0_f32)) | (value.aim_x > 1.0_f32)) as i32;
+    value.aim_x = if !(value.aim_x >= -1.0_f32) { -1.0_f32 } else if value.aim_x > 1.0_f32 { 1.0_f32 } else { value.aim_x };
+    *clamped += ((!(value.aim_y >= -1.0_f32)) | (value.aim_y > 1.0_f32)) as i32;
+    value.aim_y = if !(value.aim_y >= -1.0_f32) { -1.0_f32 } else if value.aim_y > 1.0_f32 { 1.0_f32 } else { value.aim_y };
+    *clamped += ((!(value.aim_z >= -1.0_f32)) | (value.aim_z > 1.0_f32)) as i32;
+    value.aim_z = if !(value.aim_z >= -1.0_f32) { -1.0_f32 } else if value.aim_z > 1.0_f32 { 1.0_f32 } else { value.aim_z };
     *clamped += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
     value.flux.0 = value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
     *clamped += (value.ping > 64000_u16) as i32;

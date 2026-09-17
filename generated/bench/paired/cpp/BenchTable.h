@@ -10440,12 +10440,12 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int
         value.player_name_length = 0;
         damaged++;
     }
-    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
-    value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
-    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
-    value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
-    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
-    value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    clamped += (int) ( !( value.aim_x >= -1.0f ) ) | (int) ( value.aim_x > 1.0f );
+    value.aim_x = ( !( value.aim_x >= -1.0f ) ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    clamped += (int) ( !( value.aim_y >= -1.0f ) ) | (int) ( value.aim_y > 1.0f );
+    value.aim_y = ( !( value.aim_y >= -1.0f ) ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    clamped += (int) ( !( value.aim_z >= -1.0f ) ) | (int) ( value.aim_z > 1.0f );
+    value.aim_z = ( !( value.aim_z >= -1.0f ) ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
     clamped += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
     clamped += ( value.ping > 64000 );

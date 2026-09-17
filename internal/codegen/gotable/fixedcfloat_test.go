@@ -246,24 +246,24 @@ func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 
 // ---- case 5: NaN, THE INFINITIES AND THE NEGATIVE ZERO -------------------
 //
-// Hypothesis (5)'s hostile end. The fixed form's bounds pass is
+// Hypothesis (5)'s hostile end. The fixed form's bounds pass once read
 // `if v < min { .. } else if v > max { .. }` in both legs, and EVERY
-// comparison against a NaN is false, so a NaN rides a compressed float
+// comparison against a NaN is false, so a NaN rode a compressed float
 // THROUGH the pass: a value outside the declared range, uncounted, handed to a
-// caller the row promises a number inside [min, max] to. The infinities do
-// clamp, because a comparison against an infinity is not false.
+// caller the row promises a number inside [min, max] to. The infinities
+// clamped, because a comparison against an infinity is not false.
 //
-// KNOWN RED: TestFixedCFloatNaNSurvivesTheBoundsPass. It is the finding, and
-// it asserts what the wire DOES today so the day the rule changes this test is
-// what says so.
+// THE RULING: the low test is `!(v >= min)`, which is true for a NaN, so a NaN
+// lands `min` and COUNTS ONE exactly as -inf does. The wiring is the reference's
+// (docs/FIXED-FORM-ALGORITHM.md §4.6, docs/SPEC-TABLES.md §3.4).
 
-func TestFixedCFloatNaNSurvivesTheBoundsPass(t *testing.T) {
+func TestFixedCFloatNaNLandsMinAndCounts(t *testing.T) {
 	dir := t.TempDir()
 	const quietNaN = 0x7FC00000
 	file := cfWrite(t, dir, "nan", cfOld, writeOne(quietNaN))
-	// THE FINDING, asserted as it stands: the NaN comes back whole and the
-	// clamp counter never moved, over a field declared [0, 1].
-	cfRead(t, cfOld, nil, readOne(file, quietNaN, 0))
+	// A NaN is out of [0, 1] exactly as -inf is: it lands min (0.0) and the
+	// clamp counter moves ONCE.
+	cfRead(t, cfOld, nil, readOne(file, 0x00000000, 1))
 }
 
 func TestFixedCFloatInfinitiesClampAndCount(t *testing.T) {

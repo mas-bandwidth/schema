@@ -8912,12 +8912,12 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
         value->player_name_length = 0;
         (*damaged)++;
     }
-    (*clamped) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
-    value->aim_x = ( value->aim_x < -1.0f ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
-    (*clamped) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
-    value->aim_y = ( value->aim_y < -1.0f ) ? -1.0f : ( ( value->aim_y > 1.0f ) ? 1.0f : value->aim_y );
-    (*clamped) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
-    value->aim_z = ( value->aim_z < -1.0f ) ? -1.0f : ( ( value->aim_z > 1.0f ) ? 1.0f : value->aim_z );
+    (*clamped) += (int) ( !( value->aim_x >= -1.0f ) ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = ( !( value->aim_x >= -1.0f ) ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
+    (*clamped) += (int) ( !( value->aim_y >= -1.0f ) ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = ( !( value->aim_y >= -1.0f ) ) ? -1.0f : ( ( value->aim_y > 1.0f ) ? 1.0f : value->aim_y );
+    (*clamped) += (int) ( !( value->aim_z >= -1.0f ) ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = ( !( value->aim_z >= -1.0f ) ) ? -1.0f : ( ( value->aim_z > 1.0f ) ? 1.0f : value->aim_z );
     (*clamped) += (int) ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
     value->flux = ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) ? serialize_int128_make( 18446744004990074880ull, 0ull ) : ( ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) ? serialize_int128_make( 68719476736ull, 0ull ) : value->flux );
     (*clamped) += ( value->ping > 64000 );

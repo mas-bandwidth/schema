@@ -10575,7 +10575,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.FrameTick = 281474976710655
 		(*clamped)++
 	}
-	if value.ServerTime < 0.0 {
+	if !(value.ServerTime >= 0.0) {
 		value.ServerTime = 0.0
 		(*clamped)++
 	} else if value.ServerTime > 65535.0 {
@@ -10600,21 +10600,21 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 	case TableEventTypePickup:
 		TablePickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX < -1.0 {
+	if !(value.AimX >= -1.0) {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
 		value.AimX = 1.0
 		(*clamped)++
 	}
-	if value.AimY < -1.0 {
+	if !(value.AimY >= -1.0) {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
 		value.AimY = 1.0
 		(*clamped)++
 	}
-	if value.AimZ < -1.0 {
+	if !(value.AimZ >= -1.0) {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
@@ -10628,7 +10628,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.Flux = 1000000000000000000
 		(*clamped)++
 	}
-	if value.Ping < 0.0 {
+	if !(value.Ping >= 0.0) {
 		value.Ping = 0.0
 		(*clamped)++
 	} else if value.Ping > 250.0 {
