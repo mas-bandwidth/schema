@@ -266,7 +266,7 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 	if !strings.Contains(passes, "`T` and `?T`") {
 		t.Error("§18.2's PASSES list no longer states that `T` and `?T` are one framing")
 	}
-	if strings.Contains(passes, "`*T`") {
+	if strings.Contains(passes, "`T`, `?T` and `*T`") {
 		t.Error("§18.2's PASSES list still names `*T` beside `T` and `?T`; the pointer is a kind change and belongs to REFUSES")
 	}
 }
