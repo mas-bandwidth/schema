@@ -1568,4 +1568,144 @@ Leg.check(
   loose.grade == 0 and loose_report.clamped == 0 and loose_count == 1
 )
 
+# ---------------------------------------------------------------------------
+# #876, THE ELIXIR COLUMN: THE FILE'S FRAMING AND THE COUNT CLAMP
+# ---------------------------------------------------------------------------
+#
+# The audit's matrix against docs/FIXED-FORM-ALGORITHM.md's contract marked the
+# cells below G (no fixture at all) or ~ (golden-only or fuzz-only) even though
+# the §5 runtime answers every one of them. Each case asserts the contract item
+# BY NAME, on this leg's OWN file — the identity hash, the lock's own layout
+# bytes, one record — so none of it reads a stranger's layout through a compiled
+# plan and none of it is retired by §5.6.
+#
+#   F7   a form-3 file under the twenty-byte minimum is `malformed`
+#   F8   a ragged tail is `malformed`
+#   F9   a batch past the caller's `:batch_capacity` is `batch_too_large`
+#   F12  a second layout behind a hash this reader holds is `layout_malformed`
+#   E9   `duplicate` is never raised by this form
+#   W15  REFUSE is total: a refusal decodes nothing and moves no counter
+#   C1   a forged count below zero clamps to zero, counting one `clamped`
+#   C2   a forged count past Max clamps, in elements, counting one `clamped`
+Leg.section("#876: the file's framing and the count clamp, closed")
+
+fx1_file = read.("fx1.bin")
+fx1_body_bytes = Tblfx1.FX1Fixed.fx_root_fixed_body_bytes()
+fx1_layout_binary = Tblfx1.FX1Fixed.fx_root_fixed_layout()
+fx1_layout_len = byte_size(fx1_layout_binary)
+
+# A CLEAN READ IS THE CONTROL for every refusal below: two records land, no
+# counter moves, and `duplicate` is zero on a read that lands values (E9).
+{:ok, _clean, clean_report} = Tblfx1.FX1Fixed.fx_root_fixed_load(fx1_file)
+
+Leg.eq("a form-3 read's `malformed`", clean_report.malformed, false)
+Leg.eq("a form-3 read's `clamped`", clean_report.clamped, 0)
+Leg.eq("a form-3 read's `unknown`", clean_report.unknown, 0)
+Leg.eq("a form-3 read's `kind_mismatch`", clean_report.kind_mismatch, 0)
+Leg.eq("a form-3 read's `widened`", clean_report.widened, 0)
+Leg.eq("E9: a form-3 read never raises `duplicate`", clean_report.duplicate, 0)
+
+# REFUSE IS TOTAL (W15): a refusal by NAME decodes nothing, fires no `malformed`
+# beside its name, and moves no counter.
+refused = fn name, load, reason ->
+  case load.() do
+    {:error, ^reason, r} ->
+      Leg.check("#{name}: not malformed", r.malformed == false)
+      Leg.check("#{name}: no `clamped`", r.clamped == 0)
+      Leg.check("#{name}: no `unknown`", r.unknown == 0)
+      Leg.check("#{name}: no `kind_mismatch`", r.kind_mismatch == 0)
+      Leg.check("#{name}: no `widened`", r.widened == 0)
+      Leg.check("#{name}: no `duplicate`", r.duplicate == 0)
+
+    other ->
+      Leg.check("#{name}: expected #{inspect(reason)}, got #{inspect(other)}", false)
+  end
+end
+
+malformed_file = fn name, bytes ->
+  case Tblfx1.FX1Fixed.fx_root_fixed_load(bytes) do
+    {:error, :malformed, r} ->
+      Leg.check("#{name}: malformed", r.malformed == true)
+      Leg.check("#{name}: no `clamped`", r.clamped == 0)
+      Leg.check("#{name}: no `unknown`", r.unknown == 0)
+      Leg.check("#{name}: no `kind_mismatch`", r.kind_mismatch == 0)
+      Leg.check("#{name}: no `widened`", r.widened == 0)
+      Leg.check("#{name}: no `duplicate`", r.duplicate == 0)
+
+    other ->
+      Leg.check("#{name}: expected malformed, got #{inspect(other)}", false)
+  end
+end
+
+# F7 — UNDER THE TWENTY-BYTE MINIMUM. The form byte earns form 3 and the file
+# is then too short to hold the layout's count and length: nineteen bytes, the
+# residue and never one of §1.1's names.
+f7 = binary_part(fx1_file, 0, 19)
+malformed_file.("F7: a form-3 file one byte short of the layout header", f7)
+
+# F8 — A RAGGED TAIL. Bytes left over past the last whole record mean the two
+# ends of the file have met and did not agree.
+f8 = fx1_file <> <<1, 2, 3>>
+malformed_file.("F8: three bytes left over past the last whole record", f8)
+
+# F9 — MORE RECORDS THAN THE CALLER'S CAPACITY. The room a load may fill is the
+# caller's own declaration: three records past a capacity of one is a refusal
+# BY NAME and never a partial read.
+three = Tblfx1.FX1Fixed.fx_root_fixed_save(List.duplicate(hd(fx1), 3))
+f9 = fn -> Tblfx1.FX1Fixed.fx_root_fixed_load(three, batch_capacity: 1) end
+refused.("F9: a batch past the caller's capacity", f9, :batch_too_large)
+
+# F12 — A SECOND LAYOUT FOR A HELD HASH. The header's hash is taken AS GIVEN
+# (§5.3 step 4): it selects the lock entry, and then the layout bytes the file
+# carries are compared to the bytes the lock recorded. A file that hashes to a
+# layout this reader holds but carries DIFFERENT bytes is a lie about a known
+# version, and the one name for it is `layout_malformed`.
+f12_head = binary_part(fx1_file, 0, 20)
+f12_at = 20 + fx1_layout_len
+f12_records = binary_part(fx1_file, f12_at, byte_size(fx1_file) - f12_at)
+f12 = f12_head <> plant.(fx1_layout_binary, 12, 99) <> f12_records
+f12_load = fn -> Tblfx1.FX1Fixed.fx_root_fixed_load(f12) end
+refused.("F12: a colliding hash over a different layout", f12_load, :layout_malformed)
+
+# AND ONE OF §1.1's NAMES MADE VISIBLE THROUGH THE HASH RULE: a root record
+# past the sixty-four-kilobyte ceiling. Under this build's own hash the bytes
+# are not the lock's, so the answer is `layout_malformed`; under the bent bytes'
+# own hash it is `layout_newer` before any walk.
+big0 = plant.(fx1_layout_binary, 13, 1)
+big1 = plant.(big0, 14, 0)
+big2 = plant.(big1, 15, 1)
+big_layout = plant.(big2, 16, 0)
+refuse.("a root record past the sixty-four-kilobyte ceiling", big_layout)
+
+# C1/C2 — THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5), FORGED IN THE
+# BYTES rather than through the writer, which cannot express either count.
+# FX1's `marks` is a counted `[..4]int32`: the count word rides at body offset
+# 34 and the live run behind it. A count below zero clamps to ZERO; a count past
+# Max clamps to MAX IN ELEMENTS; each counts exactly one `clamped`; and a count
+# EQUAL to Max is in range and counts nothing.
+put32 = fn data, at, v ->
+  <<binary_part(data, 0, at)::binary, v::little-signed-32,
+    binary_part(data, at + 4, byte_size(data) - at - 4)::binary>>
+end
+
+fx1_base = Tblfx1.FX1Fixed.fx_root_fixed_save([%Tblfx1.FxRoot{marks: [7, 8]}])
+fx1_marks_at = byte_size(fx1_base) - fx1_body_bytes + 34
+
+c1_file = put32.(fx1_base, fx1_marks_at, -1)
+{:ok, [c1], c1_r} = Tblfx1.FX1Fixed.fx_root_fixed_load(c1_file)
+Leg.eq("C1: a count below zero clamps to ZERO", c1.marks, [])
+Leg.eq("C1: and counts exactly one `clamped`", c1_r.clamped, 1)
+Leg.eq("C1: a clamp is neither malformed nor a refusal", c1_r.malformed, false)
+
+c2_file = put32.(fx1_base, fx1_marks_at, 5)
+{:ok, [c2], c2_r} = Tblfx1.FX1Fixed.fx_root_fixed_load(c2_file)
+Leg.eq("C2: a count past Max clamps to MAX, in elements", c2.marks, [7, 8, 0, 0])
+Leg.eq("C2: and counts exactly one `clamped`", c2_r.clamped, 1)
+Leg.check("C2: the live elements are still the record's", Enum.take(c2.marks, 2) == [7, 8])
+
+c_max_file = put32.(fx1_base, fx1_marks_at, 4)
+{:ok, [c_max], c_max_r} = Tblfx1.FX1Fixed.fx_root_fixed_load(c_max_file)
+Leg.eq("CONTROL: a count of exactly Max is in range", c_max.marks, [7, 8, 0, 0])
+Leg.eq("CONTROL: and counts NOTHING", c_max_r.clamped, 0)
+
 Leg.verdict()
