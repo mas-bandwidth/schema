@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -131,10 +132,8 @@ func cEmittedNames(files map[string][]byte) map[string]bool {
 // which is exactly the shape the emitter does not use for its own runtime.
 func TestCTableRuntimeNameScanGoesRed(t *testing.T) {
 	files := cFiles(t, cRuntimeSrc)
-	sabotaged := make(map[string][]byte, len(files)+1)
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	sabotaged := map[string][]byte{}
+	maps.Copy(sabotaged, files)
 	sabotaged["ControlTable.h"] = []byte("struct TableProbe { int x; };\n")
 	emitted := cEmittedNames(sabotaged)
 	if !emitted["TableProbe"] {
