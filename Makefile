@@ -3059,6 +3059,16 @@ generated/bench/tables/cpp/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang cpp --out generated/bench/tables/cpp bench/corpus/BenchTable.schema
 	@touch $@
 
+# J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
+# The C++ table leg's `--gate` verb round-trips all 64 corpus variants and
+# byte-compares variant 0 against testdata/wire/bench_table.bin, refusing to
+# time a codec that does not reproduce the corpus (bench/tables/README.md).
+.PHONY: tables-bench-gate
+tables-bench-gate: generated/bench/tables/cpp/.stamp
+	bench/tables/cpp/leg build
+	bench/tables/cpp/leg run --gate
+test: tables-bench-gate
+
 # the C++ producer/verifier of the bench-corpus goldens, and the C twin that
 # proves the C emitter compiles under the strict flags AND matches those bytes
 build/schema_test_bench: generated/bench/cpp/.stamp test/bench/main.cpp
