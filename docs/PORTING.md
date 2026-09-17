@@ -559,7 +559,14 @@ shared by `emitNumber`, `emitPackMeasure` and `emitPack`; the tool's walk is
 `internal/tablewire/nodes.go:112` (`visitEdges`).
 
 **Proven in.** C++ (#433 — found by #429's wire fuzzer at the `stream_parts`
-seed's id pass, where dropping one field separated the two orders).
+seed's id pass, where dropping one field separated the two orders). **An
+OPTIONAL over a variable-length value is the same walk's presence gate**
+(schema#526): the walk skips a field whose presence companion is false before
+it descends, so an absent optional's table is not an edge and a pointer left in
+its slots costs no record. `test/tables/G1.schema`'s `optional_absent_no_edge`
+and `optional_present_edge` are the corpus and the tool-written pins; the C
+port's `internal/codegen/ctable/graph.go` `emitGraphEdge` gates the same way.
+The remaining ports' walker row is schema#366.
 
 **Measured effect.** Structural: on `stream_arm_first`, the corpus value whose
 numbering differs between the two orders, the numbering, the region layout and

@@ -284,6 +284,15 @@ report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
 # by the form's own rule: a guarded group's untaken side has no text to carry.
 instance guard_false_no_edge   tblg1 Guarded testdata/wire/tables/guard_false_no_edge.bin   no-text
 instance guard_true_both_edges tblg1 Guarded testdata/wire/tables/guard_true_both_edges.bin no-text
+# AND AN ABSENT OPTIONAL'S TABLE IS NOT DESCENDED (§3.1, schema#526). The same
+# value one field over: `optional` is `?Wrapped`, a variable-length table, and
+# the numbering, the pack measure and the pack gate on the presence companion.
+# Absent, a pointer left inside the optional's table costs no record; present,
+# the table descends and its pointer is numbered. The absent wire is the
+# guard-false wire byte for byte — the added field moved nothing — and the pins
+# are the tool's. `no-text`: an absent optional's stale slots have no text.
+instance optional_absent_no_edge  tblg1 Guarded testdata/wire/tables/optional_absent_no_edge.bin  no-text
+instance optional_present_edge    tblg1 Guarded testdata/wire/tables/optional_present_edge.bin    no-text
 
 # THE ENUM KIND AGAINST THE RAW INTEGER (§3, §4). K2 declares K1's two field
 # names with the spellings swapped, so one wire read the other way names both
