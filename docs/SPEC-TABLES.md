@@ -8968,8 +8968,9 @@ refusal by name is a compile error rather than an answer a driver writes.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
-it ON: the same six counters, the two retention counters beside them, and a
-save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
+same six counters, the two retention counters beside them, and a save the
+oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
