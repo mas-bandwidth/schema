@@ -400,3 +400,78 @@ func TestJavaGeneratedMethodsAreLowerCamel(t *testing.T) {
 		t.Fatal("the scan found no generated method at all — the scan, not the emitter, is what broke")
 	}
 }
+
+// variableTableSrc is a unit whose table is the VARIABLE class — a plain
+// `table` rather than a `fixed table` — because the id-table wire
+// (docs/SPEC-TABLES.md §3) is the variable class's form and the fixed class
+// rides form 3. A fixed unit is served by the two accelerators alone; a
+// variable unit is the one this runtime is written for.
+const variableTableSrc = packetSrc + `
+table Config
+{
+    scale  float32 = 1.0
+    label  string(24)
+    grade  Kind
+    points [..8]Point
+}
+`
+
+// TestJavaEmitsTheIdTableWireRuntime is the RED-FIRST pin for schema#517: the
+// Java port of the table wire was removed rather than carried when the wire
+// moved to its id-table form, and this runtime is the FORM's foundation —
+// before a single body can be measured, saved or loaded, the port needs the
+// pieces every one of them is built from. The issue's "What moves" is exactly
+// what this asserts, and nothing here is a spelling this backend is free to
+// choose:
+//
+//   - the form byte is `1`, read FIRST, so §3's form is named in the source;
+//   - identity is `fnv1a64` at SIXTY-FOUR bits with no fold and no rebound;
+//   - every number is one CANONICAL LEB128 and a non-minimal spelling is
+//     MALFORMED, so the reader refuses it rather than decoding a value;
+//   - the id table is first-use, the body names ids by 1-BASED reference and
+//     reference `0` names no id;
+//   - the entry count is the LAST EIGHT BYTES, a fixed little-endian u64, so a
+//     reader finds the table from the END;
+//   - the three kinds ride as numbers: `30` an enum, `31` the escape, `32` the
+//     payload-free arm;
+//   - the reserved node-table id is `0xFFFFFFFFFFFFFFFF`.
+//
+// That the runtime is emitted at all is only half of it: the other half is
+// that a TABLE-FREE unit gets not one byte of it, which is the zero-cost
+// property at the grain Java has it.
+func TestJavaEmitsTheIdTableWireRuntime(t *testing.T) {
+	with := javaFiles(t, variableTableSrc)
+	wire := string(with["TableIds.java"])
+	if wire == "" {
+		t.Fatal("--lang java emitted no TableIds.java for a unit that declares a VARIABLE table — " +
+			"the id-table wire's runtime is owed (schema#517)")
+	}
+	for _, want := range []string{
+		"public static final int form = 1;",
+		"0xffffffffffffffffL",
+		"public static final int kindEnum = 30;",
+		"public static final int kindEscape = 31;",
+		"public static final int kindNoPayloadArm = 32;",
+		"public static long fnv1a64(",
+		"public static int putLeb(",
+		"public static int getLeb(",
+		"public static int reference(",
+		"public static long idAt(",
+		"public static long idTableCount(",
+	} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("TableIds.java is missing %q — the id-table form's runtime is not whole", want)
+		}
+	}
+	// the canonical-spelling rule is a REFUSAL, and it lives in the reader:
+	// the last byte of a multi-byte LEB128 that is zero means the value had a
+	// shorter spelling, so the decode must fail rather than return the value.
+	if !strings.Contains(wire, "b == 0") {
+		t.Error("TableIds.java's LEB128 reader carries no non-minimal refusal — a non-minimal " +
+			"spelling is MALFORMED (docs/SPEC-TABLES.md §3)")
+	}
+	without := javaFiles(t, packetSrc)
+	if _, ok := without["TableIds.java"]; ok {
+		t.Error("--lang java emitted TableIds.java for a unit with no tables — the form is zero-cost or it is not")
+	}
+}
