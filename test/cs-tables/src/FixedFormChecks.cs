@@ -55,6 +55,7 @@ static partial class Program
         TestFixedHostileBoolCase();
         TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
+        TestFixedFormGaps();
         if (skipped > 0)
         {
             Console.WriteLine("cs fixed form: " + skipped + " test(s) skipped by name, §5.6");
@@ -1187,6 +1188,326 @@ static partial class Program
             Span<byte> pbody = pw.AsSpan(bodyOffset, bodyBytes);
             Check(pbody.IndexOf((byte)0x5A) >= 0,
                   "absent optional: the present twin puts the bytes on the wire");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // #876's CS FIXTURE GAPS, closed. The audit against
+    // docs/FIXED-FORM-ALGORITHM.md's contract found cells of the cs column that
+    // were GAP (no assertion at all) or weak (golden-only / fuzz-only). Each
+    // case below asserts the contract item BY NAME, so a port that stops
+    // honouring it fails here rather than in a corpus diff nobody reads
+    // (schema#876). The C++ reference is the authority for bytes; this leg's
+    // own packet codec is the authority for shape. Every case runs on this
+    // leg's OWN file — the identity hash, the lock's own layout bytes, one
+    // record — so none of it reads a stranger's layout through a compiled plan
+    // and none of it is retired by §5.6.
+    static void TestFixedFormGaps()
+    {
+        // A VALID FIXTURE to break: FX1's own record with every field off its
+        // default, so nothing below passes by accident.
+        FX1.FxRoot own = new FX1.FxRoot();
+        FX1.Schema.TableReset(own);
+        own.Keep = 4242u;
+        own.Narrow = 40000;
+        own.Renamed = 321;
+        own.Gone = 654;
+        own.Nested.A = 111;
+        own.Nested.B = 222;
+        own.Label[0] = (byte)'a'; own.Label[1] = (byte)'b';
+        own.Label[2] = (byte)'c'; own.Label[3] = (byte)'d';
+        own.Label[4] = (byte)'e'; own.Label[5] = (byte)'f';
+        own.Label[6] = (byte)'g'; own.Label[7] = (byte)'h';
+        own.LabelLength = 8; // the whole bound, no interior NUL, for C3
+        own.Marks[0] = 11; own.Marks[1] = 22; own.MarksCount = 2;
+        own.Blob[0] = 0xDE; own.Blob[1] = 0xAD; own.Blob[2] = 0xBE; own.Blob[3] = 0xEF;
+        own.BlobLength = 4;
+
+        byte[] good = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(own, good) == good.Length,
+              "#876 cs gaps: the valid FX1 fixture saves");
+        FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+
+        int bodyAt = FX1.Schema.TableFixedWire.HeaderBytes + 4 +
+                     (int)FX1.Schema.FxRootFixedLayoutBytes + 8;
+
+        // THE POISON: every field a read could land is off its declared default,
+        // so a refusal that wrote even one byte would move the fingerprint.
+        FX1.FxRoot Poison()
+        {
+            FX1.FxRoot p = new FX1.FxRoot();
+            FX1.Schema.TableReset(p);
+            p.Keep = 0xDEADBEEFu;
+            p.Narrow = 0xBEEF;
+            p.Renamed = -424242;
+            p.Gone = -999999;
+            p.Nested.A = 12345;
+            p.Nested.B = 67890;
+            p.MarksCount = 4;
+            p.Marks[0] = -7; p.Marks[1] = -8; p.Marks[2] = -9; p.Marks[3] = -10;
+            p.BlobLength = 3;
+            p.Blob[0] = 0xAA; p.Blob[1] = 0xBB; p.Blob[2] = 0xCC;
+            return p;
+        }
+
+        string Fp(FX1.FxRoot p) =>
+            p.Keep + "|" + p.Narrow + "|" + p.Renamed + "|" + p.Gone + "|" +
+            p.Nested.A + "|" + p.Nested.B + "|" + p.MarksCount + "|" +
+            string.Join(",", p.Marks) + "|" + p.BlobLength + "|" + Convert.ToHexString(p.Blob);
+
+        // F7 — UNDER THE LAYOUT HEADER MINIMUM. The form byte earns form 3 and
+        // the file is then too short to hold the length word: nineteen bytes is
+        // `malformed` (the residue), never a refusal name and never a partial
+        // record.
+        {
+            byte[] shortFile = good.AsSpan(0, FX1.Schema.TableFixedWire.HeaderBytes + 4 - 1).ToArray();
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, shortFile, plan, r);
+            Check(n == -1 && r.Malformed && !r.Refused && r.Reason == null,
+                  "F7 header minimum: a form-3 file one byte short of the length word is malformed");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "F7 header minimum: malformed moves no counter");
+            Check(Fp(v) == before, "W15 REFUSE is total: F7 writes no destination byte");
+        }
+
+        // F10 — A RECORD WHOSE HASH NAMES NO LAYOUT. The header hash selected
+        // the layout; a RECORD carrying a hash this reader does not hold is
+        // `no_layout`, never a guess and never damage.
+        {
+            byte[] bad = (byte[])good.Clone();
+            bad[bodyAt - 8] ^= 0xFF; // the record's own first hash byte
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, bad, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "no_layout" && !r.Malformed,
+                  "F10 no_layout: a record whose hash names no layout is refused by name");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "F10 no_layout: the refusal moves no counter");
+            Check(Fp(v) == before, "W15 REFUSE is total: F10 writes no destination byte");
+        }
+
+        // F12 — A SECOND LAYOUT FOR A HELD HASH. The header's hash is taken AS
+        // GIVEN: it selects the lock entry, and then the layout bytes the file
+        // carries are compared to the bytes the lock recorded. A file that
+        // hashes to a layout this reader holds but carries DIFFERENT layout
+        // bytes is a lie about a known version, and the one name for it is
+        // `layout_malformed`.
+        {
+            byte[] bad = (byte[])good.Clone();
+            bad[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 8] ^= 0xFF; // the root entry's kind byte
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, bad, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "layout_malformed" && !r.Malformed,
+                  "F12 second layout: a colliding hash over different layout bytes is layout_malformed");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "F12 second layout: the refusal moves no counter");
+            Check(Fp(v) == before, "W15 REFUSE is total: F12 writes no destination byte");
+        }
+
+        // F8 — A RAGGED TAIL. Bytes left over past the last whole record are
+        // `malformed`: the two ends of the file have met and did not agree.
+        {
+            byte[] ragged = new byte[good.Length + 3];
+            Array.Copy(good, ragged, good.Length);
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, ragged, plan, r);
+            Check(n == -1 && r.Malformed && !r.Refused,
+                  "F8 ragged tail: three bytes past the last whole record are malformed");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "F8 ragged tail: malformed moves no counter");
+            Check(Fp(v) == before, "W15 REFUSE is total: F8 writes no destination byte");
+        }
+
+        // F9 — BATCH_TOO_LARGE. A three-record file read into the caller's one
+        // slot is a refusal by name before any record is decoded, never a write
+        // past the end.
+        {
+            byte[] many = new byte[FX1.Schema.FxRootFixedMeasure(3)];
+            Check(FX1.Schema.FxRootFixedSave(new FX1.FxRoot[] { own, own, own }, many) == many.Length,
+                  "F9 batch_too_large: a three-record file saves");
+            FX1.FxRoot v = Poison();
+            string before = Fp(v);
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, many, plan, r);
+            Check(n == -1 && r.Refused && r.Reason == "batch_too_large" && !r.Malformed,
+                  "F9 batch_too_large: three records past a one-slot capacity are refused by name");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "F9 batch_too_large: the refusal moves no counter");
+            Check(Fp(v) == before, "W15 REFUSE is total: F9 writes no destination byte");
+        }
+
+        // E9 — `duplicate` IS NEVER RAISED by this form. The counter rides the
+        // report for the TEXT form's keyed bodies; the fixed wire has no ids to
+        // repeat, so a lawful read and a refused read both leave it at zero.
+        {
+            FX1.FxRoot v = new FX1.FxRoot();
+            FX1.TableReport r = new FX1.TableReport();
+            Check(FX1.Schema.FxRootFixedLoad(v, good, plan, r) == 1 && r.Duplicate == 0,
+                  "E9 duplicate: a lawful fixed read never raises it");
+            byte[] broken = (byte[])good.Clone();
+            broken[FX1.Schema.TableFixedWire.HeaderBytes] ^= 0xFF; // the layout length word
+            FX1.FxRoot w = new FX1.FxRoot();
+            FX1.TableReport r2 = new FX1.TableReport();
+            FX1.Schema.FxRootFixedLoad(w, broken, plan, r2);
+            Check(r2.Duplicate == 0, "E9 duplicate: a refused fixed read never raises it either");
+        }
+
+        // C1/C2 — THE COUNT CLAMP, forged in the bytes and not through the
+        // writer: a count only the wire can say. The plan's own Count row names
+        // the word (its `src`) and the bound (its `size`).
+        {
+            int countRow = -1;
+            for (int i = 0; i < FX1.Schema.FxRootFixedPlan.Entries.Length; ++i)
+            {
+                if (FX1.Schema.FxRootFixedPlan.Entries[i].Op == FX1.Schema.TableFixedWire.Count) { countRow = i; break; }
+            }
+            Check(countRow >= 0, "C1/C2 count clamp: the identity plan has a count row");
+            if (countRow >= 0)
+            {
+                uint src = FX1.Schema.FxRootFixedPlan.Entries[countRow].Src;
+                int bound = (int)FX1.Schema.FxRootFixedPlan.Entries[countRow].Size;
+
+                byte[] below = (byte[])good.Clone();
+                BinaryPrimitives.WriteInt32LittleEndian(below.AsSpan(bodyAt + (int)src), -1);
+                FX1.FxRoot vBelow = Poison();
+                FX1.TableReport rBelow = new FX1.TableReport();
+                long nBelow = FX1.Schema.FxRootFixedLoad(vBelow, below, plan, rBelow);
+                Check(nBelow == 1 && vBelow.MarksCount == 0 && rBelow.Clamped == 1 &&
+                      !rBelow.Malformed && !rBelow.Refused,
+                      "C1 count clamp: a count below zero lands zero and counts exactly one clamp");
+
+                byte[] above = (byte[])good.Clone();
+                BinaryPrimitives.WriteInt32LittleEndian(above.AsSpan(bodyAt + (int)src), 0x7FFFFFFF);
+                FX1.FxRoot vAbove = Poison();
+                FX1.TableReport rAbove = new FX1.TableReport();
+                long nAbove = FX1.Schema.FxRootFixedLoad(vAbove, above, plan, rAbove);
+                Check(nAbove == 1 && vAbove.MarksCount == bound && rAbove.Clamped == 1 &&
+                      !rAbove.Malformed && !rAbove.Refused,
+                      "C2 count clamp: a count past the bound lands the bound and counts exactly one clamp");
+            }
+        }
+
+        // C3 — THE TEXT LENGTH IS CLAMPED, forged in the bytes: a count of
+        // 0x7FFFFFFF is a thing only the wire can say. §4.5 clamps it into
+        // [0, cap] in EVERY build and counts exactly one clamp.
+        {
+            int textRow = -1;
+            for (int i = 0; i < FX1.Schema.FxRootFixedPlan.Entries.Length; ++i)
+            {
+                if (FX1.Schema.FxRootFixedPlan.Entries[i].Op == FX1.Schema.TableFixedWire.Text &&
+                    FX1.Schema.FxRootFixedPlan.Entries[i].Meta == FX1.Schema.TableFixedWire.TextUtf8)
+                { textRow = i; break; }
+            }
+            Check(textRow >= 0, "C3 text length clamp: the identity plan has a utf8 text row");
+            if (textRow >= 0)
+            {
+                uint src = FX1.Schema.FxRootFixedPlan.Entries[textRow].Src;
+                int cap = (int)FX1.Schema.FxRootFixedPlan.Entries[textRow].Size;
+                byte[] forged = (byte[])good.Clone();
+                BinaryPrimitives.WriteInt32LittleEndian(forged.AsSpan(bodyAt + (int)src), 0x7FFFFFFF);
+                FX1.FxRoot v = Poison();
+                FX1.TableReport r = new FX1.TableReport();
+                long n = FX1.Schema.FxRootFixedLoad(v, forged, plan, r);
+                Check(n == 1 && r.Clamped == 1 && v.LabelLength == cap && !r.Malformed && !r.Refused,
+                      "C3 text length clamp: a length past the cap lands the payload's own span and counts one");
+            }
+        }
+
+        // W14 — THE PLAN'S dst IS THE TYPE'S OWN SLOT, AND ITS size IS THE
+        // FIELD'S OWN SPAN. C# has no offsetof, so the plan's destinations are
+        // slot indices into the generated slot table (a divergence the
+        // generated runtime names at its TableFieldInfo); the sizes are still
+        // the declared bytes. This is asserted, not eyeballed, because a
+        // backend that insets one field silently breaks every port that reads
+        // a compiled plan.
+        {
+            FX1.TableFixedEntry[] entries = FX1.Schema.FxRootFixedPlan.Entries;
+            Check(entries[0].Dst == 0 && entries[0].Size == 4,
+                  "W14 plan: `keep` lands in slot 0, four bytes");
+            Check(entries[1].Dst == 1 && entries[1].Size == 2,
+                  "W14 plan: `narrow` lands in slot 1, two bytes");
+            Check(entries[6].Dst == 6 && entries[6].Size == 8 && entries[6].Aux == 7,
+                  "W14 plan: `label`'s length is slot 6, its buffer slot 7, its span 8");
+            Check(entries[8].Dst == 9 && entries[8].Size == 16,
+                  "W14 plan: the folded `marks` run is slot 9, sixteen bytes");
+            Check(entries[9].Dst == 10 && entries[9].Aux == 11,
+                  "W14 plan: `blob`'s length is slot 10, its buffer slot 11");
+            bool inRange = true;
+            for (int i = 0; i < entries.Length; ++i)
+            {
+                uint slotCount = (uint)FX1.Schema.FxRootFixedSlots.Length;
+                if (entries[i].Dst >= slotCount) { inRange = false; }
+                if (entries[i].Aux != 0 && entries[i].Aux >= slotCount) { inRange = false; }
+            }
+            Check(inRange, "W14 plan: every destination and auxiliary slot is one the type owns");
+        }
+
+        // W11 — bytes(N) IS LAYOUT KIND 14, an ARRAY with ONE synthetic u8
+        // (kind 6) child, and never a text kind. The plan row already proves
+        // the array row; this reads the known LAYOUT itself, because that is
+        // the fact the C++ reference carries.
+        {
+            Check(FX1.Schema.TableFixedWire.ParseLayout(FX1.Schema.FxRootFixedLayout,
+                                                        out FX1.TableFixedLayoutView parsed),
+                  "W11 bytes(N): the layout parses");
+            int u8Arrays = 0;
+            for (int i = 0; i + 1 < parsed.Count; ++i)
+            {
+                FX1.TableFixedLayoutEntry e = FX1.Schema.TableFixedWire.EntryAt(parsed, i);
+                FX1.TableFixedLayoutEntry next = FX1.Schema.TableFixedWire.EntryAt(parsed, i + 1);
+                if (e.Kind == 14 && next.Kind == 6) { u8Arrays++; }
+            }
+            Check(u8Arrays == 1,
+                  "W11 bytes(N): exactly one kind-14 ARRAY row has a kind-6 u8 child");
+        }
+
+        // W3 — ZERO BEHIND A NARROWER ARM. UT's union is one tag plus its WIDEST
+        // arm (B); when the narrower arm (A) rides, every byte of the wider
+        // arm's storage on the wire is the TEMPLATE's zero and never a leftover
+        // from the writer's storage.
+        {
+            UT.UtRoot narrow = new UT.UtRoot();
+            UT.Schema.TableReset(narrow);
+            narrow.Pick.Type = UT.UtPickType.A;
+            narrow.Pick.A.N = 0x11223344;
+            narrow.Tail = 99;
+            byte[] w = new byte[UT.Schema.UtRootFixedMeasure(1)];
+            Check(UT.Schema.UtRootFixedSave(narrow, w) == w.Length,
+                  "W3 narrower arm: the ArmA record saves");
+
+            int wBody = UT.Schema.TableFixedWire.HeaderBytes + 4 +
+                        (int)UT.Schema.UtRootFixedLayoutBytes + 8;
+            // body: the tag is byte 0, ArmA's `n` is 1..4, the wider arm's
+            // storage runs to the tail's src at 18, and the tail is 18..21.
+            bool slackZero = true;
+            for (int at = 5; at < 18; ++at) { if (w[wBody + at] != 0) { slackZero = false; } }
+            Check(w[wBody + 0] == (byte)UT.UtPickType.A,
+                  "W3 narrower arm: the tag names the narrow arm");
+            Check(w[wBody + 1] == 0x44 && w[wBody + 2] == 0x33 &&
+                  w[wBody + 3] == 0x22 && w[wBody + 4] == 0x11,
+                  "W3 narrower arm: the narrow arm's own bytes ride");
+            Check(slackZero, "W3 narrower arm: every byte behind the narrow arm is the template's zero");
+            Check(w[wBody + 18] == 99, "W3 narrower arm: the field after the union is untouched");
+        }
+
+        // W15 — REFUSE IS TOTAL, on a CLEAN read too: a read that returns moves
+        // no counter, and a read that refuses writes no destination byte. The
+        // poisoned comparisons above are this same assertion, once per refusal.
+        {
+            FX1.FxRoot v = new FX1.FxRoot();
+            FX1.TableReport r = new FX1.TableReport();
+            long n = FX1.Schema.FxRootFixedLoad(v, good, plan, r);
+            Check(n == 1 && !r.Malformed && !r.Refused && r.Reason == null,
+                  "W15 REFUSE is total: the good file reads one record");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0,
+                  "W15 REFUSE is total: a clean identity read moves no counter at all");
         }
     }
 }
