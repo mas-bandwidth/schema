@@ -145,6 +145,12 @@ These capabilities are outside the active NEW Fixed Tables work set. Existing
 marks below describe the earlier table implementation; they do not certify the
 new fixed form. Save games is an additional future product feature.
 
+The eleven columns after the nine are the languages a game team has around it:
+Swift, TypeScript, Lua, Clojure, Python, Ruby, Kotlin, GDScript, Zig, Odin and
+Haxe. Each arrives the way the nine did — the packet wire bit-identical to the
+corpus first, then every table row, then its scorecard — and they are tracked
+on [issue #381](https://github.com/mas-bandwidth/schema/issues/381).
+
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | fixed class on the table wire | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
