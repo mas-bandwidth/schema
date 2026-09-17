@@ -25,7 +25,7 @@ table-base64-cs: build/table-base64/harness build/table-base64/cs/.stamp
 	$(DOTNET) build --configuration Release --nologo test/table-base64/cs/table-base64.csproj
 	./build/table-base64/harness $(DOTNET) test/table-base64/cs/bin/Release/net10.0/table-base64.dll
 
-test: table-base64-cpp
+test-full: table-base64-cpp
 test-c: table-base64-c
 test-go: table-base64-go
 test-cs: table-base64-cs

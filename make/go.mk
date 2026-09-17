@@ -281,7 +281,7 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
-# THE GO LEG of `make test`: the two conformance negative controls, THE GO
+# THE GO LEG of `make test-full`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and two seconds
 # of the soak; the hour is `make tables-go-soak` — the bench units' compile

@@ -22,7 +22,7 @@ packet-defaults-goldens: build/schema_test_packet_defaults
 	./build/schema_test_packet_defaults testdata/wire/packet-defaults --write-goldens
 
 update-goldens: packet-defaults-goldens
-test: packet-defaults-cpp
+test-full: packet-defaults-cpp
 
 # Packet defaults are construction only. The C++ oracle and defaultless twin
 # establish the bytes independently of this port's constructors and codecs.
@@ -94,5 +94,5 @@ packet-defaults-c-negative-control: packet-defaults-c
 		{ echo 'NEGATIVE CONTROL FAILED: C failed for another reason'; cat build/packet-defaults/c-negative/log; exit 1; }
 	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/c-negative/log
 
-# make test invokes test-c through TEST_LEGS in make/c.mk.
+# make test-full invokes test-c through TEST_LEGS in make/c.mk.
 test-c: packet-defaults-c packet-defaults-c-negative-control

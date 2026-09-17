@@ -141,7 +141,7 @@ tables-java-zero-cost: bin/schema
 # IT COMPILES THE UNITS THE CONFORMANCE LEG DOES NOT, and no others. That leg's
 # classpath already carries seven of the eight under these very flags
 # (build-conformance-java), so compiling them twice buys nothing and costs the
-# `make test` budget eleven seconds. `blockhome` is the one unit no other target
+# `make test-full` budget eleven seconds. `blockhome` is the one unit no other target
 # touches — a unit whose protocol id lives in a table-free file — so it is the
 # one this gate exists for. TABLES_JAVA_UNITS names it, so the day another unit
 # leaves the conformance classpath it is added here rather than going unbuilt.
@@ -277,9 +277,9 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
-# THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
+# THE JAVA LEG's RELEASE PASS: everything `make test-full` cannot afford.
 #
-# `make test` on CI sits at about fourteen minutes against a fifteen-minute
+# `make test-full` on CI sits at about fourteen minutes against a fifteen-minute
 # timeout, and that headroom was thin before this backend existed — this leg's
 # gates cost about twenty seconds there. So the expensive half is here, by
 # name — every unit compiled under -Werror, and the three planted controls,
@@ -393,9 +393,9 @@ conformance-negative-control-java-block: build/conformance-harness
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
 
-# THE JAVA LEG of `make test`: the compile, standalone and zero-cost gates, the
+# THE JAVA LEG of `make test-full`: the compile, standalone and zero-cost gates, the
 # readers' fuzz oracle, the byte-order leg and the reference extent gate. The
-# three planted controls are `make tables-java-release`, because `make test`
+# three planted controls are `make tables-java-release`, because `make test-full`
 # has no budget for them (see that target). Then the packet tests, with and
 # without -ea.
 .PHONY: test-java

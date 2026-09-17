@@ -239,7 +239,7 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
-# THE RUST LEG of `make test`: the clippy and feature gates, the names
+# THE RUST LEG of `make test-full`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust

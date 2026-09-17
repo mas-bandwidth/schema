@@ -328,7 +328,7 @@ generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
 	@touch $@
 
-# CI discovers explicit generated/ stamps; make test reaches this through test-cs.
+# CI discovers explicit generated/ stamps; make test-full reaches this through test-cs.
 generated/bench/paired/cs/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@mkdir -p generated/bench/paired/cs
 	./bin/schema generate --lang cs --out generated/bench/paired/cs bench/corpus/Bench.schema bench/corpus/FixedTable.schema
@@ -434,7 +434,7 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
-# THE C# LEG of `make test`: the table gates and the C# conformance negative
+# THE C# LEG of `make test-full`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.

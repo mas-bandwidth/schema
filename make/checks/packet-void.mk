@@ -25,7 +25,7 @@ packet-void-cpp: build/packet-void/cpp-test
 packet-void-c: build/packet-void/c-test
 	./build/packet-void/c-test
 
-test: packet-void-cpp
+test-full: packet-void-cpp
 test-c: packet-void-c
 
 # Each control builds an emitter copy, then the unchanged consumer harness.
@@ -68,5 +68,5 @@ packet-void-c-write-negative-control packet-void-c-read-negative-control: packet
 		test/packet-void/c_main.c $(SERIALIZE_C)/serialize.c -o build/packet-void/c-$(if $(findstring -write-,$@),write,read)/test -lm
 	$(call packet_void_expect,c,$(if $(findstring -write-,$@),write,read))
 
-test: packet-void-cpp-write-negative-control packet-void-cpp-read-negative-control
+test-full: packet-void-cpp-write-negative-control packet-void-cpp-read-negative-control
 test-c: packet-void-c-write-negative-control packet-void-c-read-negative-control
