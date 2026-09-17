@@ -1,0 +1,3 @@
+{"targets": "native-c",
+ "runtime": "serialize.c", "runtime_tag": "SERIALIZE_C_TAG",
+ "clang": "18"}

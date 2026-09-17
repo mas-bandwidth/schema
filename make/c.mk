@@ -1126,3 +1126,28 @@ test-c tables-c: tables-c-retain tables-c-retain-negative-control
 
 # Collection adapters belong to the common roster as well as their direct differential.
 build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan: test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
+
+# THE C NATIVE GATE (issue #547), the C++ leg's twin in the Makefile: the same
+# two instruments, the same style file, the same pinned major, over the C
+# emitter's output for both corpora, both halves always run.
+NATIVE_C_DIRS = generated/c generated/c-ludicrous $(wildcard build/tables-generated-c/*/)
+
+.PHONY: native-c
+native-c: generated/c/.stamp generated/c-ludicrous/.stamp build/tables-generated-c/.stamp
+	@fail=0; \
+	echo "==== clang-format"; \
+	$(CLANG_FORMAT) --dry-run --Werror \
+		generated/c/*.h generated/c-ludicrous/*.h \
+		build/tables-generated-c/*/*.h build/tables-generated-c/*/*.c || fail=1; \
+	echo "==== clang-tidy"; \
+	for d in $(NATIVE_C_DIRS); do \
+		files=$$(ls $$d/*.h $$d/*.c 2>/dev/null); \
+		[ -n "$$files" ] || continue; \
+		printf '%s\n' $$files | xargs -P $(NATIVE_JOBS) -I{} \
+			$(CLANG_TIDY) --quiet --warnings-as-errors='*' {} -- \
+			-xc -std=c99 -I$$d -I$(SERIALIZE_C) || fail=1; \
+	done; \
+	if [ $$fail -ne 0 ]; then echo "native C: the findings above are the emitter's"; exit 1; fi; \
+	echo "native C: clang-format canonical and clang-tidy clean over the examples and tables corpora"
+
+NATIVE_LEGS       += native-c
