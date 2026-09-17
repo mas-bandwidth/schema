@@ -316,6 +316,80 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	}
 }
 
+// ciMakeInvocation matches one `make` invocation on a workflow line and
+// captures its argument list. compiler/porting_test.go's workflowMake reader
+// carries the same shape for the register gate.
+var ciMakeInvocation = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
+
+// ciMakeTargetsAfter returns the target names in a make argument list: flags,
+// variable assignments and shell substitutions are not targets.
+func ciMakeTargetsAfter(args string) []string {
+	var out []string
+	for _, tok := range strings.Fields(args) {
+		if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "=$\"'{}") {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
+// ci.yml, invokes by name, comments stripped.
+func ciPullRequestMakeTargets(t *testing.T, root string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("ci.yml is the pull-request gate this test reads: %v", err)
+	}
+	var targets []string
+	for _, l := range lines("ci.yml", string(data)) {
+		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
+			targets = append(targets, ciMakeTargetsAfter(m[1])...)
+		}
+	}
+	return targets
+}
+
+// ciInvokesTarget reports whether the targets a workflow invokes include name
+// itself or a shard of it, `name-fast` and the like.
+func ciInvokesTarget(targets []string, name string) bool {
+	for _, target := range targets {
+		if target == name || strings.HasPrefix(target, name+"-") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTheFixedFormHarnessesRunPerPullRequest (issue #857) is a listing check:
+// every fixed-form harness the tables page's build gate names must be invoked
+// by some job in the pull-request gate, .github/workflows/ci.yml, so a change
+// to what the loader takes cannot leave a red tip behind two green pull
+// requests.
+//
+// The class is issue #744's: a leg that exists, is green wherever it runs, and
+// is invoked by no pull-request job. The two fixed-form harnesses,
+// `make tables-fixedform` (the C++ reference) and `make tables-c-fixedform`
+// (the C leg), lived only in `make test`, which nightly certification runs. On
+// 2026-09-10 the tip of fixed-table-form did not compile —
+// `test/tables/fixedform_main.cpp:984` and `test/c-tables/fixedform_v1.c:75`,
+// too few arguments to `*FixedLoad` — while #855 (which added the plan-cache
+// argument) and #856 (which added a caller) were each green at their own head.
+func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
+	targets := ciPullRequestMakeTargets(t, repoRoot(t))
+
+	// THE LISTING. Both harnesses the fixed form's build gate names, and the
+	// fast shard of each counts: `make test` still runs the pair with the
+	// sanitized twin in nightly certification.
+	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
+	for _, harness := range fixedFormHarnesses {
+		if !ciInvokesTarget(targets, harness) {
+			t.Errorf("no job in ci.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci.yml.", harness)
+		}
+	}
+}
+
 // gitLsFiles returns the tracked paths under dir, relative to root.
 func gitLsFiles(t *testing.T, root, dir string) []string {
 	t.Helper()

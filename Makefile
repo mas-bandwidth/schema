@@ -5689,9 +5689,18 @@ tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
 	./build/schema_test_fixedform_asan
 
+# THE FAST HALF (issue #857): the PLAIN C++ harness alone. `tables-fixedform`
+# runs the plain build and its sanitized twin, which is the pair `make test`
+# runs in nightly certification; the pull-request job pays checkout, the
+# sibling clones and the generated tree inside the two-minute rule and runs
+# this half so the build that a loader change can break is compiled on the
+# diff. The C leg's twin is `tables-c-fixedform-fast` in make/c.mk.
+tables-fixedform-fast: build/schema_test_fixedform
+	./build/schema_test_fixedform
+
 test: tables-fixedform
 
-.PHONY: tables-fixedform
+.PHONY: tables-fixedform tables-fixedform-fast
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc

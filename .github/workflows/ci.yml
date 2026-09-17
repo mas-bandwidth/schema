@@ -596,6 +596,62 @@ jobs:
         run: make ${{ matrix.target }}
 
 
+  # THE FIXED-FORM HARNESSES ON EVERY PULL REQUEST (issue #857).
+  #
+  # `make tables-fixedform` (the C++ reference) and `make tables-c-fixedform`
+  # (the C leg) are the two binaries that read the fixed form's versioning
+  # conformance corpus (docs/SPEC-TABLES.md §3.4). Until this job no
+  # pull-request job built either: both lived in `make test`, which only
+  # certification runs, and on 2026-09-10 that left the tip of fixed-table-form
+  # red at `test/tables/fixedform_main.cpp:984` and
+  # `test/c-tables/fixedform_v1.c:75` — too few arguments to `*FixedLoad` —
+  # while the two pull requests that caused it (#855 added the plan-cache
+  # argument, #856 added a caller) were each green at their own head. It is
+  # issue #744's class: a gate that exists, is green wherever it runs, and is
+  # invoked by no pull-request job.
+  #
+  # THE FAST TARGETS AND ONE JOB, under the two-minute rule. Each language's
+  # plain harness is `tables-…-fast`; the sanitized twin stays in `make test`,
+  # which certification runs nightly. The two targets share one job so the
+  # generated tables are written once — sharding them into a matrix would make
+  # each row pay the whole generated tree again — and `internal/ci`'s
+  # TestTheFixedFormHarnessesRunPerPullRequest holds this job to the listing.
+  fixedform:
+    name: fixed-form harnesses
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C++ and C serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: the C++ and C fixed-form harnesses
+        run: make tables-fixedform-fast tables-c-fixedform-fast
+
+
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any
