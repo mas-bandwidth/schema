@@ -78,6 +78,37 @@ in the `go-test` job of `ci.yml`.
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
 
+## How to run the tests, and the rule that sets their shape
+
+The owner's rule: anything we iterate on answers in **one minute ideally, two
+at most**. Anything over two minutes runs **once at the end as a check, or
+nightly** — never in the loop.
+
+A unit test that shells out to a foreign toolchain — `cc`, `c++`, `dotnet`, or
+the Go toolchain compiling the generated unit — costs one to thirty SECONDS of
+somebody else's compiler, every run. Two packages carried almost all of it:
+
+| command | before | after |
+| --- | --- | --- |
+| `go test ./compiler/` | 261 s | **4.6 s** |
+| `go test ./internal/codegen/gotable/` | 41 s | **3.0 s** |
+| `go test ./...` | 5:34-9:10 | **~6 s** (default), minutes with `SCHEMA_SLOW=1` |
+
+Nothing was dropped. `internal/slowtest` gates the toolchain half:
+
+- **the default, for the loop** — `go test ./compiler/`,
+  `go test ./internal/codegen/<leg>table/`, `go test ./...`: every pure-Go
+  test, the IR, the emitters' text, the goldens, the refusals.
+- **the full set, for the check** — `SCHEMA_SLOW=1 go test ./...`: the same
+  plus every toolchain test. Run it once before you open a pull request, not
+  between edits.
+- **`make test`** sets `SCHEMA_SLOW=1` itself, so the certification chain in
+  `certify.yml` proves exactly what it proved before.
+
+A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
+therefore never reads whether a toolchain is present; absence still fails where
+the gate is required to run.
+
 ## The gates a change has to pass
 
 CI runs on Linux and macOS, and both must be green:

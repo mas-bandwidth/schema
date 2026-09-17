@@ -106,12 +106,23 @@ jobs:
   # entirely out of format strings is exactly where printf-verb mismatches
   # live (issue #31).
   #
+  # WHY THIS JOB IS FAST AGAIN (issue #1025). The suite ran in 0:37 at run
+  # 33740084214 and had grown to 5:34-9:10 by 2026-09-13. The cost was never
+  # Go: it was cc, c++, dotnet and the Go toolchain, invoked by tests that
+  # compile and run generated code. `go test ./compiler/` measured 261 s and
+  # `go test ./internal/codegen/gotable/` 41 s; every other package was under
+  # six seconds. internal/slowtest gates exactly those tests, and the default
+  # `go test ./...` runs the pure-Go core — measured 6 s here. The toolchain
+  # half is not dropped: `make test` in certify.yml sets SCHEMA_SLOW=1, so the
+  # nightly chain still runs it whole. timeout-minutes holds the two-minute
+  # law so a future regression is a red, not a slow green.
+  #
   # The two C sibling checkouts are not optional decoration: internal/fuzz's
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
   # so a job without them would report green over a check that never ran.
   go-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -212,6 +223,9 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # THE FAST CORE, in the loop: internal/slowtest keeps the tests that
+      # shell out to cc/c++/dotnet/Go out of the default run. The whole suite,
+      # toolchain half included, is `make test` in certify.yml (SCHEMA_SLOW=1).
       - name: go test
         run: go test ./...
 

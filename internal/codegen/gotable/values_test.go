@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func runGenerated(t *testing.T, schema, testSource string) {
@@ -51,6 +53,7 @@ func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[s
 		}
 	}
 	args := append([]string{"test", "-count=1"}, flags...)
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
