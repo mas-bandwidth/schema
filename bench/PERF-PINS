@@ -1,0 +1,157 @@
+# The perf gate's pins. The zero-cost-diagnostic law, issue #546.
+#
+# Owner's rule, 2026-09-05:
+#
+#   "i'm all for greater diagnostics, but if it costs speed on read or write,
+#    it's not worth it."
+#
+# and, on widening and the refusal reasons:
+#
+#   "if this costs *any* time, then we should not do this"
+#
+# at runtime, when the packet or the table is being read. The law that follows
+# is stated on the page (docs/SPEC-TABLES.md §13.2, docs/PERFORMANCE.md). This
+# file is the number half of it: every diagnostic surface is admitted at zero
+# MEASURED cost on the read path and the write path of both wires, and these
+# are the measurements it is admitted against.
+#
+#   make perf-gate           measure and compare
+#   make perf-gate-control   plant a read cost, watch the gate go red
+#   make perf-gate-pin       re-cut these numbers and the sitting they came off
+#
+# ---------------------------------------------------------------------------
+# WHAT IS PINNED, AND WHY THE READ ROW IS CALLED round_trip
+#
+# Four rows, the C++ reference over the bench corpus, both wires:
+#
+#   bench_mixed  write / round_trip    the packet wire  (bench/cpp)
+#   bench_table  write / round_trip    the table wire   (bench/tables/cpp)
+#
+# Neither runner measures a read on its own, deliberately: the decode's output
+# IS the re-encode's input, which is how the read side gets its sink discipline
+# with no per-language fold to audit (BENCH-STANDARD.md §2.7). Both runners do
+# print a read rate, round-trip time minus write time, and both mark it DERIVED
+# and keep it out of the CSV. A gate that pinned that number would be pinning a
+# subtraction of two medians, carrying the noise of both. So the gate pins what
+# was measured, and reads the pair: a cost on the read path raises round_trip
+# and leaves write flat, which is precisely what the negative control shows.
+# A red verdict therefore says WHICH path got slower, not merely that something
+# did.
+#
+# ---------------------------------------------------------------------------
+# THE BAND, AND HOW IT WAS DERIVED
+#
+# "Zero cost" is a claim about the code. A measurement of it lands inside a
+# distribution, so the gate needs a width, and a width chosen by feel is a
+# width that hides whatever it was chosen to hide.
+#
+# band.pct is TWICE THE WORST DEVIATION observed across repeated full sittings
+# on this box while it was quiet, rounded up to a tenth of a percent. The
+# derivation is a command, not a memory:
+#
+#     go run ./bench/tools/perfgate band -repeats 7
+#
+# which runs seven complete sittings, takes the median of each row across them,
+# and reports the largest departure of any single sitting from its row's
+# median. sitting.worst.pct below records what that measurement said on the day
+# these pins were cut, and band.pct is that number doubled. Doubling is the
+# honest margin for a box that was quiet then and may be merely quietish now,
+# and it is stated here rather than folded silently into a rounder figure.
+#
+# WHAT THE BAND COSTS. A regression smaller than band.pct is invisible to this
+# instrument. That is a real limit and this file says so instead of implying
+# otherwise. It is also why the negative control exists: the control plants one
+# added branch per field on the read path, which is the cheapest diagnostic
+# anybody would actually propose, and requires the gate to see it. A band wide
+# enough to hide the control is a band that has stopped guarding anything, and
+# `make perf-gate-control` fails on exactly that.
+#
+# The control's verdict is the SEPARATION between round_trip and write across
+# its two sittings, not a bare round_trip drop. A bare drop is the obvious test
+# and the fragile one, because a box that ran faster during the planted half
+# can hide a real cost inside its own drift. The difference between the rows
+# cancels whatever the box did to both, and it is the claim the law actually
+# makes: the cost landed on the READ path. Nothing is planted on the write
+# path, so write is the control's own control.
+#
+# spread.max.pct is a separate refusal and not a band: it is the in-sitting
+# spread each runner already reports across its seven measured runs. A sitting
+# noisier than this cap renders NO verdict, red or green. A quiet box is a
+# precondition of the measurement, and a gate that passes on a noisy box is a
+# gate that passes on noise.
+#
+# ---------------------------------------------------------------------------
+# THE BOX IS PART OF THE PIN
+#
+# A rate in messages per second is a fact about one machine. Off the box named
+# below the gate REFUSES to render a verdict rather than divide one box's
+# number by another's silicon.
+#
+# The identity is the MACHINE and not the machine model, which is why box.host
+# is part of it. Two laptops carrying the same chip differ in thermal headroom,
+# in memory, and in whatever else is running on them, and a shared
+# certification runner can report the same brand string as the box these came
+# off. Naming the host makes an accidental match impossible, which is what
+# keeps certification's advisory path advisory.
+#
+# What still runs anywhere is the negative control, whose verdict is a ratio
+# inside one sitting and needs no pin at all, and that is what certification
+# runs, on hardware nobody here owns.
+#
+# ---------------------------------------------------------------------------
+# RE-PINNING, on the model bench/LOCK's standing gate uses
+#
+# When the C/C++ freeze lifted on 2026-09-05 what replaced it was a standing
+# gate, in the owner's terms: a pull request that moves the packet emitters
+# "re-pins the reproduction rows ... in the same PR and states the sitting that
+# produced them", with a laptop sitting admitted so long as its provenance is
+# stated. These pins take that rule exactly.
+#
+# So a re-pin is NOT required to travel alone. A change that legitimately moves
+# the reference has to move these numbers in the same diff, and a rule against
+# that would forbid the workflow the owner just blessed. What IS refused is a
+# re-pin with no sitting behind it: numbers typed over while the sitting.*
+# header below still describes the measurement they replaced. That is how a
+# regression gets made green by editing the thing that would have caught it.
+#
+# `make perf-gate-pinlock` runs on every pull request, costs no measurement,
+# and refuses exactly two things: pins that moved while sitting.date,
+# sitting.uptime and sitting.commit did not, and a sitting.commit that this
+# branch does not contain. It prints each pin's move as a percentage, so a
+# reviewer sees the size of a re-pin without diffing two columns of digits.
+#
+# `perfgate pin` fills the sitting.* lines in for you, and refuses outright
+# while BENCH_CXXFLAGS_PREFIX is set. It deliberately does NOT touch band.pct,
+# because widening a band is a decision and never a side effect of
+# re-measuring.
+#
+# ---------------------------------------------------------------------------
+# The box these pins are facts about:
+
+box.arch            unpinned
+box.cpu             unpinned
+box.os              unpinned
+box.host            unpinned
+
+# The gate's two widths, both in percent:
+
+band.pct            0.0
+spread.max.pct      0.0
+
+# The sitting that produced the pins below:
+
+sitting.date        unpinned
+sitting.host        unpinned
+sitting.uptime      unpinned
+sitting.commit      unpinned
+sitting.compiler    unpinned
+sitting.opt         unpinned
+sitting.repeats     0
+sitting.worst.pct   0.00
+
+# pin <bench> <path> <median messages per second> <corpus_id>
+
+pin bench_mixed  write                    0 0000000000000000
+pin bench_mixed  round_trip               0 0000000000000000
+pin bench_table  write                    0 0000000000000000
+pin bench_table  round_trip               0 0000000000000000
