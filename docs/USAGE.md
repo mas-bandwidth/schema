@@ -3663,10 +3663,11 @@ the `#include` and `::GameVec2 p;`. A sibling that stays in `A.schema` beside
 at that one reference and rides at every other. What the refusal is of is a
 mapping that rides nowhere at all.
 
-**`cpp_native` names a GLOBAL type.** The value is an identifier and the
-emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
-the common case — is named through a global alias you declare in your own
-header.
+**`cpp_native` names a C++ type.** The value is a type name and the emitted
+spelling is `::`-qualified: the bare `GameVec2` emits as `::GameVec2`, and a
+namespaced engine type — `math::Vec2`, the common case — is written
+`cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
+your own header is needed.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.
