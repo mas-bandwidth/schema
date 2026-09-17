@@ -112,6 +112,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
   formHeaderProbes(check, fx1, fx1home);
+  fileFrameProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
@@ -632,6 +633,144 @@ function formHeaderProbes(check, fx1, fx1home) {
     const bad = Uint8Array.from(w1);
     bad[3] = 1;
     malformedFile("reserved byte 3 set nonzero", bad);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE FILE'S OWN FRAMING: THE REFUSALS A FILE OWES (§5.3), AND REFUSE IS TOTAL
+// ---------------------------------------------------------------------------
+//
+// THE FIXTURE GAP THIS CLOSES (schema#876, the js column). The audit's matrix
+// marked four js cells G because no running fixture named them, even though the
+// §5 runtime answers every one of them correctly: F7 (a form-3 file under the
+// twenty-byte minimum), F12 (a second layout behind a hash this reader already
+// holds — the header's hash selects the lock entry and the layout BYTES are then
+// compared to what the lock recorded), E9 (`duplicate`, which this form never
+// raises) and W15 (REFUSE is total: a refusal decodes nothing and moves no
+// counter).
+//
+// EVERY CASE runs on this leg's OWN file — the identity hash, the lock's own
+// layout bytes, one record — so none of it reads a stranger's layout through a
+// compiled plan and none of it is retired by §5.6. The five form-header probes
+// above cover the form byte and the reserved bytes; these are the framing rules
+// BEHIND the header, one forging of an otherwise-good file at a time.
+function fileFrameProbes(check, fx1, fx1home) {
+  const R = fx1home.TableFixedRefusal;
+
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  const good = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, good) === good.length,
+    "file framing: the good form-3 fixture saves its own length");
+
+  // THE DESTINATION IS POISONED, NOT RESET, exactly as the form-header probes
+  // do: a read that wrote a default would look like a read that wrote nothing.
+  const poison = (v) => {
+    v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
+    v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
+    v.Label.fill(0x5A); v.LabelLength = 0x5A;
+    v.Marks.fill(0x5A); v.MarksCount = 0x5A;
+    v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+  };
+  const untouched = (v) =>
+    v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
+    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
+    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
+    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
+    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A;
+
+  const refusedByName = (what, bytes, reason) => {
+    const v = new fx1home.FxRoot();
+    poison(v);
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad([v], 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.refused === reason && !r.malformed,
+      `file framing: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and malformed does not fire`);
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0,
+      `file framing: ${what} moves no counter`);
+    check(untouched(v),
+      `file framing: ${what} writes no destination field (REFUSE is total)`);
+  };
+
+  const malformedFile = (what, bytes) => {
+    const v = new fx1home.FxRoot();
+    poison(v);
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad([v], 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.malformed && r.refused === R.None,
+      `file framing: ${what} is malformed, with no refusal claiming a name`);
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0,
+      `file framing: ${what} moves no counter`);
+    check(untouched(v),
+      `file framing: ${what} writes no destination field (REFUSE is total)`);
+  };
+
+  // F7 — UNDER THE TWENTY-BYTE MINIMUM. The form byte earns form 3 and the file
+  // is then too short to hold a layout header: nineteen bytes, which the runtime
+  // answers `malformed` (§5.3 step 2; the residue, not one of §1.1's names).
+  malformedFile("a form-3 file one byte short of the layout header",
+    good.subarray(0, LAYOUT_AT - 1));
+
+  // F12 — A SECOND LAYOUT FOR A HELD HASH. The header's hash is taken AS GIVEN
+  // (§5.3 step 4): it selects the lock entry, and then the layout bytes the file
+  // carries are compared to the bytes the lock recorded. A file that hashes to a
+  // layout this reader holds but carries DIFFERENT layout bytes is a lie about a
+  // known version, and the one name for it is `layout_malformed`.
+  {
+    const bad = Uint8Array.from(good);
+    bad[LAYOUT_AT + 4 + 8] ^= 0xff; // the root entry's kind byte, count and hash untouched
+    refusedByName("a colliding hash over a different layout", bad, R.LayoutMalformed);
+  }
+
+  // F10 — A RECORD WHOSE HASH NAMES NO LAYOUT. The file's own hash selected the
+  // layout; a RECORD carrying a hash this reader does not hold is `no_layout`,
+  // never a guess and never damage.
+  {
+    const bad = Uint8Array.from(good);
+    bad[LAYOUT_AT + fx1.FxRootFixedLayoutBytes] ^= 0xff; // the record's own first hash byte
+    refusedByName("a record whose hash names no layout", bad, R.NoLayout);
+  }
+
+  // F8 — A RAGGED TAIL. Bytes left over past the last whole record are
+  // `malformed`: the two ends of the file have met and did not agree.
+  {
+    const bad = new Uint8Array(good.length + 3);
+    bad.set(good);
+    malformedFile("three bytes left over past the last whole record", bad);
+  }
+
+  // F9 — MORE RECORDS THAN THE CALLER'S CAPACITY. The caller's room is the
+  // caller's, and a batch past it is a refusal by name rather than a write past
+  // the end.
+  {
+    const many = [one, one, one];
+    const buf = new Uint8Array(fx1.FxRootFixedMeasure(3));
+    check(fx1.FxRootFixedSave(many, 3, buf) === buf.length, "file framing: a three-record file saves");
+    const v = new fx1home.FxRoot();
+    poison(v);
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad([v], 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.refused === R.BatchTooLarge && !r.malformed,
+      "file framing: a batch past the caller's capacity is batch_too_large");
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0,
+      "file framing: batch_too_large moves no counter");
+  }
+
+  // E9 + W15 — A CLEAN READ RAISES NEITHER `duplicate` NOR ANY OTHER COUNTER,
+  // and the good file reads one record. This form raises all of §4's counters
+  // but `duplicate`: an identity plan is one copy and a compiled one remaps by
+  // name, so no append can ever make a name ambiguous.
+  {
+    const values = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(values, 1, good, good.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed && r.refused === R.None,
+      "file framing: the good file reads one record");
+    check(r.duplicate === 0,
+      "file framing: a form-3 read never raises duplicate (E9)");
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0,
+      "file framing: a clean identity read moves no counter at all");
   }
 }
 
