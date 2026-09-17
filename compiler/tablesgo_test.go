@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -14,6 +15,16 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
+
+// goFiles generates the go target's whole output for one source.
+func goFiles(t *testing.T, src string) map[string][]byte {
+	t.Helper()
+	files, err := New().Generate(unitFromSource(t, src), "go", Options{})
+	if err != nil {
+		t.Fatalf("--lang go: %v", err)
+	}
+	return files
+}
 
 // TestGoEmitsTableSources: the go target adds <Base>Table.go beside the packet
 // sources for a unit with tables, and adds NOTHING for one without — the same
@@ -116,44 +127,22 @@ fixed table Effected
 }
 `
 
-// TestTableRuntimeNamesAreClaimedGo is the §11 promise's GO half, and the
-// reason it is a second test rather than a parameter is that the two backends
-// define overlapping but different sets: the scan asserts both directions
-// against tablenames.Go, so a name the Go emitter defines and nobody registered
-// fails here, and a name registered for Go that nothing emits fails here too.
-//
-// The forward scan claims package declarations, since methods and fields do
-// not consume schema names. The reverse scan requires an actual declaration,
-// including scoped members recorded by DefinedBy; a selector use is not one.
-//
-// IT MATCHES BOTH CASES, and that is the whole reason this scan is not the C#
-// one copied. Go is the first backend whose runtime puts UNEXPORTED names at
-// package scope, and unexported is not private: a Go package is one namespace,
-// so `const tableJsonMaxDepth = 5` in a schema is a redeclaration and the unit
-// does not compile. A PascalCase-only scan is blind to exactly what this port
-// adds, which is how the hole reached a reviewer.
-func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
-	files := map[string][]byte{}
-	for i, source := range []string{
-		goRuntimeSrc,
-		goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
-		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
-		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
-		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
-	} {
-		generated, err := New().Generate(unitFromSource(t, source), "go", Options{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for name, data := range generated {
-			files[fmt.Sprintf("%d/%s", i, name)] = data
-		}
-	}
-	// The build version and announcement verbs are the registered runtime
-	// names without a Table prefix (docs/SPEC-TABLES.md §20 and §3.3).
-	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
-	emitted := map[string]bool{}
-	declared := map[string]bool{}
+// goRuntimeIdent is the Go leg's scan: every Table* and unexported table*
+// identifier the emitted Go carries, plus the build version and announcement
+// verbs, which are the registered runtime names without a Table prefix
+// (docs/SPEC-TABLES.md §20 and §3.3).
+var goRuntimeIdent = regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
+
+// goEmittedNames runs the Go scan's AST walk over one map of generated Go and
+// answers the names the registry must hold and the names some declaration in
+// the unit defines. The forward scan claims package declarations, since methods
+// and fields do not consume schema names. The reverse scan requires an actual
+// declaration, including scoped members recorded by DefinedBy; a selector use
+// is not one.
+func goEmittedNames(t *testing.T, files map[string][]byte) (emitted, declared map[string]bool) {
+	t.Helper()
+	emitted = map[string]bool{}
+	declared = map[string]bool{}
 	for name, data := range files {
 		file, err := parser.ParseFile(token.NewFileSet(), name, data, 0)
 		if err != nil {
@@ -161,7 +150,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		}
 		record := func(name string) {
 			declared[name] = true
-			if ident.MatchString(name) && ident.FindString(name) == name {
+			if goRuntimeIdent.MatchString(name) && goRuntimeIdent.FindString(name) == name {
 				emitted[name] = true
 			}
 		}
@@ -200,6 +189,39 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 			}
 		}
 	}
+	return emitted, declared
+}
+
+// TestTableRuntimeNamesAreClaimedGo is the §11 promise's GO half, and the
+// reason it is a second test rather than a parameter is that the two backends
+// define overlapping but different sets: the scan asserts both directions
+// against tablenames.Go, so a name the Go emitter defines and nobody registered
+// fails here, and a name registered for Go that nothing emits fails here too.
+//
+// The forward scan claims package declarations, since methods and fields do
+// not consume schema names. The reverse scan requires an actual declaration,
+// including scoped members recorded by DefinedBy; a selector use is not one.
+//
+// IT MATCHES BOTH CASES, and that is the whole reason this scan is not the C#
+// one copied. Go is the first backend whose runtime puts UNEXPORTED names at
+// package scope, and unexported is not private: a Go package is one namespace,
+// so `const tableJsonMaxDepth = 5` in a schema is a redeclaration and the unit
+// does not compile. A PascalCase-only scan is blind to exactly what this port
+// adds, which is how the hole reached a reviewer.
+func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
+	files := map[string][]byte{}
+	for i, source := range []string{
+		goRuntimeSrc,
+		goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
+		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
+		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
+		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
+	} {
+		for name, data := range goFiles(t, source) {
+			files[fmt.Sprintf("%d/%s", i, name)] = data
+		}
+	}
+	emitted, declared := goEmittedNames(t, files)
 	if len(emitted) == 0 {
 		t.Fatal("the scan found no Table* identifier in the emitted Go at all — the scan, not the registry, is what broke")
 	}
@@ -221,6 +243,31 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 				"Go declares it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)
 		}
+	}
+}
+
+// TestGoRuntimeNameScanGoesRed is the scan's own NEGATIVE CONTROL, and it is
+// the control the Go scan's comment says this port needs: a scan that has gone
+// blind passes every registry it is pointed at, so the only way to know it
+// still sees is to hand it a name nobody registered and require it to say so.
+//
+// The probe is injected into a COPY of the emitted Go, in a shape the emitter
+// does not use — a bare package-level const — and it plants BOTH cases: an
+// exported TableProbe, which any Table* scan sees, and an unexported
+// tableProbe, which is Go's own case and the one a PascalCase-only scan misses
+// (the hole that reached a reviewer).
+func TestGoRuntimeNameScanGoesRed(t *testing.T) {
+	sabotaged := map[string][]byte{}
+	maps.Copy(sabotaged, goFiles(t, runtimeSrc))
+	sabotaged["TableProbe.go"] = []byte("package probe\n\nconst (\n\tTableProbe = 1\n\ttableProbe = 2\n)\n")
+	emitted, _ := goEmittedNames(t, sabotaged)
+	for _, name := range []string{"TableProbe", "tableProbe"} {
+		if !emitted[name] {
+			t.Fatalf("the scan did not see a package-level %s — it is blind, and every green run above proves nothing", name)
+		}
+	}
+	if tablenames.Registered("TableProbe") || tablenames.Registered("tableProbe") {
+		t.Fatal("the planted probe is registered, so the control proves nothing — pick a name the registry does not hold")
 	}
 }
 
