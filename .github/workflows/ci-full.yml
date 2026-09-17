@@ -320,6 +320,18 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test $(go list ./... | grep -v '/internal/codegen/')
 
+      # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
+      # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
+      # exactly why the accounting belongs here. It runs the DEFAULT half once
+      # (no SCHEMA_SLOW — the point is to see what a developer's `make test`
+      # skips), then places every gate skip in one of three buckets: run by a
+      # make target that sets the variable, run only by the two steps above, or
+      # run by NOBODY. The third bucket fails the job. The table is uploaded as
+      # build/slowgate/coverage.tsv so the accounting is read, not believed.
+      - name: every slowtest gate is run by somebody, by name (schema#988)
+        if: matrix.group == 'unit-rest'
+        run: make slow-gate-coverage
+
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
       # reference's byte oracle out of build/fixedform-corpus and SKIPS itself

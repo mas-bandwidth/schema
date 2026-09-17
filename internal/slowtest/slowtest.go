@@ -16,11 +16,28 @@
 // emitters' text, the goldens, the refusals. The toolchain half runs under
 // SCHEMA_SLOW=1, and it runs there ALWAYS:
 //
-//   - every make leg gate already exports SCHEMA_REQUIRE_CORPUS=1, and Enabled
-//     counts that as the slow half being ON — so not one of the nine leg gates,
-//     and not one of ci-fast.yml's per-leg rows that drive them, changed at all,
+//   - every make leg gate exports SCHEMA_REQUIRE_CORPUS=1, and Enabled counts
+//     that as the slow half being ON — so not one of the nine leg gates, and
+//     not one of ci-fast.yml's per-leg rows that drive them, changed at all,
+//   - every POSITIVE gate target runs its `go test` through test/slowgate/proof,
+//     which sets SCHEMA_SLOW=1, refuses a slowtest skip in its own log, and
+//     requires a `--- PASS` for each gate it names (schema#988),
 //   - ci-full.yml's two `go test` steps set SCHEMA_SLOW=1 explicitly, so the
 //     merge and nightly lanes run the whole of both halves.
+//
+// THE SECOND BULLET WAS FALSE FOR ONE DAY AND IT COST US A DAY (schema#988, G5).
+// This comment said "NOTHING IS CHECKED LESS THAN BEFORE" while fourteen
+// positive gate targets — tables-go-fixedform, -containers, -block-build,
+// -block-race-negative-control, -retain, -allocator, -blob-span,
+// -blob-span-negative-control, -builders, -typed-refusals, -view, -release,
+// tables-c-retain and tables-reference-review — ran a BARE `go test`. Under
+// `make test` the gate each one names skipped, `go test` exited 0, and the
+// target went green having run nothing. The claim is a claim about the
+// Makefile, so `make slow-gate-scan` now CHECKS IT on every run: a recipe line
+// that runs `go test` on a package holding gated tests without setting either
+// variable fails by name, and anything deliberately left to ci-full.yml is
+// named with its reason in make/slow-gate-exceptions.txt. A sentence in a
+// comment is not a gate; the scan is.
 //
 // NOTHING IS CHECKED LESS THAN BEFORE. A gate that quietly stopped running is
 // worse than a slow one, which is why Gate never reads a toolchain's presence:

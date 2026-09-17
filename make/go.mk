@@ -57,7 +57,9 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # every unit of the corpus.
 .PHONY: tables-go-fixedform
 tables-go-fixedform:
-	go test ./internal/codegen/gotable -run 'TestFixedForm' -count=1
+	sh test/slowgate/proof tables-go-fixedform \
+		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount' \
+		./internal/codegen/gotable -run 'TestFixedForm' -count=1
 test-go: tables-go-fixedform
 
 .PHONY: tables-go-json-walk
@@ -347,7 +349,9 @@ test-go: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 
 .PHONY: tables-go-containers tables-go-containers-negative-controls
 tables-go-containers:
-	go test ./internal/codegen/gotable -run 'Test(RegionLists|ListsThroughUnionArrays|BuilderCountRecovery|NestedTerminationAndStringDefault|RegionMaps|MapReadReports|MapJsonKeyDomains)'
+	sh test/slowgate/proof tables-go-containers \
+		'TestRegionLists TestListsThroughUnionArrays TestBuilderCountRecovery TestNestedTerminationAndStringDefault TestRegionMaps TestMapReadReports TestMapJsonKeyDomains' \
+		./internal/codegen/gotable -run 'Test(RegionLists|ListsThroughUnionArrays|BuilderCountRecovery|NestedTerminationAndStringDefault|RegionMaps|MapReadReports|MapJsonKeyDomains)' -count=1
 tables-go-containers-negative-controls:
 	@set -e; for mode in sort ascending duplicate key-domain dead cap; do sh test/conformance/go/container-negative-control $$mode; done
 
@@ -357,9 +361,13 @@ test-go: tables-go-containers tables-go-containers-negative-controls
 # every worker fill the whole array; byte identity alone cannot see that race.
 .PHONY: tables-go-block-build tables-go-block-race-negative-control tables-go-block-fill-refuser tables-go-block-fill-refuser-negative-control
 tables-go-block-build:
-	go test ./internal/codegen/gotable -run '^TestBlockBuilderStorageAndParallelFill$$' -count=1
+	sh test/slowgate/proof tables-go-block-build \
+		'TestBlockBuilderStorageAndParallelFill' \
+		./internal/codegen/gotable -run '^TestBlockBuilderStorageAndParallelFill$$' -count=1
 tables-go-block-race-negative-control:
-	go test ./internal/codegen/gotable -run '^TestBlockBuilderRaceNegativeControl$$' -count=1
+	sh test/slowgate/proof tables-go-block-race-negative-control \
+		'TestBlockBuilderRaceNegativeControl' \
+		./internal/codegen/gotable -run '^TestBlockBuilderRaceNegativeControl$$' -count=1
 tables-go-block-fill-refuser:
 	go test ./internal/codegen/gotable -run '^TestBlockFillRefuser$$' -count=1
 tables-go-block-fill-refuser-negative-control:
@@ -369,13 +377,17 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 
 .PHONY: tables-go-retain
 tables-go-retain:
-	go test ./internal/codegen/gotable -run '^TestRetain' -count=1
+	sh test/slowgate/proof tables-go-retain \
+		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord TestRetainMessageMapKeyProbe TestRetainMessageMapRepeatedKeyKeepsWidening' \
+		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
 .PHONY: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 tables-go-allocator:
 	@if [ "$${SCHEMA_GO_ALLOC_ANY_GO:-}" = 1 ]; then echo "Go allocation observation mode: NOT CERTIFIED"; fi
-	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+	GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-allocator \
+		'TestAllocatorOwnershipAndStandaloneWriters' \
+		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
 
 # THE SPAN, on its own (docs/SPEC-TABLES.md §2.5, M17). A blob larger than a
 # slab takes a span of the arena's address space. The negative control makes
@@ -383,9 +395,13 @@ tables-go-allocator:
 # and later allocations overwrite it.
 .PHONY: tables-go-blob-span tables-go-blob-span-negative-control
 tables-go-blob-span:
-	go test ./internal/codegen/gotable -run '^TestBlobSpanHoldsAfterLaterAllocations$$' -count=1
+	sh test/slowgate/proof tables-go-blob-span \
+		'TestBlobSpanHoldsAfterLaterAllocations' \
+		./internal/codegen/gotable -run '^TestBlobSpanHoldsAfterLaterAllocations$$' -count=1
 tables-go-blob-span-negative-control:
-	go test ./internal/codegen/gotable -run '^TestBlobSpanNegativeControl$$' -count=1
+	sh test/slowgate/proof tables-go-blob-span-negative-control \
+		'TestBlobSpanNegativeControl' \
+		./internal/codegen/gotable -run '^TestBlobSpanNegativeControl$$' -count=1
 test-go: tables-go-blob-span tables-go-blob-span-negative-control
 tables-go-allocator-negative-controls:
 	@set -e; for mode in original-slice pair frame; do sh test/conformance/go/ownership-negative-control $$mode; done
@@ -398,19 +414,27 @@ test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-all
 
 .PHONY: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
 tables-go-builders: build/conformance-harness build/conformance-go
-	go test ./internal/codegen/gotable -run '^TestBuilderRefusalThroughUnion$$' -count=1
+	sh test/slowgate/proof tables-go-builders \
+		'TestBuilderRefusalThroughUnion' \
+		./internal/codegen/gotable -run '^TestBuilderRefusalThroughUnion$$' -count=1
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)
 tables-go-builders-negative-control:
 	sh test/conformance/go/ownership-negative-control builder-union
 tables-go-typed-refusals:
-	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^Test(AcceleratorTypedRefusals|MeasureRefusalReasons)$$' -count=1
+	GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-typed-refusals \
+		'TestAcceleratorTypedRefusals TestMeasureRefusalReasons' \
+		./internal/codegen/gotable -run '^Test(AcceleratorTypedRefusals|MeasureRefusalReasons)$$' -count=1
 
 test-go: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
 
 .PHONY: tables-go-view tables-go-view-negative-controls
 tables-go-view:
-	go test ./compiler -run '^TestGoUnitViewCorpus$$' -count=1
-	go test ./internal/codegen/gotable -run '^TestUnitViewPacketStorage$$' -count=1
+	sh test/slowgate/proof tables-go-view-corpus \
+		'TestGoUnitViewCorpus' \
+		./compiler -run '^TestGoUnitViewCorpus$$' -count=1
+	sh test/slowgate/proof tables-go-view-packet-storage \
+		'TestUnitViewPacketStorage' \
+		./internal/codegen/gotable -run '^TestUnitViewPacketStorage$$' -count=1
 tables-go-view-negative-controls:
 	@set -e; for mode in identity packet-offset arm-offset; do sh test/tables/view-go-control $$mode; done
 
@@ -432,7 +456,9 @@ tables-go-release: build/conformance-harness build/conformance-go tables-go-benc
 	$(MAKE) tables-go-wire-fuzz tables-go-retain-wire-fuzz tables-go-builders N=100000 SEED=$(GO_RELEASE_SEED)
 	$(MAKE) tables-go-wire-fuzz-negative-control
 	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak $(GO_SOAK)
-	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-release-allocator \
+		'TestAllocatorOwnershipAndStandaloneWriters' \
+		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
 tables-go-clean: build/tables-generated-go/.stamp
 	@set -e; for d in build/tables-generated-go/*; do \
 		[ -f "$$d/go.mod" ] || continue; \
