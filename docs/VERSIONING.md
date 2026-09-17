@@ -971,8 +971,8 @@ still open.
   `[N]T` under a `const N` that folds from either (SPEC-TABLES.md §2.4, §11),
   so the other positional vocabulary a
   table could have had is gone rather than excepted. The same array held by a
-  `type` a table closure reaches is ruled on schema#606, by that refusal or by
-  a keyed wire, and the vocabulary is gone under either answer. The residue is
+  `type` a table closure reaches rides keyed on the table wire (schema#606),
+  so the vocabulary is gone there too. The residue is
   that a
   table-only enum or union is guarded by the tables baseline and the build
   version and no longer by the connect gate.

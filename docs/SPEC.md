@@ -249,10 +249,10 @@ quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
 a positional array whose bound folds from an enum is REFUSED BY NAME in a
 table body and a union arm, and the same array held by a `type` a table
-closure reaches is ruled on schema#606, by that refusal or by a keyed wire
-(SPEC-TABLES.md §2.4, §11), so
-`[E]T` is the table form and an enum a table reaches moves no slot when it
-changes. Flags is therefore the whole of the exception, and there is no
+closure reaches rides KEYED on the table wire (schema#606), so its kind `13`
+body moves no slot when the enum changes (SPEC-TABLES.md §2.4, §11): `[E]T` is
+the table form and a `type`-held enum-extent array keys like it. Flags is
+therefore the whole of the exception, and there is no
 second.
 
 **What reachability does not change is what the projection MEANS.** The
