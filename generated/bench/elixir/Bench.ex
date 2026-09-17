@@ -385,10 +385,12 @@ defmodule Bench.Bench do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_bench_packet decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_bench_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_bench_packet_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_bench_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -461,8 +463,6 @@ defmodule Bench.Bench do
       bits_read = bits_read + pad
       if bits_read + 136 > num_bits, do: throw(:invalid)
       {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, bits_read)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.BenchPacket{
         a: v_a,
@@ -479,9 +479,18 @@ defmodule Bench.Bench do
         blob: v_blob
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_bench_packet is read_bench_packet_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_bench_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_bench_packet_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -647,10 +656,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_bench_ints decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_bench_ints(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_bench_ints_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_bench_ints_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -704,8 +715,6 @@ defmodule Bench.Bench do
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
       v_f9 = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.BenchInts{
         f0: v_f0,
@@ -720,9 +729,18 @@ defmodule Bench.Bench do
         f9: v_f9
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_bench_ints is read_bench_ints_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_bench_ints(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_bench_ints_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -792,10 +810,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_bench_bits decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_bench_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_bench_bits_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_bench_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -836,8 +856,6 @@ defmodule Bench.Bench do
       bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_b48 = w
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.BenchBits{
         b7: v_b7,
@@ -850,9 +868,18 @@ defmodule Bench.Bench do
         b48: v_b48
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_bench_bits is read_bench_bits_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_bench_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_bench_bits_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1100,10 +1127,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_entity decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_entity_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_entity_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1165,8 +1194,6 @@ defmodule Bench.Bench do
       v = rv >>> 47
       bits_read = bits_read + 1
       v_firing = v == 1
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.MixedEntity{
         entity_id: v_entity_id,
@@ -1185,9 +1212,18 @@ defmodule Bench.Bench do
         firing: v_firing
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_entity is read_mixed_entity_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_entity_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1229,10 +1265,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_stat decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_stat_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_stat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1248,12 +1286,19 @@ defmodule Bench.Bench do
       v = rv >>> 8
       bits_read = bits_read + 10
       v_delta = v - 512
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Bench.MixedStat{stat_id: v_stat_id, delta: v_delta}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_stat is read_mixed_stat_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_stat_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1317,10 +1362,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_hit_event decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_hit_event_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1342,8 +1389,6 @@ defmodule Bench.Bench do
       v = rv >>> 27
       bits_read = bits_read + 1
       v_crit = v == 1
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.MixedHitEvent{
         target_id: v_target_id,
@@ -1352,9 +1397,18 @@ defmodule Bench.Bench do
         crit: v_crit
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_hit_event is read_mixed_hit_event_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_hit_event_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1396,10 +1450,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_chat_event decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_chat_event_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1415,12 +1471,19 @@ defmodule Bench.Bench do
       v = rv >>> 2
       bits_read = bits_read + 12
       v_speaker = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Bench.MixedChatEvent{channel: v_channel, speaker: v_speaker}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_chat_event is read_mixed_chat_event_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_chat_event_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1462,10 +1525,13 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_pickup_event decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_pickup_event_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_pickup_event_bits(data, num_bits)
+      when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1481,12 +1547,19 @@ defmodule Bench.Bench do
       v = rv >>> 10
       bits_read = bits_read + 8
       v_amount = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Bench.MixedPickupEvent{item_id: v_item_id, amount: v_amount}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_pickup_event is read_mixed_pickup_event_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_pickup_event_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1623,10 +1696,12 @@ defmodule Bench.Bench do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_mixed_event decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_mixed_event_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_mixed_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1698,11 +1773,18 @@ defmodule Bench.Bench do
             {bits_read, %Bench.MixedEvent{}}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      {:ok, v}
+      {:ok, v, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_mixed_event is read_mixed_event_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_mixed_event_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2184,10 +2266,12 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_bench_mixed decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_bench_mixed(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_bench_mixed_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_bench_mixed_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -2502,8 +2586,6 @@ defmodule Bench.Bench do
       v = rv >>> 33
       bits_read = bits_read + 4
       v_idle_ticks = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Bench.BenchMixed{
         sequence: v_sequence,
@@ -2535,9 +2617,18 @@ defmodule Bench.Bench do
         idle_ticks: v_idle_ticks
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_bench_mixed is read_bench_mixed_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_bench_mixed(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_bench_mixed_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
