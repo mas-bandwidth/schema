@@ -578,7 +578,10 @@ is assembled from bytes little-endian by construction, and every block and
 cook read goes through a view whose order is spelled `Endian.little` at each
 site, so a Dart reader's order is the reader's rather than the host's — the
 same answer Java gives below — and a file of the other order is refused at
-its magic. A cross-and-emulate Dart leg is a named follow-on (§15).
+its magic and again at its own order word: `make tables-dart-order` opens a
+same-order block and cook and then hands each the same bytes with its order
+word set to the other order, which both refuse. A cross-and-emulate Dart leg is
+a named follow-on (§15).
 
 **JAVA's byte order is the READER's, not the host's**, and that is the whole of
 its answer here: every multi-byte read goes through `TableBytes`, which is

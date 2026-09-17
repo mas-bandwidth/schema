@@ -191,6 +191,18 @@ tables-dart-release:
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
 
+# THE ORDER-WORD GATE, Dart's half of the cross-endian refusal (docs/PORTING.md
+# I7, docs/SPEC-TABLES.md §7.1, §19.1). The two FOREIGN surfaces reverse a file's
+# MAGIC; this gate holds the half they do not — a block and a cook whose magic is
+# INTACT and whose prologue order word records the other order, which is exactly
+# the file a reader leaning on one check would open. Dart reads every word at an
+# explicit Endian.little, so its order is the READER's rather than the host's;
+# the gate proves the order word is refused beside the magic and not only through
+# it.
+.PHONY: tables-dart-order
+tables-dart-order: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/order.dart
+
 # THE FORGERY FUZZER over the Dart accelerators: valid images from the corpus,
 # mutated, and one oracle over every mutant — refuse, or open and be WHOLE, and
 # NOTHING THROWS. That last clause is Dart's own: an out-of-bounds index here is
@@ -253,6 +265,7 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-order
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
