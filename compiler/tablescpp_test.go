@@ -29,7 +29,7 @@ func cppEmittedNames(files map[string][]byte) map[string]bool {
 			!strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.cpp") {
 			continue
 		}
-		for _, line := range strings.Split(stripCComments(string(data)), "\n") {
+		for line := range strings.SplitSeq(stripCComments(string(data)), "\n") {
 			if i := strings.Index(line, "//"); i >= 0 {
 				line = line[:i]
 			}
