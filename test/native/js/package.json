@@ -1,0 +1,10 @@
+{
+  "name": "schema-native-js",
+  "private": true,
+  "description": "ESLint, pinned, for the JavaScript native gate (issue #547). Nothing imports this package: `npm ci` here installs the analyzer the make target runs.",
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0"
+  }
+}

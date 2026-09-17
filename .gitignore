@@ -83,3 +83,12 @@ erl_crash.dump
 # Matched packet/table benchmark build products.
 /bench/paired/cs/bin/
 /bench/paired/cs/obj/
+
+
+# the Elixir native gate's credo build and its fetched deps
+/test/native/elixir/_build/
+/test/native/elixir/deps/
+
+# a working clone symlinks the pinned toolchains in rather than unpacking a
+# second copy; the ignore above matches the directory, this one the link
+/dist

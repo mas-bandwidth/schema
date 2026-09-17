@@ -1,0 +1,55 @@
+# The house C and C++ style, and the one the native gate holds the emitted
+# text to (issue #547). clang-format has no canonical style of its own, so the
+# style IS this file, and it is written from the estate's own C and C++: the
+# serialize runtime the generated code sits beside.
+#
+# Every option below states a fact about that code rather than a preference:
+#
+#   IndentWidth 4, UseTab Never   four spaces, no tabs, everywhere.
+#   ColumnLimit 0                 no reflow. The emitted text carries long
+#                                 explanatory trailing comments by design
+#                                 (the documentation doctrine), and a
+#                                 formatter that rewraps them is a formatter
+#                                 fighting the emitter. Line breaks are the
+#                                 emitter's; spacing, bracing and alignment
+#                                 are this file's.
+#   PointerAlignment Middle       `const char * name`.
+#   SpacesInParens Custom, Other  `f( a, b )` and `if ( x )`, the estate
+#                                 spelling; C-style casts stay tight.
+#   AfterNamespace false          `namespace pkg {` on one line, which both
+#                                 C++ emitters already write.
+#   Everything else Allman        classes, structs, unions, enums, functions
+#                                 and control statements open on their own
+#                                 line.
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 0
+PointerAlignment: Middle
+ReferenceAlignment: Middle
+SpacesInParens: Custom
+SpacesInParensOptions:
+  InConditionalStatements: true
+  InCStyleCasts: false
+  Other: true
+SortIncludes: false
+AlignAfterOpenBracket: DontAlign
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: true
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: false
+  BeforeCatch: true
+  BeforeElse: true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
