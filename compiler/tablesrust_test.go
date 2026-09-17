@@ -11,28 +11,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// TestRustEmitsTableModules: the rust target adds the table accelerator
-// modules beside the packet ones for a unit with tables, declares them in the
-// generated crate root, and adds NOTHING for a unit without — the same
-// contract the other targets hold.
+// TestRustEmitsTableModules: the rust target adds the table wire, the two
+// accelerators and their shared runtimes beside the packet ones for a unit
+// with tables, declares them in the generated crate root, and adds NOTHING
+// for a unit without — the same contract the other targets hold.
 func TestRustEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "rust", Options{})
 	if err != nil {
 		t.Fatalf("--lang rust: %v", err)
 	}
-	for _, unwanted := range []string{"probe_table.rs", "table_runtime.rs"} {
-		if _, ok := with[unwanted]; ok {
-			t.Errorf("--lang rust emitted dead wire surface %s", unwanted)
-		}
-	}
-	for _, want := range []string{"probe_block.rs", "probe_cook.rs", "probe_records.rs", "block_runtime.rs", "cook_runtime.rs", "build_version.rs"} {
+	for _, want := range []string{"probe_table.rs", "table_runtime.rs", "probe_block.rs", "probe_cook.rs", "probe_records.rs", "block_runtime.rs", "cook_runtime.rs", "build_version.rs"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang rust emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	lib := string(with["lib.rs"])
-	for _, want := range []string{"mod probe_block;", "mod probe_cook;", "mod probe_records;", "mod block_runtime;", "mod cook_runtime;", "mod build_version;"} {
+	for _, want := range []string{"mod probe_table;", "mod table_runtime;", "mod probe_block;", "mod probe_cook;", "mod probe_records;", "mod block_runtime;", "mod cook_runtime;", "mod build_version;"} {
 		if !strings.Contains(lib, want) {
 			t.Errorf("the generated crate root does not declare the table surface: %q missing", want)
 		}
@@ -67,8 +62,8 @@ func TestRustEmitsTableModules(t *testing.T) {
 	}
 }
 
-// TestRustPointeredTablesEmitAccelerators: pointered tables emit their cook
-// reader and records without wire codecs.
+// TestRustPointeredTablesEmitAccelerators: pointered tables emit the wire
+// codecs, their cook reader and their records.
 func TestRustPointeredTablesEmitAccelerators(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
@@ -83,13 +78,17 @@ table Node
 		t.Fatalf("--lang rust refused a pointered unit outright: %v", err)
 	}
 	cooks := 0
+	wires := 0
 	for name := range files {
 		if strings.HasSuffix(name, "_table.rs") || name == "table_runtime.rs" {
-			t.Errorf("--lang rust emitted the WIRE surface %s for a pointered unit", name)
+			wires++
 		}
 		if strings.HasSuffix(name, "_cook.rs") {
 			cooks++
 		}
+	}
+	if wires == 0 {
+		t.Error("--lang rust emitted no wire surface for a pointered unit — a graph rides the id-table wire (docs/SPEC-TABLES.md §3)")
 	}
 	if cooks == 0 {
 		t.Error("--lang rust emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")

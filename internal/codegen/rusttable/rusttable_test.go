@@ -136,17 +136,13 @@ fixed table Wide
 	}
 }
 
-// TestAcceleratorsEmitted: what a table unit gets — the two accelerators
-// (block and cook), their shared runtimes, records, and the build version.
-// No wire surface (*_table.rs or table_runtime.rs) is emitted.
+// TestAcceleratorsEmitted: what a table unit gets — the wire (*_table.rs and
+// table_runtime.rs), the two accelerators (block and cook), their shared
+// runtimes, records, and the build version.
 func TestAcceleratorsEmitted(t *testing.T) {
 	out := generate(t, valueOnly)
-	for _, unwanted := range []string{"probe_table.rs", "table_runtime.rs"} {
-		if _, ok := out[unwanted]; ok {
-			t.Errorf("emitted dead wire surface %s", unwanted)
-		}
-	}
 	for _, want := range []string{
+		"probe_table.rs", RuntimeModule + ".rs",
 		"probe_cook.rs", "probe_block.rs", "probe_records.rs",
 		"block_runtime.rs", BuildVersionModule + ".rs",
 		CookRuntimeModule + ".rs",
