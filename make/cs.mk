@@ -410,6 +410,16 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
+# The C# table leg's `--gate` verb round-trips all 64 corpus variants and
+# byte-compares variant 0 against testdata/wire/bench_table.bin, refusing to
+# time a codec that does not reproduce the corpus (bench/tables/README.md).
+.PHONY: tables-cs-bench-gate
+tables-cs-bench-gate: generated/bench/tables/cs/.stamp
+	bench/tables/cs/leg build
+	bench/tables/cs/leg run --gate
+test-cs: tables-cs-bench-gate
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 

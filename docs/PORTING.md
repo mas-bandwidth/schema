@@ -1468,7 +1468,8 @@ reproduce the corpus refuses to time it rather than posting a number.
 **Reference.** `tables-go-bench-gate` in the Makefile. Elixir proved the
 technique in and lost the leg with its table wire (#515).
 
-**Proven in.** Elixir, before its wire was cut; Go.
+**Proven in.** C++, C, C# and Go; Elixir proved the technique in before it lost
+the leg with its table wire (#515).
 
 **Measured effect.** Structural.
 
@@ -1478,4 +1479,4 @@ technique in and lost the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
+| ✅ `tables-bench-gate` | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
