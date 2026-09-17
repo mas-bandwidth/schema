@@ -536,6 +536,7 @@
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
         "tables-go-slot-negative-control",
+        "tables-go-runtime-home-negative-control",
         "tables-go-block-race-negative-control",
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",
