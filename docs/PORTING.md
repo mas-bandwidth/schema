@@ -1107,7 +1107,8 @@ and requires the scan to see it.
 
 **Reference.** `internal/tablenames/tablenames.go`;
 `TestTableRuntimeNamesAreClaimed` (`compiler/tables_test.go:918`, with the
-refusal loop for every language); `TestJavaRuntimeNameScanGoesRed`.
+refusal loop for every language); `TestJavaRuntimeNameScanGoesRed`;
+`TestGoRuntimeNameScanGoesRed`.
 
 **Proven in.** C++; the control in Java.
 
@@ -1121,7 +1122,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
