@@ -5520,6 +5520,26 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
+# THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
+# manifest in the tree, docs/matrix.json, by the Go tool at tools/matrix. The
+# page is the board's table at the moment of the release — the
+# feature-by-language cells and one maturity state per language — and it ships
+# red: a ❌ cell and a language marked coming are honest states, never reasons
+# to hold a release or to hide a column.
+#
+# `matrix-check` is the CI gate (tools/matrix/matrix_test.go): it regenerates
+# the page and refuses when the committed one differs, so the published table
+# cannot drift from what the tree ships. `go test ./...`, which `make test`
+# runs, carries it too. `matrix-print` is what the release notes call: the
+# page's state line per language, in manifest order.
+.PHONY: matrix matrix-check matrix-print
+matrix:
+	go run ./tools/matrix write
+matrix-check:
+	go run ./tools/matrix check
+matrix-print:
+	@go run ./tools/matrix states
+
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
 # number is a box sitting under the estate's bench rules — core 15, server
