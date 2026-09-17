@@ -1141,11 +1141,11 @@ other order, exactly the file a reader leaning on one check would open — or
 the register states why the platform needs none.
 
 **Reference.** `tables-big-endian` (wire, block both ways, cook accept and
-refuse, under s390x emulation); `tables-java-order`;
-`test/js-tables/main.mjs:417` (`checkForeignByteOrder`, the gap named at
-`:382-386`).
+refuse, under s390x emulation); `tables-java-order`; `tables-dart-order`
+(`test/dart-tables/order.dart`); `test/js-tables/main.mjs:417`
+(`checkForeignByteOrder`, the gap named at `:382-386`).
 
-**Proven in.** C++ (#303); the order-word half in Java and JavaScript.
+**Proven in.** C++ (#303); the order-word half in Java, JavaScript and Dart.
 
 **Measured effect.** Structural.
 
@@ -1159,7 +1159,7 @@ both foreign rows red with `cook` and `block` green.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
+| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ✅ `tables-dart-order` | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
 
 ### I8 — A bench row is labeled a pairing check
 
