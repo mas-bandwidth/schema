@@ -4390,9 +4390,18 @@ generated-current: test
 	fi
 	@echo "generated/ tree is current"
 
+# The link-and-citation gate (schema#337): every relative markdown link in the
+# tree resolves to a file and, where anchored, to a heading slug, and every
+# "PAGE.md §N.M" citation resolves to a numbered heading in that page. It was
+# scratch when docs/ moved (#336); internal/docgate is the standing form, and
+# `go test ./...` runs it too.
+.PHONY: docs-check
+docs-check:
+	go test ./internal/docgate -run TestPagesResolve -count=1
+
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
-check: bin/schema
+check: bin/schema docs-check
 	./bin/schema check examples
 	./bin/schema check examples128
 	./bin/schema check examples-wide
