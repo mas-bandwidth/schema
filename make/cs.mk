@@ -385,7 +385,7 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-view tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
+.PHONY: tables-cs-view tables-cs-leg tables-cs-leg-debug tables-cs-leg-release tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
 tables-cs-view: build/tables-generated-cs/.stamp
 	@mkdir -p build/view-cs
 	@set -e; for entry in $(VIEW_CORPUS); do \
@@ -406,8 +406,19 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
-tables-cs-leg: build/tables-generated-cs/.stamp
+# TWO CONFIGURATIONS, TWO NAMES, AND A COMBINED ONE (issue #744). The pair is
+# about 74 s of test time, and the pull-request job pays checkout, the .NET SDK
+# install and the generated tree before it starts, so `tables-cs-leg-debug` is
+# the per-commit trim (about half) and `tables-cs-leg` — Debug and Release —
+# stays the gate `make test` runs in certification. Before ruling on a C#
+# tables change, run the full `make tables-cs-leg` by hand; docs/PORTING.md
+# says so where a reader looks.
+tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
+
+tables-cs-leg-debug: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
+
+tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
