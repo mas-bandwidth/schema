@@ -1203,19 +1203,25 @@ An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
 nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
 VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
 refusal live; the refusal is an assert plus an abort and it stands in every
-build, exactly as C++'s accessor refuses:
+build, exactly as C++'s accessor refuses. This fragment is compiled and run
+against the `tables/examples` unit by `make tables-c-usage`:
 
+<!-- c-table-usage -->
 ```c
-SCHEMA_TABLE_KEYED_AT( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
+KeyedConfig config;
+keyed_config_reset( &config );
+
+SCHEMA_TABLE_KEYED_AT( config.hulls, HULL_GUNSHIP, HULL_MAX ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
-for ( key = 1; key <= SHIP_TYPE_MAX; key++ )
+for ( key = 1; key <= HULL_MAX; key++ )
 {
-    ShipConfig * ship = &SCHEMA_TABLE_KEYED_AT( fleet.ships, key );
-    ship->health *= 2.0f;
+    HullConfig * hull = &SCHEMA_TABLE_KEYED_AT( config.hulls, key, HULL_MAX );
+    hull->health *= 2.0f;
 }
 ```
+<!-- /c-table-usage -->
 
 A `?T` is the value beside a `<name>_present` byte, a `string(N)` a
 `char[N + 1]` beside an `int32_t <name>_length`, a `bytes(N)` a `uint8_t[N]`
