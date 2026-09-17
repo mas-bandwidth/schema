@@ -4220,7 +4220,7 @@ tolerant wire as the fallback that never breaks.
 
 ### The problem
 
-Starlight's simulation is C++ and its tools overlay is C. Sixty times a second
+Starlight's simulation is C++ and its tools overlay is Go. Sixty times a second
 the sim produces "what to draw", thousands of ships and lasers, and the other
 side wants to **point at** that memory and iterate rather than deserialize it.
 Serializing 60 Hz bulk data that never leaves the machine is paying a tolerance
@@ -4378,71 +4378,102 @@ with two storages if the consumer reads while you fill.
 
 ### Consume it, from another language, with one check
 
-The same declaration generates the read half everywhere. Here is **C reading
+The same declaration generates the read half everywhere. Here is **Go reading
 the block C++ just wrote**. The bytes went through a file for the demo, and a
-pointer handoff is the production path. `consume.c`, entire:
+pointer handoff is the production path. Generate the Go side and give the
+consumer a module of its own:
 
-```c
-#include "RenderBlock.h"
-#include <stdio.h>
-#include <stdlib.h>
+```
+$ schema generate --lang go --out gengo .
+```
 
-int main( void )
-{
-    FILE * f = fopen( "frame.block", "rb" );
-    fseek( f, 0, SEEK_END );
-    long bytes = ftell( f );
-    fseek( f, 0, SEEK_SET );
+`go.mod`, entire:
 
-    /* the base must be 64-byte aligned, whatever the transport was */
-    void * aligned = NULL;
-    if ( posix_memalign( &aligned, 64, (size_t) bytes ) != 0 ) { return 1; }
-    if ( fread( aligned, 1, (size_t) bytes, f ) != (size_t) bytes ) { return 1; }
-    fclose( f );
+```
+module starlightconsume
 
-    RenderFrameBlock block;
-    if ( !render_frame_block_open( &block, aligned, (int64_t) bytes ) )
-    {
-        printf( "not this build's block\n" );
-        return 0;
-    }
+go 1.26
 
-    RenderShip * ships = render_frame_ships_span( &block );
-    TableBlockRows rows = render_frame_ships_rows( &block );
-    printf( "c read: frame=%llu ships=%d ships[2999]=(%g, %g)\n",
-        (unsigned long long) block.projection->frame, rows.count,
-        ships[2999].x, ships[2999].y );
-    printf( "c build version 0x%016llx\n", (unsigned long long) SCHEMA_STARLIGHT_BUILD_VERSION_VALUE );
-    free( aligned );
-    return 0;
+require (
+	github.com/mas-bandwidth/serialize.go v0.0.0
+	starlight v0.0.0
+)
+
+replace github.com/mas-bandwidth/serialize.go => ../serialize.go
+
+replace starlight => ./gengo
+```
+
+`consume.go`, entire:
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+	"unsafe"
+
+	"starlight"
+)
+
+// aligned64 returns a window of raw at least n bytes long whose first byte is
+// 64-byte aligned. A block's base must be 64-byte aligned whatever the
+// transport was, and Go's allocator promises nothing about it.
+func aligned64(raw []byte, n int) []byte {
+	off := (64 - int(uintptr(unsafe.Pointer(&raw[0]))%64)) % 64
+	return raw[off : off+n]
+}
+
+func main() {
+	data, err := os.ReadFile("frame.block")
+	if err != nil {
+		panic(err)
+	}
+	raw := make([]byte, len(data)+64)
+	buf := aligned64(raw, len(data))
+	copy(buf, data)
+
+	var block starlight.RenderFrameBlock
+	if !starlight.RenderFrameBlockOpen(&block, unsafe.Pointer(&buf[0]), int64(len(buf))) {
+		fmt.Println("not this build's block")
+		return
+	}
+
+	ships := block.Ships()
+	last := ships.At(2999)
+	fmt.Printf("go read: frame=%d ships=%d ships[2999]=(%g, %g)\n",
+		block.Projection.Frame, ships.Len(), last.X, last.Y)
+	fmt.Printf("go build version 0x%016x\n", starlight.BuildVersion)
 }
 ```
 
 ```
-$ schema generate --lang c --out genc .
-$ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
-$ ./consume
-c read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-c build version 0xb837cbad7d9fd592
+$ go run .
+go read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
+go build version 0xb837cbad7d9fd592
 ```
 
 The two builds carry the same build version, `0xb837cbad7d9fd592` in the C++
-header and the C source alike. `BlockOpen` checks the prologue, which is the
-magic, the byte order, the **build version**, the base's 64-byte alignment,
-every count against its declared maximum, and every extent, and then you index.
-Both sides assert every row size and field offset against the compiler's shared
-layout model at compile time, so a toolchain that disagrees stops and names the
-record and the field rather than garbling a frame.
+header and the Go source alike. `RenderFrameBlockOpen` checks the prologue,
+which is the magic, the byte order, the **build version**, the base's 64-byte
+alignment, every count against its declared maximum, and every extent, and then
+you point. Both sides assert every row size and field offset against the
+compiler's shared layout model at compile time — the C++ side in a
+`static_assert`, the Go side in the generated `init` the program runs before
+`main` — so a toolchain that disagrees stops and names the record and the field
+rather than garbling a frame.
 
 Two consumer obligations that the first integration always trips on.
 
 **Alignment binds the consumer.** The producer's storage is 64-byte aligned, so
 a consumer that got the bytes from a file or a socket must hand `Open` 64-byte
-aligned memory too. The C program above uses `posix_memalign`, and a C#
-consumer uses native memory because a pinned `byte[]` guarantees nothing.
+aligned memory too. The Go program above lands its own buffer on a 64-byte
+boundary, and a C# consumer uses native memory because a pinned `byte[]`
+guarantees nothing.
 
-**It is a same-build contract.** Give `RenderShip` one more field, rebuild only
-the C side, and:
+**It is a same-build contract.** Give `RenderShip` one more field, regenerate
+only the Go side, and:
 
 ```
 table RenderShip
@@ -4456,16 +4487,15 @@ table RenderShip
 ```
 
 ```
-$ schema generate --lang c --out genc .
-$ cc -std=c99 -Wall -Wextra -Werror -I genc -o consume consume.c genc/RenderBlock.c genc/RenderTable.c
-$ ./consume
+$ schema generate --lang go --out gengo .
+$ go run .
 not this build's block
 ```
 
 Every schema edit is a regenerate on both sides. That is the trade for zero
 version machinery in a 60 Hz path: nothing to absorb, nothing to ask for by
 name. Data that outlives builds rides the wire, which this same table still
-has. Take `shield` back out and `./consume` reads the frame again.
+has. Take `shield` back out and `go run .` reads the frame again.
 
 **You now have** the simulation to renderer handoff: filled in parallel at
 frame rate, read in place from another language, guarded by one comparison.
@@ -4476,21 +4506,21 @@ frame rate, read in place from another language, guarded by one comparison.
 
 ### The problem
 
-Starlight is not one program. The server is C++, the tools are C, and maybe the
+Starlight is not one program. The server is C++, the tools are Go, and maybe the
 launcher is C#. Every one of them needs the same constants, the same packets
 and the same assets, and the tools team wants a generic config editor without
 hand-writing a UI per table.
 
-### Three wires cross to C
+### Three wires cross to Go
 
 Part 6 drew the line: the packet wire, the cook and the block cross all nine
 targets, and the table wire is C++'s within one build. This part runs all three
-crossings, from the same `starlight` unit, into C.
+crossings, from the same `starlight` unit, into Go.
 
-Generate the C side of the unit you already have:
+Generate the Go side of the unit you already have:
 
 ```
-$ schema generate --lang c --out genc .
+$ schema generate --lang go --out gengo .
 ```
 
 ### The packet wire
@@ -4529,39 +4559,46 @@ int main()
 }
 ```
 
-`readpacket.c`, entire:
+`readpacket.go`, entire:
 
-```c
-#include "GameWire.h"
-#include <stdio.h>
-#include <string.h>
+```go
+package main
 
-int main( void )
-{
-    /* the read slack the contract asks for: 8 bytes past the packet data */
-    uint8_t buffer[SHIP_STATE_MAX_BYTES + 8];
-    memset( buffer, 0, sizeof( buffer ) );
+import (
+	"fmt"
+	"os"
 
-    FILE * f = fopen( "packet.bin", "rb" );
-    size_t bytes = fread( buffer, 1, SHIP_STATE_MAX_BYTES, f );
-    fclose( f );
+	"github.com/mas-bandwidth/serialize.go"
 
-    serialize_read_stream_t stream;
-    serialize_read_stream_init( &stream, buffer, (int) bytes );
+	"starlight"
+)
 
-    ShipState ship = new_ship_state();
-    if ( !read_ship_state( &stream, &ship ) )
-    {
-        printf( "c refused the packet\n" );
-        return 1;
-    }
+func main() {
+	// the read slack the contract asks for: the buffer's capacity runs 8 bytes
+	// past the packet data, even though only the data length is handed over
+	buffer := make([]byte, starlight.ShipStateMaxBytes+8)
+	file, err := os.Open("packet.bin")
+	if err != nil {
+		panic(err)
+	}
+	bytes, err := file.Read(buffer)
+	if err != nil {
+		panic(err)
+	}
+	file.Close()
 
-    char names[SYSTEM_FLAGS_NAMES_MAX];
-    printf( "c read the C++ packet: %s \"%s\" health=%d throttle=%.2f aim=(%g, %g) systems=%s\n",
-        enum_name_ship_type( ship.ship_type ), ship.name, ship.health, ship.throttle,
-        ship.aim.x, ship.aim.y,
-        flag_names_system_flags( ship.systems, names, sizeof( names ) ) );
-    return 0;
+	stream := serialize.NewReadStream(buffer[:bytes])
+
+	ship := starlight.NewShipState()
+	if err := starlight.ReadShipState(stream, &ship); err != nil {
+		fmt.Println("go refused the packet")
+		os.Exit(1)
+	}
+
+	fmt.Printf("go read the C++ packet: %s \"%s\" health=%d throttle=%.2f aim=(%g, %g) systems=%s\n",
+		starlight.EnumNameShipType(ship.ShipType), string(ship.Name[:ship.NameLength]),
+		ship.Health, ship.Throttle, ship.Aim.X, ship.Aim.Y,
+		starlight.FlagNamesSystemFlags(ship.Systems))
 }
 ```
 
@@ -4569,21 +4606,20 @@ int main( void )
 $ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -I gen -I . -I ../serialize -o writepacket writepacket.cpp
 $ ./writepacket
 c++ wrote packet.bin, 47 bytes
-$ cc -std=c99 -Wall -Wextra -Werror -ffp-contract=off -I genc -I ../serialize.c -o readpacket readpacket.c ../serialize.c/serialize.c -lm
-$ ./readpacket
-c read the C++ packet: Corvette "Kestrel" health=750 throttle=0.63 aim=(1.5, 0.25) systems=Shields|WarpDrive
+$ go run readpacket.go
+go read the C++ packet: Corvette "Kestrel" health=750 throttle=0.63 aim=(1.5, 0.25) systems=Shields|WarpDrive
 ```
 
 Same Corvette, same 750, same compressed throttle, same mask. The same bits.
 
-Note the shape of the C names. Constants become macros, `SHIP_STATE_MAX_BYTES`
-and `SYSTEM_FLAGS_NAMES_MAX`, functions are `snake_case`, and a type's defaults
-arrive through `new_ship_state()`, because C structs have no member
-initializers. The read slack is in the buffer, because C and C++ read 64-bit
-windows.
+Note the shape of the Go names. Constants stay typed package constants,
+`ShipStateMaxBytes` and the flag vocabulary, functions are `WriteShipState` and
+`ReadShipState`, and a type's defaults arrive through `NewShipState()`, because
+a Go zero value is a zero and not the declaration's defaults. The read slack is
+in the buffer's capacity, because Go and C++ both read 64-bit windows.
 
 `aim` came through as a plain `Vector2`. The `cpp_native` mapping is a C++
-facility, so C generates the schema's own struct and the wire is identical
+facility, so Go generates the schema's own struct and the wire is identical
 either way.
 
 ### The cook
@@ -4596,57 +4632,64 @@ $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
 cooked Game.cook: 464 bytes, build version 0xb837cbad7d9fd592, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
-`opencook.c`, entire:
+`opencook.go`, entire:
 
-```c
-#include "ConfigTable.h"
-#include <stdio.h>
-#include <stdlib.h>
+```go
+package main
 
-int main( void )
-{
-    FILE * f = fopen( "Game.cook", "rb" );
-    fseek( f, 0, SEEK_END );
-    long bytes = ftell( f );
-    fseek( f, 0, SEEK_SET );
+import (
+	"fmt"
+	"os"
+	"unsafe"
 
-    void * aligned = NULL;
-    if ( posix_memalign( &aligned, 64, (size_t) bytes ) != 0 ) { return 1; }
-    if ( fread( aligned, 1, (size_t) bytes, f ) != (size_t) bytes ) { return 1; }
-    fclose( f );
+	"starlight"
+)
 
-    const GameConfig * config = game_config_open( aligned, (uint64_t) bytes );
-    if ( config == NULL )
-    {
-        printf( "not this build's cook\n" );
-        return 0;
-    }
-    printf( "c opened the C++ cook: level=%.*s corvette health=%g\n",
-        config->level_name_length, config->level_name,
-        config->ships[SHIP_TYPE_CORVETTE - 1].max_health );
-    free( aligned );
-    return 0;
+// aligned64 returns a window of raw at least n bytes long whose first byte is
+// 64-byte aligned, which the cook's region alignment requires.
+func aligned64(raw []byte, n int) []byte {
+	off := (64 - int(uintptr(unsafe.Pointer(&raw[0]))%64)) % 64
+	return raw[off : off+n]
+}
+
+func main() {
+	data, err := os.ReadFile("Game.cook")
+	if err != nil {
+		panic(err)
+	}
+	raw := make([]byte, len(data)+64)
+	buf := aligned64(raw, len(data))
+	copy(buf, data)
+
+	var cook starlight.GameConfigCook
+	if !starlight.GameConfigOpen(&cook, unsafe.Pointer(&buf[0]), int64(len(buf))) {
+		fmt.Println("not this build's cook")
+		return
+	}
+	root := cook.Root()
+	fmt.Printf("go opened the C++ cook: level=%s corvette health=%g\n",
+		string(root.LevelName[:root.LevelNameLength]),
+		root.Ships[starlight.ShipTypeCorvette-1].MaxHealth)
 }
 ```
 
 ```
-$ cc -std=c99 -Wall -Wextra -Werror -I genc -o opencook opencook.c genc/ConfigTable.c
-$ ./opencook
-c opened the C++ cook: level=Kuiper Run corvette health=500
+$ go run opencook.go
+go opened the C++ cook: level=Kuiper Run corvette health=500
 $ ./cook Game.cook
 opened: level=Kuiper Run corvette health=500
 wrote Mine.cook, 464 bytes
 ```
 
-The same 464 bytes, opened by pointer from both languages. In C a keyed array
-is the plain array the comment describes, `ShipConfig ships[SHIP_TYPE_MAX]`
+The same 464 bytes, opened by pointer from both languages. In Go a keyed array
+is the plain array the comment describes, `Ships [ShipTypeMax]ShipConfigRow`
 with the key `k` at index `k - 1`, so the `- 1` that C++ hides in
 `TableKeyed` is visible here.
 
 ### The block
 
 Part 12 already ran this crossing end to end: `produce.cpp` fills a
-`RenderFrame` block in C++, `consume.c` opens it in C at the same build
+`RenderFrame` block in C++, `consume.go` opens it in Go at the same build
 version, and one flipped field on either side turns it into
 `not this build's block`.
 
@@ -4834,7 +4877,7 @@ generator that emits in map order passes on Monday and fails on Tuesday.
 The exported `compiler` and `ir` surfaces are under semantic versioning, and
 `internal/` is not.
 
-**You now have** Starlight's whole estate on one schema: a C++ simulation, C
+**You now have** Starlight's whole estate on one schema: a C++ simulation, Go
 tools reading its packets, cooks and blocks, generic editors over the
 descriptors, and a compiler you can embed when the build gets opinionated.
 
