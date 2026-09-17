@@ -1319,13 +1319,17 @@ one V8 major and steady at sixteen bytes a call on another.
 
 **Negative control.** Running the gate on another major must refuse. Go uses
 `tables-go-allocator-runtime-negative-control`; `SCHEMA_GO_ALLOC_ANY_GO=1`
-prints observations without certification. The default requires Go 1.26.0.
+prints observations without certification. The default requires Go 1.26.0: the
+allocator probe states it in the generated source, and every other generated
+probe in `internal/codegen/gotable` is built on the pinned toolchain rather
+than on whatever `go` a PATH lookup found, held by
+`TestGeneratedProbesReportTheRuntimeTheyCertify`.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` `TestGeneratedProbesReportTheRuntimeTheyCertify` (Go 1.26.0) | ❌ #420 (no allocation gate to attach the refusal to — the I1 carry, #412) | ❌ #420 (the gate SKIPS without the counter, and went with the previous-form wire — the I1 carry, #517) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (the gate went with the previous-form wire and nothing refuses off the SDK — the I1 carry, #514) | ❌ #420 (the audit went with the previous-form wire and did not read `otp_release` — the I1 carry, #515) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 

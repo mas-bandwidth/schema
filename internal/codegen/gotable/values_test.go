@@ -53,6 +53,13 @@ func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[s
 	args := append([]string{"test", "-count=1"}, flags...)
 	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
+	// THE PROBE IS BUILT ON THE PINNED RUNTIME (docs/PORTING.md I14): a floor
+	// from `testing.AllocsPerRun` is a property of the compiler, so the default
+	// is the pinned toolchain, not whatever `go` a PATH lookup found.
+	// SCHEMA_GO_ALLOC_ANY_GO=1 observes another and SCHEMA_GO_ALLOC_TOOLCHAIN
+	// names one explicitly.
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN="+probeToolchain(
+		os.Getenv("SCHEMA_GO_ALLOC_ANY_GO"), os.Getenv("SCHEMA_GO_ALLOC_TOOLCHAIN")))
 	return cmd.CombinedOutput()
 }
 
