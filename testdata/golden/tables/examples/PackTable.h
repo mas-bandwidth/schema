@@ -10313,6 +10313,14 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     GunnerSettings defaults;
     if ( fill_count > 0 )
     {
@@ -10321,7 +10329,9 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( GunnerSettingsFixedKnownRanges[lineage_at], GunnerSettingsFixedKnownRangeCounts[lineage_at],
@@ -10617,6 +10627,14 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     ShipEntry defaults;
     if ( fill_count > 0 )
     {
@@ -10625,7 +10643,9 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( ShipEntryFixedKnownRanges[lineage_at], ShipEntryFixedKnownRangeCounts[lineage_at],
@@ -10909,6 +10929,14 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     GlobalSettings defaults;
     if ( fill_count > 0 )
     {
@@ -10917,7 +10945,9 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( GlobalSettingsFixedKnownRanges[lineage_at], GlobalSettingsFixedKnownRangeCounts[lineage_at],
@@ -11383,6 +11413,14 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     PackConfig defaults;
     if ( fill_count > 0 )
     {
@@ -11391,7 +11429,9 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( PackConfigFixedKnownRanges[lineage_at], PackConfigFixedKnownRangeCounts[lineage_at],

@@ -6676,7 +6676,11 @@ three and not one.
   the bound to be a gate has the flag below.
 - **`--fixed-record-limit N` MAKES THE ADVICE A GATE, AND ONLY EVER LOWERS.** It
   is off by default and it is a project's own policy, never a wire fact: set it
-  and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE. A team
+  and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE.
+  **IT IS THE ONLY RECORD-SIZE BOUND THAT FAILS A COMPILE AT ALL** — neither
+  4096 nor 65536 does, with or without the `fixed` keyword — so a text that says
+  a declared fixed table past 65536 does not compile is describing this flag and
+  nothing else. A team
   that wants the owner's rule enforced rather than advised sets it to `4096`.
   **IT CANNOT RAISE THE 65536**, and that is not a limitation but the same rule
   read from the other end: 65536 is the number a PEER's reader holds this
@@ -6875,7 +6879,7 @@ the bounds pass that runs after the loop, over storage, for either plan:
   |---|---|
   | `copy` | move `size` bytes from `src` to `dst` |
   | `count` | read the count, clamp it to the reader's own `Max` (`size`), store it; `clamped` counts if it fired |
-  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
+  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply over the USED units, and a violation **REFUSES BY NAME — `text_ill_formed`** (`FIXED-FORM-ALGORITHM.md` §4.5, §5.3, fix 11), this form having no `L` to read on past as the tolerant wire does. `bytes(N)` has no content rule and cannot reach it. **The `malformed` this line used to say is what the C++ reference and three other legs still DO, and it is a divergence they owe** — no leg carries the refusal yet (algorithm §5.8 row 8) |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
@@ -7016,6 +7020,15 @@ any is nonzero; and only then the layout's length and the hash.
   knows the record size from the layout, so the count is arithmetic; **BYTES
   LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
   two ends of the file have met.
+- **EVERY RECORD'S HASH IS HELD IN ONE PRE-PASS, BEFORE THE FIRST RECORD IS
+  LANDED** (the algorithm's §5.3 step 10b). A load walks the tail once comparing
+  each record's leading eight bytes to the header's hash, refuses `no_layout` on
+  the first that differs, and only then lands the records — so a forged record
+  anywhere in the file, not only the first, leaves the caller's storage untouched
+  and every counter at zero. **That is what makes REFUSE total on a file of many
+  records**: the same check inside the landing loop wrote every record ahead of
+  the forged one before it refused. **A FILE IS ONE LAYOUT BY CONSTRUCTION**, so
+  the pre-pass only ever changes the answer on a corrupt or hostile file.
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -7035,6 +7048,9 @@ hash and the body with no form byte in front of it, because the stream framed it
   applies.
 - **A RECORD WHOSE HASH NAMES NO HELD LAYOUT IS `no_layout`**, a refusal by
   name. The reader states the hash so the application can ask for that layout.
+  **In a FILE that answer comes out of the pre-pass above, before any record has
+  landed**; a stream and a batch hand their records over one at a time, so there
+  the refusal is per record by the carrier's own nature.
 
 **IN THE MESSAGE FORM THE FORM BYTE IS ONCE PER BATCH (§3.3).** A batch is
 framed by one form byte and its bodies follow it; a fixed-form body inside one
@@ -7106,10 +7122,14 @@ added moves it without anyone remembering to.
   counter moved. A validation nobody watched fail is a validation nobody has.
 - **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
-  a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
-  DERIVED into the form past 65536 does not carry the form at all and says so;
-  and `--fixed-record-limit` turns the advisory into a refusal that fails the
-  compile.
+  a fixed table past 65536 **DOES NOT CARRY THE FORM and STILL COMPILES**,
+  naming the table and the size, **DECLARED AND DERIVED ALIKE** — the keyword
+  does not make this bound a refusal, which is what the declared probe and this
+  specification's own megabyte examples assert; and `--fixed-record-limit`, off
+  by default, is the one record-size bound that turns the advisory into a
+  refusal that FAILS THE COMPILE. The PLAN's leaf cap is the bound the keyword
+  DOES change: a DECLARED fixed table past it does not compile, by name, where
+  one merely DERIVED into the form is warned and keeps form `1`.
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
   `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
   byte no form defines answers `newer_form`, and each moves no counter and
@@ -7153,9 +7173,13 @@ added moves it without anyone remembering to.
   type whose leaves do not fit one plan does not carry the form. **AN ARRAY OF
   A FLAT TYPE IS ONE LEAF** — a type whose storage image is its wire image,
   which is most of them — so the bound is reached only by a large array of a
-  type carrying text, a count, a union or an optional. Nothing in §3.4 stops
-  such a type, and the follow-on is a plan built at load time instead, through
-  the same loop.
+  type carrying text, a count, a union or an optional. **AND HERE THE KEYWORD
+  DOES DECIDE, unlike the 65536 above**: a DECLARED `fixed table` whose plan
+  does not fit DOES NOT COMPILE, named with its leaf count, because a
+  `fixed table` never silently falls back to form `1`; one merely DERIVED into
+  the form asked for nothing, keeps form `1` and is warned. Nothing in §3.4
+  stops such a type from being DECLARED a plain `table`, and the follow-on is a
+  plan built at load time instead, through the same loop.
 - **THE PLAN'S DESTINATIONS ARE ASSERTED AGAINST THE LANGUAGE'S OWN ABI.** A
   plan the schema compiler laid down carries offsets the schema compiler
   computed, so every backend emits those offsets back as build-time assertions
@@ -8399,7 +8423,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
   | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE VARIABLE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
-  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
+  | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; in a FILE every record's hash is held in one PRE-PASS before the first record lands, so that holds for a forged record anywhere in the file and not only the first. The reader states the hash so the application can ask for that layout |
   | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). The layout is refused WHOLE and sets nothing |
   | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4) |
   | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over |
@@ -8412,6 +8436,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+  | `text_ill_formed` | a FIXED-form record whose USED text units are not the text their kind says they are: a `string(N)` that is not well-formed UTF-8 or carries an interior null, a `wstring(N)` with an unpaired surrogate, a zero code unit or a group above `0xFFFF` (§3, SPEC.md §4.7, §4.12). `bytes(N)` has no content rule and never reaches it. It is the ONE refusal here that is not decided before a record byte lands — it fires in the scatter, on the used units, and the read stops there (`FIXED-FORM-ALGORITHM.md` §4.5, §5.3, fix 11). **The C and C++ pair number it `20`, appended after `layout_unsupported`**, and NO LEG CARRIES IT YET: four validate and report DAMAGE instead, five do not look |
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
   that it gets one rather than that it loses its name**: `LoadMeasure` is the
