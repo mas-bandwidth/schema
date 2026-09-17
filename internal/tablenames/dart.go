@@ -2,16 +2,28 @@ package tablenames
 
 // Dart is the Dart table backend (internal/codegen/darttable).
 //
-// The Dart backend emits the BLOCK and COOK read halves only (the table wire
-// in its previous form was removed; schema#514 brings the id-table wire), so
-// this registry holds the two accelerator runtimes' library-scope names. Where a runtime name is a free
-// function Dart spells it lowerCamelCase and the registry holds the
-// PascalCase form: the two are a bijection (the packet emitter's
-// dartName), so one registration covers both.
+// The Dart backend emits the BLOCK and COOK read halves, and, since schema#514,
+// the ID-TABLE WIRE's first slice (internal/codegen/darttable/wire.go): the
+// form byte, the sixty-four-bit identity, canonical LEB128 and the per-table
+// wire descriptors. Where a runtime name is a free function Dart spells it
+// lowerCamelCase and the registry holds the PascalCase form: the two are a
+// bijection (the packet emitter's dartName), so one registration covers both.
 const Dart Backend = 1 << 8
 
 func init() {
 	define(Dart,
+		Name{Name: "TableWireFieldInfo", What: "a table-wire field's descriptor: its fnv1a64 id and kind"},
+		Name{Name: "TableWireInfo", What: "a table's wire descriptor: its own name id and its fields"},
+		Name{Name: "TableReport", What: "a wire read's verdict beside its counters"},
+		Name{Name: "TableIds", What: "the writer's id table, first-use order and 1-based references"},
+		Name{Name: "TableForm", What: "the variable form's form byte, read first", RustConst: true},
+		Name{Name: "TableReservedId", What: "the reserved node-table id", RustConst: true},
+		Name{Name: "TableFnv1a64", What: "the sixty-four-bit identity every wire vocabulary shares"},
+		Name{Name: "TableLebBytes", What: "the byte width of a canonical LEB128 spelling"},
+		Name{Name: "TablePutLeb", What: "write a canonical LEB128 spelling"},
+		Name{Name: "TableGetLeb", What: "read a canonical LEB128 spelling"},
+		Name{Name: "TableEmptyMeasure", What: "the exact size of an empty body on the wire"},
+		Name{Name: "TableEmptySave", What: "frame an empty body with the form byte and id table"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},

@@ -5,15 +5,20 @@
 // none: a table-free unit's generated Dart is byte-identical with or without
 // this package.
 //
+// THE WIRE TIER. schema#514 brings the id-table wire (docs/SPEC-TABLES.md §3)
+// to Dart: wire.go emits the unit's one runtime home — the form byte read
+// FIRST, sixty-four-bit fnv1a64 identity, canonical LEB128, the reserved
+// node-table id and the trailing id table — and a <Base>Table.dart per file
+// with every table's wire descriptor and its measure/save entry points. The
+// full codec surface (load, the text form and the hostile battery of §4, §8
+// and §16) rides on the same descriptors and is the rest of the row.
+//
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every fixed table of the unit whatever its
-// closure declares. The TABLE WIRE itself — measure, save, load, the reflection
-// descriptors and the JSON text form of docs/SPEC-TABLES.md §3, §4, §8 and §16
-// in their id-table form — is not emitted for Dart. The port that once stood
-// here wrote the form that preceded the id-table wire, which the current
-// specification does not describe and the C++ reference does not open; it was
-// removed rather than carried (schema#514 is the row that brings the wire to
-// Dart). ROADMAP.md marks the cells.
+// closure declares. The port that once stood here wrote the form that preceded
+// the id-table wire, which the current specification does not describe and the
+// C++ reference does not open; it was removed rather than carried. ROADMAP.md
+// marks the cells.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE for the two
 // forms that remain: this port mirrors its prologue and header checks, its
@@ -120,6 +125,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, cooks)
+	wires, err := generateWireFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range wires {
+		if _, dup := out[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table library; rename one file (docs/SPEC-TABLES.md)", name)
+		}
+		out[name] = data
+	}
 	return out, nil
 }
 
