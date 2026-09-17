@@ -252,3 +252,115 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
                  "RULE: fewer bytes than a header is layout_malformed" );
     }
 }
+
+/* W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+   (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). A layout that passes every rule of
+   §1.1 and still names a byte past `root.size` is refused WHOLE and never partly
+   compiled, under layout_record_too_large. The C twin of the reference's
+   record_bound_case; it lives here because it hand-builds the same layouts the
+   validation above does, out of this build's own field ids.
+
+   THE LAYOUT IS INTERNALLY VALID: built from this build's own ids, passing all
+   seven rules. After COMPILE-from-lock, LOAD never parses a stranger — unknown
+   hash is layout_newer — so the bound is asserted on table_fixed_compile
+   directly, which is the path a known older writer still takes. */
+void fixed_fx1_record_bound( void )
+{
+    const TableFixedLayoutView mine = { fx_root_fixed_layout, (int32_t) ( ( (int64_t) sizeof( fx_root_fixed_layout ) - 4 ) / 17 ) };
+    uint64_t root_id = 0, keep_id = 0, blob_id = 0, blob_elem_id = 0, label_id = 0;
+    int32_t i;
+
+    for ( i = 0; i < mine.count; ++i )
+    {
+        const TableFixedLayoutEntry e = table_fixed_entry_at( &mine, i );
+        if ( i == 0 ) { root_id = e.id; continue; }
+        if ( e.kind == 8 && e.size == 4 && keep_id == 0 ) { keep_id = e.id; } /* `keep`, a uint32 */
+        if ( e.kind == 12 && label_id == 0 ) { label_id = e.id; }             /* `label`, a string(8) */
+        if ( e.kind == 14 && ( i + 1 ) < mine.count )                         /* `blob`, bytes(6): an array of u8 */
+        {
+            const TableFixedLayoutEntry el = table_fixed_entry_at( &mine, i + 1 );
+            if ( el.kind == 6 && el.size == 1 ) { blob_id = e.id; blob_elem_id = el.id; }
+        }
+    }
+    fixed_check( root_id != 0 && keep_id != 0 && blob_id != 0 && label_id != 0,
+                 "W10: the ids this case names are the ids this build's own layout carries" );
+
+    /* 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size` */
+    {
+        TableFixedLayoutView parsed;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        static TableFixedEntry cplan[1024];
+        TableReport cr;
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        int32_t made;
+        FxRoot v;
+        TableReport r;
+        int64_t total;
+
+        memset( g_broken, 0, sizeof( g_broken ) );
+        table_fixed_put32( g_broken + LayoutAt, 4u );
+        put_entry( g_broken, 0, root_id, 13u, 4u, 2u );       /* a record body of FOUR bytes */
+        put_entry( g_broken, 1, keep_id, 8u, 4u, 0u );        /* the four bytes, at 0 */
+        put_entry( g_broken, 2, blob_id, 14u, 0u, 1u );       /* an array of NO bytes, at 4 */
+        put_entry( g_broken, 3, blob_elem_id, 6u, 1u, 0u );
+        fixed_check( table_fixed_parse_layout( g_broken + LayoutAt, (int64_t) ( 4u + 4u * 17u ), &parsed, &why ) != 0,
+                     "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND" );
+        memset( &cr, 0, sizeof( cr ) );
+        made = table_fixed_compile( &parsed, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
+                                    fx_root_fixed_dst, fx_root_fixed_cover, fx_root_fixed_cover_count,
+                                    cplan, 1024, &guarded, &fill_at, &fill_count, &cr );
+        fixed_check( made == -2, "W10: COMPILE answers -2 (hostile) for an entry past the writer's record size" );
+        fixed_check( cr.reason == SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE,
+                     "W10: COMPILE names layout_record_too_large for an entry past the writer's record size" );
+        total = hand_built( g_broken, 4u );
+        fx_root_reset( &v );
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &v, 1, g_broken, total, g_plan, PlanCapacity, NULL, &r ) < 0 && r.refused,
+                     "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)" );
+        fixed_check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
+                     "W10: the refusal sets nothing and counts nothing" );
+        fixed_check( v.keep == 7u && v.blob_length == 0, "W10: NOT PARTLY COMPILED — no entry of the plan ran" );
+    }
+
+    /* 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
+       overrun — a text entry whose length word and payload END EXACTLY at
+       `root.size` — is a layout with nothing wrong with it. */
+    {
+        TableFixedLayoutView parsed;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        static TableFixedEntry cplan[1024];
+        TableReport cr;
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        int32_t made;
+        FxRoot v;
+        TableReport r;
+        uint8_t body[16];
+
+        memset( g_broken, 0, sizeof( g_broken ) );
+        table_fixed_put32( g_broken + LayoutAt, 3u );
+        put_entry( g_broken, 0, root_id, 13u, 16u, 2u );
+        put_entry( g_broken, 1, keep_id, 8u, 4u, 0u );
+        put_entry( g_broken, 2, label_id, 12u, 12u, 0u );    /* src 4, +4 the length word, 12 bytes to 16 */
+        fixed_check( table_fixed_parse_layout( g_broken + LayoutAt, (int64_t) ( 4u + 3u * 17u ), &parsed, &why ) != 0,
+                     "W10: the boundary layout passes all seven rules of §1.1" );
+        memset( &cr, 0, sizeof( cr ) );
+        made = table_fixed_compile( &parsed, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
+                                    fx_root_fixed_dst, fx_root_fixed_cover, fx_root_fixed_cover_count,
+                                    cplan, 1024, &guarded, &fill_at, &fill_count, &cr );
+        fixed_check( made >= 0 && !cr.refused && !cr.malformed,
+                     "W10: a text entry ending EXACTLY at root.size is not a refusal" );
+        memset( body, 0, sizeof( body ) );
+        table_fixed_put32( body, 4242u );
+        table_fixed_put32( body + 4, 2u );
+        body[8] = 'h'; body[9] = 'i';
+        fx_root_reset( &v );
+        memset( &r, 0, sizeof( r ) );
+        table_fixed_run( cplan, made, guarded, body, (uint8_t *) (void *) &v, &r );
+        fixed_check( v.keep == 4242u && v.label_length == 2 && v.label[0] == 'h' && v.label[1] == 'i',
+                     "W10: and it reads — the bound admits the last byte of the record" );
+    }
+}

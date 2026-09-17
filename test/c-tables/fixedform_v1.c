@@ -148,3 +148,10 @@ void fixed_v1_absent_optional( void )
     fixed_check( memchr( body, 0xA7, body_bytes ) != NULL,
                  "C NEGATIVE CONTROL: the SAME payload PRESENT really does reach the wire" );
 }
+
+/* W6: V1's identity plan is partitioned by the same rule
+   (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, fix 6). */
+void fixed_v1_partition( void )
+{
+    fixed_partition_is_held( cfg_fixed_plan, cfg_fixed_plan_count, cfg_fixed_plan_guarded, "V1 identity plan" );
+}

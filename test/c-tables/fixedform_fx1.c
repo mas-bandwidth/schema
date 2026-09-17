@@ -443,3 +443,96 @@ void fixed_guard_width( void )
     table_fixed_run( plan, 2, 1, src, dst, &r );
     fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 }
+
+/* W6: FX1's identity plan has no union, so it has no guarded half at all —
+   and `split` being a count of UNGUARDED entries rather than of guarded ones
+   is what makes that come out right: the split is the END of the plan, not
+   zero (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, fix 6). */
+void fixed_fx1_partition( void )
+{
+    fixed_partition_is_held( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded, "FX1 identity plan" );
+    fixed_check( fx_root_fixed_plan_guarded == fx_root_fixed_plan_count,
+                 "W6: a plan with no guarded entry has its split at the END, not at zero" );
+}
+
+/* C1/C2: THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5). A counted
+   array's count is four bytes a STRANGER wrote: `v := SLE(4, record+src)`;
+   below zero it is zero and past the READER's own bound, IN ELEMENTS, it is
+   the bound, and either way `COUNT clamped` once for the field.
+
+   THE FORGERY IS IN THE BYTES and not through the writer: §3.1's write-side
+   bound checks are DEBUG ONLY by rule and clamp nothing. The identity plan is
+   what carries `count` (§4.1), so this reads its own file. */
+void fixed_fx1_count_clamp( void )
+{
+    FxRoot one;
+    static uint8_t file[8192];
+    int64_t need, body_off;
+    uint32_t count_at = 0xFFFFFFFFu;
+    int32_t bound = -1;
+    int32_t count_rows = 0;
+    int32_t i;
+
+    fx_root_reset( &one );
+    one.marks[0] = 7; one.marks[1] = 8;
+    one.marks_count = 2;
+    need = fx_root_fixed_measure( 1 );
+    fixed_check( need > 0 && need <= (int64_t) sizeof( file ), "count clamp: the record fits the buffer" );
+    fixed_check( fx_root_fixed_save( &one, 1, file, need ) == need, "count clamp: the record saves" );
+    body_off = kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+
+    /* THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
+       number in this file: the identity plan carries exactly ONE `count` op and
+       it is `marks`', because `blob`'s count rides in its own `text` row's `aux`
+       and never as a `count` entry (§4.1, fix 10). A `count` op's `size` IS the
+       reader's own bound IN ELEMENTS, which for `marks [..4]int32` is four. */
+    for ( i = 0; i < fx_root_fixed_plan_count; ++i )
+    {
+        if ( fx_root_fixed_plan[i].op != kTableFixedCount ) { continue; }
+        count_rows++;
+        count_at = fx_root_fixed_plan[i].src;
+        bound = (int32_t) fx_root_fixed_plan[i].size;
+    }
+    fixed_check( count_rows == 1, "count clamp: the identity plan carries exactly ONE count op, so the row below is `marks`'" );
+    fixed_check( count_at != 0xFFFFFFFFu && bound == 4, "count clamp: and its bound is FOUR ELEMENTS — `marks [..4]int32`'s own Max" );
+    fixed_check( table_fixed_get32( file + body_off + count_at ) == 2,
+                 "count clamp: and the offset it names is where the live count really is" );
+
+    /* C1: A COUNT BELOW ZERO. Not a large number — zero, and one clamp. */
+    {
+        FxRoot back;
+        TableReport r;
+        table_fixed_put32( file + body_off + count_at, 0xFFFFFFFFu ); /* -1, as the wire spells it */
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &back, 1, file, need, g_plan, PlanCapacity, NULL, &r ) == 1,
+                     "C1: a forged count of -1 still READS — a clamp is not a refusal" );
+        fixed_check( back.marks_count == 0, "C1: a count below zero clamps to ZERO" );
+        fixed_check( r.clamped == 1, "C1: and counts exactly one clamp" );
+        fixed_check( !r.malformed && !r.refused, "C1: a clamp is neither malformed nor a refusal" );
+    }
+
+    /* C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS. */
+    {
+        FxRoot back;
+        TableReport r;
+        table_fixed_put32( file + body_off + count_at, (uint32_t) ( bound + 1 ) );
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &back, 1, file, need, g_plan, PlanCapacity, NULL, &r ) == 1,
+                     "C2: a forged count of Max+1 still READS" );
+        fixed_check( back.marks_count == bound, "C2: a count past Max clamps to MAX, in elements" );
+        fixed_check( r.clamped == 1, "C2: and counts exactly one clamp" );
+        fixed_check( back.marks[0] == 7 && back.marks[1] == 8, "C2: the live elements are still the record's" );
+    }
+
+    /* AND THE CONTROL: the bound itself is not a clamp. */
+    {
+        FxRoot back;
+        TableReport r;
+        table_fixed_put32( file + body_off + count_at, (uint32_t) bound );
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &back, 1, file, need, g_plan, PlanCapacity, NULL, &r ) == 1,
+                     "count clamp: a count of exactly Max reads" );
+        fixed_check( back.marks_count == bound && r.clamped == 0,
+                     "CONTROL: a count of exactly Max is in range and counts NOTHING" );
+    }
+}

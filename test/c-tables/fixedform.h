@@ -90,6 +90,37 @@ void fixed_guard_width( void );
    parameter the way they do for fixed_fx1_read_fx2. */
 void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes );
 
+/* W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD
+   SIZE (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). It is the C twin of the
+   reference's record_bound_case and lives beside the layout validation because
+   it hand-builds the same hostile layouts, one byte past the bound and then
+   exactly at it. */
+void fixed_fx1_record_bound( void );
+
+/* C1/C2: THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5). A counted
+   array's count is four bytes a STRANGER wrote: below zero it reads as zero
+   and past the reader's own bound, in elements, it is the bound, and either
+   way the read counts ONE clamp and is neither malformed nor a refusal. */
+void fixed_fx1_count_clamp( void );
+
+/* W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,
+   fix 6). Every unguarded entry first, then every guarded one, `split` is the
+   number of unguarded entries, and no coalesced run crosses the split. The
+   helper is called once per generation from the translation unit that names
+   its types, because C has no namespace to put them all in one. */
+void fixed_partition_is_held( const void * plan, int32_t count, int32_t split, const char * who );
+void fixed_fx1_partition( void );
+void fixed_ut1_partition( void );
+void fixed_ut2_partition( void );
+void fixed_v1_partition( void );
+
+/* W16: AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG (docs/FIXED-FORM-ALGORITHM.md
+   §4.1, §5.8 row 6). Its fixture is test/tables/FG1.schema; the case asserts the
+   plan's conjoined guard lanes and then a record whose outer tag selects the
+   other arm, where the other arm's own field sharing storage with the inner tag
+   is what makes a stray inner entry visible. */
+void fixed_fg1_nested_union( void );
+
 /* THE BYTE-FLIP FUZZ's reader (docs/SPEC-TABLES.md §3.4, "held by test"): it
    makes no claim about the values, only that the read answers one of the three
    ways the form allows and never leaves the buffer doing it. Every offset this

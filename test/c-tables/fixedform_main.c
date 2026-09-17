@@ -82,6 +82,17 @@ int main( void )
     fixed_fx1_text_content();
     fixed_guard_width();
 
+    /* W6, C1/C2 and W10, the four #876 fixtures the reference grew first
+       (test/tables/fixedform_main.cpp): the plan's partition, the count clamp
+       forged in the bytes, and the compiled entry bound. */
+    fixed_fx1_partition();
+    fixed_ut1_partition();
+    fixed_ut2_partition();
+    fixed_v1_partition();
+    fixed_fx1_count_clamp();
+    fixed_fx1_record_bound();
+    fixed_fg1_nested_union();
+
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
     fixed_skip( "fixed_ut1_read_ut2 (TEXT UNDER THE SECOND ARM, compiled: the arg lane's own probe)", LineageHarness ); /* fixed_ut1_read_ut2( g_buffer, n ); */

@@ -44,3 +44,11 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
     fixed_check( r.clamped == 0 && !r.malformed && !r.refused,
                  "C two lanes, compiled: a clean read moves no counter" );
 }
+
+/* W6: UT2's identity plan is partitioned by the same rule as UT1's
+   (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, fix 6). The check itself is the one
+   definition in fixedform_ut1.c, called from the unit that names these types. */
+void fixed_ut2_partition( void )
+{
+    fixed_partition_is_held( ut_root_fixed_plan, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, "UT2 identity plan" );
+}
