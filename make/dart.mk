@@ -204,14 +204,20 @@ DART_FUZZ_MUTANTS ?= 4000
 
 # THE FUZZER'S NEGATIVE CONTROL, on the same rule as the block form's C++ one: a
 # fuzzer that has never gone red proves nothing about the reader it points at.
-# ONE CHECK is removed from the block Open — the count against the declared
-# maximum — in a COPY of the emitter, the corpus is regenerated from the
-# sabotaged compiler, and the oracle must find it. No tracked file is written
-# to, so an interrupt cannot leave a sabotaged working tree.
+# BOTH HALVES OF THE EXTENT BOUND are removed from the block Open — the rows
+# against the caller's extent and the padding check behind it — in a COPY of
+# the emitter, the corpus is regenerated from the sabotaged compiler, and the
+# oracle must find it. Removing the rows bound ALONE leaves the reader correct:
+# the padding check downstream computes `extent - used` and refuses on the
+# negative slack, which is why the control names two clauses rather than one,
+# and why it removes the whole layer rather than the count's declared-maximum
+# check beside it. No tracked file is written to, so an interrupt cannot leave
+# a sabotaged working tree.
 .PHONY: tables-dart-fuzz-negative-control tables-dart-release
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
+	@sed -e 's|if (rows > extent - offsetOf) {|if (false) { // SABOTAGED: the rows bound is gone|' \
+	     -e 's|if (padding > extent - used) {|if (false) { // SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -224,14 +230,14 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-nc/generated/pointers/|g" \
 		test/dart-tables/fuzz.dart > build/dart-fuzz-nc/fuzz.dart
 	@if $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the count bound removed"; \
+		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with both extent bounds removed"; \
 		tail -5 build/dart-fuzz-nc/log; exit 1; \
 	fi
-	@grep -q "past the declared" build/dart-fuzz-nc/log || \
+	@grep -q "past the claimed" build/dart-fuzz-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
 		  tail -20 build/dart-fuzz-nc/log; exit 1; }
-	@grep -m1 "past the declared" build/dart-fuzz-nc/log
-	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
+	@grep -m1 "past the claimed" build/dart-fuzz-nc/log
+	@echo "negative control: both halves of the Dart block Open's extent bound removed turns the fuzzer RED"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
