@@ -1026,7 +1026,20 @@ func (p *parser) parsePrimary() ast.Expr {
 			}
 			return &ast.MaxExpr{Pos: t.Pos, Enum: t.Text, Sel: m.Text}
 		}
-		return &ast.IdentExpr{Pos: t.Pos, Name: t.Text}
+		// a `::`-qualified name (SPEC §4.2, `cpp_native`): the segments join
+		// into one identifier so the binding keeps the global C++ spelling —
+		// `math::Vec2` reaches the emitter whole and is `::`-qualified there.
+		name := t.Text
+		for p.kind() == scanner.Colon && p.peek().Kind == scanner.Colon {
+			p.advance() // the first ':'
+			p.advance() // the second ':'
+			seg := p.expect(scanner.Ident, "a type name after ::")
+			if seg.Kind != scanner.Ident {
+				break
+			}
+			name += "::" + seg.Text
+		}
+		return &ast.IdentExpr{Pos: t.Pos, Name: name}
 	case scanner.LParen:
 		p.advance()
 		x := p.parseExpr()
