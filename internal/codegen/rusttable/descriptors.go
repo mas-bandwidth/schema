@@ -1,0 +1,451 @@
+// The reflection descriptors (docs/SPEC-TABLES.md §8) and the text form's
+// per-table entry points (§16), for Rust.
+//
+// The descriptors are CONSTANT DATA — statics, reachable from any thread —
+// and they carry real storage offsets, because a Rust #[repr(C)] record has
+// them. That is what lets the text form be ONE generic walk over the
+// descriptors rather than a codec per table.
+package rusttable
+
+import (
+	"fmt"
+	"math/big"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+func (g *gen) emitDescriptors(members []*ir.Struct) {
+	g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n")
+	g.pf("//\n")
+	g.pf("// Static field descriptors for every type in the table closure: name, wire\n")
+	g.pf("// id and kind, storage offset, bounds, ranges, the enum/union vocabulary\n")
+	g.pf("// and its wire ids, and branch guards — enough to walk, print, diff or bind\n")
+	g.pf("// any table value at runtime with no schema files on hand. They are\n")
+	g.pf("// constant data, so this costs a lookup rather than a parse, and they are\n")
+	g.pf("// immutable, so any thread may read them.\n\n")
+	for _, st := range members {
+		g.emitDescriptor(st)
+	}
+}
+
+func (g *gen) emitDescriptor(st *ir.Struct) {
+	g.owner = st
+	defer func() { g.owner = nil }()
+	guards := guardStrings(st)
+	g.pf("pub fn %s() -> &'static TableTypeInfo {\n", fn(st.Name, "table_type"))
+	reset := g.resetAdapter(st)
+	for _, f := range st.Fields {
+		g.pf("unsafe fn reset_%s(base: *mut u8) { unsafe { let value = &mut *(base as *mut %s);\n", f.Name, st.Name)
+		g.emitResetField(f)
+		g.pf("} }\n")
+	}
+	// the TAG lists (docs/SPEC-TABLES.md §8.1), one static per tagged field and
+	// one for a tagged declaration, named from the descriptor row as the
+	// function's other statics are
+	for _, f := range st.Fields {
+		g.emitTagsStatic(fieldTagsName(f), f.Tags)
+	}
+	g.emitTagsStatic(typeTagsName, st.Tags)
+	g.pf("    static FIELDS: [TableFieldInfo; %d] = [\n", len(st.Fields))
+	for _, f := range st.Fields {
+		g.pf("        %s,\n", g.descriptorRow(st, f, guards[f.Name]))
+	}
+	g.pf("    ];\n")
+	g.pf("    static INFO: TableTypeInfo = TableTypeInfo {\n")
+	extent := "None"
+	if hasExtentStruct(st) {
+		extent = "Some(" + fn(st.Name, "wire_extent") + ")"
+	}
+	g.pf("wire_extent:%s,\n", extent)
+	slot := uint64(0)
+	if st.IsTable && st.MapEntryOf == "" {
+		slot = g.messageName(ir.TableWireId(st.WireName()))
+	}
+	g.pf("message_slot:%d,message_save:|w,p|unsafe{%s(w,&*(p as *const %s))},\n", slot, fn(st.Name, "save_message_body"), st.Name)
+	g.pf("        name: %q, blob: 0,\n", st.Name)
+	g.pf("id: 0x%016x, align: core::mem::align_of::<%s>() as u32,\n initialize: |p| unsafe { (p as *mut %s).write(%s::default()); },\n save_body: |w,p| unsafe { %s(w,&*(p as *const %s)) },\n load_body: |r,report,p| unsafe { %s(r,report,&mut *(p as *mut %s)) },\n visit_refs: %s, rewrite_refs: %s,\n", ir.TableWireId(st.WireName()), st.Name, st.Name, st.Name, fn(st.Name, "save_body"), st.Name, fn(st.Name, "load_body"), st.Name, fn(st.Name, "visit_refs"), fn(st.Name, "rewrite_refs"))
+	g.pf("        size: core::mem::size_of::<%s>() as u32,\n", st.Name)
+	g.pf("        num_fields: %d,\n", len(st.Fields))
+	g.pf("        fields: &FIELDS,\n")
+	g.pf("        reset: %s,\n", reset)
+	doc, numTags, tags := annotationColumns(st.Doc, st.Tags, typeTagsName)
+	g.pf("        doc: %s,\n", doc)
+	g.pf("        num_tags: %d,\n", numTags)
+	g.pf("        tags: %s,\n", tags)
+	g.pf("    };\n")
+	g.pf("    &INFO\n}\n\n")
+}
+
+// typeTagsName is the name of the tag-list static a tagged declaration's
+// TableTypeInfo points at, and fieldTagsName the one a tagged field's row
+// points at. Both are scoped to the <name>_table_type function that holds
+// them, so they take no crate-level name from the schema author.
+const typeTagsName = "TAGS"
+
+func fieldTagsName(f *ir.Field) string { return ir.RustConstName(f.Name) + "_TAGS" }
+
+// emitTagsStatic emits one tag list as a static array of string literals
+// (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
+// absence is 0 and None in the row, never a per-row array.
+func (g *gen) emitTagsStatic(name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	g.pf("    static %s: [&str; %d] = [%s];\n", name, len(tags), ir.QuotedTags(tags))
+}
+
+// annotationColumns renders a row's doc, num_tags and tags columns: the shared
+// empty doc, and None where the item carries no tags. An absent tag list is
+// spelled the way every other absent column in a Rust row is spelled, so a
+// walk tests one thing to know whether a list is there.
+func annotationColumns(doc string, tags []string, tagsName string) (string, int, string) {
+	docColumn := "TABLE_DOC_NONE"
+	if doc != "" {
+		docColumn = ir.QuoteDoc(doc)
+	}
+	list := "None"
+	if len(tags) > 0 {
+		list = "Some(&" + tagsName + ")"
+	}
+	return docColumn, len(tags), list
+}
+
+// resetAdapter is the descriptor's reset hook: a private free function that
+// restores one instance's declared defaults through a raw pointer. It is a
+// named item rather than a closure because a static's initializer must be a
+// constant, and a fn item is one.
+func (g *gen) resetAdapter(st *ir.Struct) string {
+	name := fn(st.Name, "table_reset_at")
+	g.pf("    unsafe fn %s(storage: *mut u8) {\n", name)
+	g.pf("        unsafe { %s(&mut *(storage as *mut %s)) }\n", fn(st.Name, "reset"), st.Name)
+	g.pf("    }\n")
+	return name
+}
+
+// descriptorRow renders one TableFieldInfo literal.
+func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
+	row := g.descriptorRowAt(f, guard, "reset_"+f.Name, func(member string) string { return offsetOf(st.Name, member) })
+	if f.IsList() || f.IsMap() {
+		row = strings.Replace(row, "sequence: None,", "sequence: Some("+sequenceName(st, f)+"),", 1)
+	}
+	return row
+}
+func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(string) string) string {
+	var b strings.Builder
+	// the descriptor's kind column is the FIELD's kind, and for an array, a
+	// string or a `bytes` it is the ELEMENT's: `bytes` rides as an array of u8
+	// and its element kind is what tells the text form it is base64 rather
+	// than a positional array of numbers.
+	kind := ir.TableWireScalarKind(f)
+	if f.IsMap() {
+		kind = ir.TableKindTable
+	}
+	if !f.Type.Pointer && f.Type.Kind == ir.TBytes {
+		kind = ir.TableElemKind(f)
+	}
+
+	arrayBound := "0"
+	isArray := "false"
+	counted := "false"
+	countOffset := "u32::MAX"
+	presentOffset := "u32::MAX"
+	elemSize := fmt.Sprintf("core::mem::size_of::<%s>() as u32", sequenceType(f))
+
+	switch {
+	case f.IsList() || f.IsMap():
+		isArray, counted = "true", "true"
+		countOffset = "(" + offset(f.Name) + " + 8)"
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
+		arrayBound = fmt.Sprint(f.Type.Size)
+		counted = "true"
+		countOffset = offset(f.Name + "_length")
+		elemSize = fmt.Sprintf("%d", f.Type.Size)
+		if f.Type.Kind == ir.TWString {
+			elemSize = fmt.Sprint(f.Type.Size * 2)
+		}
+	case f.Type.Kind == ir.TBytes:
+		arrayBound = fmt.Sprint(f.Type.Size)
+		isArray = "true"
+		counted = "true"
+		countOffset = offset(f.Name + "_length")
+		elemSize = "1"
+	case f.KeyEnum != "":
+		arrayBound = fmt.Sprintf("%s::MAX.0 as i32", f.KeyEnum)
+		isArray = "true"
+	case f.Array == ir.ArrayCounted:
+		arrayBound = fmt.Sprint(f.ArrayBound)
+		isArray = "true"
+		counted = "true"
+		countOffset = offset(f.Name + "_count")
+	case f.Array == ir.ArrayFixed:
+		arrayBound = fmt.Sprint(f.ArrayBound)
+		isArray = "true"
+	}
+	if f.Type.Optional {
+		presentOffset = offset(f.Name + "_present")
+	}
+
+	// the declared [min, max], and a bits(N) field's IMPLIED one: N bits hold
+	// [0, 2^N - 1] whether or not the declaration spells it, and the text
+	// form's walk needs the same bounds as the wire codec
+	hasRange := "false"
+	rangeMin, rangeMax := "0.0", "0.0"
+	switch {
+	case f.HasIntRange:
+		hasRange = "true"
+		rangeMin = formatFloat(bigFloat(f.IntMin), false)
+		rangeMax = formatFloat(bigFloat(f.IntMax), false)
+	case f.HasFloatRange:
+		hasRange = "true"
+		rangeMin = formatFloat(f.FMin, false)
+		rangeMax = formatFloat(f.FMax, false)
+	case f.Type.Kind == ir.TBits:
+		hasRange = "true"
+		rangeMin = "0.0"
+		rangeMax = formatFloat(bigFloat(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))), false)
+	}
+
+	enumMax := "-1"
+	enumName := "None"
+	flagName := "None"
+	variantId := "None"
+	arms := "None"
+	table := "None"
+	switch {
+	case f.IsMap():
+		table = fmt.Sprintf("Some(%s)", fn(f.MapEntry.Name, "table_type"))
+	case f.Type.Blob():
+		table = fmt.Sprintf("Some(%s)", pointeeInfo(f.Type))
+	case isEnum(f):
+		e := enumOf(f)
+		enumMax = fmt.Sprint(e.Max)
+		enumName = fmt.Sprintf("Some(|v| enum_name_%s(%s(v as %s)))", ir.RustSnake(e.Name), e.Name, rustUint(e.StorageBits))
+		variantId = fmt.Sprintf("Some(|v| %s(v as %s).table_id().unwrap_or(0))", e.Name, rustUint(e.StorageBits))
+	case isFlags(f):
+		fl, _ := f.Type.Ref.(*ir.Flags)
+		enumMax = fmt.Sprint(len(fl.Variants) - 1)
+		flagName = fmt.Sprintf("Some(flag_name_%s)", ir.RustSnake(fl.Name))
+	case isUnion(f):
+		un := unionOf(f)
+		enumMax = fmt.Sprint(un.Max)
+		enumName = "Some(" + unionNameFn(un) + ")"
+		variantId = "Some(" + unionIdFn(un) + ")"
+		arms = fmt.Sprintf("Some(%s)", fn(un.Name, "table_union"))
+	case isStruct(f):
+		table = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "table_type"))
+	}
+
+	keyTypeName, keyName, keyId := "None", "None", "None"
+	if f.KeyEnum != "" {
+		key := f.KeyEnumRef
+		keyTypeName = fmt.Sprintf("Some(%q)", f.KeyEnum)
+		keyName = fmt.Sprintf("Some(|v| enum_name_%s(%s(v as %s)))", ir.RustSnake(key.Name), key.Name, rustUint(key.StorageBits))
+		keyId = fmt.Sprintf("Some(|v| %s(v as %s).table_id().unwrap_or(0))", key.Name, rustUint(key.StorageBits))
+	}
+
+	fmt.Fprintf(&b, "TableFieldInfo { sequence: None,\n            reset: %s,\n", reset)
+	fmt.Fprintf(&b, "            name: %q,\n", f.Name)
+	fmt.Fprintf(&b, "            json: %q,\n", ir.TableFieldJsonKey(f))
+	fmt.Fprintf(&b, "            type_name: %q,\n", tableFieldTypeName(f))
+	fmt.Fprintf(&b, "            id: 0x%016x,\n", ir.TableFieldWireId(f))
+	fmt.Fprintf(&b, "            kind: %d,\n", kind)
+	lo, hi, has := ir.TableRawRange(f)
+	rawlo, rawhi := "0", "0"
+	if has && ir.TableKindWide(kind) {
+		rawlo, rawhi = lo.String(), hi.String()
+		if ir.TableKindSigned(kind) {
+			rawlo = "(" + rawlo + "i128) as u128"
+			rawhi = "(" + rawhi + "i128) as u128"
+		}
+	}
+	fmt.Fprintf(&b, "            frac_bits: %d,\n            wide_range: %v,\n            wide_min: %s,\n            wide_max: %s,\n", f.Type.FracBits, has && ir.TableKindWide(kind), rawlo, rawhi)
+	fmt.Fprintf(&b, "            is_array: %s,\n", isArray)
+	fmt.Fprintf(&b, "            counted: %s,\n", counted)
+	fmt.Fprintf(&b, "            optional: %v,\n", f.Type.Optional)
+	fmt.Fprintf(&b, "            array_bound: %s,\n", arrayBound)
+	fmt.Fprintf(&b, "            offset: %s,\n", offset(f.Name))
+	fmt.Fprintf(&b, "            elem_size: %s,\n", elemSize)
+	fmt.Fprintf(&b, "            count_offset: %s,\n", countOffset)
+	fmt.Fprintf(&b, "            present_offset: %s,\n", presentOffset)
+	fmt.Fprintf(&b, "            table: %s,\n", table)
+	fmt.Fprintf(&b, "            has_range: %s,\n", hasRange)
+	fmt.Fprintf(&b, "            range_min: %s,\n", rangeMin)
+	fmt.Fprintf(&b, "            range_max: %s,\n", rangeMax)
+	fmt.Fprintf(&b, "            enum_max: %s,\n", enumMax)
+	fmt.Fprintf(&b, "            enum_name: %s,\n", enumName)
+	fmt.Fprintf(&b, "            flag_name: %s,\n", flagName)
+	fmt.Fprintf(&b, "            variant_id: %s,\n", variantId)
+	fmt.Fprintf(&b, "            key_type_name: %s,\n", keyTypeName)
+	fmt.Fprintf(&b, "            key_name: %s,\n", keyName)
+	fmt.Fprintf(&b, "            key_id: %s,\n", keyId)
+	fmt.Fprintf(&b, "            arms: %s,\n", arms)
+	fmt.Fprintf(&b, "            guard: %q,\n", guard)
+	doc, numTags, tags := annotationColumns(f.Doc, f.Tags, fieldTagsName(f))
+	fmt.Fprintf(&b, "            doc: %s,\n", doc)
+	fmt.Fprintf(&b, "            num_tags: %d,\n", numTags)
+	fmt.Fprintf(&b, "            tags: %s,\n", tags)
+	fmt.Fprintf(&b, "        }")
+	return b.String()
+}
+
+// offsetOf renders the const offset of one storage member. A keyed array's
+// slots begin at the array's own offset, because TableKeyed is a #[repr(C)]
+// wrapper over exactly one [T; N] member.
+func offsetOf(typeName, member string) string {
+	return fmt.Sprintf("core::mem::offset_of!(%s, %s) as u32", typeName, member)
+}
+
+// bigFloat renders a declared integer bound as the f64 the descriptor's range
+// columns carry. An int64 bound past 2^53 loses precision here, which is what
+// the column's own comment says.
+func bigFloat(v *big.Int) float64 {
+	f, _ := new(big.Float).SetInt(v).Float64()
+	return f
+}
+
+// unionNameFn / unionIdFn are the vocabulary closures a union field carries:
+// tag -> arm name, and tag -> the arm's TABLE-wire id (§5).
+func unionNameFn(un *ir.Union) string {
+	var b strings.Builder
+	b.WriteString("|v| match v {\n                0 => \"None\",\n")
+	for i, v := range un.Variants {
+		fmt.Fprintf(&b, "                %d => %q,\n", i+1, v.Name)
+	}
+	b.WriteString("                _ => \"???\",\n            }")
+	return b.String()
+}
+
+func unionIdFn(un *ir.Union) string {
+	var b strings.Builder
+	b.WriteString("|v| match v {\n")
+	for i, v := range un.Variants {
+		fmt.Fprintf(&b, "                %d => 0x%016x,\n", i+1, ir.TableWireId(v.WireName()))
+	}
+	b.WriteString("                _ => 0,\n            }")
+	return b.String()
+}
+
+// emitUnionInfos emits one accessor per union the file's closure reaches. A
+// Rust union is a REAL enum (SPEC §6.1), which has no committed payload
+// offset, so where C++ hands the walker an offset this hands it three
+// functions: read the tag, clear the value, and select an arm.
+func (g *gen) emitUnionInfos(members []*ir.Struct) {
+	for _, un := range g.unionMembers() {
+		g.emitUnionInfo(un)
+	}
+}
+
+func sortedUnionNames(m map[string]*ir.Union) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	for i := 1; i < len(names); i++ {
+		for j := i; j > 0 && names[j] < names[j-1]; j-- {
+			names[j], names[j-1] = names[j-1], names[j]
+		}
+	}
+	return names
+}
+
+func (g *gen) emitUnionInfo(un *ir.Union) {
+	name := un.Name
+	g.pf("pub fn %s() -> &'static TableUnionInfo {\n", fn(name, "table_union"))
+	g.pf("unsafe fn read_tag(storage: *const u8) -> u64 { unsafe { match &*(storage as *const %s) {\n%s::None => 0,\n", name, name)
+	for i, v := range un.Variants {
+		pat := "(_)"
+		if v.Void() {
+			pat = ""
+		}
+		g.pf("%s::%s%s => %d,\n", name, ir.GoExportName(v.Name), pat, i+1)
+	}
+	g.pf("} } }\nunsafe fn clear(storage: *mut u8) { unsafe { *(storage as *mut %s) = %s::None; } }\n", name, name)
+	g.pf("unsafe fn select(storage: *mut u8, tag: u64) -> *mut u8 { unsafe { let value = &mut *(storage as *mut %s); match tag {\n", name)
+	for i, v := range un.Variants {
+		g.pf("%d => {\n", i+1)
+		if v.Void() {
+			g.pf("*value = %s::%s; core::ptr::null_mut()\n", name, ir.GoExportName(v.Name))
+		} else {
+			g.pf("let arm = %s;\n*value = %s::%s(arm);\nmatch value { %s::%s(a) => a as *mut %s as *mut u8, _ => core::ptr::null_mut() }\n", armZero(v.F), name, ir.GoExportName(v.Name), name, ir.GoExportName(v.Name), armType(v.F))
+		}
+		g.pf("}\n")
+	}
+	g.pf("_ => core::ptr::null_mut(),\n} } }\n")
+	g.pf("unsafe fn payload(storage: *const u8, tag: u64) -> *const u8 { unsafe { match (tag, &*(storage as *const %s)) {\n", name)
+	for i, v := range un.Variants {
+		if !v.Void() {
+			g.pf("(%d, %s::%s(a)) => a as *const %s as *const u8,\n", i+1, name, ir.GoExportName(v.Name), armType(v.F))
+		}
+	}
+	g.pf("_ => core::ptr::null(),\n} } }\n")
+	for i, v := range un.Variants {
+		if v.Void() {
+			continue
+		}
+		f := v.F
+		g.emitTagsStatic(fieldTagsName(f), f.Tags)
+		g.pf("unsafe fn reset_%d(base: *mut u8) { unsafe { *(base as *mut %s) = %s; } }\n", i, armType(f), armZero(f))
+		row := g.descriptorRowAt(f, "", fmt.Sprintf("reset_%d", i), func(member string) string {
+			if !armCounted(f) {
+				return "0"
+			}
+			if member == f.Name {
+				return offsetOf(armType(f), "value")
+			}
+			return offsetOf(armType(f), "length")
+		})
+		g.pf("static ARM_%d: TableFieldInfo = %s;\n", i, row)
+	}
+	g.pf("static ARMS: [TableUnionArmInfo; %d] = [\nTableUnionArmInfo { name: \"None\", table: None, field: None },\n", len(un.Variants)+1)
+	for i, v := range un.Variants {
+		table, field := "None", "None"
+		if v.Body() {
+			table = "Some(" + fn(v.Type, "table_type") + ")"
+		}
+		if !v.Void() {
+			field = fmt.Sprintf("Some(&ARM_%d)", i)
+		}
+		g.pf("TableUnionArmInfo { name: %q, table: %s, field: %s },\n", v.Name, table, field)
+	}
+	g.pf("];\nstatic INFO: TableUnionInfo = TableUnionInfo { read_tag, clear, select, payload, arms: &ARMS };\n&INFO\n}\n\n")
+}
+
+// ---- the text form's per-table entry points (docs/SPEC-TABLES.md §16) ----
+
+func (g *gen) emitJson(members []*ir.Struct) {
+	g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n")
+	g.pf("//\n")
+	g.pf("// One table, one text, one walk over the reflection descriptors. These are\n")
+	g.pf("// the per-table entry points; the walk itself lives once in the shared\n")
+	g.pf("// runtime, which is what makes the text form schema's rather than a\n")
+	g.pf("// packer's (§16.1).\n\n")
+	for _, st := range members {
+		if g.variable[st.Name] {
+			g.pf("pub fn %s(builder:&mut TableBuilder<%s>,text:&[u8],report:&mut TableReport) -> bool { table_graph_from_json(builder,text,report) }\n", fn(st.Name, "from_json"), st.Name)
+			g.pf("pub fn %s(value:&%s,context:TableContext<'_>) -> i64 { table_graph_to_json(value,context,None) }\n", fn(st.Name, "to_json_measure"), st.Name)
+			g.pf("pub fn %s(value:&%s,context:TableContext<'_>,buffer:&mut[u8]) -> i64 { table_graph_to_json(value,context,Some(buffer)) }\n", fn(st.Name, "to_json"), st.Name)
+			continue
+		}
+		g.pf("// %s fills one caller-owned %s from the §16 text, reporting every\n", fn(st.Name, "from_json"), st.Name)
+		g.pf("// tolerance event. Unknown keys skip, a duplicate key is last-wins, a key\n")
+		g.pf("// with the wrong JSON type is skipped and counted, never coerced.\n")
+		g.pf("pub fn %s(value: &mut %s, text: &[u8], report: &mut TableReport) -> bool {\n", fn(st.Name, "from_json"), st.Name)
+		g.pf("    unsafe {\n")
+		g.pf("        table_json_read(value as *mut %s as *mut u8, %s(), text, report)\n", st.Name, fn(st.Name, "table_type"))
+		g.pf("    }\n}\n\n")
+
+		g.pf("// %s is the exact byte length %s writes — the wire's\n", fn(st.Name, "to_json_measure"), fn(st.Name, "to_json"))
+		g.pf("// measure/write symmetry, carried into the text form.\n")
+		g.pf("pub fn %s(value: &%s) -> i64 {\n", fn(st.Name, "to_json_measure"), st.Name)
+		g.pf("    unsafe {\n")
+		g.pf("        table_json_write(value as *const %s as *const u8, %s(), None)\n", st.Name, fn(st.Name, "table_type"))
+		g.pf("    }\n}\n\n")
+
+		g.pf("pub fn %s(value: &%s, buffer: &mut [u8]) -> i64 {\n", fn(st.Name, "to_json"), st.Name)
+		g.pf("    unsafe {\n")
+		g.pf("        table_json_write(value as *const %s as *const u8, %s(), Some(buffer))\n", st.Name, fn(st.Name, "table_type"))
+		g.pf("    }\n}\n\n")
+	}
+}

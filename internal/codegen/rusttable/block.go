@@ -37,7 +37,7 @@ func generateBlocks(u *ir.Unit, blocks *ir.BlockUnit, banner string) (map[string
 	}
 	for base, tables := range byFile {
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
-		b := &blockGen{unit: u}
+		b := &blockGen{unit: u, blocks: blocks}
 		for _, bl := range tables {
 			b.emitBlock(bl)
 		}
@@ -174,6 +174,7 @@ pub struct TableBlockInfo {
 
 type blockGen struct {
 	unit           *ir.Unit
+	blocks         *ir.BlockUnit
 	body           strings.Builder
 	emittedRecords map[string]bool // one descriptor per record per module
 }
@@ -482,6 +483,8 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		b.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size+1, f.Name)
 	case f.Type.Kind == ir.TString:
 		b.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))

@@ -1359,7 +1359,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ✅ `tables-rust-wire-fuzz` `tables-rust-wire-fuzz-negative-control` (fixed-class file form; the variable class and the message form remain PORTING.md M20's) | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
