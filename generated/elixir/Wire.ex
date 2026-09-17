@@ -300,10 +300,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_probe_header decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_header(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_header_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_header_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -348,12 +350,19 @@ defmodule Example.Wire do
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_probe_id = w
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeHeader{version: v_version, probe_id: v_probe_id}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_header is read_probe_header_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_header(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_header_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -444,10 +453,12 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_bits decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_bits_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -489,8 +500,6 @@ defmodule Example.Wire do
       bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_nonce = w
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.ProbeBits{
         small: v_small,
@@ -500,9 +509,18 @@ defmodule Example.Wire do
         nonce: v_nonce
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_bits is read_probe_bits_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_bits_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -629,10 +647,12 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_sample decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_sample(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_sample_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_sample_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -708,8 +728,6 @@ defmodule Example.Wire do
       n = v + 1
       if bits_read + n * 16 > num_bits, do: throw(:invalid)
       {bits_read, v_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.ProbeSample{
         active: v_active,
@@ -723,9 +741,18 @@ defmodule Example.Wire do
         samples: v_samples
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_sample is read_probe_sample_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_sample(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_sample_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -776,10 +803,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_probe_ring decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_ring(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_ring_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_ring_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -792,12 +821,19 @@ defmodule Example.Wire do
       v = rv
       bits_read = bits_read + 16
       v_radius = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeRing{radius: v_radius}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_ring is read_probe_ring_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_ring(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_ring_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -839,10 +875,12 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_slab decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_slab(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_slab_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_slab_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -860,12 +898,19 @@ defmodule Example.Wire do
       v = rv >>> 7
       bits_read = bits_read + 8
       v_height = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeSlab{width: v_width, height: v_height}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_slab is read_probe_slab_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_slab(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_slab_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -950,10 +995,12 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_shape decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_shape(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_shape_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_shape_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1000,11 +1047,18 @@ defmodule Example.Wire do
             {bits_read, %Example.ProbeShape{}}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      {:ok, v}
+      {:ok, v, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_shape is read_probe_shape_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_shape(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_shape_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1180,10 +1234,12 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_collider decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_collider(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_collider_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_collider_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1292,8 +1348,6 @@ defmodule Example.Wire do
       if v > 2, do: throw(:invalid)
       n = v
       {bits_read, v_extras} = r_probe_collider_extras(n, [], data, num_bits, bits_read)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.ProbeCollider{
         armor: v_armor,
@@ -1302,9 +1356,18 @@ defmodule Example.Wire do
         extras: v_extras
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_collider is read_probe_collider_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_collider(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_collider_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1382,10 +1445,12 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_config decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_config(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_config_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_config_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1401,12 +1466,19 @@ defmodule Example.Wire do
       v = rv >>> 32
       bits_read = bits_read + 4
       v_preferred = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeConfig{retries: v_retries, preferred: v_preferred}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_config is read_probe_config_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_config(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_config_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1468,10 +1540,12 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_array decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_array_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1489,12 +1563,19 @@ defmodule Example.Wire do
       bits_read = bits_read + 4
       v_config_preferred = v
       v_config = %Example.ProbeConfig{retries: v_config_retries, preferred: v_config_preferred}
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeArray{samples: v_samples, config: v_config}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_array is read_probe_array_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_array_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1524,10 +1605,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_heartbeat decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_heartbeat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_heartbeat_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_heartbeat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1535,11 +1618,18 @@ defmodule Example.Wire do
       end
 
       bits_read = 0
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      {:ok, %Example.Heartbeat{}}
+      {:ok, %Example.Heartbeat{}, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_heartbeat is read_heartbeat_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_heartbeat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_heartbeat_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1610,10 +1700,12 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_test decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_test(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_test_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_test_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1641,8 +1733,6 @@ defmodule Example.Wire do
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_d = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.Test{
         test_a: v_test_a,
@@ -1651,9 +1741,18 @@ defmodule Example.Wire do
         test_d: v_test_d
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_test is read_test_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_test(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_test_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1691,10 +1790,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_block decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_block_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1726,12 +1827,19 @@ defmodule Example.Wire do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_data = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.Block{data: v_data}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_block is read_block_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_block_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1775,10 +1883,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_chat decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_chat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_chat_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_chat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1814,12 +1924,19 @@ defmodule Example.Wire do
       if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.Chat{text: v_text}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_chat is read_chat_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_chat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_chat_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1928,10 +2045,12 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_report decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_probe_report(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_probe_report_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_probe_report_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -2009,12 +2128,19 @@ defmodule Example.Wire do
         test_d: v_echo_test_d
       }
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.ProbeReport{header: v_header, flags: v_flags, echo: v_echo}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_probe_report is read_probe_report_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_probe_report(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_probe_report_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2277,10 +2403,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_test_data decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_test_data(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_test_data_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_test_data_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -2442,8 +2570,6 @@ defmodule Example.Wire do
       if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.TestData{
         a: v_a,
@@ -2469,9 +2595,18 @@ defmodule Example.Wire do
         text: v_text
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_test_data is read_test_data_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_test_data(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_test_data_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2512,10 +2647,12 @@ defmodule Example.Wire do
     data
   end
 
-  # read_compressed_probe decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_compressed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_compressed_probe_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_compressed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -2535,12 +2672,19 @@ defmodule Example.Wire do
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
       v_offset = cf_decode(v, 10000.0, 10.0, -5.0)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.CompressedProbe{boundary: v_boundary, offset: v_offset}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_compressed_probe is read_compressed_probe_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_compressed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_compressed_probe_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
