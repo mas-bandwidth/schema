@@ -1125,8 +1125,8 @@ static void test_text()
     {
         // AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER,
         // never through a double (§16.2). A double carries 53 bits of mantissa,
-        // so it cannot tell 9007199254740993 from its neighbour, and a key read
-        // through one lands on the neighbour's identity: two keys the text
+        // so it cannot tell 9007199254740993 from its neighbor, and a key read
+        // through one lands on the neighbor's identity: two keys the text
         // spells separately become one entry.
         const char * t = "{\"ids\":{\"9007199254740992\":{\"count\":1},"
                          "\"9007199254740993.0\":{\"count\":2}}}";

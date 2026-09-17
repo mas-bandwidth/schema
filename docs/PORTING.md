@@ -753,7 +753,7 @@ maps with a keyed array and a union arm holding one included — and agrees with
 the reference byte for byte on all three pinned wires and on the text round
 trip, and `schema cook-check`'s MAP-SLOT clause (#380): the four clauses a
 list's slot takes, against `alignof( Entry )` and `count × sizeof( Entry )`,
-plus the fifth a list has no analogue for — the KEYS read ascending with no
+plus the fifth a list has no analog for — the KEYS read ascending with no
 repeat, because a cook a `Find` cannot search is a forgery. The tool's COOK
 and UNCOOK halves are what remains, and those two surfaces refuse a map-bearing
 unit by name until they land.

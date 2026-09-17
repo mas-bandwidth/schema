@@ -282,7 +282,7 @@ measurement of record.
 - **serialize#27's chat-write win did not survive composition —
   unattributed, next profile target.** Isolated pairing: +13.1% M2
   (102.88→116.37). v3, all merges composed: chat write 104.21 = 0.98x v2 —
-  the win is absent. Suspicion (labelled as suspicion): inlining/layout
+  the win is absent. Suspicion (labeled as suspicion): inlining/layout
   interaction in the composed `serialize.h` (#25's templates + #26's new
   operations + #27 together). Next step: profile chat write at the v3
   mains against #27's isolated base; check WriteBytes' inlining state in

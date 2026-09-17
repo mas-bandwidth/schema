@@ -393,7 +393,7 @@ func init() {
 		// lives in <Base>Table.c beside the unit's own header, so every one of its
 		// spellings could collide with a declaration in that unit. They are one
 		// family with one job, and the registry lists them rather than filtering
-		// them: a scan that has to recognise a prefix is a scan that goes blind the
+		// them: a scan that has to recognize a prefix is a scan that goes blind the
 		// day a name leaves the family.
 		Name{Name: "table_json_base64_alphabet", What: "the text form's walk"},
 		Name{Name: "table_json_base64_value", What: "the text form's base64 decode lookup"},

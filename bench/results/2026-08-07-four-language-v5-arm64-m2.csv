@@ -9,7 +9,7 @@
 # rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
 # dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
 # pinning: none
-# noise: unlabelled
+# noise: unlabeled
 # schema commit: 3baa6fd
 # serialize commit: 040d286
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct

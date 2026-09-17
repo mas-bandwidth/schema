@@ -342,7 +342,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java test/conformance/java/src/Driver.java
 
-# THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
+# THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localizes the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
 # a CHECK — the array's pitch against this build's own — so the forged image
 # `block_pitch` opens where it must refuse.
@@ -385,10 +385,10 @@ conformance-negative-control-java-block: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the forgery battery"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the CHECK"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the CHECK"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -q "^block-dump    pass" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block-dump went red too, so the control does not localise the CHECK"; \
+		{ echo "NEGATIVE CONTROL FAILED: block-dump went red too, so the control does not localize the CHECK"; \
 		  cat $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log; exit 1; }
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"

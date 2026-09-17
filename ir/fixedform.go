@@ -742,7 +742,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 // identity plan, exactly as every backend must lay it down. THE PLAN IS
 // PARTITIONED — every unguarded entry first, then every guarded one — and
 // adjacent COPY entries whose source and destination both advance together are
-// one entry. Neighbours are never merged across the split.
+// one entry. Neighbors are never merged across the split.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
 	var raw []TableFixedLeaf
 	tableFixedLeaves(u, st, 0, 0, &raw)

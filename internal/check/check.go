@@ -473,7 +473,7 @@ func (c *checker) exprKindV(e ast.Expr, visiting map[string]bool) int {
 			// state — the declared type is right there in the AST. Reading it
 			// first is what keeps classification order-free (SPEC §4.2: a
 			// const "may reference any other const in the unit, order-free
-			// across files"). Without it the resolved path honoured the
+			// across files"). Without it the resolved path honored the
 			// declared type while the shell path re-walked only the
 			// expression, so `const Mid float64 = 3` classified as float or
 			// int purely by which name sorted first — and a bare referrer
@@ -2197,7 +2197,7 @@ func contains(list []string, s string) bool {
 func (c *checker) checkCycles() {
 	const (
 		white = 0
-		grey  = 1
+		gray  = 1
 		black = 2
 	)
 	color := map[string]int{}
@@ -2205,14 +2205,14 @@ func (c *checker) checkCycles() {
 	var visit func(name string) bool
 	visit = func(name string) bool {
 		switch color[name] {
-		case grey:
+		case gray:
 			c.errs = append(c.errs, fmt.Errorf("%s", versioned(fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
 				strings.Join(path, " -> "), name))))
 			return false
 		case black:
 			return true
 		}
-		color[name] = grey
+		color[name] = gray
 		path = append(path, name)
 		if st := c.tables[name]; st != nil {
 			// tables join the composition graph exactly as types do: nesting
@@ -3072,7 +3072,7 @@ func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable boo
 	return true
 }
 
-// resolveKeyBound recognises the ENUM-KEYED array bound — a `[Name]T` whose
+// resolveKeyBound recognizes the ENUM-KEYED array bound — a `[Name]T` whose
 // Name is a declared ENUM rather than a constant (docs/SPEC-TABLES.md §2.4). The
 // two spellings never overlap, because an enum is declared: `[Name]` naming a
 // const is the fixed array it has always been, and `[Name]` naming an enum is

@@ -21,7 +21,7 @@
 // condition that is always false and a condition that is always true both
 // leave those units compiling. So each block is asked for TWICE: the fixture
 // that DECLARES the construct must still carry it and must still compile and
-// run, and its nearest neighbour — the same schema with wstring respelled
+// run, and its nearest neighbor — the same schema with wstring respelled
 // string, and the same pointered schema with the blob pointer respelled a
 // table pointer — must carry not one symbol of it. The two RESERVED TYPE IDS
 // are named on the absent side on purpose: they are compared against by the
@@ -46,7 +46,7 @@ fixed table Note
 }
 `
 
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
+// the nearest neighbor: kind 12 where the fixture above spells kind 33, and
 // nothing else moved.
 const deadCppNarrowSrc = `package probe
 
@@ -67,7 +67,7 @@ table Note
 }
 `
 
-// the nearest neighbour: the blob pointer respelled a table pointer, so the
+// the nearest neighbor: the blob pointer respelled a table pointer, so the
 // unit is still variable-length and still carries the arena, the numbering and
 // the node thunks — and no blob.
 const deadCppNodeSrc = `package probe

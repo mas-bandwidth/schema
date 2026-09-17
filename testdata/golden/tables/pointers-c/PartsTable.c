@@ -690,7 +690,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
         if ( digits >= high ) { break; }
-        /* the round-trip check runs BEFORE the decimal point is normalised:
+        /* the round-trip check runs BEFORE the decimal point is normalized:
            the token still carries whatever point snprintf just produced */
         if ( single )
         {
@@ -2810,13 +2810,13 @@ static const TableFieldInfo schema_graphdemo_stamp_fields_[] = {
 
 const TableTypeInfo schema_graphdemo_stamp_info_ = { "Stamp", (uint32_t) sizeof( Stamp ), 2, schema_graphdemo_stamp_fields_, schema_graphdemo_stamp_reset_raw_, 0, TableDocNone, 0, NULL };
 
-static const TableFieldInfo schema_graphdemo_colour_fields_[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( ( (Colour *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( ( (Colour *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( ( (Colour *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const TableFieldInfo schema_graphdemo_color_fields_[] = {
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Color, r ), (uint32_t) sizeof( ( (Color *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Color, g ), (uint32_t) sizeof( ( (Color *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( Color, b ), (uint32_t) sizeof( ( (Color *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_graphdemo_colour_info_ = { "Colour", (uint32_t) sizeof( Colour ), 3, schema_graphdemo_colour_fields_, schema_graphdemo_colour_reset_raw_, 0, TableDocNone, 0, NULL };
+const TableTypeInfo schema_graphdemo_color_info_ = { "Color", (uint32_t) sizeof( Color ), 3, schema_graphdemo_color_fields_, schema_graphdemo_color_reset_raw_, 0, TableDocNone, 0, NULL };
 
 int schema_graphdemo_stamp_from_json_( Stamp * value, const char * text, int64_t bytes, TableReport * report )
 {
@@ -2828,13 +2828,13 @@ int64_t schema_graphdemo_stamp_to_json_( const Stamp * value, char * buffer, int
     return table_json_write( value, &schema_graphdemo_stamp_info_, buffer, capacity );
 }
 
-int schema_graphdemo_colour_from_json_( Colour * value, const char * text, int64_t bytes, TableReport * report )
+int schema_graphdemo_color_from_json_( Color * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return table_json_read( value, &schema_graphdemo_colour_info_, text, bytes, report );
+    return table_json_read( value, &schema_graphdemo_color_info_, text, bytes, report );
 }
 
-int64_t schema_graphdemo_colour_to_json_( const Colour * value, char * buffer, int64_t capacity )
+int64_t schema_graphdemo_color_to_json_( const Color * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_graphdemo_colour_info_, buffer, capacity );
+    return table_json_write( value, &schema_graphdemo_color_info_, buffer, capacity );
 }
 

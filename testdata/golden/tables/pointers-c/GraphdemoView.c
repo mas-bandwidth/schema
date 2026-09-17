@@ -12,7 +12,7 @@ const UnitViewInfo * schema_graphdemo_unit_view_(void)
         { "Tier", "Graph.schema", 2, 8, 3, Tier_view_variants, TableDocNone, 0, NULL },
     };
     static const ViewType types[] = {
-        { "Colour", "Parts.schema", 0, &schema_graphdemo_colour_info_, TableDocNone, 0, NULL },
+        { "Color", "Parts.schema", 0, &schema_graphdemo_color_info_, TableDocNone, 0, NULL },
     };
     static const ViewType tables[] = {
         { "Album", "Graph.schema", 1, &schema_graphdemo_album_info_, TableDocNone, 0, NULL },
@@ -30,7 +30,7 @@ const UnitViewInfo * schema_graphdemo_unit_view_(void)
     static const ViewConstant constants[] = {
         { "MaxLayers", "Graph.schema", "int64", 0, INT64_C(4), 0.0, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "graphdemo", 0x36ff4b4cd88bf37aull,
+    static const UnitViewInfo info = { "graphdemo", 0xa3d36c2c53522fddull,
         1, types,
         11, tables,
         1, enums,

@@ -1,6 +1,6 @@
 # bench — cross-language serialize profiling harness
 
-Measures two families per language, every row labelled with its family
+Measures two families per language, every row labeled with its family
 (§1 of the standard):
 
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write
@@ -209,7 +209,7 @@ moment the pass that shows it is committed — because that pass is then the
 newest one on its axis.
 
 **Why the best of the previous three, and what that still does not stop.**
-Comparing the newest point against its immediate neighbour was defeated by a
+Comparing the newest point against its immediate neighbor was defeated by a
 single commit: land two CSVs that are each ~50% slower, and the newest is
 measured against the *other regressed file*, so the step between them is ~0%,
 the check exits 0, and the axis has quietly reset at the worse level. Measured

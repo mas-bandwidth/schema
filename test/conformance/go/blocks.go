@@ -8,7 +8,7 @@
 // bytes it carries: that is the fact two rows of the battery are about, and a
 // file alone cannot carry it. The allocation IS the claim, so a reader that
 // walks past what it was given walks into memory this driver owns rather than
-// into a neighbour's.
+// into a neighbor's.
 package main
 
 import (

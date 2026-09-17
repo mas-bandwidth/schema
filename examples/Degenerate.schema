@@ -2,7 +2,7 @@
 //
 // Every other file here carries realistic protocol structure, and that is
 // exactly what made the corpus blind: a real shape always has enough
-// neighbouring fields to mask the arrangements an emitter's run/chunk
+// neighboring fields to mask the arrangements an emitter's run/chunk
 // machinery keys on. A fixed scalar array that is essentially the whole
 // message; a unit whose every type is two floats and nothing else; a nested
 // struct that lands across a run boundary. The Go flat word codec wrote
@@ -59,7 +59,7 @@ type SpanI64
     values [2]int64
 }
 
-// [1]T: the one-element neighbour, where a loop and an unrolled element
+// [1]T: the one-element neighbor, where a loop and an unrolled element
 // differ by nothing but the emitter's decision to take either.
 type SpanOne
 {

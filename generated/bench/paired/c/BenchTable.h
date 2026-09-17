@@ -829,7 +829,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
 
    THE COALESCER ITSELF IS NOT GONE, and that is the load-bearing half of this
    note. The pass at the tail of table_fixed_compile is the same coalescer, rule
-   for rule — two neighbouring COPY entries whose source and destination both
+   for rule — two neighboring COPY entries whose source and destination both
    advance together are one entry, inside each half and never across the split —
    and it is what runs for A STRANGER'S BLOCK, which no generator can run ahead
    of time. So the two arrivals differ and the rule does not.
@@ -1440,7 +1440,7 @@ typedef struct TableFixedDst
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
    which is what this backend spells everywhere a C++ bool crosses a struct or a
    signature. They are only ever assigned 0 or 1, so the C++ code's
-   bool-against-bool comparisons below stay comparisons and need no normalising. */
+   bool-against-bool comparisons below stay comparisons and need no normalizing. */
 typedef struct TableFixedCompiler
 {
     TableFixedEntry * plan;
@@ -1470,7 +1470,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        plan comes out partitioned without a second array to partition it in. */
     if ( ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
-       side's whole defence: the plan's source offsets are arithmetic over sizes
+       side's whole defense: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */

@@ -356,7 +356,7 @@
        (let ((pct (floor (* 100 done) total)))
          (make-cell-eval :text (format nil "~D%" pct) :is-green nil :has-unknown nil)))
       (t
-       ;; Unknown leaves => explicit ? with known verified count / labelled lower bound
+       ;; Unknown leaves => explicit ? with known verified count / labeled lower bound
        (let ((pct (floor (* 100 done) total)))
          (make-cell-eval :text (format nil "? (≥ ~D%)" pct) :is-green nil :has-unknown t))))))
 

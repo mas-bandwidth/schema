@@ -8,7 +8,7 @@
 # dotnet: 10.0.400
 # rounds: 1
 # pinning: none (macOS has no taskset)
-# noise: unlabelled
+# noise: unlabeled
 # schema commit: ed65cd9 (port-java-tables)
 # serialize.cs commit: 1439c6f (main)  (the closure's type codecs only — no line of the measured table path enters it)
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline

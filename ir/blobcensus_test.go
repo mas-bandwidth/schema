@@ -132,7 +132,7 @@ func blobKindOf(u *ir.Unit, qualified string) ir.FieldTypeKind {
 	return ir.TInt // not a byte buffer: no reachable set answers with it
 }
 
-// the nearest neighbour: the same pointered unit with every blob pointer
+// the nearest neighbor: the same pointered unit with every blob pointer
 // respelled a table pointer carries no declaration at all.
 const blobCensusNodeSource = `package demo
 

@@ -317,7 +317,7 @@ static void round_trip()
     // ---- THE RESOLUTION HALF (§6.6) ----
     //
     // `parcel` is a table this reader cannot name, and every kind the walk
-    // RESOLVES rather than copies is inside it. Each value below travelled as
+    // RESOLVES rather than copies is inside it. Each value below traveled as
     // a reference RT1 rewrote to an id and RT1 rewrote back to a reference of
     // its own trailer, and RT2 read it under the vocabulary it wrote.
     CHECK( reread->parcel.grade == tblrt2::Grade::Silver );          // kind 30

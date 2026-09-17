@@ -180,7 +180,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
 #
-# The generate step and the include path are parameterised by generator binary
+# The generate step and the include path are parameterized by generator binary
 # and output root, because the big-endian negative control below regenerates
 # the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
 # be a second corpus, and the gate would stop covering what the leg covers.
@@ -328,7 +328,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	@echo "tables zero-cost gate: value-only tables carry no pointer, map or list machinery"
 
 # THE NEGATIVE CONTROL. The gate above sanctions ONE node spelling, so it owes a
-# demonstration that it still refuses the others: the nearest neighbour of the
+# demonstration that it still refuses the others: the nearest neighbor of the
 # sanctioned constant is planted in a COPY of a scanned header, and the same
 # scan must refuse it. Nothing tracked is written to.
 .PHONY: tables-zero-cost-negative-control
@@ -1953,7 +1953,7 @@ conformance-negative-control-reference-surface: build/conformance-harness build/
 		cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; \
 	fi
 	@grep -q "wire          pass" $(CONFORMANCE_REFERENCE_MISSING)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_REFERENCE_MISSING)/log; exit 1; }
 	@grep -m1 "cpp / $(CONFORMANCE_REFERENCE_SURFACE)" $(CONFORMANCE_REFERENCE_MISSING)/log
 	@echo "negative control: a SURFACE the reference leg never registers turns the harness red"
@@ -4284,7 +4284,7 @@ bench-lock:
 # drivers bench, regenerated from bench/corpus/Bench.schema's generated Go
 # codec. Deterministic — a regeneration that changes the committed file means
 # the shape or the §2.7 LCG mapping moved, and the tool refuses outright if
-# variant 0 stops equalling testdata/wire/bench_mixed.bin. Needs the
+# variant 0 stops equaling testdata/wire/bench_mixed.bin. Needs the
 # serialize.go checkout ($(SERIALIZE_GO)); the committed data's own gate,
 # bench/corpus/variants_test.go, needs nothing and runs in `make test`.
 bench-variants: generated/bench/go/.stamp
@@ -4477,7 +4477,7 @@ clean:
 # arm64 macOS at the landing, everything already built, median of three:
 #
 #   all three legs, 260 cases each   10.5 s
-#   the cpp leg alone                 0.79 s   (native execs, plus materialising)
+#   the cpp leg alone                 0.79 s   (native execs, plus materializing)
 #   the cs leg alone                 10.0 s   (`dotnet run` start-ups)
 #   the go leg alone                  1.07 s   (one native exec per surface)
 #
@@ -5393,7 +5393,7 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -q "wire          pass" build/conformance-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
@@ -5433,10 +5433,10 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on block-dump"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the ROW READ"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the ROW READ"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -q "^forgery       pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
 	@grep -m1 "cpp / block-dump" $(CONFORMANCE_NEGATIVE_BLOCK)/log
 	@echo "negative control: one byte off INSIDE A ROW turns the harness RED on block-dump alone — block still opens"

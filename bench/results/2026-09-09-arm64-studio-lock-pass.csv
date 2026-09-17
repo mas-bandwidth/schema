@@ -15,7 +15,7 @@
 # dart: not present (generated codecs, zero runtime dependency; AOT executable)
 # elixir: not present (generated codecs, zero runtime dependency; pinned BEAM toolchain)
 # pinning: none
-# noise: unlabelled
+# noise: unlabeled
 # schema commit: d697492e-dirty (packet-range-check-elision-cpp-cs)
 # serialize commit: 56a1b59 (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-new/75ee244e-e95f-4bcd-9e3b-ae04de39d592/scratchpad/serialize]
 # serialize.c commit: e67dc6a (main) [build-verified: /private/tmp/claude-501/-Users-glenn-rowan-new/75ee244e-e95f-4bcd-9e3b-ae04de39d592/scratchpad/serialize.c]

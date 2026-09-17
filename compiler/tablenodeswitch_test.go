@@ -6,7 +6,7 @@
 // array under it. Its node dispatch then has no case. The emitter used to
 // write `switch ( type_id ) { default: break; }`, which MSVC /W4 /WX refuses
 // (C4065). The switch is not emitted when it would have no case. The nearest
-// neighbour, with one reachable node, still emits the switch and names that
+// neighbor, with one reachable node, still emits the switch and names that
 // node.
 package compiler
 
@@ -59,6 +59,6 @@ func TestCppTableOmitsEmptyTypeIdSwitch(t *testing.T) {
 		t.Error("a root that can name a node must still switch on type_id")
 	}
 	if !strings.Contains(named, "case 0x") {
-		t.Error("the named neighbour's switch must carry a case")
+		t.Error("the named neighbor's switch must carry a case")
 	}
 }

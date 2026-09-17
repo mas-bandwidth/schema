@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0xa3d36c2c53522fdd (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
@@ -840,7 +840,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
 
    THE COALESCER ITSELF IS NOT GONE, and that is the load-bearing half of this
    note. The pass at the tail of table_fixed_compile is the same coalescer, rule
-   for rule — two neighbouring COPY entries whose source and destination both
+   for rule — two neighboring COPY entries whose source and destination both
    advance together are one entry, inside each half and never across the split —
    and it is what runs for A STRANGER'S BLOCK, which no generator can run ahead
    of time. So the two arrivals differ and the rule does not.
@@ -1451,7 +1451,7 @@ typedef struct TableFixedDst
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
    which is what this backend spells everywhere a C++ bool crosses a struct or a
    signature. They are only ever assigned 0 or 1, so the C++ code's
-   bool-against-bool comparisons below stay comparisons and need no normalising. */
+   bool-against-bool comparisons below stay comparisons and need no normalizing. */
 typedef struct TableFixedCompiler
 {
     TableFixedEntry * plan;
@@ -1481,7 +1481,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        plan comes out partitioned without a second array to partition it in. */
     if ( ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
-       side's whole defence: the plan's source offsets are arithmetic over sizes
+       side's whole defense: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
@@ -2678,7 +2678,7 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x8478eba1cb4a55e5ull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xcb426ebdae61e61cull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -2869,7 +2869,7 @@ static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 enum { kTableMessageRefBitsHere=6, kTableMessageEntriesHere=51, kTableAnnounceBytes=536, kTableMessageBatchMax=256 };
-static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0xe5,0x55,0x4a,0xcb,0xa1,0xeb,0x78,0x84,0x02,0x0e,0xf0,0x03,0x06,0xed,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x1c,0xe6,0x61,0xae,0xbd,0x6e,0x42,0xcb,0x02,0x0e,0xf0,0x03,0x06,0xed,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; TableNumbering * nodes; int64_t index_bits; } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
@@ -3514,7 +3514,7 @@ typedef struct TableRetainIds {
  TableRetain * retain; int32_t count; int lost;
 } TableRetainIds;
 typedef struct TableRetainWalk {TableRetain * retain;TableRetainIds * ids;TableRetainPath path;} TableRetainWalk;
-static const uint64_t table_retain_known[]={UINT64_C(0x0a8f12cc5f9a0c03),UINT64_C(0x1e4984ef2e958a4c),UINT64_C(0x24b070ada2041cb0),UINT64_C(0x24f3a319b88552c1),UINT64_C(0x2f2ec0474f1c4fe4),UINT64_C(0x327fe6dc702553fd),UINT64_C(0x39f7fcec8fcb623d),UINT64_C(0x3bf8fbbad1587cdd),UINT64_C(0x4320e9a2e32eac38),UINT64_C(0x4339ee8ab21c8380),UINT64_C(0x4554e34a747022df),UINT64_C(0x4a9a31623ab5f213),UINT64_C(0x509220bb65a646b7),UINT64_C(0x56d7ab194448a4f3),UINT64_C(0x5b25b8ef511eb395),UINT64_C(0x60839e2395be697e),UINT64_C(0x69ff34904242a73d),UINT64_C(0x6dadeaaee49d6d18),UINT64_C(0x704be0d8faaffc58),UINT64_C(0x732dfbcc9b0cf0bb),UINT64_C(0x75d8e97600b296ea),UINT64_C(0x76aaaa535714d805),UINT64_C(0x77af761956600b54),UINT64_C(0x7a8060916400fe66),UINT64_C(0x7ce4fd9430e80cea),UINT64_C(0x7e9d0b96d39e517d),UINT64_C(0x802517e298c70b03),UINT64_C(0x823b8a195ce2133c),UINT64_C(0x9d167ef77aed79b6),UINT64_C(0x9d8b8aa2b404c2c8),UINT64_C(0x9deeefd89ca8a81d),UINT64_C(0xae3b9113b7db93a4),UINT64_C(0xaf63da4c8601e926),UINT64_C(0xaf63df4c8601f1a5),UINT64_C(0xaf63ef4c86020cd5),UINT64_C(0xb97e90a3784c431d),UINT64_C(0xbb62c62c9808ea37),UINT64_C(0xc4bcadba8e631b86),UINT64_C(0xd6458a3eef83d457),UINT64_C(0xd858c2cb7f1514cc),UINT64_C(0xdd9eb981e152e90c),UINT64_C(0xe5316cbaa025f028),UINT64_C(0xeddcb72b15486e77),UINT64_C(0xee5f6d7b48b44de8),UINT64_C(0xee7ba9ad45c64144),UINT64_C(0xf60ec899a5a69fa9),UINT64_C(0xffffffffffffffff),};
+static const uint64_t table_retain_known[]={UINT64_C(0x0a8f12cc5f9a0c03),UINT64_C(0x1e4984ef2e958a4c),UINT64_C(0x24b070ada2041cb0),UINT64_C(0x24f3a319b88552c1),UINT64_C(0x2f2ec0474f1c4fe4),UINT64_C(0x327fe6dc702553fd),UINT64_C(0x344ea8f4939cdc98),UINT64_C(0x39f7fcec8fcb623d),UINT64_C(0x3bf8fbbad1587cdd),UINT64_C(0x4320e9a2e32eac38),UINT64_C(0x4339ee8ab21c8380),UINT64_C(0x4554e34a747022df),UINT64_C(0x4a9a31623ab5f213),UINT64_C(0x509220bb65a646b7),UINT64_C(0x56d7ab194448a4f3),UINT64_C(0x5b25b8ef511eb395),UINT64_C(0x60839e2395be697e),UINT64_C(0x69ff34904242a73d),UINT64_C(0x6dadeaaee49d6d18),UINT64_C(0x704be0d8faaffc58),UINT64_C(0x732dfbcc9b0cf0bb),UINT64_C(0x75d8e97600b296ea),UINT64_C(0x76aaaa535714d805),UINT64_C(0x77af761956600b54),UINT64_C(0x7a8060916400fe66),UINT64_C(0x7ce4fd9430e80cea),UINT64_C(0x802517e298c70b03),UINT64_C(0x823b8a195ce2133c),UINT64_C(0x9d167ef77aed79b6),UINT64_C(0x9d8b8aa2b404c2c8),UINT64_C(0x9deeefd89ca8a81d),UINT64_C(0xae3b9113b7db93a4),UINT64_C(0xaf63da4c8601e926),UINT64_C(0xaf63df4c8601f1a5),UINT64_C(0xaf63ef4c86020cd5),UINT64_C(0xb97e90a3784c431d),UINT64_C(0xbb62c62c9808ea37),UINT64_C(0xc4bcadba8e631b86),UINT64_C(0xd6458a3eef83d457),UINT64_C(0xd858c2cb7f1514cc),UINT64_C(0xdd9eb981e152e90c),UINT64_C(0xe5316cbaa025f028),UINT64_C(0xeddcb72b15486e77),UINT64_C(0xee5f6d7b48b44de8),UINT64_C(0xee7ba9ad45c64144),UINT64_C(0xf60ec899a5a69fa9),UINT64_C(0xffffffffffffffff),};
 static SCHEMA_UNUSED uint32_t table_retain_u32(const uint8_t * p)
 {return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
 }
@@ -4188,8 +4188,8 @@ typedef struct Stamp {
 
 static SCHEMA_UNUSED void stamp_reset( Stamp * value );
 static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage );
-static SCHEMA_UNUSED void colour_reset( Colour * value );
-static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage );
+static SCHEMA_UNUSED void color_reset( Color * value );
+static SCHEMA_UNUSED void schema_graphdemo_color_reset_raw_( void * storage );
 
 static SCHEMA_UNUSED void stamp_reset( Stamp * value )
 {
@@ -4200,32 +4200,32 @@ static SCHEMA_UNUSED void stamp_reset( Stamp * value )
 
 static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage ) { stamp_reset( (Stamp *) storage ); }
 
-static SCHEMA_UNUSED void colour_reset( Colour * value )
+static SCHEMA_UNUSED void color_reset( Color * value )
 {
     value->r = 0;
     value->g = 0;
     value->b = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage ) { colour_reset( (Colour *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_color_reset_raw_( void * storage ) { color_reset( (Color *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_save_body( TableWriter * w, const Stamp * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_load_body( TableReader * r, Stamp * value );
-static SCHEMA_UNUSED int64_t colour_measure( const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWriter * w, const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableReader * r, Colour * value );
+static SCHEMA_UNUSED int64_t color_measure( const Color * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_save_body( TableWriter * w, const Color * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_load_body( TableReader * r, Color * value );
 
 static SCHEMA_UNUSED int schema_graphdemo_stamp_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_graphdemo_colour_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_color_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int stamp_save_message_body(TableBitWriter *,const Stamp *);
-static SCHEMA_UNUSED int colour_save_message_body(TableBitWriter *,const Colour *);
+static SCHEMA_UNUSED int color_save_message_body(TableBitWriter *,const Color *);
 static SCHEMA_UNUSED int stamp_load_message_body(TableMessageReader *,Stamp *);
-static SCHEMA_UNUSED int colour_load_message_body(TableMessageReader *,Colour *);
+static SCHEMA_UNUSED int color_load_message_body(TableMessageReader *,Color *);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_colour_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_graphdemo_color_message_extent_(TableMessageReader *,int64_t *);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( TableWriter * w, const Stamp * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
@@ -4241,7 +4241,7 @@ static SCHEMA_UNUSED int stamp_save_body( TableWriter * w, const Stamp * value )
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_header_at( w, 13, 0x56d7ab194448a4f3ull, 12 );
+            table_writer_header_at( w, 14, 0x56d7ab194448a4f3ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -4545,7 +4545,7 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(TableMessageRead
  }if(!table_message_skip(r,entry))return 0;
  }
 }
-static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value )
+static SCHEMA_UNUSED int color_save_body( TableWriter * w, const Color * value )
 {
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
@@ -4598,28 +4598,28 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
+static SCHEMA_UNUSED int64_t color_measure( const Color * value )
 {
     TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
     table_writer_put8( &w, 1 );
-    if ( !colour_save_body( &w, value ) ) { return -1; }
+    if ( !color_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );
     return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED int64_t colour_save( const Colour * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t color_save( const Color * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
     table_writer_put8( &w, 1 );
-    if ( !colour_save_body( &w, value ) ) { return -1; }
+    if ( !color_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );
     return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED int colour_load_body( TableReader * r, Colour * value )
+static SCHEMA_UNUSED int color_load_body( TableReader * r, Color * value )
 {
-    colour_reset( value );
+    color_reset( value );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -4687,17 +4687,17 @@ static SCHEMA_UNUSED int colour_load_body( TableReader * r, Colour * value )
     }
 }
 
-static SCHEMA_UNUSED int colour_load( Colour * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int color_load( Color * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
-    colour_reset( value );
+    color_reset( value );
     if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return colour_load_body( &r, value );
+    return color_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int colour_save_message_body(TableBitWriter * w,const Colour * value)
+static SCHEMA_UNUSED int color_save_message_body(TableBitWriter * w,const Color * value)
 {
  (void)value;
  { /* r */
@@ -4730,7 +4730,7 @@ static SCHEMA_UNUSED int colour_save_message_body(TableBitWriter * w,const Colou
  table_bit_put(w,0,kTableMessageRefBitsHere);
  return !w->overflow;
 }
-static SCHEMA_UNUSED int64_t colour_measure_messages(const Colour * values,int64_t count,TableReport * report)
+static SCHEMA_UNUSED int64_t color_measure_messages(const Color * values,int64_t count,TableReport * report)
 {
  TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
  int64_t i;
@@ -4741,11 +4741,11 @@ static SCHEMA_UNUSED int64_t colour_measure_messages(const Colour * values,int64
  }
  table_bit_put(&w,2,8);
  table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!colour_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) if(!color_save_message_body(&w,values+i)) return -1;
  table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
-static SCHEMA_UNUSED int64_t colour_save_messages(const Colour * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+static SCHEMA_UNUSED int64_t color_save_messages(const Color * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
  TableBitWriter w=table_bit_writer(buffer,capacity);
  int64_t i;
@@ -4757,13 +4757,13 @@ static SCHEMA_UNUSED int64_t colour_save_messages(const Colour * values,int64_t 
  if(buffer==NULL || capacity<0) return -1;
  table_bit_put(&w,2,8);
  table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!colour_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) if(!color_save_message_body(&w,values+i)) return -1;
  table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
-static SCHEMA_UNUSED int colour_load_message_body(TableMessageReader * r,Colour * value)
+static SCHEMA_UNUSED int color_load_message_body(TableMessageReader * r,Color * value)
 {
- colour_reset(value);
+ color_reset(value);
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
@@ -4827,7 +4827,7 @@ static SCHEMA_UNUSED int colour_load_message_body(TableMessageReader * r,Colour 
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int colour_load_messages(Colour * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+static SCHEMA_UNUSED int color_load_messages(Color * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
  TableReport ignored={0};
  TableMessageReader r;
@@ -4844,11 +4844,11 @@ static SCHEMA_UNUSED int colour_load_messages(Colour * values,int64_t * count,co
  report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!colour_load_message_body(&r,values+i))return 0;
+ for(i=0;i<bodies;i++){if(!color_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_graphdemo_colour_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_color_message_extent_(TableMessageReader * r,int64_t * at)
 {
  (void)at;
  for(;;){const TableMessageEntry * entry;
@@ -5032,10 +5032,10 @@ static SCHEMA_UNUSED int64_t stamp_fixed_load( Stamp * values, int64_t capacity,
 
 static SCHEMA_UNUSED int stamp_save_body_retain(TableWriter *,const Stamp *, TableRetainWalk retention);
 static SCHEMA_UNUSED int stamp_load_body_retain(TableReader *,Stamp *, TableRetainWalk retention);
-static SCHEMA_UNUSED int colour_save_body_retain(TableWriter *,const Colour *, TableRetainWalk retention);
-static SCHEMA_UNUSED int colour_load_body_retain(TableReader *,Colour *, TableRetainWalk retention);
+static SCHEMA_UNUSED int color_save_body_retain(TableWriter *,const Color *, TableRetainWalk retention);
+static SCHEMA_UNUSED int color_load_body_retain(TableReader *,Color *, TableRetainWalk retention);
 static SCHEMA_UNUSED int stamp_load_message_body_retain(TableMessageReader *,Stamp *, TableRetainWalk retention);
-static SCHEMA_UNUSED int colour_load_message_body_retain(TableMessageReader *,Colour *, TableRetainWalk retention);
+static SCHEMA_UNUSED int color_load_message_body_retain(TableMessageReader *,Color *, TableRetainWalk retention);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( TableWriter * w, const Stamp * value , TableRetainWalk retention)
 {
     (void)retention;
@@ -5321,7 +5321,7 @@ static SCHEMA_UNUSED int stamp_load_message_body_retain(TableMessageReader * r,S
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour * value , TableRetainWalk retention)
+static SCHEMA_UNUSED int color_save_body_retain( TableWriter * w, const Color * value , TableRetainWalk retention)
 {
     (void)retention;
 
@@ -5369,11 +5369,11 @@ static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour 
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * value , TableRetainWalk retention)
+static SCHEMA_UNUSED int color_load_body_retain( TableReader * r, Color * value , TableRetainWalk retention)
 {
     (void)retention;
 
-    colour_reset( value );
+    color_reset( value );
     TableRetainWalk body_keep=retention;
     table_retain_discard(retention,0,0);
     for ( ;; )
@@ -5472,13 +5472,13 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
     }
 }
 
-static SCHEMA_UNUSED int colour_load_message_body_retain(TableMessageReader * r,Colour * value, TableRetainWalk retention)
+static SCHEMA_UNUSED int color_load_message_body_retain(TableMessageReader * r,Color * value, TableRetainWalk retention)
 {
     (void)retention;
 
  TableRetainWalk body_keep=retention;
  table_retain_discard(retention,0,0);
- colour_reset(value);
+ color_reset(value);
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
@@ -5556,15 +5556,15 @@ static SCHEMA_UNUSED int colour_load_message_body_retain(TableMessageReader * r,
 /* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define stamp_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
-#define colour_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+#define color_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
-#define colour_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+#define color_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
-#define colour_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+#define color_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
-#define colour_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+#define color_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
-#define colour_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+#define color_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
 /* stamp_open: match the header and POINT. On a match the bytes ARE what this
@@ -5612,9 +5612,9 @@ static SCHEMA_UNUSED int stamp_cook(const Stamp * value,void * output,uint64_t c
     table_cook_put(raw+96,UINT64_C(0xae3b9113b7db93a4),8,order);
     table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,24,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_graphdemo_colour_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_graphdemo_color_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
 {
-    const Colour * value=(const Colour *)storage;
+    const Color * value=(const Color *)storage;
     (void)n; (void)at; (void)value; (void)order;
     table_cook_put(at+0,(uint64_t)value->r,1,order);
     table_cook_put(at+1,(uint64_t)value->g,1,order);
@@ -5644,11 +5644,11 @@ SCHEMA_TABLE_STATIC_ASSERT( Stamp_sizeof, sizeof( Stamp ) == 20, "Stamp's sizeof
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_alignof, SCHEMA_TABLE_ALIGNOF( Stamp ) == 4, "Stamp's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_tag_offset, offsetof( Stamp, tag ) == 0, "Stamp's field tag moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_seq_offset, offsetof( Stamp, seq ) == 16, "Stamp's field seq moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_sizeof, sizeof( Colour ) == 3, "Colour's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_alignof, SCHEMA_TABLE_ALIGNOF( Colour ) == 1, "Colour's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_r_offset, offsetof( Colour, r ) == 0, "Colour's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_g_offset, offsetof( Colour, g ) == 1, "Colour's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_b_offset, offsetof( Colour, b ) == 2, "Colour's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_sizeof, sizeof( Color ) == 3, "Color's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_alignof, SCHEMA_TABLE_ALIGNOF( Color ) == 1, "Color's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_r_offset, offsetof( Color, r ) == 0, "Color's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_g_offset, offsetof( Color, g ) == 1, "Color's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_b_offset, offsetof( Color, b ) == 2, "Color's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
 
 /* ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
@@ -5659,10 +5659,10 @@ SCHEMA_TABLE_STATIC_ASSERT( Colour_b_offset, offsetof( Colour, b ) == 2, "Colour
    time. */
 
 extern const TableTypeInfo schema_graphdemo_stamp_info_;
-extern const TableTypeInfo schema_graphdemo_colour_info_;
+extern const TableTypeInfo schema_graphdemo_color_info_;
 
 static SCHEMA_UNUSED const TableTypeInfo * stamp_table_type( void ) { return &schema_graphdemo_stamp_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * colour_table_type( void ) { return &schema_graphdemo_colour_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * color_table_type( void ) { return &schema_graphdemo_color_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -5681,19 +5681,19 @@ static SCHEMA_UNUSED int64_t stamp_to_json( const Stamp * value, char * buffer, 
     return schema_graphdemo_stamp_to_json_( value, buffer, capacity );
 }
 
-/* Colour in and out of a JSON text — one instance, one text, the generic
+/* Color in and out of a JSON text — one instance, one text, the generic
    walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
    PartsTable.c; compile it to use them. */
-int schema_graphdemo_colour_from_json_( Colour * value, const char * text, int64_t bytes, TableReport * report );
-int64_t schema_graphdemo_colour_to_json_( const Colour * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int colour_from_json( Colour * value, const char * text, int64_t bytes, TableReport * report )
+int schema_graphdemo_color_from_json_( Color * value, const char * text, int64_t bytes, TableReport * report );
+int64_t schema_graphdemo_color_to_json_( const Color * value, char * buffer, int64_t capacity );
+static SCHEMA_UNUSED int color_from_json( Color * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return schema_graphdemo_colour_from_json_( value, text, bytes, report );
+    return schema_graphdemo_color_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t colour_to_json_measure( const Colour * value ) { return schema_graphdemo_colour_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t colour_to_json( const Colour * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t color_to_json_measure( const Color * value ) { return schema_graphdemo_color_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t color_to_json( const Color * value, char * buffer, int64_t capacity )
 {
-    return schema_graphdemo_colour_to_json_( value, buffer, capacity );
+    return schema_graphdemo_color_to_json_( value, buffer, capacity );
 }
 
 

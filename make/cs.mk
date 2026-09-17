@@ -67,7 +67,7 @@ generated/cs/.stamp: bin/schema $(SCHEMAS)
 # translation unit behind a guard. So the gate asserts two things: exactly one
 # file per unit directory carries a walker, and every walker in the corpus is
 # the same bytes. The package name never enters the markers, so nothing is
-# normalised away here either.
+# normalized away here either.
 .PHONY: tables-cs-json-walk
 tables-cs-json-walk: build/tables-generated-cs/.stamp
 	@rm -rf build/json-walk-cs && mkdir -p build/json-walk-cs
@@ -360,7 +360,7 @@ build-conformance-cs: build/tables-generated-cs/.stamp
 # (tables-json-negative-control). A C# field has no offset — the descriptor
 # carries accessors instead (§8.1) — so the twin of that arithmetic is the FIELD
 # INDEX the read path looks a descriptor up by: one key's value lands in its
-# neighbour's field. It is bounded on purpose, so a table with an odd field
+# neighbor's field. It is bounded on purpose, so a table with an odd field
 # count cannot turn the control into an exception rather than a wrong answer,
 # and it touches the READ path only.
 #

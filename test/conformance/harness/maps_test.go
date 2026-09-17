@@ -222,10 +222,10 @@ func TestWhitespaceIsNeverPartOfAMapKey(t *testing.T) {
 
 // AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER, never
 // through a double (docs/SPEC-TABLES.md §16.2). A double carries 53 bits of
-// mantissa, so it cannot tell 9007199254740993 from its neighbour, and a key
-// read through one lands on the neighbour's identity: two keys the text spells
+// mantissa, so it cannot tell 9007199254740993 from its neighbor, and a key
+// read through one lands on the neighbor's identity: two keys the text spells
 // separately become one entry.
-func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
+func TestADecimalMapKeyDoesNotRoundIntoItsNeighbor(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report

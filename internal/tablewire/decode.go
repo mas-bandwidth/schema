@@ -911,7 +911,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent
-		// continues at the next field — a neighbour's bytes are never
+		// continues at the next field — a neighbor's bytes are never
 		// fabricated into elements (§4)
 		sub := r.subTo(end)
 		if f.Type.Kind == ir.TBytes {

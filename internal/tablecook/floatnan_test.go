@@ -58,7 +58,7 @@ func TestACookCarriesAFloatBitPattern(t *testing.T) {
 
 		// THE SLOT ITSELF, read out of the region: the pattern is in the four
 		// bytes, in the cook's own byte order, and a re-encode that agreed
-		// while the slot did not would be two errors cancelling.
+		// while the slot did not would be two errors canceling.
 		h, err := tablecook.ReadHeader(cooked, ir.BuildVersion(u))
 		if err != nil {
 			t.Fatal(err)

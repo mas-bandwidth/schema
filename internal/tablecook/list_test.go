@@ -127,7 +127,7 @@ func squadCook(u *ir.Unit, delta int64, count int32, keys []uint8) []byte {
 // TestCookCheckMapSlot is §7.4's MAP-SLOT clause (docs/SPEC-TABLES.md §2.8,
 // §7.4): the four clauses a list's slot already takes — CONTAINMENT,
 // ALIGNMENT, FIT and NO OVERLAP against the holder's own extent — and the
-// FIFTH one a list has no analogue for, the KEYS read ascending with no
+// FIFTH one a list has no analog for, the KEYS read ascending with no
 // repeat, because a cook's `Find` is a binary search in place over those
 // bytes. The Makefile's negative control drops the containment test through an
 // overlay and requires this test to go red beside the list's.

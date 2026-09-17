@@ -538,7 +538,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("   THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission\n")
 	g.pf("   to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers\n")
 	g.pf("   allocates, locks or takes an atomic. The parallelism itself lives in the\n")
-	g.pf("   caller's loop — N workers, disjoint index ranges, no synchronisation of any\n")
+	g.pf("   caller's loop — N workers, disjoint index ranges, no synchronization of any\n")
 	g.pf("   kind — and keeping this surface free of those three is what MAKES it\n")
 	g.pf("   possible. */\n\n")
 

@@ -5014,7 +5014,7 @@ table has neither a registry nor per-type descriptors yet.
 ### Where to go next
 
 [SPEC.md](SPEC.md) is the packet language precisely: the grammar, every field
-kind's wire encoding, the trust model, and the refusal catalogue.
+kind's wire encoding, the trust model, and the refusal catalog.
 
 [SPEC-TABLES.md](SPEC-TABLES.md) is the table system end to end: the wire, the
 two classes, the cook, the block, the baseline, and every ruling with its

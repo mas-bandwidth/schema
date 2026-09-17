@@ -4,7 +4,7 @@ import "testing"
 
 func TestRegionGraphs(t *testing.T) {
 	runGenerated(t, `package probe
-type Colour { r uint8 }
+type Color { r uint8 }
 fixed table Leaf { value int32 = 7 }
 table Node {
  value int32
@@ -12,7 +12,7 @@ table Node {
  leaf *Leaf
 }
 table Root {
- colour Colour
+ color Color
  head *Node
  alias *Node
  leaves [..3]*Leaf
@@ -21,7 +21,7 @@ table Root {
 import("testing";"bytes";"unsafe";"sync")
 func aligned(n int64) []byte { raw:=make([]byte,n+tableRegionAlign);off:=(-uintptr(unsafe.Pointer(&raw[0])))&uintptr(tableRegionAlign-1);return raw[off:off+uintptr(n)] }
 func TestGraphs(t *testing.T) {
- var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();r:=b.GetRoot();r.Colour.R=2
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();r:=b.GetRoot();r.Color.R=2
  n:=NodeEmplace(&b.Main,&r.Head);n.Value=12
  tail:=NodeEmplace(&b.Main,&n.Next);tail.Value=19
  r.Alias=n.Next

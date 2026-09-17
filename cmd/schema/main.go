@@ -429,9 +429,9 @@ func main() {
 		}
 		// TWO READS, TWO REPORTS, EACH NAMED. `cook --in <dir>` packs the tree
 		// and then cooks the wire, so it reads twice and reports twice — and
-		// two identical unlabelled lines read as the cook having read one
+		// two identical unlabeled lines read as the cook having read one
 		// input twice (#521 G-12). With a wire file for --in there is one read
-		// and the line stays unlabelled.
+		// and the line stays unlabeled.
 		stage := ""
 		if packed {
 			stage = "cook"

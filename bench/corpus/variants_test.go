@@ -23,7 +23,7 @@ import (
 //     size as filesize/64, so a variant of any other length would silently
 //     shift every later record.
 //   - the 64 records are pairwise distinct. §2.7 rotates 64 buffers so that
-//     one buffer cannot be memorised by the branch predictor and the caches;
+//     one buffer cannot be memorized by the branch predictor and the caches;
 //     a tool that emitted the pinned instance 64 times would pass every
 //     other check here and quietly defeat that.
 const (

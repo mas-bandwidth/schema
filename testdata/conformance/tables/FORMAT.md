@@ -153,7 +153,7 @@ refusal      <forgery> <reason>
   states: a file that fails two clauses answers the first.
 
 A forgery is carried as a PATCH rather than as a whole file because a patch is
-what a person can review. The harness materialises the file and hands a driver a
+what a person can review. The harness materializes the file and hands a driver a
 path, so no driver implements a patcher.
 
 **Three of the forgery columns are not file facts and that is why they are
@@ -255,7 +255,7 @@ node <index> <TypeName> @<byte offset>
 Pinned from the reference leg with `make conformance-pin`. C++ writes the pins
 and every other leg byte-compares them, exactly as the wire goldens work.
 
-**A value-initialised chain locks structure and almost no VALUES**, because
+**A value-initialized chain locks structure and almost no VALUES**, because
 there are almost none in it: `SceneValued` is the same chain with every
 non-pointer leaf filled (`test/cookgen --values`), so its dump locks what a
 reader READS out of a node as well as where the node is.

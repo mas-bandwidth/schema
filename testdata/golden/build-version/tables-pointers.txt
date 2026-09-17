@@ -1,16 +1,16 @@
-0x8478eba1cb4a55e5
+0xcb426ebdae61e61c
 schema-build-version 3
-protocol 36ff4b4cd88bf37a
+protocol a3d36c2c53522fdd
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Album sizeof=88 alignof=8
     field c4bcadba8e631b86 kind=12 offset=0 size=24 bound=16
-    field 1e4984ef2e958a4c kind=13 offset=24 size=3 type=Colour
+    field 1e4984ef2e958a4c kind=13 offset=24 size=3 type=Color
     field ee7ba9ad45c64144 kind=13 offset=28 size=20 type=Stamp
     field eddcb72b15486e77 kind=13 offset=48 size=24 type=Marker
     field 77af761956600b54 kind=17 offset=72 size=8 type=Marker
     field 0a8f12cc5f9a0c03 kind=17 offset=80 size=8 type=ListNode
-record Colour sizeof=3 alignof=1
+record Color sizeof=3 alignof=1
     field af63ef4c86020cd5 kind=6 offset=0 size=1
     field af63da4c8601e926 kind=6 offset=1 size=1
     field af63df4c8601f1a5 kind=6 offset=2 size=1
