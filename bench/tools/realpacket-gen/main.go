@@ -40,10 +40,13 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/format"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -416,11 +419,156 @@ type RealPacket {
 	}, nil
 }
 
+// ---- the second pinned RealPacket instance (issue #246) ----
+//
+// The js reads round's review found the instance oracle's RealPacket coverage
+// resting on ONE buffer: of the 24 pinned wire goldens exactly one
+// (testdata/wire/real_packet.bin, the all-defaults instance) decodes as a
+// RealPacket. The follow-on is a second INSTANCE — the same shape with a
+// different value — so the oracle's seed set reaches a second value band. The
+// general law rides with it: corpus bias is oracle blindness, and an oracle
+// only tests the value bands the corpus feeds it.
+//
+// The instance is the all-defaults packet with its first ranged int field
+// driven to its MAXIMUM: the top of a band the all-defaults seed never
+// reaches, chosen from the checked schema rather than transcribed. Every other
+// bit is the primary golden's, so the corpus gains a seed without moving any
+// other field's band, and the fixed width is unchanged. The C++ reference is
+// the authority for the primary bytes; this derivation changes exactly one
+// field's bits, which every codec writes identically.
+
+// realPacketStruct loads and checks a schema file and returns its RealPacket.
+func realPacketStruct(path string) (*ir.Struct, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	name := filepath.Base(path)
+	ast, perrs := parser.Parse(name, src)
+	if len(perrs) > 0 {
+		return nil, fmt.Errorf("parse %s: %v", path, perrs)
+	}
+	unit, cerrs := check.Unit([]check.SourceFile{{
+		Path:  path,
+		Name:  name,
+		Base:  strings.TrimSuffix(name, ".schema"),
+		Bytes: src,
+		AST:   ast,
+	}})
+	if len(cerrs) > 0 {
+		return nil, fmt.Errorf("check %s: %v", path, cerrs)
+	}
+	for _, f := range unit.Files {
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && st.Name == "RealPacket" {
+				return st, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("RealPacket not found in %s", path)
+}
+
+// firstRangedIntField returns the first ranged int field in wire order and its
+// exact bit offset. RealPacket opens with f001_int, so the offset is zero, but
+// the walk computes it from the checked tree rather than transcribing it.
+func firstRangedIntField(st *ir.Struct) (int64, *ir.Field, error) {
+	var pos int64
+	for _, item := range st.Items {
+		switch it := item.(type) {
+		case *ir.FieldItem:
+			if it.F.HasIntRange && it.F.Type.Kind == ir.TInt {
+				return pos, it.F, nil
+			}
+			pos += ir.MaxBitsField(it.F)
+		case *ir.ConstItem:
+			pos += it.Bits
+		case *ir.ReservedItem:
+			pos += it.Bits
+		case *ir.AlignItem:
+			pos += (8 - pos%8) % 8
+		case *ir.Branch:
+			return 0, nil, fmt.Errorf("a branch precedes the first ranged int field; the offset walk needs its gate value")
+		}
+	}
+	return 0, nil, fmt.Errorf("RealPacket carries no ranged int field")
+}
+
+// setFieldBytes writes value's low bits into data at bit offset, LSB first —
+// the serialize wire's own bit order.
+func setFieldBytes(data []byte, offset, width int64, value *big.Int) {
+	for i := int64(0); i < width; i++ {
+		at := offset + i
+		mask := byte(1) << uint(at%8)
+		if value.Bit(int(i)) == 1 {
+			data[at/8] |= mask
+		} else {
+			data[at/8] &^= mask
+		}
+	}
+}
+
+// secondInstance derives the second pinned RealPacket buffer from the primary
+// golden and the checked schema.
+func secondInstance(primary []byte, st *ir.Struct) ([]byte, *ir.Field, error) {
+	offset, field, err := firstRangedIntField(st)
+	if err != nil {
+		return nil, nil, err
+	}
+	width := ir.BitsRequired(field.IntMin, field.IntMax)
+	if (offset+width+7)/8 > int64(len(primary)) {
+		return nil, nil, fmt.Errorf("field %s at bit %d runs past the %d-byte golden", field.Name, offset, len(primary))
+	}
+	out := append([]byte(nil), primary...)
+	setFieldBytes(out, offset, width, new(big.Int).Sub(field.IntMax, field.IntMin))
+	return out, field, nil
+}
+
+// writeSecondInstance re-pins the second RealPacket instance and its bit-exact
+// count beside it (#163). The bit count is the primary's own, unchanged: the
+// shape is fixed width and only one field's VALUE moves.
+func writeSecondInstance(outPath, goldenPath, schemaPath string) error {
+	primary, err := os.ReadFile(goldenPath)
+	if err != nil {
+		return err
+	}
+	st, err := realPacketStruct(schemaPath)
+	if err != nil {
+		return err
+	}
+	alt, field, err := secondInstance(primary, st)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(outPath, alt, 0644); err != nil {
+		return err
+	}
+	bits, err := os.ReadFile(strings.TrimSuffix(goldenPath, ".bin") + ".bits")
+	if err != nil {
+		return fmt.Errorf("reading the primary bit-count golden: %w", err)
+	}
+	if err := os.WriteFile(strings.TrimSuffix(outPath, ".bin")+".bits", bits, 0644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "realpacket-gen: %s — the second RealPacket instance, %s driven to max (%s)\n",
+		outPath, field.Name, field.IntMax)
+	return nil
+}
+
 func main() {
 	seed := flag.Uint64("seed", 20260816, "generator seed (the fixed default is the §1.7 decision date)")
 	nFields := flag.Int("fields", 95, "target serialized field declarations, tuned so the default seed lands in 1400-1800 bits")
 	out := flag.String("o", "-", "output path (- = stdout)")
+	altOut := flag.String("alt-o", "", "write the second pinned RealPacket instance here (issue #246), derived from -alt-golden; empty = off")
+	altGolden := flag.String("alt-golden", "testdata/wire/real_packet.bin", "the primary golden the second RealPacket instance is derived from")
+	altSchema := flag.String("alt-schema", "bench/corpus/RealWorld.schema", "the pinned schema that gives the first ranged int field its range and offset")
 	flag.Parse()
+
+	if *altOut != "" {
+		if err := writeSecondInstance(*altOut, *altGolden, *altSchema); err != nil {
+			fatal(err.Error())
+		}
+		return
+	}
 
 	formatted, st, err := generate(*seed, *nFields)
 	if err != nil {
