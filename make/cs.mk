@@ -434,6 +434,22 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
+# THE C# PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
+# target by name, so the expensive half lands by adding it here and nothing
+# else: the four wire-fuzz bindings at five times the shared N under a second
+# seed, and the planted controls that make the leg's green mean something.
+.PHONY: tables-cs-release
+tables-cs-release:
+	$(MAKE) tables-cs-wire-fuzz N=500000
+	$(MAKE) tables-cs-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-cs-region-fuzz N=500000
+	$(MAKE) tables-cs-builder-fuzz N=500000
+	$(MAKE) tables-cs-retain-fuzz N=500000
+	$(MAKE) tables-cs-retain-negative-control
+	$(MAKE) tables-cs-pack-negative-control
+	$(MAKE) tables-cs-message-blob-endian-negative-control
+	$(MAKE) conformance-negative-control-cs
+
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
