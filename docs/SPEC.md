@@ -2315,7 +2315,16 @@ Per `type`, per target:
    (generated validation refusals return `false` latching nothing, so callers
    tell the two channels apart exactly as in C#). The consumed size (§5)
    surfaces per target idiom — a success value that carries bits consumed
-   where the idiom allows, an out-parameter where it does not.
+   where the idiom allows, an out-parameter where it does not. **In ELIXIR it
+   is a SECOND ENTRY and not a second argument**, a binary carrying no
+   position: `read_<name>_bits(data, num_bits)` returns `{:ok, value,
+   bits_read}` or `:error`, and `read_<name>/2` is that function with the count
+   dropped. Both are generated for every `type` and every `union`, the verdict
+   and the refusals identical; `read_<name>_bits` is what frames a second
+   object behind the first in one buffer, the next one beginning at
+   `div(bits_read + 7, 8)` bytes in. The name is claimed like any other
+   generated name, so a `type FrameBits` beside a `type Frame` is refused
+   rather than silently taking the same binding (§4.11).
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer
