@@ -4,11 +4,6 @@
 # AGPL-3.0, its output is not.
 # package example — protocol id 0x8656ae68c06b97a7
 
-# type Vec3
-defmodule Example.Vec3 do
-  defstruct x: 0.0, y: 0.0, z: 0.0
-end
-
 # type Quat
 defmodule Example.Quat do
   defstruct x: 0.0, y: 0.0, z: 0.0, w: 0.0
@@ -137,102 +132,6 @@ defmodule Example.Types do
   @compile {:inline, rd: 3}
 
   @compile {:inline, rdw: 3}
-
-  # vec3_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # vec3_max_bytes is rounded up to the family 8-byte write-buffer granularity.
-  def vec3_max_bits, do: 192
-  def vec3_max_bytes, do: 24
-
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Vec3{}).
-  def zero_vec3, do: %Example.Vec3{x: 0.0, y: 0.0, z: 0.0}
-
-  # write_vec3 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_vec3(value) do
-    data = <<>>
-    %{x: value_x, y: value_y, z: value_z} = value
-    w = f64_bits(value_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-    w = f64_bits(value_z)
-    v = w &&& 0xFFFFFFFF
-    sc3 = scratch
-    scratch = v
-    v = w >>> 32
-    sc4 = scratch
-    scratch = v
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    data
-  end
-
-  # read_vec3 decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_vec3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
-    try do
-      if num_bits > byte_size(data) * 8 do
-        # the payload cannot exceed the buffer behind it
-        throw(:invalid)
-      end
-
-      bits_read = 0
-      if bits_read + 192 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_z = f64_value(w)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      value = %Example.Vec3{x: v_x, y: v_y, z: v_z}
-      {:ok, value}
-    catch
-      :invalid -> :error
-    end
-  end
-
-  # measure_vec3 is the exact wire bits write_vec3 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_vec3(_value), do: 192
 
   # quat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # quat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
@@ -730,11 +629,11 @@ defmodule Example.Types do
   # construction (%Example.RigidBody{}).
   def zero_rigid_body do
     %Example.RigidBody{
-      position: zero_vec3(),
+      position: Example.Vector.zero_vec3(),
       orientation: zero_quat(),
       at_rest: false,
-      linear_velocity: zero_vec3(),
-      angular_velocity: zero_vec3()
+      linear_velocity: Example.Vector.zero_vec3(),
+      angular_velocity: Example.Vector.zero_vec3()
     }
   end
 
@@ -1066,8 +965,8 @@ defmodule Example.Types do
 
           {bits_read, v_linear_velocity, v_angular_velocity}
         else
-          v_linear_velocity = zero_vec3()
-          v_angular_velocity = zero_vec3()
+          v_linear_velocity = Example.Vector.zero_vec3()
+          v_angular_velocity = Example.Vector.zero_vec3()
           {bits_read, v_linear_velocity, v_angular_velocity}
         end
 

@@ -123,6 +123,38 @@ func TestGoldenId(t *testing.T) {
 	}
 }
 
+// TestExamplesCppNativeMappingRides is the control schema#675 owes: the
+// examples unit's own cpp_native mapping must actually RIDE. Vec3 declares
+// the mapping and is declared in its own file (examples/Vector.schema), and
+// Types.schema's RigidBody references it from ANOTHER file — so the generated
+// C++ takes ::VecMath at every storage site and the referencing header
+// includes the hand header. Before the fix Vec3 sat in Types.schema beside its
+// only referencer, the mapping's own-file rule kept it off, and the corpus
+// emitted neither the include nor the mapped type: test/vec_math.h was dead
+// output nothing ever included (schema#675).
+func TestExamplesCppNativeMappingRides(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "cpp", nil)
+	var all strings.Builder
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		all.WriteString(name)
+		all.WriteString("\n")
+		all.Write(files[name])
+	}
+	joined := all.String()
+	if !strings.Contains(joined, `#include "vec_math.h"`) {
+		t.Error(`generated C++ never includes the mapped header: no #include "vec_math.h" in the examples corpus`)
+	}
+	if !strings.Contains(joined, "::VecMath") {
+		t.Error("generated C++ never names the mapped type: no ::VecMath storage site")
+	}
+}
+
 // TestGoldenSource pins the generated C++ byte-for-byte (SPEC §7.2 gate 1).
 func TestGoldenSource(t *testing.T) {
 	u := loadCorpus(t)

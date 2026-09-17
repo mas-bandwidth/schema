@@ -18,220 +18,6 @@ public final class Types {
             java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
                     long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
-    // type Vec3
-    public static final class Vec3 {
-        public double x;
-        public double y;
-        public double z;
-    }
-
-    // vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int vec3MaxBits = 192;
-    public static final int vec3MaxBytes = 24;
-
-    // The §5 zero form: all-zero storage; specified defaults live only in
-    // construction.
-    public static void zeroVec3(Vec3 value) {
-        value.x = 0.0;
-        value.y = 0.0;
-        value.z = 0.0;
-    }
-
-    // Restore construction defaults in place; buffers and objects are retained.
-    public static void initVec3(Vec3 value) {
-        value.x = 0.0;
-        value.y = 0.0;
-        value.z = 0.0;
-    }
-
-    // checkWriteVec3 is writeVec3's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
-    // JIT's inline thresholds, so the hot body carries one small call and the
-    // contracts live here (issue #156).
-    private static boolean checkWriteVec3(Vec3 value, byte[] data) {
-        assert data.length % 8 == 0;
-        assert data.length >= vec3MaxBytes;
-        return true;
-    }
-
-    // writeVec3 packs value into data — the trusted writer (contracts in the
-    // checkWriteVec3 predicate, one dormant assert call without -ea). The buffer
-    // must hold vec3MaxBytes. Returns the bytes written.
-    public static int writeVec3(Vec3 value, byte[] data) {
-        assert checkWriteVec3(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        {
-            final long b = Double.doubleToRawLongBits(value.x);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-        }
-        {
-            final long b = Double.doubleToRawLongBits(value.y);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-        }
-        {
-            final long b = Double.doubleToRawLongBits(value.z);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
-    }
-
-    // readVec3 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readVec3(Vec3 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
-        }
-        // the final 64-bit window, assembled once so every load stays inside
-        // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
-        if (bitsRead + 192 > numBits) {
-            return false;
-        }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo |= v << 32;
-        value.x = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo |= v << 32;
-        value.y = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
-        bitsRead += 32;
-        lo |= v << 32;
-        value.z = Double.longBitsToDouble(lo);
-        return true;
-    }
-
-    // measureVec3 is the exact wire bits writeVec3 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureVec3(Vec3 value) {
-        return 192;
-    }
-
     // type Quat
     public static final class Quat {
         public double x;
@@ -1135,14 +921,14 @@ public final class Types {
 
     // type RigidBody
     public static final class RigidBody {
-        public final Vec3 position = new Vec3();
+        public final Vector.Vec3 position = new Vector.Vec3();
         public final Quat orientation = new Quat();
         public boolean atRest;
 
         // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
-        public final Vec3 linearVelocity = new Vec3();
-        public final Vec3 angularVelocity = new Vec3();
+        public final Vector.Vec3 linearVelocity = new Vector.Vec3();
+        public final Vector.Vec3 angularVelocity = new Vector.Vec3();
     }
 
     // rigidBodyMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -1153,20 +939,20 @@ public final class Types {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroRigidBody(RigidBody value) {
-        zeroVec3(value.position);
+        Vector.zeroVec3(value.position);
         zeroQuat(value.orientation);
         value.atRest = false;
-        zeroVec3(value.linearVelocity);
-        zeroVec3(value.angularVelocity);
+        Vector.zeroVec3(value.linearVelocity);
+        Vector.zeroVec3(value.angularVelocity);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initRigidBody(RigidBody value) {
-        initVec3(value.position);
+        Vector.initVec3(value.position);
         initQuat(value.orientation);
         value.atRest = false;
-        initVec3(value.linearVelocity);
-        initVec3(value.angularVelocity);
+        Vector.initVec3(value.linearVelocity);
+        Vector.initVec3(value.angularVelocity);
     }
 
     // checkWriteRigidBody is writeRigidBody's contract walk, called once through assert —

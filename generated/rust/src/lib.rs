@@ -27,5 +27,7 @@ mod render;
 pub use render::*;
 mod types;
 pub use types::*;
+mod vector;
+pub use vector::*;
 mod wire;
 pub use wire::*;
