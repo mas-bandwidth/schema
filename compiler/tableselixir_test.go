@@ -60,6 +60,55 @@ func TestElixirEmitsTableModules(t *testing.T) {
 	}
 }
 
+// TestElixirBlockRowsAreReachedWithoutAllocatingTheArray: docs/PORTING.md M7 —
+// a block row is reached by stride with no per-row object. Elixir's first
+// spelling materialized an eager list of count sub-binaries every time an
+// array was reached (rows/4 was Enum.map), so reaching any row cost the whole
+// array's cons cells. The carry is the count/at pair beside a LAZY walk: the
+// block accessor exposes <F>_count(block) and <F>_at(block, index), and
+// <F>(block) is a Stream — so a per-frame walk pays the row and not the array,
+// and a caller with an index still reaches exactly one row.
+func TestElixirBlockRowsAreReachedWithoutAllocatingTheArray(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, tableSrc), "elixir", Options{})
+	if err != nil {
+		t.Fatalf("--lang elixir: %v", err)
+	}
+
+	runtime := string(files["BlockRuntime.ex"])
+	if runtime == "" {
+		t.Fatal("no BlockRuntime.ex")
+	}
+	// the walk is lazy: a Stream over the range, never an eager Enum.map list
+	if !strings.Contains(runtime, "Stream.map") {
+		t.Errorf("BlockRuntime.rows/4 builds no Stream — reaching an array still " +
+			"materializes a list; docs/PORTING.md M7 wants the row, not the array")
+	}
+	if strings.Contains(runtime, "Enum.map") {
+		t.Errorf("BlockRuntime still reaches rows with Enum.map — the eager list of " +
+			"count sub-binaries is exactly the per-array allocation M7 excludes")
+	}
+	if !strings.Contains(runtime, "def row(") {
+		t.Errorf("BlockRuntime exposes no single-row read (the count/at pair's at half)")
+	}
+
+	block := string(files["ProbeBlock.ex"])
+	for _, want := range []string{
+		"def config_points_count(block)",
+		"def config_points_at(block, index)",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the Config block form has no %q: the allocation-free count/at "+
+				"pair is what reaches one row without the array", want)
+		}
+	}
+	// and the at half goes through the runtime's single-row read rather than
+	// re-deriving the pitch at the call site
+	if !strings.Contains(block, "B.row(") {
+		t.Errorf("config_points_at does not read through B.row/5 — the pitch arithmetic " +
+			"must stay inside the generated pair, not at the call site (§19.2)")
+	}
+}
+
 // TestElixirRuntimeNamesAreClaimed is the Elixir half of the §11 promise, and
 // its SCAN IS THE LANGUAGE'S OWN COLLISION CLASS rather than C#'s.
 //
