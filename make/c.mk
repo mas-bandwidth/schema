@@ -666,6 +666,27 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 		  cat build/c-keyed-max-sabotage/log; exit 1; }
 	@echo "negative control: the None-only compare turns the C past-Max refusal gate red"
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS. The C
+# example in docs/USAGE.md is not a sketch beside the code: the gate pulls the
+# marked fragment out of the page, wraps it in a translation unit against the
+# real generated `tables/examples` unit, compiles it under the leg's own
+# -Wall -Wextra -Werror, and runs it — so the day the emitted surface moves,
+# the page goes red with it rather than a release later.
+.PHONY: tables-c-usage
+tables-c-usage: build/tables-generated-c/.stamp docs/USAGE.md
+	@mkdir -p build/c-usage
+	printf '#include "KeyedTable.h"\n\nint main( void )\n{\n' > build/c-usage/usage.c
+	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/c-usage/usage.c
+	printf '    return 0;\n}\n' >> build/c-usage/usage.c
+	grep -q 'SCHEMA_TABLE_KEYED_AT' build/c-usage/usage.c || \
+		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/examples -I$(SERIALIZE_C) \
+		build/c-usage/usage.c build/tables-generated-c/examples/KeyedTable.c \
+		-o build/c-usage/usage -lm
+	./build/c-usage/usage
+	@echo "usage: docs/USAGE.md's C example compiles and runs against tables/examples"
+
 # THE VARIABLE-LENGTH CLASS, end to end (docs/SPEC-TABLES.md §2, §6, §9). The
 # conformance corpus reaches every FIXED surface and none of this one: its
 # instances are all fixed, because the harness's wire goldens are. So the
@@ -935,6 +956,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform
+	$(MAKE) tables-c-usage
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.
