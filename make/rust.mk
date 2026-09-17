@@ -239,6 +239,22 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Rust side.
+# The page's cook example is pulled out of docs/USAGE.md, wrapped in a crate
+# that reads the fixture cook and calls the function verbatim, and built against
+# the generated `tables/pointers` crate — so a renamed function or a moved field
+# is a compile error here, not a release later.
+.PHONY: tables-rust-usage
+tables-rust-usage: build/tables-generated-rust/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/rust-usage && mkdir -p build/rust-usage/src
+	printf '[package]\nname = "rustusage"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\ngraphdemo = { path = "../tables-generated-rust/graphdemo" }\n' > build/rust-usage/Cargo.toml
+	printf 'use std::fs;\n\nfn main() {\n    let path = std::env::args().nth(1).expect("usage: rust-usage <Scene.cook>");\n    let bytes = fs::read(&path).expect("read the Scene cook");\n    if !usage(&bytes) { panic!("the Scene cook did not open"); }\n    println!("usage: docs/USAGE.md Rust cook example opened the Scene cook and walked its chain");\n}\n\n' > build/rust-usage/src/main.rs
+	sed -n '/<!-- rust-table-usage -->/,/<!-- \/rust-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/rust-usage/src/main.rs
+	grep -q 'SceneCook::open' build/rust-usage/src/main.rs || \
+		{ echo "MISSING: docs/USAGE.md carries no rust-table-usage example"; exit 1; }
+	cd build/rust-usage && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- $(CURDIR)/build/cook-open/Scene.cook
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
@@ -246,6 +262,7 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
+	$(MAKE) tables-rust-usage
 	$(MAKE) tables-rust-names-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not

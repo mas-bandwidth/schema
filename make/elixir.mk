@@ -218,12 +218,29 @@ tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
 # the table wire they measured (schema#515 brings the wire back, and them).
 ELIXIR_RELEASE_FUZZ_N ?= 200000
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Elixir
+# side. The page's cook example is pulled from docs/USAGE.md into a script that
+# reads the fixture cook and evaluates the fragment verbatim against the
+# compiled `graphdemo` modules — so a module name the packet emitter does not
+# write, the drift the register's measured effect names, goes red here.
+.PHONY: tables-elixir-usage
+tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/elixir-usage && mkdir -p build/elixir-usage
+	printf 'bytes = File.read!(System.argv() |> List.first())\n\n' > build/elixir-usage/usage.exs
+	sed -n '/<!-- elixir-table-usage -->/,/<!-- \/elixir-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/elixir-usage/usage.exs
+	printf '\nIO.puts("usage: docs/USAGE.md Elixir cook example opened the Scene cook and walked its chain")\n' >> build/elixir-usage/usage.exs
+	grep -q 'cook_open_scene' build/elixir-usage/usage.exs || \
+		{ echo "MISSING: docs/USAGE.md carries no elixir-table-usage example"; exit 1; }
+	$(ELIXIR) -pa build/elixir-tables-ebin build/elixir-usage/usage.exs $(CURDIR)/build/cook-open/Scene.cook
+
 .PHONY: tables-elixir-release
 tables-elixir-release:
 	$(MAKE) tables-elixir-fuzz ELIXIR_FUZZ_N=$(ELIXIR_RELEASE_FUZZ_N)
 	$(MAKE) tables-elixir-fuzz-negative-control
 	$(MAKE) tables-elixir-block-lead
 	$(MAKE) tables-elixir-block-lead-negative-control
+	$(MAKE) tables-elixir-usage
 
 # THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
