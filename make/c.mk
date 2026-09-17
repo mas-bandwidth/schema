@@ -1124,5 +1124,18 @@ tables-c-retain-negative-control:
 
 test-c tables-c: tables-c-retain tables-c-retain-negative-control
 
+# I13 (docs/PORTING.md) — THE TEXT DIFFERENTIAL AGAINST A THIRD
+# IMPLEMENTATION. The compiler's own Go engine writes each random instance's
+# wire and the text it reads back from that wire; the generated C loads the
+# same wire and must spell the SAME text byte for byte, then read that text
+# back to the same wire. The pinned corpus reaches eighteen texts; this
+# reaches the spellings nobody wrote down. Its tie-break control restores the
+# magnitude rounding a port's own formatter reaches for and requires red.
+.PHONY: tables-c-json-differential
+tables-c-json-differential:
+	go test ./compiler -run '^TestCTableJsonDifferential' -count=1
+
+test-c tables-c: tables-c-json-differential
+
 # Collection adapters belong to the common roster as well as their direct differential.
 build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan: test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
