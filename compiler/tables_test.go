@@ -615,9 +615,9 @@ func TestPointerGenerationDeterministic(t *testing.T) {
 // THE SCAN IS SHAPE-INDEPENDENT ON PURPOSE. An earlier version matched two
 // declaration idioms with two regexes and silently missed five others a port
 // could plausibly reach for — a non-ref struct, an enum, a static readonly
-// field, a generic method, a non-sealed class. A scan that has to recognise
+// field, a generic method, a non-sealed class. A scan that has to recognize
 // declaration syntax is a scan that goes quietly blind the day the syntax
-// changes. This one recognises none: it collects every Table*-prefixed
+// changes. This one recognizes none: it collects every Table*-prefixed
 // identifier in the emitted text, declaration or use or comment, and requires
 // the whole set to be registered. Over-collection is the safe direction — the
 // cost of a false hit is registering a name or rewording a comment, and the

@@ -140,7 +140,7 @@ func Nudge(u *ir.Unit, paths []string) string {
 // It is idempotent: when the projection has not moved, the file is left
 // exactly as it sits and no history entry is written.
 // THE DATE IS UTC AND SAYS SO. A shared artifact wants one clock, and UTC is
-// it — but an unlabelled date is read in the reader's own, so an author east
+// it — but an unlabeled date is read in the reader's own, so an author east
 // of Greenwich writes a baseline in the evening and reads YESTERDAY on the
 // file they just wrote (#447 F-16, #521 G-18). The four characters that fix it
 // ride the stamp, so every entry a compiler writes from here on carries them

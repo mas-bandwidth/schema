@@ -30,7 +30,7 @@
 // or neither — one without the other leaves those records undefined.
 //
 // Every size and offset below is the MANAGED unmanaged-struct model — what Span
-// and pointer arithmetic index with — never the interop marshalling model
+// and pointer arithmetic index with — never the interop marshaling model
 // (§19.3). A bool in a cooked record is ONE byte.
 
 using System;

@@ -22,7 +22,7 @@ func TestMessageMeasureReservedFraming(t *testing.T) {
 		}
 		part := strings.ReplaceAll(string(b), "package graphdemo", "")
 		// The single-file probe needs no packet-only C++ native mapping.
-		part = strings.ReplaceAll(part, ` | cpp_native = ColourMath, cpp_include = "graph_colour.h"`, "")
+		part = strings.ReplaceAll(part, ` | cpp_native = ColorMath, cpp_include = "graph_color.h"`, "")
 		schema += part + "\n"
 	}
 	runGenerated(t, schema, `package graphdemo

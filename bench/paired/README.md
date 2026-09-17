@@ -101,7 +101,7 @@ The comparison deliberately retains each packet runner's fastest release mode.
 The CSV semantics match `bench/tools/relative.go`: `removed` means debug asserts
 and bounds/range checks compile out; `always` means bounds, range and sticky-error
 checks stay in every build by contract; `contract` means debug asserts compile
-out while wire/API validation stays. These are labelled comparisons of the
+out while wire/API validation stays. These are labeled comparisons of the
 fastest correct implementations, with different validation work.
 
 C++ controls for both wires bracket the measured rounds; a movement above 5%

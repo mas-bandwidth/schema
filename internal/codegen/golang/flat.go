@@ -37,7 +37,7 @@
 //     debug_asserts them like its runtime. Masking here is
 //     what keeps the Go form observably identical to the per-field form it
 //     replaces, and it doubles as the guarantee that no piece can corrupt its
-//     neighbours in the chunk.
+//     neighbors in the chunk.
 //
 // Chunk widths sum to B EXACTLY (the last chunk carries the remainder), so the
 // flat form reads and writes precisely the bits the per-field form did: same
@@ -215,7 +215,7 @@ func maskLit(bits int64) string {
 
 // masked wraps a uint64-valued expression in its width mask. The runtime's
 // per-field write masks to the field width, so the flat form must too, or a
-// too-wide value that used to be truncated would corrupt its neighbours.
+// too-wide value that used to be truncated would corrupt its neighbors.
 func masked(expr string, bits int64) string {
 	m := maskLit(bits)
 	if m == "" {

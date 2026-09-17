@@ -83,9 +83,9 @@ const invalidSpread = 40.0
 
 // lookback is how many earlier points on an axis the newest one is measured
 // against. The newest point is compared to the BEST (lowest ns/msg) of them,
-// not to its immediate neighbour.
+// not to its immediate neighbor.
 //
-// Neighbour-only comparison was defeated by one commit: land two CSVs that are
+// Neighbor-only comparison was defeated by one commit: land two CSVs that are
 // each ~50% slower than the record, and the newest is compared against the
 // other regressed file, so the pair exits 0 and the axis has quietly reset at
 // the worse level. Against the best of the previous three, a regression has to
@@ -324,7 +324,7 @@ func checkLockedLegs(pts []point) int {
 		}
 		last := s[len(s)-1]
 		lo := max(len(s)-1-lookback, 0)
-		// The BEST of the window, not the neighbour: see lookback.
+		// The BEST of the window, not the neighbor: see lookback.
 		best := s[lo]
 		for _, p := range s[lo : len(s)-1] {
 			if p.nsMsg < best.nsMsg {

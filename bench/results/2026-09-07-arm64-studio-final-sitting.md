@@ -23,7 +23,7 @@ CSV: [`2026-09-07-arm64-studio-ninelang-final-sitting.csv`](2026-09-07-arm64-stu
 | Java | OpenJDK 21.0.12.1 (the pin), no `-ea` |
 | Dart | 3.13.2 (the pin), AOT |
 | Elixir | 1.20.4 on OTP 29.0.5 (the pins) |
-| pinning / noise | none / unlabelled |
+| pinning / noise | none / unlabeled |
 
 Runtime checkouts, at CI's tags (`.github/workflows/ci.yml`):
 

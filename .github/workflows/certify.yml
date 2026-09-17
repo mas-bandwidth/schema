@@ -33,7 +33,7 @@ on:
 # and dispatched. A certificate is a successful full run at an exact SHA, so
 # after a landing that matters, dispatch this file on main and read that run.
 #
-# One group per event and ref, and nothing is cancelled: a nightly and an
+# One group per event and ref, and nothing is canceled: a nightly and an
 # explicit dispatch never cancel each other's proof, and a newer request only
 # replaces a pending one in its own group.
 concurrency:
@@ -198,8 +198,8 @@ jobs:
   # carries none the matrix is empty and the leg job is skipped.
   #
   # ONE LEG PER TARGET. The five targets the tree carries outrun one job's
-  # hour together (run 33831179695 was cancelled at 60 minutes, and a
-  # cancelled gate proves nothing), so each target gets a job of its own with
+  # hour together (run 33831179695 was canceled at 60 minutes, and a
+  # canceled gate proves nothing), so each target gets a job of its own with
   # the hour to itself, and a failing language is named by its job.
   release-targets:
     runs-on: ubuntu-latest

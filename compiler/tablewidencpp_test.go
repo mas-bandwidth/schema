@@ -28,7 +28,7 @@
 // A GREEN GATE ON THE UNITS THAT KEEP THEM IS NOT THE PROOF WANTED, because a
 // census that is always true and one that is always false both leave those
 // units compiling. So each helper is asked for TWICE against a NEAREST
-// NEIGHBOUR: one schema with the declaration at the top of its ladder, which
+// NEIGHBOR: one schema with the declaration at the top of its ladder, which
 // must carry the helper, must CALL it, and must compile and run at -Werror
 // with the sanitizers on; and the same schema with that one declaration
 // respelled at the ladder's BOTTOM — int8, uint8, float32 — which must carry
@@ -41,7 +41,7 @@ import (
 	"testing"
 )
 
-// THE NEAREST-NEIGHBOUR BASE: every scalar at the BOTTOM of its own ladder, so
+// THE NEAREST-NEIGHBOR BASE: every scalar at the BOTTOM of its own ladder, so
 // no kind in the unit has a rung below it and no call site can exist. `pick`
 // is a union with an int8 arm, so the unit HAS arms and the arm's own width is
 // still not a run-time fact — which is what separates TableKindWidth's census
@@ -204,7 +204,7 @@ var (
 
 // widenBothWays is the shape every case below takes: the fixture that declares
 // the kind carries the helper, calls it, and compiles and runs; the nearest
-// neighbour carries not one symbol of it, and still carries the ladder
+// neighbor carries not one symbol of it, and still carries the ladder
 // predicate every unit owns.
 func widenBothWays(t *testing.T, src string, want widenHelper, absent []string) {
 	t.Helper()
@@ -224,7 +224,7 @@ func widenBothWays(t *testing.T, src string, want widenHelper, absent []string) 
 
 	without, base := deadCppHeader(t, widenNoneSrc)
 	if strings.Contains(without, want.symbol) {
-		t.Errorf("the nearest neighbour reaches no %s call site and must carry none of it", want.symbol)
+		t.Errorf("the nearest neighbor reaches no %s call site and must carry none of it", want.symbol)
 	}
 	// the ladder predicate is EVERY unit's: a kind comparison is what every
 	// reader does, and it is named by the walks

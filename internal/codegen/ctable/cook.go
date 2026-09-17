@@ -49,7 +49,7 @@ import (
 // scope at all, so the name carries one.
 //
 // It stays a MACRO rather than becoming a `static const`: the block form's
-// descriptors are constant data that name it in their initialisers, and a
+// descriptors are constant data that name it in their initializers, and a
 // `static const` is not a constant expression in C.
 func buildVersionName(pkg string) string {
 	return "SCHEMA_" + strings.ToUpper(pkg) + "_BUILD_VERSION_VALUE"

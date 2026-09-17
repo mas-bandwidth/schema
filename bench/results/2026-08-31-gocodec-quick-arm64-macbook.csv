@@ -15,7 +15,7 @@
 # dart: not present (generated codecs, zero runtime dependency; AOT executable)
 # elixir: not present (generated codecs, zero runtime dependency; pinned BEAM toolchain)
 # pinning: none
-# noise: unlabelled
+# noise: unlabeled
 # schema commit: 5adec48
 # serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
 # serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]

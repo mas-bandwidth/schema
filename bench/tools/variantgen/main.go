@@ -52,7 +52,7 @@ import (
 )
 
 // NumVariants is BENCH-STANDARD §2.7's rotating-buffer count: 64. One buffer
-// is memorised by the branch predictor and the caches; 64 is what every
+// is memorized by the branch predictor and the caches; 64 is what every
 // runner in the estate rotates through.
 const NumVariants = 64
 

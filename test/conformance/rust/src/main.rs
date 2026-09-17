@@ -104,7 +104,7 @@ impl Aligned {
     // the bytes it carries: that is the fact two rows of the block battery are
     // about, and a file alone cannot carry it. The allocation IS the claim, so
     // a reader that walks past what it was given walks off the end of a real
-    // allocation rather than into a neighbour.
+    // allocation rather than into a neighbor.
     fn new(data: &[u8], extent: i64) -> Aligned {
         // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION and is the caller's
         // own answer: `placed` copies what fits and zeroes the rest, so the
@@ -555,7 +555,7 @@ impl Walk {
                 TableCookStorage::Record => {
                     // a nested record — by value, or every slot of an array of
                     // them. A COUNTED array writes all N slots (§7.2), and a slot
-                    // past the live count holds the value-initialised element.
+                    // past the live count holds the value-initialized element.
                     let record = match f.record {
                         Some(r) => r(),
                         None => fail(&format!("{}.{} names no record", info.name, f.name)),

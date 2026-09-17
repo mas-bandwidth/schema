@@ -80,7 +80,7 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 	}
 }
 
-// The neighbouring construct, so the two are never confused again: an arm with
+// The neighboring construct, so the two are never confused again: an arm with
 // a SCALAR payload is refused by `check`, before any target is chosen.
 func TestScalarArmInTypeBodyIsRefusedByCheck(t *testing.T) {
 	errs := checkErrors(t, scalarArmInTypeBody)

@@ -97,7 +97,7 @@
     {
       "name": "base-c-foreign",
       "when": "pull-request",
-      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
+      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was canceled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
       "targets": [
         "conformance-negative-control-c-foreign"
       ]

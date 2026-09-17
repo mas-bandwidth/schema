@@ -289,7 +289,7 @@ func (s *scan) placedArray(at, size, align int64, what, container string) (start
 // elements are — which is where an entry's VALUE holding a list or a nested map
 // takes the same clauses one depth down, in the same node's extent.
 //
-// THE FIFTH CLAUSE IS THE KEYS, and it is the one a list has no analogue for:
+// THE FIFTH CLAUSE IS THE KEYS, and it is the one a list has no analog for:
 // they are read ASCENDING WITH NO REPEAT, because a cook's `Find` is a BINARY
 // SEARCH IN PLACE over these bytes and a cook whose keys a search cannot find
 // is a forgery. It is the only place this scan reads a key, and it reads it for

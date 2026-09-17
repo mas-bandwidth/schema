@@ -147,7 +147,7 @@ func (c fakeCorpus) runHarness(t *testing.T, drivers string) (string, bool) {
 
 // runHarnessSkipping is the same run with --skip filled in, which is what the
 // Makefile passes from SCHEMA_SKIP_LEGS (issue #599). It hands the error back
-// rather than failing on it, because REFUSING a skip is one of the behaviours
+// rather than failing on it, because REFUSING a skip is one of the behaviors
 // under test (skip_test.go).
 func (c fakeCorpus) runHarnessSkipping(t *testing.T, drivers, skip string) (string, bool, error) {
 	t.Helper()
@@ -196,7 +196,7 @@ func TestReferenceSurfaceMissingFromList(t *testing.T) {
 		[]string{
 			"the REFERENCE leg is ABSENT on the whole json-write surface (`list` does not name it)",
 			"FAIL absent",
-			"pass 1/1", // the surfaces it did register still pass, so this localises
+			"pass 1/1", // the surfaces it did register still pass, so this localizes
 		},
 		[]string{footer})
 	if n := strings.Count(out, "  cpp / "); n != 1 {

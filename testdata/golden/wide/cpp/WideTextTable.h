@@ -250,7 +250,7 @@ struct TableFieldInfo
     const char * (*key_name)( uint64_t value );
     uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -2789,7 +2789,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // plan comes out partitioned without a second array to partition it in.
     if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
-    // side's whole defence: the plan's source offsets are arithmetic over sizes
+    // side's whole defense: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).

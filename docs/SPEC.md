@@ -2114,7 +2114,7 @@ COUNTED refusals rather than terminal ones, and the accounting is worth
 stating.** The seven unpaired-surrogate vectors and the three interior-null
 vectors are each one `malformed` on the table wire where they are a failed
 read on the packet wire, and they ride under the same names with `-table` on
-them. The two group-above-`0xFFFF` vectors have no table analogue at all,
+them. The two group-above-`0xFFFF` vectors have no table analog at all,
 because two bytes cannot spell a group above `0xFFFF`. The two out-of-range
 length vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
 `wstring-table-clamp-splitting-a-surrogate-pair`, one `clamped` each. The

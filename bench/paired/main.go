@@ -515,7 +515,7 @@ func parseRowsForIterations(data []byte, lang, wire, id string, wantIterations i
 // These captions use the same checks semantics as bench/tools/relative.go.
 // Refuse changed axes rather than silently reusing a caption for different work.
 const checksCaption = "Checks differ: packet C/C++/C# removes bounds/range checks; packet Go always checks; table keeps wire/API validation."
-const checksDetails = "Packet C/C++/C# uses `checks=removed`: debug asserts and bounds/range checks compile out. Packet Go uses `checks=always`: bounds, range and sticky-error checks in every build by contract. Every table leg uses `checks=contract`: debug asserts compile out; wire/API contract validation stays in every build. These deliberately labelled cross-checks ratios compare each wire's fastest correct implementation, not identical validation work. The driver refuses any different checks axis."
+const checksDetails = "Packet C/C++/C# uses `checks=removed`: debug asserts and bounds/range checks compile out. Packet Go uses `checks=always`: bounds, range and sticky-error checks in every build by contract. Every table leg uses `checks=contract`: debug asserts compile out; wire/API contract validation stays in every build. These deliberately labeled cross-checks ratios compare each wire's fastest correct implementation, not identical validation work. The driver refuses any different checks axis."
 
 func expectedChecks(lang, wire string) string {
 	if wire == "table" {

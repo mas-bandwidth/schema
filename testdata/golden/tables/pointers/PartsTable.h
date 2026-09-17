@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xa3d36c2c53522fdd (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -296,7 +296,7 @@ struct TableFieldInfo
     const char * (*key_name)( uint64_t value );
     uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -1552,7 +1552,7 @@ static const int64_t kTableAnnounceBytes = 536;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xe5, 0x55, 0x4a, 0xcb, 0xa1, 0xeb, 0x78, 0x84, 0x02,
+    0x01, 0x01, 0x09, 0x1c, 0xe6, 0x61, 0xae, 0xbd, 0x6e, 0x42, 0xcb, 0x02,
     0x0e, 0xf0, 0x03, 0x06, 0xed, 0x03, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad,
     0xbc, 0xc4, 0x0c, 0x10, 0x4c, 0x8a, 0x95, 0x2e, 0xef, 0x84, 0x49, 0x1e,
     0x0d, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x0d, 0x77, 0x6e,
@@ -2897,7 +2897,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // plan comes out partitioned without a second array to partition it in.
     if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
-    // side's whole defence: the plan's source offsets are arithmetic over sizes
+    // side's whole defense: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
@@ -3551,13 +3551,13 @@ struct TableWorker
         // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
         // storage, then write the declared defaults ONE MEMBER AT A TIME.
         //
-        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // It is "T", not "T{}". Value-initializing the whole aggregate says
         // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
         // by element in its front end — while both halves here cost
         // O(declarations). The slab cap below refuses a large node at RUN
         // TIME and bounds nothing at compile time: the cost is paid by
         // whatever T a caller instantiates this with.
-        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // Padding is not the difference: value-initialization zeroes MEMBERS
         // and not padding either way, which is why the segment is calloc'd.
         //
         // TableReset is an OVERLOAD SET, one per closure member, reached from
@@ -3565,11 +3565,11 @@ struct TableWorker
         // Alloc is a template and cannot spell <Name>Reset.
         //
         // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
-        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialization lands on
         // the same values today, because a member with a non-zero default
         // carries a member initializer that says so — but that is the class
         // definition agreeing with Reset, not the arena reading it, and #320's
-        // fix was itself a pass that MOVED initialisation between the two.
+        // fix was itself a pass that MOVED initialization between the two.
         // The arena reads the definition.
         slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
         TableReset( *slot.ptr );
@@ -3647,7 +3647,7 @@ struct TableWorker
 // the same first-visit numbering the wire uses, so the pack order and the node
 // order are one order.
 //
-// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// COLORING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
 // makes a data cycle free to refuse: a reference to an entry still open is a
 // cycle, and Lock returns failure rather than recursing away. The ROOT's entry
 // is open for the whole walk.
@@ -3741,7 +3741,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
 }
 
 // REACH a node: one probe answers both questions the walk has. A true "taken"
-// says this is a FIRST visit, and the entry is now the node's, coloured open
+// says this is a FIRST visit, and the entry is now the node's, colored open
 // at "offset"; otherwise the entry is the one the node already has, and its
 // open bit says cycle or sharing. NULL is an allocation failure, and it is a
 // refusal like any other: Lock fails rather than packing a graph it cannot
@@ -4465,12 +4465,12 @@ static const int32_t kTableRetainKnownIds = 47;
 // the hoisted descriptor's tag lists and wide ranges take.
 inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x0a8f12cc5f9a0c03ull, 0x1e4984ef2e958a4cull, 0x24b070ada2041cb0ull, 0x24f3a319b88552c1ull,
-    0x2f2ec0474f1c4fe4ull, 0x327fe6dc702553fdull, 0x39f7fcec8fcb623dull, 0x3bf8fbbad1587cddull,
-    0x4320e9a2e32eac38ull, 0x4339ee8ab21c8380ull, 0x4554e34a747022dfull, 0x4a9a31623ab5f213ull,
-    0x509220bb65a646b7ull, 0x56d7ab194448a4f3ull, 0x5b25b8ef511eb395ull, 0x60839e2395be697eull,
-    0x69ff34904242a73dull, 0x6dadeaaee49d6d18ull, 0x704be0d8faaffc58ull, 0x732dfbcc9b0cf0bbull,
-    0x75d8e97600b296eaull, 0x76aaaa535714d805ull, 0x77af761956600b54ull, 0x7a8060916400fe66ull,
-    0x7ce4fd9430e80ceaull, 0x7e9d0b96d39e517dull, 0x802517e298c70b03ull, 0x823b8a195ce2133cull,
+    0x2f2ec0474f1c4fe4ull, 0x327fe6dc702553fdull, 0x344ea8f4939cdc98ull, 0x39f7fcec8fcb623dull,
+    0x3bf8fbbad1587cddull, 0x4320e9a2e32eac38ull, 0x4339ee8ab21c8380ull, 0x4554e34a747022dfull,
+    0x4a9a31623ab5f213ull, 0x509220bb65a646b7ull, 0x56d7ab194448a4f3ull, 0x5b25b8ef511eb395ull,
+    0x60839e2395be697eull, 0x69ff34904242a73dull, 0x6dadeaaee49d6d18ull, 0x704be0d8faaffc58ull,
+    0x732dfbcc9b0cf0bbull, 0x75d8e97600b296eaull, 0x76aaaa535714d805ull, 0x77af761956600b54ull,
+    0x7a8060916400fe66ull, 0x7ce4fd9430e80ceaull, 0x802517e298c70b03ull, 0x823b8a195ce2133cull,
     0x9d167ef77aed79b6ull, 0x9d8b8aa2b404c2c8ull, 0x9deeefd89ca8a81dull, 0xae3b9113b7db93a4ull,
     0xaf63da4c8601e926ull, 0xaf63df4c8601f1a5ull, 0xaf63ef4c86020cd5ull, 0xb97e90a3784c431dull,
     0xbb62c62c9808ea37ull, 0xc4bcadba8e631b86ull, 0xd6458a3eef83d457ull, 0xd858c2cb7f1514ccull,
@@ -5879,7 +5879,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x8478eba1cb4a55e5ull;
+static const uint64_t BuildVersion = 0xcb426ebdae61e61cull;
 
 } // namespace graphdemo
 
@@ -6194,7 +6194,7 @@ struct Stamp {
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void StampReset( Stamp & value );
-inline void ColourReset( Colour & value );
+inline void ColorReset( Color & value );
 
 inline void StampReset( Stamp & value )
 {
@@ -6203,7 +6203,7 @@ inline void StampReset( Stamp & value )
     value.seq = 0;
 }
 
-inline void ColourReset( Colour & value )
+inline void ColorReset( Color & value )
 {
     value.r = 0;
     value.g = 0;
@@ -6213,28 +6213,28 @@ inline void ColourReset( Colour & value )
 inline int64_t StampMeasureMessageBody( int64_t at, const Stamp & value );
 inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value );
 inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Stamp & value );
-inline int64_t ColourMeasureMessageBody( int64_t at, const Colour & value );
-inline bool ColourSaveMessageBody( TableBitWriter & w, const Colour & value );
-inline bool ColourLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value );
+inline int64_t ColorMeasureMessageBody( int64_t at, const Color & value );
+inline bool ColorSaveMessageBody( TableBitWriter & w, const Color & value );
+inline bool ColorLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Color & value );
 
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
 // lookup. It is how a node born in raw arena storage comes to hold the
-// declared defaults without value-initialising the whole aggregate.
+// declared defaults without value-initializing the whole aggregate.
 
 inline void TableReset( Stamp & value ) { StampReset( value ); }
-inline void TableReset( Colour & value ) { ColourReset( value ); }
+inline void TableReset( Color & value ) { ColorReset( value ); }
 
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value );
 GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value );
 GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value );
-inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value );
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, const Colour & value );
-GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value );
+inline int64_t ColorMeasureBody( TableIds & ids, const Color & value );
+GRAPHDEMO_TABLE_INLINE bool ColorSaveBody( TableWriter & w, TableIds & ids, const Color & value );
+GRAPHDEMO_TABLE_INLINE bool ColorLoadBody( TableReader & r, Color & value );
 
 // ---- retain-unknown: the second family (docs/SPEC-TABLES.md §6.6) ----
 //
@@ -6246,16 +6246,16 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path );
 GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value, TableRetain * retain, const TableRetainPath & path );
 inline bool StampLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Stamp & value, TableRetain * retain, const TableRetainPath & path );
-inline int64_t ColourMeasureBodyRetain( TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path );
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path );
-GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & value, TableRetain * retain, const TableRetainPath & path );
-inline bool ColourLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value, TableRetain * retain, const TableRetainPath & path );
+inline int64_t ColorMeasureBodyRetain( TableRetainIds & ids, const Color & value, TableRetain * retain, const TableRetainPath & path );
+GRAPHDEMO_TABLE_INLINE bool ColorSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Color & value, TableRetain * retain, const TableRetainPath & path );
+GRAPHDEMO_TABLE_INLINE bool ColorLoadBodyRetain( TableReader & r, Color & value, TableRetain * retain, const TableRetainPath & path );
+inline bool ColorLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Color & value, TableRetain * retain, const TableRetainPath & path );
 
 inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 14, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
 }
@@ -6273,7 +6273,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
+        w.header( ids.ref_at( 14, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
@@ -6665,7 +6665,7 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
     return TableMessageBatchClose( br );
 }
 
-inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value )
+inline int64_t ColorMeasureBody( TableIds & ids, const Color & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
@@ -6674,15 +6674,15 @@ inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value )
     return bytes;
 }
 
-inline int64_t ColourMeasure( const Colour & value )
+inline int64_t ColorMeasure( const Color & value )
 {
     TableIds ids;
-    const int64_t body = ColourMeasureBody( ids, value );
+    const int64_t body = ColorMeasureBody( ids, value );
     if ( body < 0 || ids.overflow ) { return -1; }
     return 1 + body + TableIdsBytes( ids );
 }
 
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, const Colour & value )
+GRAPHDEMO_TABLE_INLINE bool ColorSaveBody( TableWriter & w, TableIds & ids, const Color & value )
 {
     if ( value.r != 0 )
     {
@@ -6703,20 +6703,20 @@ GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, con
     return !w.overflow;
 }
 
-inline int64_t ColourSave( const Colour & value, uint8_t * buffer, int64_t capacity )
+inline int64_t ColorSave( const Color & value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
-    if ( !ColourSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
+    if ( !ColorSaveBody( w, ids, value ) || ids.overflow ) { return -1; }
     TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file
     if ( w.overflow ) { return -1; }
-    return w.offset; // == ColourMeasure( value )
+    return w.offset; // == ColorMeasure( value )
 }
 
-GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
+GRAPHDEMO_TABLE_INLINE bool ColorLoadBody( TableReader & r, Color & value )
 {
-    ColourReset( value ); // prefill declared defaults in place, then overlay
+    ColorReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6798,7 +6798,7 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
 // file that is both a newer form and damaged is a REFUSAL and never damage.
 // A refusal moves none of the report's five counters, because nothing was
 // decoded and there is nothing to count (docs/SPEC-TABLES.md §3).
-inline TableOpenVerdict ColourLoadVerdict( Colour & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline TableOpenVerdict ColorLoadVerdict( Color & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -6807,7 +6807,7 @@ inline TableOpenVerdict ColourLoadVerdict( Colour & value, const uint8_t * buffe
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        ColourReset( value );
+        ColorReset( value );
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
@@ -6825,13 +6825,13 @@ inline TableOpenVerdict ColourLoadVerdict( Colour & value, const uint8_t * buffe
     // have met: nothing is decoded and one event is counted (§3).
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
-        ColourReset( value );
+        ColorReset( value );
         to->malformed = true;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !ColourLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    if ( !ColorLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6840,15 +6840,15 @@ inline TableOpenVerdict ColourLoadVerdict( Colour & value, const uint8_t * buffe
 // the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
 // False is a wire nothing could be decoded from: a refusal, a table that
 // cannot be read whole, or a root body the walk could not finish.
-inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool ColorLoad( Color & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    return ColourLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+    return ColorLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
 // body's own bit position in the batch, because a `string(N)` ALIGNS before
 // its bytes and an align costs what the position says it costs.
-inline int64_t ColourMeasureMessageBody( int64_t at, const Colour & value )
+inline int64_t ColorMeasureMessageBody( int64_t at, const Color & value )
 {
     int64_t bits = 0;
     if ( value.r != 0 )
@@ -6874,7 +6874,7 @@ inline int64_t ColourMeasureMessageBody( int64_t at, const Colour & value )
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
 // body is self-delimiting: it is written where the VARIABLE form put an L.
-inline bool ColourSaveMessageBody( TableBitWriter & w, const Colour & value )
+inline bool ColorSaveMessageBody( TableBitWriter & w, const Color & value )
 {
     if ( value.r != 0 )
     {
@@ -6899,9 +6899,9 @@ inline bool ColourSaveMessageBody( TableBitWriter & w, const Colour & value )
 // defaults first, then whatever the wire says, field by field. An entry this
 // build cannot name is skipped by its SHAPE and counted; one whose kind is
 // not this field's is a kind mismatch and skipped the same way.
-inline bool ColourLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value )
+inline bool ColorLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Color & value )
 {
-    ColourReset( value );
+    ColorReset( value );
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7005,21 +7005,21 @@ inline bool ColourLoadMessageBody( TableBitReader & r, const TableVocabulary & v
 // verdict set and the reason batch_too_large on it, and nothing written. The
 // refusal is learned at MEASURE time, before a buffer is allocated, and a
 // caller with more bodies calls again.
-inline int64_t ColourMeasureMessages( const Colour * values, int64_t count, TableReport * report )
+inline int64_t ColorMeasureMessages( const Color * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
     if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
-        const int64_t body = ColourMeasureMessageBody( bits, values[i] );
+        const int64_t body = ColorMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
-inline int64_t ColourSaveMessages( const Colour * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
+inline int64_t ColorSaveMessages( const Color * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
     if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
@@ -7027,10 +7027,10 @@ inline int64_t ColourSaveMessages( const Colour * values, int64_t count, uint8_t
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( !ColourSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        if ( !ColorSaveMessageBody( batch.w, values[i] ) ) { return -1; }
         batch.written++;
     }
-    return TableMessageBatchEnd( batch ); // == ColourMeasureMessages( values, count, report )
+    return TableMessageBatchEnd( batch ); // == ColorMeasureMessages( values, count, report )
 }
 
 // A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
@@ -7046,7 +7046,7 @@ inline int64_t ColourSaveMessages( const Colour * values, int64_t count, uint8_t
 // or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
 // BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
 // after it is not a body.
-inline bool ColourLoadMessages( Colour * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+inline bool ColorLoadMessages( Color * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
@@ -7059,7 +7059,7 @@ inline bool ColourLoadMessages( Colour * values, int64_t * count, const TableVoc
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ColourLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !ColorLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
         br.remaining--;
     }
     *count = bodies;
@@ -7230,7 +7230,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 14, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -7241,7 +7241,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
+        w.header( ids.ref_at( 14, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
@@ -7471,7 +7471,7 @@ inline bool StampLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
     }
 }
 
-inline int64_t ColourMeasureBodyRetain( TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path )
+inline int64_t ColorMeasureBodyRetain( TableRetainIds & ids, const Color & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
@@ -7481,7 +7481,7 @@ inline int64_t ColourMeasureBodyRetain( TableRetainIds & ids, const Colour & val
     return bytes;
 }
 
-GRAPHDEMO_TABLE_INLINE bool ColourSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path )
+GRAPHDEMO_TABLE_INLINE bool ColorSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Color & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.r != 0 )
     {
@@ -7503,9 +7503,9 @@ GRAPHDEMO_TABLE_INLINE bool ColourSaveBodyRetain( TableWriter & w, TableRetainId
     return !w.overflow;
 }
 
-GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & value, TableRetain * retain, const TableRetainPath & path )
+GRAPHDEMO_TABLE_INLINE bool ColorLoadBodyRetain( TableReader & r, Color & value, TableRetain * retain, const TableRetainPath & path )
 {
-    ColourReset( value ); // prefill declared defaults in place, then overlay
+    ColorReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
     // whatever an earlier occurrence of it left is discarded before the
@@ -7596,9 +7596,9 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
 // resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
 // path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
 // The reader's own data is exactly what it would have been with retention off.
-inline bool ColourLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value, TableRetain * retain, const TableRetainPath & path )
+inline bool ColorLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Color & value, TableRetain * retain, const TableRetainPath & path )
 {
-    ColourReset( value );
+    ColorReset( value );
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
     // an earlier occurrence of it left is discarded before the winning one is
@@ -7751,38 +7751,38 @@ inline void StampSaveRetainMessages( Args &&... )
 }
 
 template <typename... Args>
-inline void ColourLoadRetain( Args &&... )
+inline void ColorLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Colour is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "Color is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
-inline void ColourMeasureRetain( Args &&... )
+inline void ColorMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Colour is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "Color is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
-inline void ColourSaveRetain( Args &&... )
+inline void ColorSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Colour is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "Color is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
-inline void ColourLoadRetainMessages( Args &&... )
+inline void ColorLoadRetainMessages( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Colour is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "Color is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
-inline void ColourSaveRetainMessages( Args &&... )
+inline void ColorSaveRetainMessages( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Colour is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "Color is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 // ---- end of the fixed-class retain refusal ----
@@ -7827,7 +7827,7 @@ inline const Stamp * StampOpen( const void * bytes, uint64_t length, TableRefuse
 // instance produce ONE artifact or the pair means nothing.
 
 inline void StampCookBody( uint8_t * at, const Stamp & value, TableByteOrder order );
-inline void ColourCookBody( uint8_t * at, const Colour & value, TableByteOrder order );
+inline void ColorCookBody( uint8_t * at, const Color & value, TableByteOrder order );
 
 inline void StampCookBody( uint8_t * at, const Stamp & value, TableByteOrder order )
 {
@@ -7836,7 +7836,7 @@ inline void StampCookBody( uint8_t * at, const Stamp & value, TableByteOrder ord
     table_cook_put( at + 16, (uint64_t) value.seq, 4, order );
 }
 
-inline void ColourCookBody( uint8_t * at, const Colour & value, TableByteOrder order )
+inline void ColorCookBody( uint8_t * at, const Color & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.r, 1, order );
     table_cook_put( at + 1, (uint64_t) value.g, 1, order );
@@ -7911,8 +7911,8 @@ inline bool StampCook( const Stamp & value, void * out, uint64_t capacity, Table
 // are self-relative and therefore survive a plain memcpy.
 static_assert( __is_trivially_copyable( Stamp ), "Stamp must stay relocatable" );
 static_assert( __is_standard_layout( Stamp ), "Stamp must stay standard-layout for offsetof" );
-static_assert( __is_trivially_copyable( Colour ), "Colour must stay relocatable" );
-static_assert( __is_standard_layout( Colour ), "Colour must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( Color ), "Color must stay relocatable" );
+static_assert( __is_standard_layout( Color ), "Color must stay standard-layout for offsetof" );
 
 // ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
@@ -7925,24 +7925,24 @@ static_assert( sizeof( Stamp ) == 20, "Stamp's sizeof moved: the build version w
 static_assert( alignof( Stamp ) == 4, "Stamp's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Stamp, tag ) == 0, "Stamp's field tag moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Stamp, seq ) == 16, "Stamp's field seq moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Colour ) == 3, "Colour's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Colour ) == 1, "Colour's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, r ) == 0, "Colour's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, g ) == 1, "Colour's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, b ) == 2, "Colour's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Color ) == 3, "Color's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Color ) == 1, "Color's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Color, r ) == 0, "Color's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Color, g ) == 1, "Color's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Color, b ) == 2, "Color's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * StampTableType();
-inline const TableTypeInfo * ColourTableType();
-// The descriptors are CONSTANT-INITIALISED data, and a field's target is
+inline const TableTypeInfo * ColorTableType();
+// The descriptors are CONSTANT-INITIALIZED data, and a field's target is
 // the ADDRESS of another descriptor. These declarations are what let a
 // self- or mutually-referential graph — Node naming itself through *Node —
 // be expressed as constant data instead of a lazy link, which could not
 // have been written race-free OR recursion-safe. The whole reflection
 // surface is therefore immutable: read it from any thread, any time.
 extern const TableTypeInfo StampTableInfo;
-extern const TableTypeInfo ColourTableInfo;
+extern const TableTypeInfo ColorTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
     { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
@@ -7951,13 +7951,13 @@ inline const TableFieldInfo StampTableFields[] = {
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
-inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+inline const TableFieldInfo ColorTableFields[] = {
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Color, r ), (uint32_t) sizeof( Color::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Color, g ), (uint32_t) sizeof( Color::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Color, b ), (uint32_t) sizeof( Color::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
-inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL };
-inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
+inline const TableTypeInfo ColorTableInfo = { "Color", (uint32_t) sizeof( Color ), 3, ColorTableFields, +[]( void * p ) { ColorReset( *(Color *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo * ColorTableType() { return &ColorTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
 
@@ -7968,11 +7968,11 @@ bool StampFromJson( Stamp & value, const char * text, int64_t bytes, TableReport
 int64_t StampToJsonMeasure( const Stamp & value );
 int64_t StampToJson( const Stamp & value, char * buffer, int64_t capacity );
 
-// Colour in and out of a JSON text — one instance, one text, the generic
+// Color in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PartsTable.cpp; link it to use them.
-bool ColourFromJson( Colour & value, const char * text, int64_t bytes, TableReport * report );
-int64_t ColourToJsonMeasure( const Colour & value );
-int64_t ColourToJson( const Colour & value, char * buffer, int64_t capacity );
+bool ColorFromJson( Color & value, const char * text, int64_t bytes, TableReport * report );
+int64_t ColorToJsonMeasure( const Color & value );
+int64_t ColorToJson( const Color & value, char * buffer, int64_t capacity );
 
 } // namespace graphdemo

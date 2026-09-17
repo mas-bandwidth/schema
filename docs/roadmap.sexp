@@ -3126,7 +3126,7 @@
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cpp/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "cpp/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3139,7 +3139,7 @@
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "c/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "c/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3152,7 +3152,7 @@
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "cs/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3165,7 +3165,7 @@
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "go/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "go/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3178,7 +3178,7 @@
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "rust/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3191,7 +3191,7 @@
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "java/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3204,7 +3204,7 @@
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "js/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "js/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3217,7 +3217,7 @@
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "dart/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
@@ -3230,7 +3230,7 @@
    "C13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/R17" :type :task :title "a bool or present byte that is not 0/1 normalises and counts nothing"
+  (:id "elixir/R17" :type :task :title "a bool or present byte that is not 0/1 normalizes and counts nothing"
    :state :unknown :evidence nil :audit-item "R17" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")

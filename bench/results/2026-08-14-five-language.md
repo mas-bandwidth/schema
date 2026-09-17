@@ -25,7 +25,7 @@ code and rots too (v1's lesson, paid for again):
 (`../serialize-cs-port/serialize`) that no README documents; it now defaults to
 `../serialize`, the Makefile's own sibling, with `SERIALIZE_C` beside it.
 
-## Apple M2 (arm64, LABELLED NOISY, unpinned)
+## Apple M2 (arm64, LABELED NOISY, unpinned)
 
 macbook, Darwin 25.5.0. Apple clang 21.0.0 for both C and C++; go1.26.5; cargo/rustc
 1.97.1; dotnet 10.0.302 — the same toolchains as the v1–v5 passes. Raw CSV:
@@ -96,7 +96,7 @@ C is the slowest row here, and most of that is **not** the generated code:
   their callers, and Go's is inlined by cost budget. No leg in this table is built with
   LTO — the Rust leg is `cargo run --release` (no LTO) too — so the C row is what a C user
   gets from an ordinary release build.
-- **The labelled `-flto` diagnostic** (`2026-08-14-c-lto-diagnostic-arm64-macbook.csv`,
+- **The labeled `-flto` diagnostic** (`2026-08-14-c-lto-diagnostic-arm64-macbook.csv`,
   same sitting, same source): median **1.11x**, and the shape is exactly the theory —
   2.25x on `inputpacket` write, 2.13x on `probebits` read, 1.64x on `probebits` write,
   1.46x on `probe_header` read (all paths made of many small runtime calls), against

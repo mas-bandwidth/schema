@@ -1,6 +1,6 @@
 // THE VALUED FIXTURE (docs/SPEC-TABLES.md §7.5).
 //
-// A chain of value-initialised nodes pins every node offset, every deref and
+// A chain of value-initialized nodes pins every node offset, every deref and
 // every visit order — and almost no VALUES, because there are almost none in
 // it. `--values` fills one, so a `cook` dump locks what a reader reads out of a
 // node as well as where the node is. Nothing else about the fixture moves: the

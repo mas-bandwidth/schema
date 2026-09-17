@@ -272,7 +272,7 @@ func TestGoRuntimeNameScanGoesRed(t *testing.T) {
 }
 
 // tableWidenFloat is reached only from a declared kind 11. The nearest
-// neighbour respells that one field float32, so the helper has no call site
+// neighbor respells that one field float32, so the helper has no call site
 // and must not be emitted. tableKindWidens stays: a kind comparison is every
 // unit's.
 const goWidenF64Src = `package probe
@@ -321,7 +321,7 @@ func TestGoTableWidenFloatFollowsDeclaredKind11(t *testing.T) {
 
 	without := goTableFile(t, goWidenF32Src)
 	if strings.Contains(without, "tableWidenFloat") {
-		t.Error("the nearest neighbour declares no kind 11 and must carry none of tableWidenFloat")
+		t.Error("the nearest neighbor declares no kind 11 and must carry none of tableWidenFloat")
 	}
 	if !strings.Contains(without, "func tableKindWidens") {
 		t.Error("tableKindWidens is every unit's and left one")

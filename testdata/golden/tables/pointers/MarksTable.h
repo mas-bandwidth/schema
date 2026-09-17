@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xa3d36c2c53522fdd (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -296,7 +296,7 @@ struct TableFieldInfo
     const char * (*key_name)( uint64_t value );
     uint64_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -1552,7 +1552,7 @@ static const int64_t kTableAnnounceBytes = 536;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xe5, 0x55, 0x4a, 0xcb, 0xa1, 0xeb, 0x78, 0x84, 0x02,
+    0x01, 0x01, 0x09, 0x1c, 0xe6, 0x61, 0xae, 0xbd, 0x6e, 0x42, 0xcb, 0x02,
     0x0e, 0xf0, 0x03, 0x06, 0xed, 0x03, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad,
     0xbc, 0xc4, 0x0c, 0x10, 0x4c, 0x8a, 0x95, 0x2e, 0xef, 0x84, 0x49, 0x1e,
     0x0d, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x0d, 0x77, 0x6e,
@@ -2897,7 +2897,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // plan comes out partitioned without a second array to partition it in.
     if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
-    // side's whole defence: the plan's source offsets are arithmetic over sizes
+    // side's whole defense: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
@@ -3551,13 +3551,13 @@ struct TableWorker
         // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
         // storage, then write the declared defaults ONE MEMBER AT A TIME.
         //
-        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // It is "T", not "T{}". Value-initializing the whole aggregate says
         // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
         // by element in its front end — while both halves here cost
         // O(declarations). The slab cap below refuses a large node at RUN
         // TIME and bounds nothing at compile time: the cost is paid by
         // whatever T a caller instantiates this with.
-        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // Padding is not the difference: value-initialization zeroes MEMBERS
         // and not padding either way, which is why the segment is calloc'd.
         //
         // TableReset is an OVERLOAD SET, one per closure member, reached from
@@ -3565,11 +3565,11 @@ struct TableWorker
         // Alloc is a template and cannot spell <Name>Reset.
         //
         // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
-        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialization lands on
         // the same values today, because a member with a non-zero default
         // carries a member initializer that says so — but that is the class
         // definition agreeing with Reset, not the arena reading it, and #320's
-        // fix was itself a pass that MOVED initialisation between the two.
+        // fix was itself a pass that MOVED initialization between the two.
         // The arena reads the definition.
         slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
         TableReset( *slot.ptr );
@@ -3647,7 +3647,7 @@ struct TableWorker
 // the same first-visit numbering the wire uses, so the pack order and the node
 // order are one order.
 //
-// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// COLORING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
 // makes a data cycle free to refuse: a reference to an entry still open is a
 // cycle, and Lock returns failure rather than recursing away. The ROOT's entry
 // is open for the whole walk.
@@ -3741,7 +3741,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
 }
 
 // REACH a node: one probe answers both questions the walk has. A true "taken"
-// says this is a FIRST visit, and the entry is now the node's, coloured open
+// says this is a FIRST visit, and the entry is now the node's, colored open
 // at "offset"; otherwise the entry is the one the node already has, and its
 // open bit says cycle or sharing. NULL is an allocation failure, and it is a
 // refusal like any other: Lock fails rather than packing a graph it cannot
@@ -4465,12 +4465,12 @@ static const int32_t kTableRetainKnownIds = 47;
 // the hoisted descriptor's tag lists and wide ranges take.
 inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x0a8f12cc5f9a0c03ull, 0x1e4984ef2e958a4cull, 0x24b070ada2041cb0ull, 0x24f3a319b88552c1ull,
-    0x2f2ec0474f1c4fe4ull, 0x327fe6dc702553fdull, 0x39f7fcec8fcb623dull, 0x3bf8fbbad1587cddull,
-    0x4320e9a2e32eac38ull, 0x4339ee8ab21c8380ull, 0x4554e34a747022dfull, 0x4a9a31623ab5f213ull,
-    0x509220bb65a646b7ull, 0x56d7ab194448a4f3ull, 0x5b25b8ef511eb395ull, 0x60839e2395be697eull,
-    0x69ff34904242a73dull, 0x6dadeaaee49d6d18ull, 0x704be0d8faaffc58ull, 0x732dfbcc9b0cf0bbull,
-    0x75d8e97600b296eaull, 0x76aaaa535714d805ull, 0x77af761956600b54ull, 0x7a8060916400fe66ull,
-    0x7ce4fd9430e80ceaull, 0x7e9d0b96d39e517dull, 0x802517e298c70b03ull, 0x823b8a195ce2133cull,
+    0x2f2ec0474f1c4fe4ull, 0x327fe6dc702553fdull, 0x344ea8f4939cdc98ull, 0x39f7fcec8fcb623dull,
+    0x3bf8fbbad1587cddull, 0x4320e9a2e32eac38ull, 0x4339ee8ab21c8380ull, 0x4554e34a747022dfull,
+    0x4a9a31623ab5f213ull, 0x509220bb65a646b7ull, 0x56d7ab194448a4f3ull, 0x5b25b8ef511eb395ull,
+    0x60839e2395be697eull, 0x69ff34904242a73dull, 0x6dadeaaee49d6d18ull, 0x704be0d8faaffc58ull,
+    0x732dfbcc9b0cf0bbull, 0x75d8e97600b296eaull, 0x76aaaa535714d805ull, 0x77af761956600b54ull,
+    0x7a8060916400fe66ull, 0x7ce4fd9430e80ceaull, 0x802517e298c70b03ull, 0x823b8a195ce2133cull,
     0x9d167ef77aed79b6ull, 0x9d8b8aa2b404c2c8ull, 0x9deeefd89ca8a81dull, 0xae3b9113b7db93a4ull,
     0xaf63da4c8601e926ull, 0xaf63df4c8601f1a5ull, 0xaf63ef4c86020cd5ull, 0xb97e90a3784c431dull,
     0xbb62c62c9808ea37ull, 0xc4bcadba8e631b86ull, 0xd6458a3eef83d457ull, 0xd858c2cb7f1514ccull,
@@ -5879,7 +5879,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x8478eba1cb4a55e5ull;
+static const uint64_t BuildVersion = 0xcb426ebdae61e61cull;
 
 } // namespace graphdemo
 
@@ -6226,7 +6226,7 @@ inline bool MarkerLoadMessageBody( TableBitReader & r, const TableVocabulary & v
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
 // lookup. It is how a node born in raw arena storage comes to hold the
-// declared defaults without value-initialising the whole aggregate.
+// declared defaults without value-initializing the whole aggregate.
 
 inline void TableReset( Tally & value ) { TallyReset( value ); }
 inline void TableReset( Marker & value ) { MarkerReset( value ); }
@@ -6348,7 +6348,7 @@ inline bool MarkerLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 inline int64_t TallyMeasureBody( TableIds & ids, const Tally & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
+    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
     return bytes;
 }
 
@@ -6364,7 +6364,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBody( TableWriter & w, TableIds & ids, cons
 {
     if ( value.hits != 0 )
     {
-        w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        w.header( ids.ref_at( 20, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
         w.put32( uint32_t( value.hits ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -6685,7 +6685,7 @@ inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & number
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
         // A POINTER RIDES AS A NODE INDEX (docs/SPEC-TABLES.md §3.1): the
@@ -6697,7 +6697,7 @@ inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & number
         {
             uint64_t index_note = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_note, index_note ) ) { return -1; }
-            bytes += TableLebBytes( ids.ref_at( 7, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( index_note );
+            bytes += TableLebBytes( ids.ref_at( 8, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( index_note );
         }
     }
     return bytes;
@@ -6709,7 +6709,7 @@ inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
+        w.header( ids.ref_at( 7, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -6719,7 +6719,7 @@ inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         {
             uint64_t index_note = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_note, index_note ) ) { return false; }
-            w.header( ids.ref_at( 7, 0x3bf8fbbad1587cddull ), 17 ); // note — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 8, 0x3bf8fbbad1587cddull ), 17 ); // note — a NODE INDEX into the flat node table
             w.putleb( index_note );
         }
     }
@@ -8096,7 +8096,7 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire_fil
 inline int64_t TallyMeasureBodyRetain( TableRetainIds & ids, const Tally & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
+    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -8105,7 +8105,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBodyRetain( TableWriter & w, TableRetainIds
 {
     if ( value.hits != 0 )
     {
-        w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        w.header( ids.ref_at( 20, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
         w.put32( uint32_t( value.hits ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -8280,7 +8280,7 @@ inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
         // A POINTER RIDES AS A NODE INDEX (docs/SPEC-TABLES.md §3.1): the
@@ -8292,7 +8292,7 @@ inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
         {
             uint64_t index_note = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_note, index_note ) ) { return -1; }
-            bytes += TableLebBytes( ids.ref_at( 7, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( index_note );
+            bytes += TableLebBytes( ids.ref_at( 8, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( index_note );
         }
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -8305,7 +8305,7 @@ inline bool MarkerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
+        w.header( ids.ref_at( 7, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -8315,7 +8315,7 @@ inline bool MarkerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         {
             uint64_t index_note = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_note, index_note ) ) { return false; }
-            w.header( ids.ref_at( 7, 0x3bf8fbbad1587cddull ), 17 ); // note — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 8, 0x3bf8fbbad1587cddull ), 17 ); // note — a NODE INDEX into the flat node table
             w.putleb( index_note );
         }
     }
@@ -9332,7 +9332,7 @@ static_assert( offsetof( Marker, note ) == 16, "Marker's field note moved: the b
 
 inline const TableTypeInfo * TallyTableType();
 inline const TableTypeInfo * MarkerTableType();
-// The descriptors are CONSTANT-INITIALISED data, and a field's target is
+// The descriptors are CONSTANT-INITIALIZED data, and a field's target is
 // the ADDRESS of another descriptor. These declarations are what let a
 // self- or mutually-referential graph — Node naming itself through *Node —
 // be expressed as constant data instead of a lazy link, which could not

@@ -28,7 +28,7 @@
 // reading past a view throws on its own.
 //
 // ALLOCATION: one handle per Open and nothing per reference resolved or per
-// field; a 64-bit field reads as a BigInt, on the licence the wire has. The
+// field; a 64-bit field reads as a BigInt, on the license the wire has. The
 // bytes belong to the consumer.
 package jstable
 

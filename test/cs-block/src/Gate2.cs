@@ -18,7 +18,7 @@
 //
 // BOTH READ THROUGH A CONTIGUOUS SPAN REINTERPRET at pitch == sizeof. That is
 // the fast path the gate is about: blittable rows both generated sides index
-// with, no marshalling and no copy AT THE BOUNDARY, and nothing per row.
+// with, no marshaling and no copy AT THE BOUNDARY, and nothing per row.
 //
 // THE GOLDEN GATE COMES FIRST: the two arms' checksums must agree before any
 // clock starts, and a mismatch REFUSES to bench.

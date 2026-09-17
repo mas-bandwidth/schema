@@ -34,7 +34,7 @@ generated/c/.stamp: bin/schema $(SCHEMAS)
 
 # -Wtype-limits is where gcc reports a vacuous comparison and clang stays quiet,
 # so it rides unconditionally. clang says the same thing under a flag gcc does
-# not recognise, so that one is FEATURE TESTED rather than assumed -- hardcoding
+# not recognize, so that one is FEATURE TESTED rather than assumed -- hardcoding
 # it broke the Linux leg once already, which is the argument for testing rather
 # than guessing which compiler is which.
 C_TAUTOLOGICAL := $(shell $(CC) -Wtautological-type-limit-compare -E - < /dev/null > /dev/null 2>&1 && echo -Wtautological-type-limit-compare)
@@ -149,7 +149,7 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 
 # The flags a NEGATIVE CONTROL builds with. A control is built to be RUN ONCE
 # and thrown away — it proves a gate can go red and is never measured — so it
-# pays the warnings and skips the optimiser. On the driver's twenty-eight
+# pays the warnings and skips the optimizer. On the driver's twenty-eight
 # translation units that is most of the build, and `make test` runs two of
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
@@ -233,7 +233,7 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 # property which makes it schema's rather than a packer's. The walker's source
 # must therefore be the SAME BYTES in every generated .c of the corpus, whose
 # units disagree about packages, tables, kinds and pointer modes. Nothing
-# outside the markers is compared and nothing inside them is normalised away:
+# outside the markers is compared and nothing inside them is normalized away:
 # the C walk names no package at all, because its entry points are reached
 # through the prefixed wrappers rather than through a namespace.
 .PHONY: tables-c-json-walk
@@ -329,7 +329,7 @@ tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables
 # THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
 # C emitter: a green matrix row proves nothing until the row is shown capable
 # of going red. One field index in the C WALK is sabotaged — the reader takes
-# its neighbour's descriptor — and the harness must go red on `json-read`
+# its neighbor's descriptor — and the harness must go red on `json-read`
 # ALONE. The second half is the point: json-write must stay green, because the
 # sabotage is in the READER; and `wire` must stay green, because the wire codec
 # is a different half of the same backend. A control that turned the whole
@@ -399,10 +399,10 @@ conformance-negative-control-c: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_C)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localize the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
@@ -414,7 +414,7 @@ conformance-negative-control-c: build/conformance-harness
 # been the expectation, be right. The control neuters the byte swap and requires
 # BOTH foreign rows to go red while `cook` and `block` — the same Opens over the
 # same files, unswapped — stay green. That second half is what says the control
-# localises the swap rather than breaking the reader.
+# localizes the swap rather than breaking the reader.
 CONFORMANCE_NEGATIVE_C_FOREIGN := build/conformance-negative-c-foreign
 .PHONY: conformance-negative-control-c-foreign
 conformance-negative-control-c-foreign: build/conformance-harness build/tables-generated-c/.stamp
@@ -441,10 +441,10 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: block-foreign stayed green with no swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -q "^cook          pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localise the swap"; \
+		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localize the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the swap"; \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localize the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -m1 "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log
 	@echo "negative control: a driver that never makes the file foreign turns cook-foreign and block-foreign RED, and only those"
@@ -770,7 +770,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 .PHONY: tables-c-soak-negative-control
 tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
-	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
+	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimizer deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }

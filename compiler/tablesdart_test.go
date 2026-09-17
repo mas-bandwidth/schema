@@ -64,7 +64,7 @@ func TestDartEmitsTableSources(t *testing.T) {
 // it asks two things the C# scan does not have to.
 //
 // THE SPELLING IS lowerCamelCase for a free function and UpperCamel for a
-// class, so the scan collects both and normalises to the registry's PascalCase
+// class, so the scan collects both and normalizes to the registry's PascalCase
 // — the two are a bijection (the packet emitter's dartName), which is what
 // lets one registry cover the target.
 //

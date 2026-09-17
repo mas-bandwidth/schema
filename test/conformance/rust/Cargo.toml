@@ -18,6 +18,6 @@ blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;
-# an optimised build costs nothing here and keeps the leg's wall inside the
+# an optimized build costs nothing here and keeps the leg's wall inside the
 # two-minute rule
 opt-level = 1

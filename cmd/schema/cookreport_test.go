@@ -1,10 +1,10 @@
 // `cook --verbose` NAMES ITS READS (#521 G-12).
 //
 // `cook --in <dir>` packs the tree and then cooks the wire, so it reads twice
-// and reports twice. Both lines used to be the unlabelled "report: silent — the
+// and reports twice. Both lines used to be the unlabeled "report: silent — the
 // data matched the schema exactly", which reads as the cook having read one
 // input twice. With a wire FILE for --in the command reads once and the line
-// stays unlabelled.
+// stays unlabeled.
 package main
 
 import (
@@ -53,7 +53,7 @@ func TestCookVerboseNamesEachRead(t *testing.T) {
 	}
 }
 
-// One read, one unlabelled line: `--in` a wire file packs nothing, so there is
+// One read, one unlabeled line: `--in` a wire file packs nothing, so there is
 // no second stage to tell it apart from.
 func TestCookVerboseOverAWireFileReportsOnce(t *testing.T) {
 	bin := buildCLI(t)

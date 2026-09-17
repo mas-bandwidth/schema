@@ -295,11 +295,11 @@ func init() {
 		// is one claim, and the emitters index into it.
 		Name{Name: "tableBlockLayoutOffset", What: "the block layout contract's offset refusal"},
 		Name{Name: "tableBlockLayoutSize", What: "the block layout contract's size refusal"},
-		Name{Name: "tableBlockNativeOrder", What: "this machine's byte order, read once at package initialisation"},
+		Name{Name: "tableBlockNativeOrder", What: "this machine's byte order, read once at package initialization"},
 		Name{Name: "tableBlockRecords", What: "the unit's whole block descriptor graph, one slice"},
 		Name{Name: "tableCookLayoutOffset", What: "the cook layout contract's offset refusal"},
 		Name{Name: "tableCookLayoutSize", What: "the cook layout contract's size refusal"},
-		Name{Name: "tableCookNativeOrder", What: "this machine's byte order, read once at package initialisation"},
+		Name{Name: "tableCookNativeOrder", What: "this machine's byte order, read once at package initialization"},
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
 		Name{Name: "tableJsonBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
 		Name{Name: "tableJsonBase64Decode", What: "the base64 decode lookup for a `bytes` field"},

@@ -20,7 +20,7 @@ the compiler did, that is a bug in the docs and worth an issue.
 
 **Cap'n Proto, Protobuf or FlatBuffers comparisons we got wrong.** The numbers
 in [COMPARISON.md](COMPARISON.md) are measured by a committed script. If we
-modelled one of those formats inefficiently, say so — the script is there so
+modeled one of those formats inefficiently, say so — the script is there so
 the claim can be checked rather than believed.
 
 ## Building

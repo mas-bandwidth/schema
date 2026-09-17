@@ -402,7 +402,7 @@ static class Program
                 Check(ship.ShipType == (ShipType) (i % 4), "ship type");
                 Check(ship.Team == (Team) (i % 5), "ship team");
                 // THE BOOL ROW (§19.3, §19.5): one byte here and one in C++,
-                // four under default marshalling — the case where C#'s two
+                // four under default marshaling — the case where C#'s two
                 // layout models disagree, pinned so a port cannot pick the
                 // wrong one and pass.
                 Check(ship.HasTargetLock == ((i % 2) == 0), "ship has_target_lock — a bool is ONE byte in the managed model");

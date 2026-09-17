@@ -167,7 +167,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		if RootLoad(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
 			t.Fatalf("unknown then early: a=%d report=%+v", after.A, damaged)
 		}
-		// The C++ analogue of this walk increments unknown before the
+		// The C++ analog of this walk increments unknown before the
 		// leftover-byte decision. A seeded MaxInt32 is signed overflow there
 		// and a defined wrap here; restoring the caller's report must still
 		// leave MaxInt32, default a, and Damaged.

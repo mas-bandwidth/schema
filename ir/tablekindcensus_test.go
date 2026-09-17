@@ -53,7 +53,7 @@ func TestTableDeclaredKindsNamesEveryPosition(t *testing.T) {
 	}
 }
 
-// the nearest neighbour: the same shapes with the float rung's top respelled at
+// the nearest neighbor: the same shapes with the float rung's top respelled at
 // its bottom carry no kind 11 at all, which is the answer the C table emitter's
 // table_wire_widen_f32 gate reads.
 const kindCensusNarrowSource = `package demo

@@ -31,7 +31,7 @@
 // condition that is always false and a condition that is always true both leave
 // those units compiling. So each block is asked for TWICE: the fixture that
 // DECLARES the construct must carry it, must CALL it, and must compile and run
-// at -Werror with the sanitizers on; its NEAREST NEIGHBOUR — wstring respelled
+// at -Werror with the sanitizers on; its NEAREST NEIGHBOR — wstring respelled
 // string, float64 respelled float32, the blob pointers respelled table pointers
 // — must carry not one symbol of it AND must still compile, which is the half
 // that catches a gate cut too deep.
@@ -60,7 +60,7 @@ table Note
 }
 `
 
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
+// the nearest neighbor: kind 12 where the fixture above spells kind 33, and
 // nothing else moved.
 const deadCNarrowSrc = `package probe
 
@@ -80,7 +80,7 @@ table Note
 }
 `
 
-// the nearest neighbour: the one declaration respelled at its ladder's bottom,
+// the nearest neighbor: the one declaration respelled at its ladder's bottom,
 // so nothing on the float rung is declared and nothing widens into it.
 const deadCF32Src = `package probe
 
@@ -114,7 +114,7 @@ table Note
 }
 `
 
-// The nearest neighbour: every blob pointer respelled a table pointer. The unit
+// The nearest neighbor: every blob pointer respelled a table pointer. The unit
 // is still variable-length and still carries the arena, the numbering, the map,
 // the graph and the message form — and no byte buffer.
 const deadCNodeSrc = `package probe

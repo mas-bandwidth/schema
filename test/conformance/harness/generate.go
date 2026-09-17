@@ -1,6 +1,6 @@
 // `harness generate` — the generated half of the conformance data.
 //
-// Two artefacts, both from the compiler's own engine (internal/tablewire and
+// Two artifacts, both from the compiler's own engine (internal/tablewire and
 // internal/tabletext, reached through the public compiler API):
 //
 //   - json/<instance>.json, the docs/SPEC-TABLES.md §16 text of the instance whose

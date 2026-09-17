@@ -294,7 +294,7 @@ func TestCTableOpenDistinctnessIsBounded(t *testing.T) {
 // cMacroSrc names every declaration with the same distinctive prefix, so a
 // macro in the emitted C that does NOT carry it is one the GENERATOR owns
 // rather than one the schema asked for. That is what makes the scan below
-// shape-independent: it recognises no spelling and no family, it simply
+// shape-independent: it recognizes no spelling and no family, it simply
 // subtracts the schema's own contribution and looks at what is left.
 const cMacroSrc = `package zqqpkg
 

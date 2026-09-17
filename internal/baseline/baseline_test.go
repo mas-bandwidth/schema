@@ -623,7 +623,7 @@ func TestVanishedMembers(t *testing.T) {
 	}
 }
 
-// TestPairedRenameDoesNotRaiseTheVerdict: a rename the pairing RECOGNISES —
+// TestPairedRenameDoesNotRaiseTheVerdict: a rename the pairing RECOGNIZES —
 // one that keeps at least half the declaration's identities — must draw the
 // same verdict the same wire loss draws without it. A paired rename is the
 // declaration under a new name, so its own walk judges it and the referent rule
@@ -668,7 +668,7 @@ func TestPairedRenameDoesNotRaiseTheVerdict(t *testing.T) {
 }
 
 // TestBelowThresholdRenameIsARepoint is the stated exception to the test above.
-// A declaration that keeps too little of its identity is not recognisable as a
+// A declaration that keeps too little of its identity is not recognizable as a
 // rename — no evidence says the new name is the old declaration — so it is
 // judged as what it is indistinguishable from: a field repointed at a different
 // declaration. That refuses where the in-place edit only warns, and the warning
@@ -912,7 +912,7 @@ enum Slot { Head, Chest, Legs }
 
 type Piece
 {
-    armour int32 = 1
+    armor int32 = 1
 }
 
 fixed table Loadout
@@ -1613,7 +1613,7 @@ table Ship
 }
 
 // THE HISTORY DATE IS UTC AND SAYS SO (#521 G-18, #447 F-16). The stamp is UTC,
-// which is the right clock for a shared artifact, and an unlabelled date is
+// which is the right clock for a shared artifact, and an unlabeled date is
 // read in the reader's own — so an author east of Greenwich writes a baseline
 // in the evening and reads yesterday on the file they just wrote.
 //
@@ -1632,7 +1632,7 @@ func TestBaselineHistoryStampsUTCAndLabelsIt(t *testing.T) {
 	// a clock rather than on the code, and the label is what this pins.
 	stamp := regexp.MustCompile(`(?m)^### \d{4}-\d{2}-\d{2} \(UTC\) — the first baseline$`)
 	if !stamp.MatchString(string(data)) {
-		t.Errorf("the history entry is not a labelled UTC stamp:\n%s", data)
+		t.Errorf("the history entry is not a labeled UTC stamp:\n%s", data)
 	}
 }
 
