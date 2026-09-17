@@ -972,6 +972,23 @@ CONFORMANCE_LEGS  += build/conformance-c
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
 
+# THE C TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is the
+# language's formatting authority, so an emitter that has to be hand-reflowed is
+# an emitter that drifts. The gate holds every generated C table unit to what
+# the formatter would write, and SKIPS cleanly where clang-format is not on PATH.
+.PHONY: tables-c-clean
+tables-c-clean: build/tables-generated-c/.stamp
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-c-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
+	fi; \
+	drift=0; \
+	for f in $$(find build/tables-generated-c -name '*.h' -o -name '*.c'); do \
+		$(CLANG_FORMAT) "$$f" | cmp -s "$$f" - || { echo "clang-format drift in $$f"; drift=1; }; \
+	done; \
+	[ $$drift -eq 0 ] || exit 1; \
+	echo "tables C: clang-format clean over the generated table units"
+test-c: tables-c-clean
+
 # The file-wire differential: the compiler's independent engine owns every
 # expected byte and report. Unsupported roster entries are named absent.
 build/wire-fuzz-c: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)

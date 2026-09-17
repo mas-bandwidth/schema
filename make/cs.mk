@@ -470,6 +470,20 @@ TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
+
+# THE C# TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `dotnet format` is the
+# language's formatting authority over the generated table units the conformance
+# project compiles, so an emitter that drifts from what it writes goes red here
+# rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
+.PHONY: tables-cs-clean
+tables-cs-clean: build/tables-generated-cs/.stamp
+	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
+		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
+	fi
+	$(DOTNET) format test/conformance/cs/schemaconformance.csproj \
+		--verify-no-changes --include $(CURDIR)/build/tables-generated-cs
+	@echo "tables C#: dotnet format clean over the generated table units"
+test-cs: tables-cs-clean
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema

@@ -243,6 +243,16 @@ TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
+
+# THE ELIXIR TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `mix format` is
+# the language's one formatting authority; the packet units under generated/
+# were already held to it, and this holds the TABLE units under
+# build/tables-generated-elixir to the same formatter.
+.PHONY: tables-elixir-clean
+tables-elixir-clean: build/tables-generated-elixir/.stamp
+	$(MIX) format --check-formatted build/tables-generated-elixir/*/*.ex
+	@echo "tables Elixir: mix format clean over the generated table units"
+test-elixir: tables-elixir-clean
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/elixir/source

@@ -366,6 +366,21 @@ TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
 TOOLCHAIN_PINS_js  := NODE
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
+
+# THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424).
+# `eslint` is the language's authority over the generated table units, so an
+# emitter that drifts from the conventions it enforces goes red on the diff
+# rather than on a reviewer. It SKIPS cleanly where eslint is not on PATH.
+ESLINT ?= eslint
+.PHONY: tables-js-clean
+tables-js-clean: build/tables-generated-js/.stamp
+	@if ! command -v $(ESLINT) >/dev/null 2>&1; then \
+		echo "SKIP tables-js-clean: $(ESLINT) is not installed"; exit 0; \
+	fi
+	$(ESLINT) build/tables-generated-js
+	@echo "tables JavaScript: eslint clean over the generated table units"
+test-js: tables-js-clean
+
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
 build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Narrow.schema
