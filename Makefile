@@ -1415,18 +1415,67 @@ tables-cook-cli: bin/schema
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
 # The second is the property §19 actually states: **the Table sources are
-# BYTE-IDENTICAL with or without the Block files existing**, held by comparing
-# 68 of them against frozen pins under testdata/golden/tables/.
+# BYTE-IDENTICAL with or without the block form**. It is MECHANICAL
+# (schema#331): a sabotaged emitter with the block form removed is built
+# through `go build -overlay` — the mechanism the negative controls below
+# already use — the corpus is generated from it, and every Table source must be
+# byte-identical to the ordinary build's. The comparison survives any
+# legitimate Table-emitter change, because both arms move together, and it goes
+# red precisely when the block form leaks into a Table source.
 #
-# They are ordinary goldens: `make update-goldens` re-pins them when a TABLE
-# emitter legitimately changes, and a move under an unchanged emitter is
-# stop-the-line, exactly as it is for every other golden. What a frozen pin
-# cannot do is survive a legitimate Table-emitter change without being
-# re-pinned; schema#331 carries the follow-on that would replace it with a
-# mechanical comparison against a block-less emitter, the way the negative
-# controls below already build sabotaged ones.
+# The pins under testdata/golden/tables/ remain ordinary goldens, held by the
+# compiler package's TestGoldenTableSource; a move under an unchanged emitter is
+# stop-the-line, exactly as it is for every other golden.
+
+# The block form's EMISSION is removed at the one line each backend computes
+# it: the emitter is handed a nil block surface, so it writes no Block file and
+# no block surface at all. The LAYOUT MODEL is untouched, so the build version
+# (docs/SPEC-TABLES.md §20), which is computed from it independently, is the same
+# in both arms — the comparison measures the block form's emission, not the id.
+BLOCKLESS_ROOT   := build/zero-cost-noblock
+BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
+BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema$(skip_hash)331)
+
+$(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
+	@mkdir -p $(BLOCKLESS_ROOT)
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/cpptable/cpptable.go > $(BLOCKLESS_ROOT)/cpptable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/cpptable.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "ZERO-COST GATE FAILED: the cpp sabotage patched nothing"; exit 1; } || true
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/cstable/cstable.go > $(BLOCKLESS_ROOT)/cstable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/cstable.gotext internal/codegen/cstable/cstable.go && \
+		{ echo "ZERO-COST GATE FAILED: the cs sabotage patched nothing"; exit 1; } || true
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/ctable/ctable.go > $(BLOCKLESS_ROOT)/ctable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/ctable.gotext internal/codegen/ctable/ctable.go && \
+		{ echo "ZERO-COST GATE FAILED: the c sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/$(BLOCKLESS_ROOT)/cpptable.gotext","%s/internal/codegen/cstable/cstable.go":"%s/$(BLOCKLESS_ROOT)/cstable.gotext","%s/internal/codegen/ctable/ctable.go":"%s/$(BLOCKLESS_ROOT)/ctable.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(BLOCKLESS_ROOT)/overlay.json
+	go build -overlay=$(BLOCKLESS_ROOT)/overlay.json -o $@ ./cmd/schema
+
+# $(call tables_byte_identical,<label>,<ordinary root>,<block-less root>,<find patterns>,<floor>)
+# walks the ordinary root's Table sources, requires each in the block-less root
+# byte-for-byte, and returns non-zero if one is missing or moved. The floor is
+# the glob's own sanity check, not the property.
+define tables_byte_identical
+n=0; d=0; \
+for f in $$(find $(2) -type f \( $(4) \) | sort); do \
+	rel=$${f#$(2)/}; \
+	n=$$(( n + 1 )); \
+	if [ ! -f "$(3)/$$rel" ]; then \
+		echo "ZERO-COST GATE FAILED: the block-less $(1) emitter did not write $$rel"; d=$$(( d + 1 )); \
+	elif ! cmp -s "$$f" "$(3)/$$rel"; then \
+		echo "ZERO-COST GATE FAILED: $(1) $$rel moved when the block form was removed"; d=$$(( d + 1 )); \
+	fi; \
+done; \
+if [ "$$n" -lt $(5) ]; then echo "ZERO-COST GATE FAILED: $(1) compared $$n Table files, expected at least $(5) — the glob, not the property, is what broke"; d=$$(( d + 1 )); fi; \
+if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte-identical to the block-less emitter"; fi; \
+[ "$$d" = "0" ]
+endef
+
 .PHONY: tables-block-zero-cost
-tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp
+tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
@@ -1451,44 +1500,36 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		fi; \
 	done
 	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@n=0; d=0; \
-	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
-	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
-	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
-	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* \
-	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* \
-	         testdata/golden/tables/arms/*Table.* testdata/golden/tables/wide/*Table.* ; do \
-		dir=$$(basename $$(dirname $$f)); \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/examples-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/examples/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/block-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/block/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/blockhome-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/blockhome/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/examples-c/*Table.* testdata/golden/tables/block-c/*Table.* \
-	         testdata/golden/tables/pointers-c/*Table.*; do \
-		dir=$$(basename $$(dirname $$f)); \
-		dir=$${dir%-c}; \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-c/$$dir/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	if [ "$$d" != "0" ]; then exit 1; fi; \
-	if [ "$$n" -lt 72 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 72 — the glob, not the property, is what broke"; exit 1; fi; \
-	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
+	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
+	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
+	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+	$(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+	@if find $(BLOCKLESS_ROOT) -name '*Block.*' | grep -q .; then \
+		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
+		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
+	fi
+	@$(call tables_byte_identical,cpp,build/tables-generated,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cs,build/tables-generated-cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+	@$(call tables_byte_identical,c,build/tables-generated-c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+
+# THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
+# until it is shown able to refuse a Table source that moved: the nearest
+# neighbour of the property is planted into a COPY of the ordinary corpus — a
+# block spelling in a Table source — and the SAME comparison must go red.
+# Nothing tracked is written to.
+.PHONY: tables-block-zero-cost-negative-control
+tables-block-zero-cost-negative-control: build/tables-generated/.stamp
+	@rm -rf build/zero-cost-leak && cp -R build/tables-generated build/zero-cost-leak
+	@printf 'struct TableBlockAllocator; // PLANTED: a block spelling in a Table source (schema#331)\n' \
+		>> build/zero-cost-leak/pointers/GraphTable.h
+	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
+	fi
+	@echo "negative control: a moved Table source turns the block-less comparison RED"
 
 # THE BUILD VERSION IS ONE NUMBER (docs/SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
@@ -3218,6 +3259,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cook-open-root-negative-control
 	$(MAKE) tables-cook-open-walk-negative-control
 	$(MAKE) tables-block-zero-cost
+	$(MAKE) tables-block-zero-cost-negative-control
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser
 	$(MAKE) tables-block-fill-refuser-negative-control
