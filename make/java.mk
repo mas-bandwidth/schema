@@ -416,6 +416,22 @@ TOOLCHAIN_LEGS     += java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 CONFORMANCE_ENV    += JAVA=$(JAVA)
+
+# THE JAVA TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `google-java-format`
+# is the language's one formatting authority, so an emitter that has to be
+# hand-reflowed is an emitter that drifts. The gate holds every generated Java
+# table unit to what the formatter would write, and SKIPS cleanly where the
+# formatter is not on PATH.
+GOOGLE_JAVA_FORMAT ?= google-java-format
+.PHONY: tables-java-clean
+tables-java-clean: build/tables-generated-java/.stamp
+	@if ! command -v $(GOOGLE_JAVA_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-java-clean: $(GOOGLE_JAVA_FORMAT) is not installed"; exit 0; \
+	fi
+	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java')
+	@echo "tables Java: google-java-format clean over the generated table units"
+test-java: tables-java-clean
+
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/java/source

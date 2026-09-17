@@ -32,6 +32,9 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
+# The formatting authority the C++ and C table legs are held to (issue #424).
+CLANG_FORMAT ?= clang-format
+
 # the classic serialize runtime the generated C++ targets (header-only), a
 # sibling checkout. Every other language's runtime checkout and toolchain pin
 # is that language's own: make/<lang>.mk (docs/CONTRIBUTING.md, "Adding a
@@ -4708,6 +4711,24 @@ tables-ref-ordinal-shared-negative-control:
 		  cat build/ref-ordinal-shared-nc/log; exit 1; }
 	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
 	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
+
+# THE C++ TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is
+# the language's formatting authority, so an emitter that has to be hand-reflowed
+# is an emitter that drifts. The gate holds every generated C++ table unit to
+# what the formatter would write, and SKIPS cleanly where clang-format is not on
+# PATH rather than passing unchecked text off as clean.
+.PHONY: tables-cpp-clean
+tables-cpp-clean: build/tables-generated/.stamp
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-cpp-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
+	fi; \
+	drift=0; \
+	for f in $$(find build/tables-generated -name '*.h' -o -name '*.cpp'); do \
+		$(CLANG_FORMAT) "$$f" | cmp -s "$$f" - || { echo "clang-format drift in $$f"; drift=1; }; \
+	done; \
+	[ $$drift -eq 0 ] || exit 1; \
+	echo "tables C++: clang-format clean over the generated table units"
+test: tables-cpp-clean
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
