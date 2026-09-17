@@ -389,7 +389,25 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlan(g.unit, st)
+	g.pf("/* THE GUARD POOL: every chain the plan's entries name, laid once and\n")
+	g.pf("   SHARED — an arm's chain and the chains of the arms nested inside it are\n")
+	g.pf("   the same outer links. An entry's condition is a RUN of these, outermost\n")
+	g.pf("   union first, and it is as long as the nesting is deep: there is no bound\n")
+	g.pf("   on how many unions may nest (§5.9). */\n")
+	g.pf("static SCHEMA_UNUSED const TableFixedGuard %s_fixed_guards[] = {\n", n)
+	for _, l := range pool {
+		g.pf("    { %du, %du, %du, %du }, /* tag at %d == %d, %d bytes wide */\n",
+			l.Guard, uint32(l.Arg), uint32(int64(l.Arg)>>32), l.ArgW, l.Guard, l.Arg, l.ArgW)
+	}
+	if len(pool) == 0 {
+		// A ZERO-LENGTH ARRAY IS NOT AN ARRAY in C either: a type with no union
+		// arm has no chain, and one unused link is what the pool is then.
+		g.pf("    { 0u, 0u, 0u, 1u } /* no union in this type: the pool names no condition */\n")
+	}
+	g.pf("};\n")
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_guard_count = %d;\n\n", n, len(pool))
+
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
@@ -398,26 +416,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   guard at all. */\n")
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for _, e := range plan {
-		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
-		if e.Guard != ir.TableFixedNoGuard {
-			guard = fmt.Sprintf("%du", e.Guard)
-		}
-		argw := e.ArgW
-		if argw == 0 {
-			argw = 1
-		}
-		argw2 := e.ArgW2
-		if argw2 == 0 {
-			argw2 = 1
-		}
-		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
-		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
-		guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
-		if e.Guard2 != ir.TableFixedNoGuard {
-			guard2 = fmt.Sprintf("%du", e.Guard2)
-		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
+		g.pf("    { %du, %du, %du, %du, %du, %d, %s, %d, 0, 0 }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, e.GuardsAt, len(e.Guards), fixedOpName(e.Op), e.Meta, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
@@ -606,6 +606,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t pick;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
+	g.pf("    const uint8_t * guard_pool = (const uint8_t *) %s_fixed_guards;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
 	g.pf("    const TableFixedFill * fill = NULL;\n")
@@ -658,6 +659,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        if ( %s_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = %s_fixed_lineage[pick].reason; return -1; }\n", n, n)
 		g.pf("        if ( %s_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n", n)
 		g.pf("        entries = %s_fixed_lineage[pick].entries;\n", n)
+		g.pf("        guard_pool = (const uint8_t *) %s_fixed_lineage[pick].entries; /* a compiled plan's chains live in its own pool */\n", n)
 		g.pf("        entry_count = %s_fixed_lineage[pick].count;\n", n)
 		g.pf("        entry_guarded = %s_fixed_lineage[pick].guarded;\n", n)
 		g.pf("        fill = %s_fixed_lineage[pick].fill;\n", n)
@@ -687,7 +689,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, guard_pool, at + 8, (uint8_t *) ( values + k ), report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). */\n")

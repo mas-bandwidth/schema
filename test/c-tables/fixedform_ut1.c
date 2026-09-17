@@ -45,7 +45,9 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
     TableReport r;
 
     fixed_check( ut_root_fixed_plan[3].op == kTableFixedText, "C two lanes: the plan's fourth entry is the text" );
-    fixed_check( ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
+    fixed_check( ut_root_fixed_plan[3].gcount == 1, "C a chain: the text entry is under exactly one union" );
+    fixed_check( table_fixed_guard_arg( &ut_root_fixed_guards[ut_root_fixed_plan[3].guards / sizeof( TableFixedGuard )] ) == 2,
+                 "C a chain: the link holds the SECOND arm's ordinal" );
     fixed_check( ut_root_fixed_plan[3].meta == kTableFixedTextUtf8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
@@ -74,12 +76,12 @@ void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes )
 
     (void) bytes;
     for ( i = 0; i < ut_root_fixed_plan_count; i++ ) { shared[i] = ut_root_fixed_plan[i]; }
-    shared[3].meta = shared[3].arg; /* ONE LANE, as it was */
+    shared[3].meta = (uint8_t) table_fixed_guard_arg( &ut_root_fixed_guards[shared[3].guards / sizeof( TableFixedGuard )] ); /* ONE LANE, as it was */
 
     ut_root_reset( &wrong );
     memset( &r, 0, sizeof( r ) );
     body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( ut_root_fixed_layout ) + 8;
-    table_fixed_run( shared, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, &r );
+    table_fixed_run( shared, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, (const uint8_t *) ut_root_fixed_guards, body, (uint8_t *) &wrong, &r );
     fixed_check( wrong.pick.as.b.label_length != 7 || strcmp( wrong.pick.as.b.label, "seven77" ) != 0,
                  "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
 }

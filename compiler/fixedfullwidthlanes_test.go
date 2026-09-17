@@ -72,68 +72,123 @@ func TestFixedUnionArm256CarriesItsOwnOrdinal(t *testing.T) {
 	b.WriteString("}\n\nfixed table Root { pick Wide }\n")
 	src := b.String()
 	u := unitFromSource(t, src)
-	plan, _ := ir.TableFixedBuildPlan(u, u.Tables["Root"])
+	_, _, pool := ir.TableFixedBuildPlan(u, u.Tables["Root"])
 	top := 0
-	for _, e := range plan {
-		if e.Arg > top {
-			top = e.Arg
+	for _, l := range pool {
+		if l.Arg > top {
+			top = l.Arg
 		}
 	}
 	if top != 256 {
 		t.Fatalf("the 256th arm's guard value is 256, the plan's highest is %d (§5.8 row 5)", top)
 	}
 	for leg, h := range bothFixedRuntimes(t, src) {
-		if !strings.Contains(h, "uint64_t arg") {
-			t.Errorf("%s: the guard's ordinal is a byte lane, so arm 256 is arm 1 (§5.8 row 5)", leg)
+		// THE ORDINAL IS STILL FULL WIDTH, in the chain's two halves now: a
+		// byte lane made arm 256 arm 1, and a 32-bit one would make arm 2^32
+		// arm 0.
+		if !strings.Contains(h, "uint32_t arg_lo") || !strings.Contains(h, "uint32_t arg_hi") {
+			t.Errorf("%s: the guard's ordinal is not full width, so arm 256 is arm 1 (§5.8 row 5)", leg)
 		}
-		if !strings.Contains(h, ", 256, 0, 0, 0, 2,") {
-			t.Errorf("%s: the emitted plan does not carry arm 256's own ordinal (§5.8 row 5)", leg)
+		if !strings.Contains(h, "{ 0u, 256u, 0u, 2u }") {
+			t.Errorf("%s: the emitted guard pool does not carry arm 256's own ordinal (§5.8 row 5)", leg)
 		}
 	}
 }
 
-// ROW 6 (§4.1): an arm inside an arm answers to the OUTER tag TOO — and its own
-// arm selection survives that, because the two tags are CONJOINED. Under the
-// outer tag alone, an inner arm's bytes land beneath an outer arm that never
-// rode; under the inner tag alone, the inner union is read out of another outer
-// arm's bytes.
+// ROW 6 (§4.1) AND GLENN'S RULING (§5.9): an arm inside an arm answers to the
+// OUTER tag TOO — and its own arm selection survives that, because the tags are
+// CONJOINED. Under the outer tag alone, an inner arm's bytes land beneath an
+// outer arm that never rode; under the inner tag alone, the inner union is read
+// out of another outer arm's bytes. THE CONJUNCTION IS A CHAIN, so the depth it
+// holds is not two: this fixture walks two, THREE and FOUR deep, and the
+// three-deep case REFUSED on the two-lane shape (it panicked by name) where it
+// now reads exactly.
 func TestFixedNestedUnionArmAnswersToBothTags(t *testing.T) {
-	u := unitFromSource(t, `package probe
-
-type Cell { n int32 }
-
-union Inner
-{
-    x Cell
-    y Cell
-}
-
-type Holder { pick Inner }
-
-union Outer
-{
-    held  Holder
-    spare Cell
-}
-
-fixed table Root { top Outer }
-`)
-	plan, _ := ir.TableFixedBuildPlan(u, u.Tables["Root"])
-	conjoined := 0
-	for _, e := range plan {
-		if e.Guard == ir.TableFixedNoGuard {
-			continue
+	// nestedSource builds a tower of `depth` unions: the first arm of each holds
+	// the next union down, and the last holds a cell.
+	nestedSource := func(depth int) string {
+		var b strings.Builder
+		b.WriteString("package probe\n\ntype Cell { n int32 }\n\n")
+		for d := depth; d >= 1; d-- {
+			if d == depth {
+				fmt.Fprintf(&b, "union U%d\n{\n    x Cell\n    y Cell\n}\n\n", d)
+			} else {
+				fmt.Fprintf(&b, "type H%d { pick U%d }\n\nunion U%d\n{\n    held  H%d\n    spare Cell\n}\n\n", d, d+1, d, d)
+			}
 		}
-		if e.Guard2 == ir.TableFixedNoGuard {
-			continue
-		}
-		if e.Guard == e.Guard2 {
-			t.Fatalf("the two tags are one offset, %d, on %s (§5.8 row 6)", e.Guard, e.Note)
-		}
-		conjoined++
+		b.WriteString("fixed table Root { top U1 }\n")
+		return b.String()
 	}
-	if conjoined == 0 {
-		t.Fatal("an arm inside an arm carries the INNER tag and the OUTER one, conjoined (§5.8 row 6)")
+
+	for depth := 1; depth <= 4; depth++ {
+		u := unitFromSource(t, nestedSource(depth))
+		plan, guarded, pool := ir.TableFixedBuildPlan(u, u.Tables["Root"])
+		deepest := 0
+		for _, e := range plan {
+			if len(e.Guards) == 0 {
+				continue
+			}
+			// EVERY LINK IS A TAG OF ITS OWN, at its own width, and the chain
+			// runs OUTERMOST FIRST: a repeated offset would be one tag asked
+			// two different questions, which is never what nesting means.
+			seen := map[int64]bool{}
+			for i, l := range e.Guards {
+				if seen[l.Guard] {
+					t.Fatalf("depth %d: the chain on %s names the tag at %d twice (§5.9)", depth, e.Note, l.Guard)
+				}
+				seen[l.Guard] = true
+				if l.ArgW < 1 {
+					t.Fatalf("depth %d: link %d of %s has no width (§5.8 row 5)", depth, i, e.Note)
+				}
+				if i > 0 && l.Guard <= e.Guards[i-1].Guard {
+					t.Fatalf("depth %d: the chain on %s is not outermost-first (§5.9)", depth, e.Note)
+				}
+			}
+			// AND THE POOL HOLDS EXACTLY THAT CHAIN where the entry points.
+			at := e.GuardsAt / ir.TableFixedGuardBytes
+			for i, l := range e.Guards {
+				if pool[at+i] != l {
+					t.Fatalf("depth %d: the pool at %d is not %s's link %d (§5.9)", depth, at+i, e.Note, i)
+				}
+			}
+			if len(e.Guards) > deepest {
+				deepest = len(e.Guards)
+			}
+		}
+		if deepest != depth {
+			t.Fatalf("depth %d: the deepest chain is %d links; a union per level is owed one each (§5.9)", depth, deepest)
+		}
+		if guarded == len(plan) {
+			t.Fatalf("depth %d: a type with a union has guarded entries (§3.4)", depth)
+		}
+	}
+
+	// THE TOWER'S OWN ARITHMETIC, at depth three: the innermost arm's entries
+	// carry the three tags outside-in, and every one of them is a DIFFERENT
+	// byte of the record. This is the case the two-lane shape refused by name.
+	u := unitFromSource(t, nestedSource(3))
+	plan, _, _ := ir.TableFixedBuildPlan(u, u.Tables["Root"])
+	three := 0
+	for _, e := range plan {
+		if len(e.Guards) == 3 {
+			three++
+		}
+	}
+	if three == 0 {
+		t.Fatal("depth 3: not one entry carries three conditions (§5.9)")
+	}
+
+	// AND THE EMITTED TWINS CARRY THE CHAIN, not a lane per level.
+	for leg, h := range bothFixedRuntimes(t, nestedSource(3)) {
+		if strings.Contains(h, "guard2") || strings.Contains(h, "argw2") {
+			t.Errorf("%s: a second guard LANE is still emitted; the chain replaced it (§5.9)", leg)
+		}
+		if !strings.Contains(h, "uint8_t gcount") {
+			t.Errorf("%s: the entry does not carry a chain length (§5.9)", leg)
+		}
+		if !strings.Contains(h, "g < p.gcount") && !strings.Contains(h, "g < p->gcount") {
+			t.Errorf("%s: the run does not test the chain in order (§5.9)", leg)
+		}
 	}
 }
 
