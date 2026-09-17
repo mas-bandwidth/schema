@@ -336,6 +336,86 @@ func TestTreelockOwnerDeathRelease(t *testing.T) {
 	}
 }
 
+// TestLockObservedWithoutSync holds the lock while a second process (this
+// test) reads the owner pid straight out of the lock file, and traces the
+// holder's file syscalls to prove the lock path is never fsynced. write(2)
+// publishes the pid through the page cache the moment it returns, and the one
+// consumer — readOwnerPid in another process on the same host — needs nothing
+// more. A lock released by process death owes no durability, so a whole-device
+// fsync (on darwin, fcntl(F_FULLFSYNC)) buys nothing and is the only unbounded
+// step on the critical path. strace is a Linux instrument; on any host that
+// lacks it this control skips rather than asserting less.
+func TestLockObservedWithoutSync(t *testing.T) {
+	strace, err := exec.LookPath("strace")
+	if err != nil {
+		t.Skip("strace is required to observe the lock path's file syscalls")
+	}
+	bin := buildTreelock(t)
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, "test.lock")
+	readyPath := filepath.Join(dir, "ready")
+	fifoPath := filepath.Join(dir, "release.fifo")
+	tracePath := filepath.Join(dir, "syscalls.log")
+	stderrPath := filepath.Join(dir, "holder.stderr")
+
+	createFifo(t, fifoPath)
+
+	stderrFile, err := os.Create(stderrPath)
+	if err != nil {
+		t.Fatalf("failed to create stderr file: %v", err)
+	}
+	defer stderrFile.Close()
+
+	holder := exec.Command(strace, "-f", "-y", "-e", "trace=fsync,fdatasync", "-o", tracePath,
+		bin, "-lock", lockPath, "-name", "test-lock",
+		"sh", "-c", "echo ready > \"$1\"; read -r line < \"$2\"", "--", readyPath, fifoPath)
+	holder.Stderr = stderrFile
+	holder.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := holder.Start(); err != nil {
+		t.Fatalf("holder failed to start: %v", err)
+	}
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- holder.Wait()
+	}()
+
+	t.Cleanup(func() {
+		if holder.Process != nil {
+			_ = syscall.Kill(-holder.Process.Pid, syscall.SIGKILL)
+		}
+	})
+
+	waitForFile(t, readyPath, holderDone, stderrPath, 10*time.Second)
+
+	// The second process observes the owner pid through the page cache alone.
+	pid := waitForFile(t, lockPath, holderDone, stderrPath, 10*time.Second)
+	if !isAlive(string(pid)) {
+		t.Fatalf("owner pid %q in the lock file is not a live process", pid)
+	}
+
+	if err := releaseFifo(fifoPath, 2*time.Second); err != nil {
+		t.Fatalf("failed to release fifo: %v", err)
+	}
+	select {
+	case err := <-holderDone:
+		if err != nil {
+			t.Fatalf("holder exited with error after release: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("holder timed out waiting to exit after release")
+	}
+
+	trace, err := os.ReadFile(tracePath)
+	if err != nil {
+		// strace could not attach (e.g. a sandbox forbids ptrace): the
+		// observation above still stands, but the no-sync control cannot run.
+		t.Skipf("strace produced no log (%v)", err)
+	}
+	if strings.Contains(string(trace), lockPath) {
+		t.Fatalf("the lock path was fsynced; write(2) already publishes the pid to readOwnerPid:\n%s", trace)
+	}
+}
+
 func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 	bin := buildTreelock(t)
 	dir := t.TempDir()

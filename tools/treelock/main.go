@@ -125,7 +125,6 @@ func run() (code int) {
 	_ = f.Truncate(0)
 	_, _ = f.Seek(0, 0)
 	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
-	_ = f.Sync()
 
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Stdin = os.Stdin
@@ -149,7 +148,6 @@ func run() (code int) {
 	_ = f.Truncate(0)
 	_, _ = f.Seek(0, 0)
 	_, _ = fmt.Fprintf(f, "%d\n", cmd.Process.Pid)
-	_ = f.Sync()
 
 	go func() {
 		for sig := range sigChan {
