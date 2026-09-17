@@ -410,6 +410,36 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE C# SOAK (docs/PORTING.md I9, schema#416): the read, measure and save
+# paths over the golden corpus with GC.GetAllocatedBytesForCurrentThread read
+# around the measured loop. A matched allocation/free pair leaves the heap flat,
+# so the COUNT is the gate. A short run is `make tables-cs-soak SOAK_SECONDS=2`;
+# the hour is the release act `tables-cs-release`.
+.PHONY: tables-cs-soak
+tables-cs-soak: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- --soak $(SOAK_SECONDS)
+
+# ITS NEGATIVE CONTROL: a planted allocation per iteration must turn the count
+# gate red while the same goldens keep loading.
+.PHONY: tables-cs-soak-negative-control
+tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
+	@if cd test/cs-tables && SOAK_SABOTAGE=1 $(DOTNET) run -- --soak 2 \
+			> $(CURDIR)/build/cs-soak-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the soak stayed green with an allocation per iteration"; \
+		cat $(CURDIR)/build/cs-soak-control.log; exit 1; \
+	fi
+	@grep -q "SOAK FAILED\|moved the counter" $(CURDIR)/build/cs-soak-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the allocation"; \
+		  cat $(CURDIR)/build/cs-soak-control.log; exit 1; }
+	@echo "negative control: a planted allocation per iteration turns the C# count gate red"
+
+# THE C# RELEASE TIER (certify.yml discovers every `tables-<lang>-release`
+# target by name and runs it): the hour soak and its control.
+.PHONY: tables-cs-release
+tables-cs-release:
+	$(MAKE) tables-cs-soak SOAK_SECONDS=3600
+	$(MAKE) tables-cs-soak-negative-control
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 

@@ -1189,21 +1189,31 @@ release act.
 **Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
 over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
 with site classification); `test/js-tables/main.mjs:1457` (the rate before and after).
+The C++ soak counts every global `operator new` over the loop
+(`test/tables/soak_main.cpp`); the C# soak reads
+`GC.GetAllocatedBytesForCurrentThread` either side of it
+(`test/cs-tables/src/SoakChecks.cs`); the Rust soak counts at the global
+allocator (`test/conformance/rust/src/main.rs`, the `soak` surface).
 
-**Proven in.** C.
+**Proven in.** C. The count half is carried to C++, C#, Rust, Go, Java,
+JavaScript and Elixir; Go and Java name the site as well.
 
 **Measured effect.** The Go soak found a lazily built descriptor (M13);
-the Rust one is what made the audit's count exact.
+the Rust one is what made the audit's count exact. The C++ and C# soaks add
+the same instrument to the legs that had only a one-shot correctness run.
 
 **Negative control.** A matched `malloc`/`free` pair per iteration
 (`tables-c-soak-negative-control`): the drift gate stays silent and the count
-goes red.
+goes red. The C++ and C# legs carry the same control with a planted `new`
+and a planted managed allocation (`tables-cpp-soak-negative-control`,
+`tables-cs-soak-negative-control`); the Rust soak's is
+`tables-rust-soak-negative-control`.
 
 **Targets:** soak
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-cpp-soak` `tables-cpp-soak-negative-control` | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ✅ `tables-rust-soak` `tables-rust-soak-negative-control` | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ✅ `tables-cs-soak` `tables-cs-soak-negative-control` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I10 — The zero-cost gate
 

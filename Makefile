@@ -4709,11 +4709,50 @@ tables-ref-ordinal-shared-negative-control:
 	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
 	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
 
+# THE C++ SOAK (docs/PORTING.md I9, schema#416): the read, measure, save and
+# text paths over the wire corpus in a loop, with every global `operator new`
+# counted — a matched new/delete pair per iteration leaves the live bytes flat
+# forever, so the COUNT is what the gate reads. A short run is
+# `make tables-cpp-soak SOAK_SECONDS=2`; the hour is the release act
+# `tables-cpp-release`, which is what certify.yml runs by name.
+CPP_SOAK_SOURCES := build/tables-generated/examples/*Table.cpp \
+	build/tables-generated/v1/*Table.cpp build/tables-generated/v2/*Table.cpp \
+	build/tables-generated/p1/*Table.cpp build/tables-generated/p3/*Table.cpp
+
+build/schema_test_cpp_soak: build/tables-generated/.stamp test/tables/soak_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/soak_main.cpp \
+		$$(ls $(CPP_SOAK_SOURCES)) -o $@
+
+.PHONY: tables-cpp-soak
+tables-cpp-soak: build/schema_test_cpp_soak
+	./build/schema_test_cpp_soak $(SOAK_SECONDS)
+
+# ITS NEGATIVE CONTROL, and it is the whole point: a MATCHED new/delete pair
+# per iteration makes the live-byte instrument read flat while the count is the
+# only thing that moves, so the sabotaged binary must go red on the count.
+.PHONY: tables-cpp-soak-negative-control
+tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -DSOAK_SABOTAGE $(TABLES_INCLUDES) test/tables/soak_main.cpp \
+		$$(ls $(CPP_SOAK_SOURCES)) -o build/schema_test_cpp_soak_sabotage
+	@if ./build/schema_test_cpp_soak_sabotage 2 > build/cpp-soak-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a matched new/delete pair per iteration left the soak green"; \
+		cat build/cpp-soak-sabotage.log; exit 1; \
+	fi
+	@grep -q "SOAK FAILED" build/cpp-soak-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the call count"; \
+		  cat build/cpp-soak-sabotage.log; exit 1; }
+	@grep -m1 "allocator call" build/cpp-soak-sabotage.log
+	@echo "negative control: a matched new/delete pair per iteration turns the C++ count gate red"
+
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
 # §6.6). certify.yml runs every `tables-<lang>-release` target by name.
 .PHONY: tables-cpp-release
 tables-cpp-release:
+	$(MAKE) tables-cpp-soak SOAK_SECONDS=3600
+	$(MAKE) tables-cpp-soak-negative-control
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 	$(MAKE) tables-wire-fuzz-retain N=500000
