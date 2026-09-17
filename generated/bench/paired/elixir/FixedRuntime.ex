@@ -770,7 +770,7 @@ defmodule Bench.FixedRuntime do
   BEFORE coalescing, which is the number a cache has to remember.
   """
   def compile(theirs, mine, dst, capacity, report) do
-    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report)
+    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, 1, {[], 0}, report)
     {entries, n} = acc
 
     if n > capacity do
@@ -787,8 +787,8 @@ defmodule Bench.FixedRuntime do
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
 
-  defp guarded(acc, nil, _tag, entry), do: push(acc, entry)
-  defp guarded(acc, guard, tag, entry), do: push(acc, {:guard, guard, tag, entry})
+  defp guarded(acc, nil, _tag, _argw, entry), do: push(acc, entry)
+  defp guarded(acc, guard, tag, argw, entry), do: push(acc, {:guard, guard, tag, argw, entry})
 
   # COUNTER-MOVING OPS ADDED FOR ONE SLOT wrap so slack and an absent
   # optional's payload never count. A copy is unspecified on read and stays.
@@ -805,7 +805,7 @@ defmodule Bench.FixedRuntime do
   defp present_wrap_entry(e, src), do: {:present, src, e}
 
   # match_children walks a TABLE's children on both sides, BY ID.
-  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, argw, acc, report) do
     their_children = children_at(theirs, ti)
     my_children = children_at(mine, mi)
 
@@ -816,7 +816,7 @@ defmodule Bench.FixedRuntime do
             {acc, report}
 
           {tc, toff} ->
-            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report)
+            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, argw, acc, report)
         end
       end)
 
@@ -865,7 +865,7 @@ defmodule Bench.FixedRuntime do
 
   defp signed_kind?(kind), do: kind >= 2 and kind <= 5
 
-  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, argw, acc, report) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
     row = elem(dst, mi)
@@ -884,6 +884,7 @@ defmodule Bench.FixedRuntime do
         elem(row, 6),
         guard,
         tag,
+        argw,
         acc,
         report
       )
@@ -901,13 +902,14 @@ defmodule Bench.FixedRuntime do
         row,
         guard,
         tag,
+        argw,
         acc,
         report
       )
     end
   end
 
-  defp widen_entry(theirs, ti, their_at, mine, mi, at, lo, hi, guard, tag, acc, report) do
+  defp widen_entry(theirs, ti, their_at, mine, mi, at, lo, hi, guard, tag, argw, acc, report) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
 
@@ -922,7 +924,7 @@ defmodule Bench.FixedRuntime do
           {:widen, their_at, at, their_size, my_size, signed_kind?(their_kind), lo, hi}
         end
 
-      {guarded(acc, guard, tag, entry), report}
+      {guarded(acc, guard, tag, argw, entry), report}
     else
       # A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
       {acc, bump(report, :kind_mismatch)}
@@ -942,6 +944,7 @@ defmodule Bench.FixedRuntime do
          row,
          guard,
          tag,
+         argw,
          acc,
          report
        ) do
@@ -952,7 +955,7 @@ defmodule Bench.FixedRuntime do
       # what lets a reader SEE the edit rather than have every byte after it
       # slide by one.
       35 ->
-        acc = guarded(acc, guard, tag, {:copy, their_at, aux_at, 1})
+        acc = guarded(acc, guard, tag, argw, {:copy, their_at, aux_at, 1})
         {_, old_n} = acc
 
         {acc, report} =
@@ -966,6 +969,7 @@ defmodule Bench.FixedRuntime do
             my_at,
             guard,
             tag,
+            argw,
             acc,
             report
           )
@@ -974,7 +978,7 @@ defmodule Bench.FixedRuntime do
 
       # a nested TABLE: match its fields
       13 ->
-        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report)
+        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, argw, acc, report)
 
       # an ARRAY: the count, then min( their bound, my bound ) elements
       14 ->
@@ -990,26 +994,41 @@ defmodule Bench.FixedRuntime do
           row,
           guard,
           tag,
+          argw,
           acc,
           report
         )
 
       # an ENUM-KEYED array: every slot, matched by the KEY's id
       16 ->
-        compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report)
+        compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, argw, acc, report)
 
       # a UNION: the tag, remapped, then each arm matched by id
       15 ->
-        compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, guard, tag, acc, report)
+        compile_union(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          at,
+          aux_at,
+          guard,
+          tag,
+          argw,
+          acc,
+          report
+        )
 
       # an ENUM: the ordinal is the layout's POSITION, so it remaps
       30 ->
-        compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
+        compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, argw, acc, report)
 
       k when k == 12 or k == 33 ->
         units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
         entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
-        {guarded(acc, guard, tag, entry), report}
+        {guarded(acc, guard, tag, argw, entry), report}
 
       _ ->
         their_size = size_at(theirs, ti)
@@ -1019,15 +1038,17 @@ defmodule Bench.FixedRuntime do
 
         cond do
           their_size == my_size and lo == nil ->
-            {guarded(acc, guard, tag, {:copy, their_at, at, my_size}), report}
+            {guarded(acc, guard, tag, argw, {:copy, their_at, at, my_size}), report}
 
           their_size == my_size ->
             signed = signed_kind?(kind_at(mine, mi))
-            {guarded(acc, guard, tag, {:clamp, their_at, at, my_size, signed, lo, hi}), report}
+
+            {guarded(acc, guard, tag, argw, {:clamp, their_at, at, my_size, signed, lo, hi}),
+             report}
 
           their_size < my_size and my_size <= 8 ->
             entry = {:widen, their_at, at, their_size, my_size, false, lo, hi}
-            {guarded(acc, guard, tag, entry), report}
+            {guarded(acc, guard, tag, argw, entry), report}
 
           true ->
             {acc, bump(report, :kind_mismatch)}
@@ -1047,6 +1068,7 @@ defmodule Bench.FixedRuntime do
          row,
          guard,
          tag,
+         argw,
          acc,
          report
        ) do
@@ -1058,7 +1080,7 @@ defmodule Bench.FixedRuntime do
 
     acc =
       if elem(row, 3) == 1 do
-        guarded(acc, guard, tag, {:count, their_at, aux_at, my_n})
+        guarded(acc, guard, tag, argw, {:count, their_at, aux_at, my_n})
       else
         acc
       end
@@ -1086,7 +1108,7 @@ defmodule Bench.FixedRuntime do
            lo, hi}
 
         entry = if counted, do: live_wrap_entry(entry, aux_at, i), else: entry
-        {guarded(acc, guard, tag, entry), report}
+        {guarded(acc, guard, tag, argw, entry), report}
       else
         {_, old_n} = acc
 
@@ -1101,6 +1123,7 @@ defmodule Bench.FixedRuntime do
             at + i * stride,
             guard,
             tag,
+            argw,
             acc,
             report
           )
@@ -1117,7 +1140,7 @@ defmodule Bench.FixedRuntime do
     end)
   end
 
-  defp compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report) do
+  defp compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, argw, acc, report) do
     their_keys = children_at(theirs, ti + 1)
     my_keys = children_at(mine, mi + 1)
     their_elem_at = ti + 1 + sub(theirs, ti + 1)
@@ -1141,6 +1164,7 @@ defmodule Bench.FixedRuntime do
             at + k * stride,
             guard,
             tag,
+            argw,
             acc,
             report
           )
@@ -1152,11 +1176,28 @@ defmodule Bench.FixedRuntime do
     Enum.find(0..(their_keys - 1)//1, fn j -> id_at(theirs, ti + 2 + j) == id end)
   end
 
-  defp compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, _guard, _tag, acc, report) do
+  defp compile_union(
+         theirs,
+         ti,
+         their_at,
+         mine,
+         mi,
+         dst,
+         at,
+         aux_at,
+         _guard,
+         _tag,
+         _argw,
+         acc,
+         report
+       ) do
     their_tag = tag_bytes(theirs, ti)
     my_tag = tag_bytes(mine, mi)
     their_arms = children_at(theirs, ti)
     my_arms = children_at(mine, mi)
+    # ArgW is THE WRITER'S TAG WIDTH IN BYTES. A two-byte tag of 0x0101 is
+    # not arm 1. Width 1..8 as written; anything else is one, as C++.
+    their_argw = if their_tag >= 1 and their_tag <= 8, do: their_tag, else: 1
 
     Enum.reduce(
       Enum.with_index(offsets(mine, mi, my_arms)),
@@ -1167,8 +1208,9 @@ defmodule Bench.FixedRuntime do
             {acc, report}
 
           {their_arm, j} ->
-            # MY tag value, written under THEIR tag's guard
-            acc = push(acc, {:guard, their_at, j + 1, {:const, aux_at, my_tag, k + 1}})
+            # MY tag value, written under THEIR tag's guard, compared at ArgW
+            acc =
+              push(acc, {:guard, their_at, j + 1, their_argw, {:const, aux_at, my_tag, k + 1}})
 
             compile_entry(
               theirs,
@@ -1180,6 +1222,7 @@ defmodule Bench.FixedRuntime do
               at,
               their_at,
               j + 1,
+              their_argw,
               acc,
               report
             )
@@ -1205,7 +1248,7 @@ defmodule Bench.FixedRuntime do
     |> Enum.reduce(0, fn arm, widest -> max(widest, size_at(layout, arm)) end)
   end
 
-  defp compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report) do
+  defp compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, argw, acc, report) do
     their_variants = children_at(theirs, ti)
     my_variants = children_at(mine, mi)
 
@@ -1222,7 +1265,7 @@ defmodule Bench.FixedRuntime do
     entry =
       {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}
 
-    {guarded(acc, guard, tag, entry), report}
+    {guarded(acc, guard, tag, argw, entry), report}
   end
 
   # THE COALESCER, and it is the only optimization a plan compiler performs: two
@@ -1291,10 +1334,12 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  defp step([{:guard, gsrc, tag, inner} | rest], body, writes, report) do
-    # AN ENTRY BELONGING TO AN ARM RUNS ONLY UNDER ITS OWN TAG.
-    case body do
-      <<_::binary-size(^gsrc), ^tag, _::binary>> -> step([inner | rest], body, writes, report)
+  defp step([{:guard, gsrc, tag, argw, inner} | rest], body, writes, report) do
+    # AN ENTRY BELONGING TO AN ARM RUNS ONLY UNDER ITS OWN TAG, compared at
+    # ArgW bytes, never as a prefix. Flavour is the text op's last element
+    # and is not this compare.
+    case tag_at(body, gsrc, argw) do
+      ^tag -> step([inner | rest], body, writes, report)
       _ -> step(rest, body, writes, report)
     end
   end
@@ -1466,6 +1511,23 @@ defmodule Bench.FixedRuntime do
 
   defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
   defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
+
+  # THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+  # byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+  # for, and reading only the first byte let 0x0101 run arm 1's entries over
+  # a stranger's record. ArgW 0 means 1, ArgW > 8 clamps to 8, as C++.
+  defp tag_width(w) when w <= 0, do: 1
+  defp tag_width(w) when w > 8, do: 8
+  defp tag_width(w), do: w
+
+  defp tag_at(body, at, argw) do
+    w = tag_width(argw)
+
+    case body do
+      <<_::binary-size(^at), v::little-unsigned-size(^w)-unit(8), _::binary>> -> v
+      _ -> :miss
+    end
+  end
 
   defp leaf(body, src, size, true) do
     case body do
