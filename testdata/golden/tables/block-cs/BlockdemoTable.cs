@@ -2225,10 +2225,14 @@ namespace Blockdemo
                     }
                 }
                 if (saturated) { input.Report.Clamped++; }
+                // an unsigned magnitude past long.MaxValue rides as a negative long —
+                // that is the storage's own image of it and not a negative number, so
+                // the range sees the magnitude the same scale the reference's does
+                double valueScale = isSigned ? (double)value2 : (double)(ulong)value2;
                 if (f.HasRange)
                 {
-                    if ((double)value2 < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-                    else if ((double)value2 > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
+                    if (valueScale < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
+                    else if (valueScale > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
                 }
                 // the field's own storage width is the last bound: a value past it
                 // clamps rather than wrapping, which is what the wire does too
@@ -2244,14 +2248,22 @@ namespace Blockdemo
                     else
                     {
                         ulong high = (1ul << (f.ElemWidth * 8)) - 1;
-                        if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
+                        if (value2 < 0)
+                        {
+                            // a magnitude past what sixty-four bits hold, carried as a
+                            // negative long, lands the field's CEILING: the domain is
+                            // established before any cast, so the saturation is one
+                            // clamp and the domain bound is the other
+                            value2 = (long)high;
+                            input.Report.Clamped++;
+                        }
                         else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
                     }
                 }
                 // at eight bytes the storage IS the parser's width, and an unsigned
-                // value past long.MaxValue rides here as a negative long by design —
-                // the token parser already turned a NEGATIVE token for an unsigned
-                // field into a clamped zero, so there is nothing left to bound.
+                // value past long.MaxValue rides here as its bit pattern by design —
+                // the domain bound above already handled it, and a NEGATIVE token for
+                // an unsigned field was turned into a clamped zero before this point.
                 f.SetRaw(owner, index, unchecked((ulong)value2));
                 return true;
             }
