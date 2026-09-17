@@ -1310,9 +1310,12 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 		in.report.KindMismatch++
 		return true
 	}
-	if number.saturated {
-		in.report.Clamped++ // past what sixty-four bits hold
-	}
+	// ONE EVENT PER FIELD (docs/SPEC-TABLES.md §16.2): the interpreter's 64-bit
+	// ceiling is not a count apart from the field's own domain. The value is
+	// clamped once, whether the excess was past sixty-four bits or past the
+	// declared bound — a caller reading `clamped` wants to know a value was not
+	// the writer's, not how many rules it crossed.
+	clamped := number.saturated // past what sixty-four bits hold
 	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
 	// so a text and a wire loaded from the same data land the same instance.
 	bounded := number
@@ -1323,14 +1326,17 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 	if implied {
 		if scale := number.scale(); scale < lo {
 			bounded = integerOf(lo)
-			in.report.Clamped++
+			clamped = true
 		} else if scale > hi {
 			bounded = integerOf(hi)
-			in.report.Clamped++
+			clamped = true
 		}
 	}
 	value, moved := integerInDomain(bounded, signed, StorageBytes(f))
 	if moved {
+		clamped = true
+	}
+	if clamped {
 		in.report.Clamped++
 	}
 	cell.I = value

@@ -343,7 +343,7 @@ int main(void) {
  CHECK(report.clamped == 1 && !report.kind_mismatch && !report.malformed);
  memset(&report,0,sizeof(report));
  CHECK(root_from_json(&value,second,(int64_t)strlen(second),&report));
- CHECK(value.small == 0 && value.bounded == 0 && report.clamped == 4);
+ CHECK(value.small == 0 && value.bounded == 0 && report.clamped == 2);
  CHECK(!report.kind_mismatch && !report.malformed);
  return 0;
 }

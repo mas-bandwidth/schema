@@ -642,7 +642,7 @@ json-hostile num-float32-subnormal        tabledemo RootConfig  testdata/conform
 json-hostile num-float32-upper-band       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band       0,0,0,0,0,false,read
 json-hostile num-float64-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow         0,1,0,0,0,false,read
 json-hostile num-fraction                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-fraction                 0,1,0,0,0,false,read
-json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,0,2,0,false,read
+json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,0,1,0,false,read
 json-hostile num-int64-min                tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-min                0,0,0,0,0,false,read
 json-hostile num-integral-forms           tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms           0,0,0,0,0,false,read
 json-hostile num-leading-plus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus             refused

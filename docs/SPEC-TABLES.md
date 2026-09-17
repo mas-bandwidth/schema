@@ -13631,10 +13631,16 @@ A fixed field's token is the value in whole units; the reader scales it by
 `kind_mismatch`, `0.0000152587890625` is raw `1` — and the writer prints
 the raw value back as the shortest decimal that is exactly the value, which
 is finite because a dyadic fraction has at most F decimal digits. A 128-bit
-integer's token is its digits. A magnitude past 128 bits saturates to the
-kind's domain and counts as `clamped`, as an int64 field saturates at
-INT64_MAX; then the declared range clamps on the raw scale (§4) and counts
-again if it fires. A negative token in an unsigned field clamps to zero,
+integer's token is its digits. **A magnitude past a 64-bit integer kind's
+ceiling is not a count apart from the field's domain**: the interpreter's
+ceiling is folded into the field's own domain clamp, so an int64 field
+saturates at INT64_MAX and the field counts ONE `clamped` whether the excess
+was past sixty-four bits or past the declared bound — a caller reading
+`clamped` wants to know a value was not the writer's, not how many rules it
+crossed. The wide kinds are the stated exception: a magnitude past 128 bits
+saturates to the kind's domain and counts as `clamped`; then the declared
+range clamps on the raw scale (§4) and counts again if it fires. A negative
+token in an unsigned field clamps to zero,
 and `-0` is zero. Both engines that hold this form — the generated walk and
 the tool's — land the same bytes and the same counters on every tree of the
 hostile corpus, which is what makes the rule one rule.

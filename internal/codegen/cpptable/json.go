@@ -2720,7 +2720,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         in.report->kind_mismatch++;
         return true;
     }
-    if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
+    // ONE EVENT PER FIELD (docs/SPEC-TABLES.md §16.2): the interpreter's 64-bit
+    // ceiling is not a count apart from the field's own domain. The value is
+    // clamped once, whether the excess was past sixty-four bits or past the
+    // declared bound — a caller reading clamped wants to know a value was not
+    // the writer's, not how many rules it crossed.
+    bool clamped = number.saturated; // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
@@ -2729,12 +2734,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); in.report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); in.report->clamped++; }
+        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); clamped = true; }
+        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); clamped = true; }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
-    if ( moved ) { in.report->clamped++; }
+    if ( moved ) { clamped = true; }
+    if ( clamped ) { in.report->clamped++; }
     TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
     return true;
 }
