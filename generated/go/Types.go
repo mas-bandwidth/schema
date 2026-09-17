@@ -12,32 +12,6 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type Vec3
-type Vec3 struct {
-	X float64
-	Y float64
-	Z float64
-}
-
-// Vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-const Vec3MaxBits = 192
-const Vec3MaxBytes = 24
-
-func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
-	stream.SerializeFloat64(&value.X)
-	stream.SerializeFloat64(&value.Y)
-	stream.SerializeFloat64(&value.Z)
-	return stream.Err()
-}
-
-func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
-	stream.SerializeFloat64(&value.X)
-	stream.SerializeFloat64(&value.Y)
-	stream.SerializeFloat64(&value.Z)
-	return stream.Err()
-}
-
 // type Quat
 type Quat struct {
 	X float64

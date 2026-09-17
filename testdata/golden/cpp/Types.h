@@ -10,18 +10,12 @@
 
 #include "Constants.h"
 #include "Enums.h"
+#include "Vector.h"
+
+// native type mapping (cpp_native, SPEC §4.2): the hand types storage speaks
+#include "vec_math.h"
 
 namespace example {
-
-// type Vec3
-struct Vec3 {
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-};
-
-inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Quat
 struct Quat {
@@ -32,7 +26,7 @@ struct Quat {
 };
 
 inline constexpr int64_t QuatMaxBits = 256; // longest wire path; align pads at worst case (SPEC §6.1)
-inline constexpr int64_t QuatMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
+inline constexpr int64_t QuatMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Handle
 struct Handle {
@@ -76,14 +70,14 @@ inline constexpr int64_t QuantizedRotationMaxBytes = 8; // 8-byte write granular
 
 // type RigidBody
 struct RigidBody {
-    Vec3 position;
+    ::VecMath position;
     Quat orientation;
     bool at_rest = false;
 
     // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    Vec3 linear_velocity;
-    Vec3 angular_velocity;
+    ::VecMath linear_velocity;
+    ::VecMath angular_velocity;
 };
 
 inline constexpr int64_t RigidBodyMaxBits = 833; // longest wire path; align pads at worst case (SPEC §6.1)

@@ -890,7 +890,7 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TrioSole", "Degenerate.schema", 0, &schema_example_trio_sole_info_, TableDocNone, 0, NULL },
         { "TrioStraddle", "Degenerate.schema", 0, &schema_example_trio_straddle_info_, TableDocNone, 0, NULL },
         { "Vec2", "Degenerate.schema", 0, &schema_example_vec2_info_, TableDocNone, 0, NULL },
-        { "Vec3", "Types.schema", 0, &schema_example_vec3_info_, TableDocNone, 0, NULL },
+        { "Vec3", "Vector.schema", 0, &schema_example_vec3_info_, TableDocNone, 0, NULL },
         { "W1", "Clauses.schema", 0, &schema_example_w1_info_, TableDocNone, 0, NULL },
         { "W13", "Clauses.schema", 0, &schema_example_w13_info_, TableDocNone, 0, NULL },
         { "W17", "Clauses.schema", 0, &schema_example_w17_info_, TableDocNone, 0, NULL },

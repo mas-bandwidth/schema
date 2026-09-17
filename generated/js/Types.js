@@ -6,72 +6,13 @@
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
+import { InitVec3, ReadVec3, Vec3, WriteVec3, ZeroVec3 } from "./Vector.js";
 
 // Scratch holders for the runtime's {value} refs — single threaded per
 // realm, always consumed in the same call that fills them.
 const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
-
-// type Vec3
-export class Vec3 {
-  constructor() {
-    this.X = 0;
-    this.Y = 0;
-    this.Z = 0;
-  }
-}
-
-// Vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-export const Vec3MaxBits = 192;
-export const Vec3MaxBytes = 24;
-
-// InitVec3 restores fresh construction values in place, preserving storage.
-export function InitVec3(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-}
-
-// The §5 zero form: all-zero storage, without declared defaults or birth counts.
-export function ZeroVec3(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-}
-
-export function WriteVec3(stream, value) {
-  NUMBER_SCRATCH.value = value.X;
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  NUMBER_SCRATCH.value = value.Y;
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  NUMBER_SCRATCH.value = value.Z;
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  return true;
-}
-
-export function ReadVec3(stream, value) {
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  value.X = NUMBER_SCRATCH.value;
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  value.Y = NUMBER_SCRATCH.value;
-  if (!stream.serializeDouble(NUMBER_SCRATCH)) {
-    return false;
-  }
-  value.Z = NUMBER_SCRATCH.value;
-  return true;
-}
 
 // type Quat
 export class Quat {
