@@ -215,13 +215,13 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_TABLE_UNITS := tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-rust/.stamp: make/rust.mk test/tables/K1.schema test/tables/K2.schema bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -336,3 +336,40 @@ packet-wide-rust-negative-control: packet-wide-rust
 	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
 
 test-rust: packet-wide-rust packet-wide-rust-negative-control
+
+# THE RUST LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (PORTING.md I15,
+# docs/SPEC-TABLES.md §4.2). The harness owns the mutants, the oracle and the
+# comparison; this leg only loads and saves, the way the C++ reference and the
+# C, Go and C# ports do.
+.PHONY: tables-rust-wire-fuzz
+tables-rust-wire-fuzz: build/conformance-harness build/conformance-rust
+	./build/conformance-harness wire-fuzz --driver './build/conformance-rust wire-fuzz' --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-rust.bin
+
+test-rust: tables-rust-wire-fuzz
+
+# THE NEGATIVE CONTROL, through I2's overlay sabotage: canonical LEB128
+# spelling removed from the emitter, so a non-minimal length, index or
+# reference is accepted where the oracle calls it damage. The leg must go red
+# on the REPORT and not on a crash.
+.PHONY: tables-rust-wire-fuzz-negative-control
+tables-rust-wire-fuzz-negative-control: build/conformance-harness
+	@mkdir -p build/rust-wire-negative/driver/src
+	go run ./tools/sabotage -name rust-wire-nonminimal -out build/rust-wire-negative/wire_runtime.gotext internal/codegen/rusttable/wire_runtime.go
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/wire_runtime.go":"%s/build/rust-wire-negative/wire_runtime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rust-wire-negative/overlay.json
+	go build -overlay=build/rust-wire-negative/overlay.json -o build/rust-wire-negative/schema ./cmd/schema
+	@for unit in $(RUST_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		rm -rf build/rust-wire-negative/generated/$$name; \
+		./build/rust-wire-negative/schema generate --lang rust --out build/rust-wire-negative/generated/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name > build/rust-wire-negative/generated/$$name/Cargo.toml; \
+	done
+	cp test/conformance/rust/src/main.rs build/rust-wire-negative/driver/src/main.rs
+	sed 's|../../../build/tables-generated-rust/|../generated/|g' test/conformance/rust/Cargo.toml > build/rust-wire-negative/driver/Cargo.toml
+	cd build/rust-wire-negative/driver && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@if ./build/conformance-harness wire-fuzz --driver './build/rust-wire-negative/driver/target/debug/conformance-rust wire-fuzz' --seed 1 --n 0 --failed build/rust-wire-negative/failed.bin > build/rust-wire-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: nonminimal Rust LEB128 passed'; exit 1; \
+	fi
+	@grep -Fq 'the report differs' build/rust-wire-negative/log || { cat build/rust-wire-negative/log; exit 1; }
+	@echo 'Rust wire negative control: nonminimal LEB128 changes the report against the oracle'
+
+test-rust: tables-rust-wire-fuzz-negative-control

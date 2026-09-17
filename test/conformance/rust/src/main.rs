@@ -762,9 +762,228 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// the tolerant wire's differential fuzzer (PORTING.md I15, docs/SPEC-TABLES.md
+// §4.2)
+// ---------------------------------------------------------------------------
+//
+// The harness owns the mutants, the oracle and the comparison; this leg binds
+// a roster entry to its generated codec and answers the report and the saved
+// bytes on a pipe, the way test/tables/wire_fuzz_main.cpp and
+// test/conformance/go/wire_fuzz.go do. It is the same streaming protocol as
+// the C++ reference and the other ports; only the reader changes.
+
+#[derive(Default, Clone, Copy)]
+struct Report {
+    unknown: i32,
+    kind_mismatch: i32,
+    widened: i32,
+    clamped: i32,
+    duplicate: i32,
+    malformed: bool,
+    refused: bool,
+}
+
+struct Codec {
+    unit: &'static str,
+    root: &'static str,
+    // Load the wire bytes, then measure and save. Fixed storage always exists,
+    // so completion is the body verdict the generated load returns, and the
+    // report carries the malformed flag.
+    probe: fn(&[u8], &mut Report) -> (bool, Option<Vec<u8>>),
+}
+
+macro_rules! codec {
+    ($unit:literal, $root:literal, $krate:ident, $ty:ty,
+     $measure:path, $save:path, $load:path) => {
+        Codec {
+            unit: $unit,
+            root: $root,
+            probe: |bytes, out| {
+                let mut value: Box<$ty> = Box::default();
+                let mut report = $krate::TableReport::default();
+                let loaded = $load(&mut value, bytes, &mut report);
+                out.unknown = report.unknown;
+                out.kind_mismatch = report.kind_mismatch;
+                out.widened = report.widened;
+                out.clamped = report.clamped;
+                out.duplicate = report.duplicate;
+                out.malformed = report.malformed;
+                out.refused = report.verdict == $krate::TableOpenVerdict::Refused;
+                // Fixed storage always exists; load's bool is the body verdict
+                // (§3), and a body that stopped without a refusal is damage.
+                if !loaded && !out.refused {
+                    out.malformed = true;
+                }
+                (
+                    true,
+                    write_measured(|| $measure(&value), |buffer| $save(&value, buffer)),
+                )
+            },
+        }
+    };
+}
+
+// measure/write symmetry, held: the buffer is exactly the measured size and
+// the write must fill it exactly.
+fn write_measured(measure: impl Fn() -> i64, write: impl Fn(&mut [u8]) -> i64) -> Option<Vec<u8>> {
+    let size = measure();
+    if size < 0 {
+        return None;
+    }
+    let mut buffer = vec![0u8; size as usize];
+    if write(&mut buffer) != size {
+        return None;
+    }
+    Some(buffer)
+}
+
+// THE FIXED CLASS the corpus names, bound to the generated entry points. A
+// root this table lacks is a MISSING FEATURE: the leg answers "no codec" for
+// the roster entry and the harness counts the seeds absent, exactly as it does
+// for a C++ root another port has not reached (test/conformance/README.md).
+fn codecs() -> Vec<Codec> {
+    vec![
+        codec!(
+            "tblk1", "Root", tblk1, tblk1::Root,
+            tblk1::root_measure, tblk1::root_save, tblk1::root_load
+        ),
+        codec!(
+            "tblk2", "Root", tblk2, tblk2::Root,
+            tblk2::root_measure, tblk2::root_save, tblk2::root_load
+        ),
+        codec!(
+            "tabledemo", "RootConfig", tabledemo, tabledemo::RootConfig,
+            tabledemo::root_config_measure, tabledemo::root_config_save, tabledemo::root_config_load
+        ),
+        codec!(
+            "tabledemo", "ProfileConfig", tabledemo, tabledemo::ProfileConfig,
+            tabledemo::profile_config_measure, tabledemo::profile_config_save, tabledemo::profile_config_load
+        ),
+        codec!(
+            "tabledemo", "LoadoutConfig", tabledemo, tabledemo::LoadoutConfig,
+            tabledemo::loadout_config_measure, tabledemo::loadout_config_save, tabledemo::loadout_config_load
+        ),
+        codec!(
+            "tabledemo", "WideBlob", tabledemo, tabledemo::WideBlob,
+            tabledemo::wide_blob_measure, tabledemo::wide_blob_save, tabledemo::wide_blob_load
+        ),
+        codec!(
+            "tabledemo", "ArchiveConfig", tabledemo, tabledemo::ArchiveConfig,
+            tabledemo::archive_config_measure, tabledemo::archive_config_save, tabledemo::archive_config_load
+        ),
+        codec!(
+            "tabledemo", "KeyedConfig", tabledemo, tabledemo::KeyedConfig,
+            tabledemo::keyed_config_measure, tabledemo::keyed_config_save, tabledemo::keyed_config_load
+        ),
+        codec!(
+            "tabledemo", "PackConfig", tabledemo, tabledemo::PackConfig,
+            tabledemo::pack_config_measure, tabledemo::pack_config_save, tabledemo::pack_config_load
+        ),
+        codec!(
+            "tblv1", "Cfg", tblv1, tblv1::Cfg,
+            tblv1::cfg_measure, tblv1::cfg_save, tblv1::cfg_load
+        ),
+        codec!(
+            "tblv2", "Cfg", tblv2, tblv2::Cfg,
+            tblv2::cfg_measure, tblv2::cfg_save, tblv2::cfg_load
+        ),
+        codec!(
+            "tblp1", "Chain", tblp1, tblp1::Chain,
+            tblp1::chain_measure, tblp1::chain_save, tblp1::chain_load
+        ),
+        codec!(
+            "tblp3", "Chain", tblp3, tblp3::Chain,
+            tblp3::chain_measure, tblp3::chain_save, tblp3::chain_load
+        ),
+    ]
+}
+
+fn codec_for<'a>(rows: &'a [Codec], unit: &str, root: &str) -> Option<&'a Codec> {
+    rows.iter().find(|c| c.unit == unit && c.root == root)
+}
+
+fn wire_fuzz() {
+    use std::io::{BufReader, BufWriter, Read};
+    let mut input = BufReader::new(std::io::stdin().lock());
+    let mut output = BufWriter::new(std::io::stdout().lock());
+    fn number<const N: usize>(input: &mut impl Read) -> [u8; N] {
+        let mut bytes = [0; N];
+        input.read_exact(&mut bytes).unwrap();
+        bytes
+    }
+    fn name(input: &mut impl Read) -> String {
+        let n = u16::from_le_bytes(number(input)) as usize;
+        let mut bytes = vec![0; n];
+        input.read_exact(&mut bytes).unwrap();
+        String::from_utf8(bytes).unwrap()
+    }
+    let rows = codecs();
+    let count = u32::from_le_bytes(number(&mut input));
+    let mut roster = Vec::new();
+    for _ in 0..count {
+        let unit = name(&mut input);
+        let root = name(&mut input);
+        let [form, retain] = number(&mut input);
+        // This leg answers the FIXED form alone: the variable class and the
+        // message form are the port's own follow-ons (PORTING.md M20), so
+        // their roster entries answer "no codec".
+        let row = if form == 1 && retain == 0 {
+            codec_for(&rows, &unit, &root)
+        } else {
+            None
+        };
+        output.write_all(&[u8::from(row.is_some())]).unwrap();
+        roster.push(row);
+    }
+    output.flush().unwrap();
+    loop {
+        let mut index = [0; 4];
+        match input.read_exact(&mut index) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => panic!("{e}"),
+        }
+        let size = u32::from_le_bytes(number(&mut input)) as usize;
+        let mut bytes = vec![0; size];
+        input.read_exact(&mut bytes).unwrap();
+        let codec = roster[u32::from_le_bytes(index) as usize].unwrap();
+        let mut report = Report::default();
+        let (loaded, saved) = (codec.probe)(&bytes, &mut report);
+        output.write_all(&[u8::from(loaded)]).unwrap();
+        for value in [
+            report.unknown,
+            report.kind_mismatch,
+            report.widened,
+            report.clamped,
+            report.duplicate,
+        ] {
+            output.write_all(&value.to_le_bytes()).unwrap();
+        }
+        output
+            .write_all(&[u8::from(report.malformed), u8::from(report.refused)])
+            .unwrap();
+        // this leg carries no region measure and no retention arm, so the
+        // measure is "unknown" and the two retention counters are zero
+        output.write_all(&(-1i64).to_le_bytes()).unwrap();
+        output.write_all(&[0; 8]).unwrap();
+        output
+            .write_all(&saved.as_ref().map_or(-1, |v| v.len() as i64).to_le_bytes())
+            .unwrap();
+        if let Some(saved) = saved {
+            output.write_all(&saved).unwrap();
+        }
+        output.flush().unwrap();
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 && args[1] == "wire-fuzz" {
+        wire_fuzz();
+        return;
+    }
     if args.len() < 3 {
         eprintln!(
             "usage: {0} <manifest> list\n       {0} <manifest> <surface> <outdir>",
