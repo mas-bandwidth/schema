@@ -156,7 +156,7 @@ no payload contributes that it has none. The
 projection also carries FROZEN tokens — `table=false message=false` on
 every type line and `round=nearest` on every compressed-float field line —
 kept so the refusals of §4.11 moved no id; dropping one is a
-`ProjectionVersion` bump. **`column` is a token RESERVED BY NAME and emitted
+`ProjectionVersion` bump. **`column` is a reserved token name and emitted
 nowhere** (§4.11), so no id moves for it either.
 
 **Why the names, when the ordinal is the wire.** An enum value rides as its
@@ -243,11 +243,11 @@ table cannot report a move in, the committed baseline is only a COMPILE-TIME
 guard and a studio may not have one, and the protocol id is the only RUNTIME
 frame that refuses two peers holding different bit assignments before they
 exchange table data over one connection.** Content never rides in a flags
-declaration, because sixty-four bits is the ceiling and the law is append at
+declaration, because sixty-four bits is the ceiling and the rule is append at
 the end, so the case this scoping exists for, a content enum of item kinds,
 quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
-a positional array whose bound folds from an enum is REFUSED BY NAME in a
+a positional array whose bound folds from an enum is refused in a
 table body and a union arm, and the same array held by a `type` a table
 closure reaches is ruled on schema#606, by that refusal or by a keyed wire
 (SPEC-TABLES.md §2.4, §11), so
@@ -286,7 +286,7 @@ which is to say a control over it could not go red. The descent is implemented
 because the rule is the rule. **What holds edge 6 instead is the ARM-EDIT
 PAIR**, `TestUnionOutsideTheClosureMovesNoId`: every arm edit a union inside
 the closure can express moves the id, and every arm edit a union no `type`
-reaches can express moves none. That pair is the obligation edge 6 owes, and it
+reaches can express moves none. That pair is the obligation edge 6 must provide, and it
 is required to go red the same way.
 
 **The projection carries two version lines.** `ProjectionVersion` rides the
@@ -351,7 +351,7 @@ Consequences, in both directions:
   last type-side use of an enum takes its lines out of the projection and
   adding the first puts them back. A reachability move never arrives alone,
   because the use that moved is a `type` edit in the same commit, so it costs
-  no id move that was not owed already.
+  no id move that was not required already.
 - **What scoping OPENED, read against the silent class.** The four edits the
   table wire cannot report (SPEC-TABLES.md §4.1) gain no fifth member, and the
   claim rests on two facts rather than on inspection. **One: a table has
@@ -439,7 +439,7 @@ from this projection rather than carried in it.
   `///` is a `//` line by ordinary lexing, so a reader that does not know the
   rule sees a comment, and `schemafmt` and every editor already treat it as
   one. A `/* */` block is never a doc comment in any spelling.
-- **Every `///` line is part of a doc comment or is REFUSED BY NAME**, and
+- **Every `///` line is part of a doc comment or is refused**, and
   that one rule closes every trap at once, because silently dropping an
   author's opt-in is the outcome opt-in exists to prevent. Refused: a `///`
   block above `package`, above a `const( )`, `reserved( )` or `align` item,
@@ -538,7 +538,7 @@ from this projection rather than carried in it.
   and inside a variant list a newline immediately BEFORE a `,` is suppressed
   too, so a list that puts its separators at the head of the line still sees
   one separator rather than two. **A `}` on the same line as a QUALIFIED
-  variant is refused by name** — `{ Laser | beam }` draws "a qualified
+  variant is refused** — `{ Laser | beam }` draws "a qualified
   variant ends its own line: write the list one variant per line" — because
   the pipe claims the rest of the line and the brace would be arguing with
   it. Both rules have a named negative control (§7.2).
@@ -936,19 +936,19 @@ sequence    uint16
   union **arm** take `was` (below), and a **union** declaration, a
   **constant** and a **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
-- **A bare identifier that spells a known valued key is refused by name**,
+- **A bare identifier that spells a known valued key is refused**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
   open namespace must not be able to swallow a typo in the closed one.
   **The lookup is against the UNION of every valued key the language has, on
   every line kind** — `min`, `max`, `resolution`, `was`, `json`,
-  `cpp_native`, `cpp_include` — **plus the keys refused by name**
+  `cpp_native`, `cpp_include` — **plus the keys refused**
   (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
   `| min` on a `string(N)` field, where `min` was never legal, is the exact
   case a per-line check would wave through as a tag, and one union table
   spares a reader the question of which line kind forgives which typo.
   **Reserved words are not identifiers here** (§4.1) and are refused with the
   word named, so `| table` draws "table is a reserved word" rather than
-  becoming a tag. **A repeated tag on one line is refused by name** too, and
+  becoming a tag. **A repeated tag on one line is refused** too, and
   so is a tag that repeats a valued key already on the line.
 - **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
@@ -1367,7 +1367,7 @@ All compile errors with positions:
   catches it in release. What such a write leaves on the wire, where it
   completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
   may accept some other message.
-  Settled 2026-09-07: "consistency matters. writing packets
+ The rule: "consistency matters. writing packets
   correctness is the caller's responsibility, and it is our duty to catch it
   with asserts in debug." So the count asserts in DEBUG ONLY in each target
   whose language has that idiom — `serialize_assert` in C++ and C,
@@ -1597,7 +1597,7 @@ union Value
   whose qualification section can hold nothing else. **A row that is a BARE
   NAME is an arm with no payload**
   (below). **What a row may not take is SPEC-TABLES.md §2.6's list**, each
-  refused by name. A union FIELD likewise takes no valued
+  refused. A union FIELD likewise takes no valued
   attribute and no `= default` (it zero-initializes to None, joining
   arrays, strings, wide strings, bytes and composites in §4.2's no-override
   list).
@@ -1844,7 +1844,7 @@ Pong may both name a field `sequence` because they are separate types;
   is an opt-in `[packed]` attribute on a type generating accessor-based
   storage — a generator-kind decision for a later pass, not a v1 wire
   construct.
-- **`float16`, DECLINED for this major, with kind `34` reserved by name.**
+- **`float16`, DECLINED for this major, with kind `34` reserved.**
   Half floats are a real want on a game's wire, and every route to them costs
   more than the construct returns today. The storage is a language-level
   problem before it is a wire one: C++ has no portable `_Float16`, C# has
@@ -1856,7 +1856,7 @@ Pong may both name a field `sequence` because they are separate types;
   before it is a feature. **The spelling a program uses today is `bits(16)`
   with the conversion in application code**, which costs the same sixteen bits
   on both wires, says exactly what it stores, and leaves the rounding where
-  the application can see it. **Kind `34` is held by name** in the table
+  the application can see it. **Kind `34` is reserved** in the table
   wire's kind table (SPEC-TABLES.md §3) so that the number a later major
   spends on half floats is the one already written down, and reserving it
   costs no byte and no rule.
@@ -1870,7 +1870,7 @@ Pong may both name a field `sequence` because they are separate types;
   rule of §4.5 does not express, and a scalar-to-scalar form inside one type
   earns too little to carry the construct on its own.
 
-### 4.11 Reserved and refused by name
+### 4.11 Reserved and refused
 
 schema declares a pure data contract — hardcoded structs, one protocol id,
 same-or-refuse (§3) — and constructs outside that contract are refused BY
@@ -1980,7 +1980,7 @@ another: nothing else about the text is examined. Noncharacters are
 accepted, `0xFFFF` included. There is no normalization, no case folding, no
 code-point count, and no check that the code units spell anything in
 particular. A reader that adds a check here is as wrong as one that drops a
-check above, because what the nine targets owe each other is an identical
+check above, because what the nine targets must agree is an identical
 accept or reject verdict on identical bytes.
 
 **A refusal is terminal.** Nothing after a failing read has a defined
@@ -2012,7 +2012,7 @@ wire's `Save` check the used length alone, because ill-formed text never
 reaches storage from either wire. A group above `0xFFFF` has no case on the
 table wire at all, two bytes being unable to spell one. `string(N)` is held the same way on both
 wires for the same reason (§4.7).
-A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
+A `wstring(N)` MAP KEY is refused, the diagnostic naming `string(N)`,
 because `memcmp` over UTF-8 is a portable order and little-endian code units
 have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
 `ProjectionVersion` bump for any of this: a wstring field projects its
@@ -2160,7 +2160,7 @@ design.
 
 **Writes assume trusted data.** The write path is trusted; writing correctly
 is the caller's responsibility. Writer inputs are stated as OBLIGATIONS, not
-defined behaviors: the spec owes a conforming writer exact bytes and owes a
+defined behaviors: the spec must provide a conforming writer exact bytes and must provide a
 misbehaving writer nothing. The read side is untouched by this doctrine —
 readers face untrusted data and keep every mandated check above.
 
@@ -2181,11 +2181,11 @@ deliberate, not an oversight — "For each language, do not force this in. If
 the language simply doesn't have this concept (Golang) then it is not
 something we can do. ... The bottom line is that a user of schema/serialize
 in that languages should feel that the implementation is native to their
-language and how it is used in best practice." (2026-09-07). **No target
+language and how it is used in best practice.". **No target
 panics and none throws**: Elixir's raise is the only unwinding path in the
 nine, and it is the BEAM's own.
 
-**There is no exception to the tier split.** Settled 2026-09-07: "No runtime
+**There is no exception to the tier split.** The rule: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release
 build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A
 counted array's COUNT (§4.6) and a union's TAG (§4.8) were the last two
@@ -2219,7 +2219,7 @@ an out-of-set tag in EVERY build, in all nine, and that is the half that
 faces untrusted bytes.
 
 **None of this reaches the read side.** "Of course, on read side we MUST
-always do the checks!" (2026-09-07). Every read-side refusal §4 and this
+always do the checks!". Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
 values, union tags, UTF-8 in `string(N)` and UTF-16 in `wstring(N)` — runs
 in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
@@ -2939,7 +2939,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
    the `doc` descriptor column (SPEC-TABLES.md §8) and into line comments in
    the generated code; a plain `//` block above the same item stays an
    ordinary comment and reaches nothing. No id moves either way.
-   `| doc = "..."` is refused by name (§4.11) — one text, one spelling.
+   `| doc = "..."` is refused (§4.11) — one text, one spelling.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
@@ -2954,7 +2954,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 10. ~~Sentinel-terminated collections~~ — deferred to the delta pass,
     which designs all three measured terminator idioms at once
     (bool-continuation, sentinel value, stop action). Readers are
-    structurally oblivious to packet splits, so the language owes readers
+    structurally oblivious to packet splits, so the language must provide readers
     only a terminated-stream loop.
 11. **Enum subranges, and the enum-as-index pattern** — deferred; the design
     is banked here for its return, likely with the claiming/index pass. Two
@@ -2982,7 +2982,23 @@ Every row to date is settled, deferred with its design banked, or discarded.
     discarded; externally-derived interop and adoption material is out of
     this repo.
 17. ~~The unsigned fixed-point spelling~~ — settled: the explicit
-    `ufixed(I, F)` keyword (§4.3, §4.6), storage always manifest in the type
-    name — the integer family's own int/uint precedent. Deriving signedness
-    from `min >= 0` was declined because a field's storage type would
-    silently change when a bound crossed zero.
+`ufixed(I, F)` keyword (§4.3, §4.6), storage always manifest in the type
+name — the integer family's own int/uint precedent. Deriving signedness
+from `min >= 0` was declined because a field's storage type would
+silently change when a bound crossed zero.
+
+## Conformance
+
+An implementation conforms to this specification when it:
+
+- accepts the grammar of §4 and rejects every construct §4.10 and §4.11
+  decline, naming the offending construct;
+- writes and reads the type wire of §3 byte for byte, so two conforming
+  implementations exchange data under one protocol id;
+- refuses at read time, in every build, every value §4.3 through §4.12
+  specify as refused, and applies the write-side contracts of §5;
+- generates code that satisfies §6, and exposes the compiler surface of §7.
+
+Byte-level conformance is decided against the C++ reference, whose output
+is the authority for the wire. A port is complete when it passes the
+corpus and wire tests of §7.2 against that reference.
