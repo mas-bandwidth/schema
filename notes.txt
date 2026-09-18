@@ -1,0 +1,89 @@
+df7-go-measure-1 — Go leg measurement notes
+==========================================
+
+Command (STEP 3), run inside the wall, exactly:
+  bench/run.sh --only go --quick --out bench/results/df7-go-measure-1.csv
+
+Result: exit 0. bench/results/df7-go-measure-1.csv exists and carries two go
+rows (write, round_trip). Quick mode is the iteration instrument, not the
+certification instrument (bench_mixed only, 3 measured runs after 1 warmup).
+
+Measured go numbers (bench_mixed, family gen, 438 bytes/op, 4,000,000 iters)
+--------------------------------------------------------------------------
+path        median msg/s   min msg/s    max msg/s   median MB/s   spread
+write         967,958       873,242     1,420,893     404.33       56.58%
+round_trip    291,260       287,251       369,407     121.66       28.21%
+read (derived, stderr only, not a CSV row): 0.42 M msg/s
+
+alloc note: bench_mixed one pass (256 ops/path): write 0 allocs, round_trip 0
+allocs — the Reset reuse discipline holds.
+
+corpus_id: fd0748942dc6ae09
+host: hulk, AMD Ryzen Threadripper 2990WX 32-Core Processor, x86_64 Linux
+  (taskset -c 0)
+schema commit: 740b6018 (rowan/df7-go-measure-1)
+serialize.go: a1f6ab7 (main)
+serialize (classic): 6c692bf (main)
+
+The go write row's spread of 56.58% is past BENCH-STANDARD §2.3's 40% INVALID
+line, so it would not publish as a certified row; this is a --quick iteration
+sitting (no driver pass, no control legs, no window verdict), so no ratio is
+claimed from it.
+
+Toolchain provenance caveat
+---------------------------
+The box's pinned Go toolchain is the symlink
+  /home/gaffer/go/bin/go -> /home/gaffer/nova-bench/sdk/go1.26.5/bin/go
+and the sandbox wall refuses it:
+  /home/gaffer/nova-bench/sdk/go1.26.5/bin/go: Permission denied (exit 126)
+The sandbox also refuses writes to the sibling path the defaults expect
+(../serialize, ../serialize.go: "could not create work tree dir: Permission
+denied"), so both runtime checkouts and the builds live under
+.nova-sandbox-tmp/opencode/runtimes/ with SERIALIZE / SERIALIZE_GO pointing at
+them. The §3.5 provenance guard verified both paths against the toolchain's own
+resolution ([build-verified: ...] in the CSV preamble). The leg was measured
+with Go 1.23.4 (a toolchain go downloaded and selected, go.mod requires 1.23),
+not the box's pinned 1.26.5 — the CSV records exactly what ran. The row is a
+valid measurement of this tree on this toolchain; it is not a sitting on the
+pinned toolchain.
+
+The one thing I would change in bench/go/main.go
+------------------------------------------------
+The driver's per-op indirection. benchDataDriven takes writeFn/readFn as
+function values (main.go:235-237, called at main.go:469), so every timed op
+pays one indirect call through a func value; the file's own header
+(main.go:16-18) and bench/go/README.md name this as the Go leg's asymmetry
+against the C++/Rust template/generic drivers, which inline. That is the whole
+of the structural difference between "what the generated codec costs" and "what
+the generated codec plus one indirect call costs" — and with the Go codec's
+known ~86%-in-the-runtime profile, the call boundary sits inside the timed loop
+on every field group.
+
+Change: make the driver generic over the codec so the calls are statically
+resolved and the generated read/write can be inlined the way the other legs get
+it. The generated codec ships FREE functions, not methods
+(generated/bench/go/Bench.go:907+ — bench.WriteBenchMixed /
+bench.ReadBenchMixed), so the generic parameter is an adapter with a
+statically-known concrete type: define
+  type codec[T any] interface {
+      Write(*serialize.WriteStream, *T) error
+      Read(*serialize.ReadStream, *T) error
+  }
+and one zero-size adapter per shape, e.g.
+  type mixedCodec struct{}
+  func (mixedCodec) Write(ws *serialize.WriteStream, v *bench.BenchMixed) error {
+      return bench.WriteBenchMixed(ws, v)
+  }
+  func (mixedCodec) Read(rs *serialize.ReadStream, v *bench.BenchMixed) error {
+      return bench.ReadBenchMixed(rs, v)
+  }
+then `benchDataDriven[bench.BenchMixed, mixedCodec](...)` and call
+`c.Write(ws, &instances[...])` inside with `c` a type parameter. Because the
+concrete adapter is a static type parameter (not a func value), Go can
+devirtualize and inline the adapter into the generated body. The call site in
+main.go:469 changes shape but nothing about the corpus, the gates, the
+iteration count, the CSV format or the reuse discipline moves; only the per-op
+call becomes devirtualizable. Until that lands, the Go gen-family number
+carries an indirect call the C++ and Rust numbers do not, and cross-language
+ratios should be read with that named (the runner contract already requires
+noting it, so this is also the change that lets the note be deleted).
