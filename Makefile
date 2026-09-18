@@ -5745,3 +5745,38 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
 include make/checks/reference-review.mk
+
+# THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
+# so the gate both workflows run is a target here, and the retry-and-classify
+# logic is a committed script that `make test` holds to its fixtures — not
+# lines of YAML duplicated into two files, where the first divergence between
+# the copies is nobody's to notice.
+#
+# THE SCANNER'S PIN LIVES ON THE NEXT LINE AND NOWHERE ELSE, bumped by hand.
+# What has to change on its own is the DATABASE, which the tool fetches at run
+# time, so a red run can never mean the scanner moved under us.
+GOVULNCHECK_VERSION ?= v1.7.0
+
+# `make vuln` is the pull-request gate: a database still unreachable after three
+# attempts is forgiven, loudly, because a contributor's diff cannot be judged by
+# vuln.go.dev's uptime. `make vuln-strict` is the nightly certification's gate:
+# the same three attempts, and then RED, because a certificate is a full run at
+# an exact SHA and an unreachable database certifies nothing. The two differ by
+# that flag and nothing else, and both exist so an outage always leaves a red
+# SOMEWHERE rather than nowhere.
+.PHONY: vuln
+vuln:
+	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run
+
+.PHONY: vuln-strict
+vuln-strict:
+	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run --strict
+
+# The classifier's own table test (tools/vuln/testdata/cases.txt): offline, a
+# fraction of a second, and the reason the gate above can be trusted to tell an
+# outage from a failure. It rides `make test` like every other control here.
+.PHONY: vuln-selftest
+vuln-selftest:
+	tools/vuln/govulncheck.sh selftest
+
+test: vuln-selftest

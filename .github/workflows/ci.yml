@@ -817,55 +817,28 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # PINNED to a govulncheck release, bumped by hand. What has to change
-      # on its own is the VULNERABILITY DATABASE, which the tool fetches at run
-      # time — so the pin costs this gate nothing, and a red run can no longer
-      # mean the scanner moved under us rather than a new CVE landing.
+      # THE PIN AND THE RETRIES LIVE IN THE TREE, NOT IN THIS FILE. `make vuln`
+      # runs tools/vuln/govulncheck.sh, which carries the scanner's pin (the
+      # Makefile's GOVULNCHECK_VERSION, bumped by hand), three attempts 15 s
+      # then 45 s apart, and the classifier that decides whether a red one is
+      # this tree's fault. `make` is the one entry (AGENTS.md rule 6), and a
+      # classifier that lives in the tree is one `make test` can hold to its
+      # fixtures — which is what tools/vuln/testdata/cases.txt does, including
+      # the two log excerpts a looser classifier read as an outage.
       #
-      # THREE ATTEMPTS, 15 s then 45 s apart, because that run-time fetch makes
-      # somebody else's network an input to this gate: on 2026-09-17
-      # https://vuln.go.dev/index/modules.json.gz answered 503 and a pull
-      # request went red for an upstream outage. A red that says nothing about
-      # the diff is worse than no gate at all — it is what teaches the next
-      # reader to discount a red vuln job.
+      # ONLY THE TRANSPORT IS RETRIED AND ONLY THE TRANSPORT IS EVER FORGIVEN:
+      # a finding fails on the first attempt, and so does any other failure.
+      # THIS gate forgives a database that never answers, because a
+      # contributor's diff cannot be judged by vuln.go.dev's uptime; the
+      # nightly in certify.yml runs `make vuln-strict` and goes RED on the same
+      # outage, so an outage is never green everywhere at once.
       #
-      # ONLY THE TRANSPORT IS RETRIED, AND ONLY THE TRANSPORT IS EVER FORGIVEN.
-      # A finding fails the step on the first attempt, with no sleep and no
-      # second try, and so does every other non-zero exit whose log carries none
-      # of the transport markers below — a retry loop that swallows real
-      # failures is the bug this shape exists to avoid. Only after three
-      # attempts that all failed to REACH the database does the step say, in a
-      # notice nobody can miss, that it proved NOTHING, and exit 0: the same job
-      # runs nightly on main in certify.yml, so the database's verdict on this
-      # tree lands the hour the database answers.
-      #
-      # The sibling file carries this block verbatim; the two must move together.
+      # INSIDE THE 10-MINUTE CAP with room to spare: the scan measures 35 s on
+      # this runner and 9.4 s on a 64-core bench, so three attempts and two
+      # sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst case. The cap is there for
+      # a scan that HANGS instead of failing, and it still ends the job.
       - name: govulncheck
-        shell: bash
-        run: |
-          set -o pipefail
-          log="$RUNNER_TEMP/govulncheck.log"
-          attempt=1
-          while true; do
-            if go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./... 2>&1 | tee "$log"; then
-              exit 0
-            fi
-            if grep -qE 'Vulnerability #[0-9]|Your code is affected by [1-9]' "$log"; then
-              echo "::error::govulncheck reported a vulnerability. That is a finding, not an outage — read the report above; this step does not retry it."
-              exit 1
-            fi
-            if ! grep -qiE '(^|[^0-9])(500|502|503|504)([^0-9]|$)|service unavailable|bad gateway|gateway time-?out|internal server error|connection reset|connection refused|TLS handshake timeout|i/o timeout|no such host|unexpected EOF|context deadline exceeded|temporary failure in name resolution|network is unreachable' "$log"; then
-              echo "::error::govulncheck failed for a reason that is not a transient network error. Read the output above; this step does not retry it."
-              exit 1
-            fi
-            if [ "$attempt" -ge 3 ]; then
-              echo "::notice::govulncheck could not reach its vulnerability database in three attempts — an upstream outage, not a finding. THIS GATE PROVED NOTHING on this run and is deliberately not failing for it; certify.yml runs the same job nightly on main and reports the database's verdict as soon as it answers."
-              exit 0
-            fi
-            echo "attempt $attempt could not reach the vulnerability database; retrying"
-            sleep $(( attempt == 1 ? 15 : 45 ))
-            attempt=$(( attempt + 1 ))
-          done
+        run: make vuln
 
   # The compiler that generates C++ for a Windows-targeting game engine, run on
   # Windows: vet + build, cheap enough to ride every pull request. What it
