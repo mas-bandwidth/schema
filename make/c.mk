@@ -918,8 +918,18 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v2 test/tables/V2.schema
 	@touch $@
 
+# EACH GENERATION'S OWN Table.c RIDES WITH ITS UNIT, the way the conformance
+# driver's sources pair test/conformance/c/unit_tblw1.c with w1/W1Table.c. The
+# generated header declares the JSON walk's entry points and says "Defined in
+# <Unit>Table.c; compile it to use them", and the static wrappers that call
+# them are SCHEMA_UNUSED — so at -O2 the optimiser drops the wrappers and the
+# link needs nothing, while at -O0 (the sanitized twin's flags) gcc emits every
+# unused static and the link goes looking for symbols nobody compiled. That is
+# a link error on the ubuntu leg alone, which is where `make test` is red.
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c
+	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	build/tables-generated-c-fixed/fx1/FX1Table.c build/tables-generated-c-fixed/fx2/FX2Table.c \
+	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
 	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 -I$(SERIALIZE_C)
 
