@@ -1,0 +1,45 @@
+df7-go-measure-2 — Go leg sitting (2026-09-18, host hulk, x86_64)
+
+Command:
+  bench/run.sh --only go --quick --out bench/results/df7-go-measure-2.csv
+
+Environment (the box defaults are not usable as-is, so the leg was exercised
+against the same runtimes via the env overrides the runner contract provides):
+  - go: the PATH-first toolchain (/home/gaffer/go/bin/go) is unreadable in this
+    sandbox; ran /usr/bin/go 1.22.2 with GOTOOLCHAIN=go1.23.4, which resolves to
+    the cached toolchain in cache/go-mod (go1.23.4). Recorded go version is
+    therefore go1.23.4, matching go.mod's `go 1.23`.
+  - runtimes: SERIALIZE and SERIALIZE_GO point at sibling checkouts cloned under
+    .nova-sandbox-tmp/deps/ (the job directory's parent is not writable, and the
+    default ../serialize / ../serialize.go are absent). The §3.5 guard verified
+    both: serialize.go a1f6ab7 (main), serialize 6c692bf (main).
+  - pinning: taskset -c 0 (as the runner records).
+
+Measured go numbers (CSV v2, corpus_id fd0748942dc6ae09, 4,000,000 iters,
+438 bytes/op, 3 measured runs, family gen, linkage pkg, checks always,
+opt default, inline unknown):
+
+  bench_mixed  write       median 540,585 msg/s  min 525,292  max 613,997
+                           median 225.81 MiB/s   spread 16.41%
+  bench_mixed  round_trip  median 835,676 msg/s  min 582,310  max 846,637
+                           median 349.07 MiB/s   spread 31.63%
+
+  --quick is the iteration instrument, not certification. No cpp row was present
+  (--only go), so no percentage is defined; both rows carry spread, and the
+  round_trip spread (31.63%) is inside §2.3's 40% INVALID line but well above
+  the 15% "noisy" line, so this sitting should not be published as-is.
+
+The one thing I would change in bench/go/bits.go:
+
+  Add the escape barrier the rest of the runner already uses. The gen loops in
+  bench/go/main.go call runtime.KeepAlive(gBuffer[:]) after their timed loops
+  (main.go:310 and main.go:341), and the C++ bits reference calls
+  bench_escape(g_bits_buffer) inside bitpacker_write_loop (bench_main.cpp:511),
+  but bench/go/bits.go's bitpackerWriteLoop / bitpackerReadLoop keep
+  gBitsBuffer / gBitsVariants alive only through gSink. That is the exact
+  discipline bench/go/README.md claims ("a package-level sink accumulator plus
+  runtime.KeepAlive") and the bits family is the one place it is missing — a
+  future compiler that proves the buffer stores unread could elide them and
+  report a fictional write rate. runtime.KeepAlive(&gBitsBuffer) (write) and
+  runtime.KeepAlive(&gBitsVariants[0]) (read) after the timed loop close the gap
+  without touching a byte of the wire.
