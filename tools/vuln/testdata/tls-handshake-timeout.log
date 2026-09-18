@@ -1,0 +1,2 @@
+go: downloading golang.org/x/vuln v1.7.0
+go: golang.org/x/vuln/cmd/govulncheck@v1.7.0: Get "https://proxy.golang.org/golang.org/x/vuln/@v/list": net/http: TLS handshake timeout
