@@ -1,0 +1,57 @@
+df7-go-measure-3 — Go leg measurement
+
+Command (as the card asked):
+  bench/run.sh --only go --quick --out bench/results/df7-go-measure-3.csv
+
+Result: bench/results/df7-go-measure-3.csv exists and holds two go rows.
+
+MEASURED GO NUMBERS (Release, quick mode = 1 warmup + 3 measured runs)
+  machine: hulk, AMD Ryzen Threadripper 2990WX 32-Core, Linux 6.8 x86_64
+  bench_mixed, family gen, iters=4,000,000, bytes_per_op=438, runs=3
+  corpus_id: fd0748942dc6ae09   linkage=pkg  checks=always  opt=default  inline=unknown
+
+    path         median msg/s   min msg/s   max msg/s   median MiB/s   spread
+    write            754,387     654,002     774,030        315.11     15.91%
+    round_trip       362,130     286,765     417,309        151.27     36.05%
+    read (DERIVED: round_trip - write; stderr only, never a CSV row)
+                     0.70 M msg/s
+
+  alloc note: bench_mixed one pass (256 ops/path): write 0 allocs, round_trip 0 allocs.
+  round_trip spread 36.05% is above §2.3's 15% noisy line and is named as noisy in
+  the quick table note; write spread 15.91% is just over the line.
+
+PROVENANCE / HOW IT RAN (the toolchain as-shipped was unreachable; worked around
+inside the wall, and the CSV records the real commits)
+  - `go` on PATH is /home/gaffer/go/bin/go and is NOT executable by this user:
+      /usr/bin/bash: line 1: /home/gaffer/go/bin/go: Permission denied
+  - the only readable toolchain is /usr/bin/go = go1.22.2, and both bench/go/go.mod
+    and generated/bench/go/go.mod require go >= 1.23 with GOTOOLCHAIN=local:
+      go: go.mod requires go >= 1.23 (running go 1.22.2; GOTOOLCHAIN=local)
+    `GOTOOLCHAIN=auto` fails too:  "download go1.23 ... toolchain not available".
+    Workaround: GOTOOLCHAIN=go1.23.4 (downloaded into the sandbox GOMODCACHE, works);
+    the CSV's `# go:` line records go1.23.4.
+  - the sibling runtime checkouts the default legs expect do not exist
+    (../serialize.go, ../serialize.c, ../serialize.rs, ...). run.sh line 143 also
+    hard-requires $SERIALIZE/serialize.h before any --only leg. Workaround: cloned
+    the two runtimes the go leg touches into the sandbox tmp dir and passed them
+    through the §3.5 vars, which the provenance guard then build-verified:
+      SERIALIZE    = .../tmp/card-df7-go-measure-3/serialize     (6c692bf, main)
+      SERIALIZE_GO = .../tmp/card-df7-go-measure-3/serialize.go  (a1f6ab7, main)
+    Both are recorded in the CSV preamble as [build-verified: ...].
+  - `--quick` on a single language cannot print a percentage: the quick table is
+    single-subject with C++ pinned at 100% as denominator, so the row printed
+    `go —` even though go produced rows. The CSV carries the rates, which is the
+    measurement. This is expected per README/run.sh, not a failure.
+
+ONE THING I WOULD CHANGE IN bench/BENCH-STANDARD.md
+  §2.8 still calls quick mode "PROPOSED" ("the constants above ... are working
+  values pending the owner's ruling") while run.sh and the README already ship it
+  as the standard iteration instrument, and §2.3's disposition is left implicitly
+  binding on quick's 3-run spread. Promote §2.8 to normative AND state explicitly
+  that §2.3's 15%/40% thresholds do NOT invalidate a `--quick` row: quick's spread
+  is a 3-run diagnostic, not the 7-run certification statistic, so a >40% quick
+  spread must print its number with a noisy mark rather than let render.awk drop
+  the language as `—`. Without that sentence this very sitting's round_trip row
+  (36.05%, four points under the invalid line) sits close enough that a slightly
+  dirtier window would silently delete Go from the iteration table it exists to
+  feed — an instrument artifact published as an absence.
