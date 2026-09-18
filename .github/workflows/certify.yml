@@ -572,3 +572,579 @@ jobs:
             status=1
           fi
           exit $status
+
+  # ————————————————————————————————————————————————————————————————————————
+  # THE LEGS THAT CAME OFF THE PER-COMMIT GATE (the law, 2026-09-13).
+  #
+  # The owner's rule: CI that runs on every commit or pull request finishes in
+  # one to two minutes, and a leg that cannot runs on a tier that does not fire
+  # per commit. Measured on ci.yml run 34774357668 — 8:53 end to end over 70
+  # jobs — four legs were outside the rule on their own:
+  #
+  #   go-test     8:04   the compiler's whole suite, vet, and the projection
+  #                      and toolchain controls that ride with it
+  #   pins        6:39   `make conformance-pin update-goldens` and the diff
+  #   big-endian  6:39   the s390x cross build, qemu run and both controls
+  #   cs-fuzz     2:33 / 1:53  the C# wire and region fuzz batteries
+  #
+  # They moved HERE, whole and under the same job names, in the same commit
+  # that took them off ci.yml: nothing is checked less than it was, what moved
+  # is WHEN. A regression only these legs can see fails at the next nightly, or
+  # the same hour when somebody dispatches this file on main:
+  #   gh workflow run certify.yml --ref <branch>
+  # ————————————————————————————————————————————————————————————————————————
+
+  # The compiler's own test suite, and the only job in this file that reads a
+  # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
+  # re-executes every crasher ever found — a short, bounded run, not a
+  # campaign. `go vet` rides here because an emitter codebase built almost
+  # entirely out of format strings is exactly where printf-verb mismatches
+  # live (issue #31).
+  #
+  # The two C sibling checkouts are not optional decoration: internal/fuzz's
+  # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
+  # so a job without them would report green over a check that never ran.
+  go-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # THE GO BUILD CACHE (the two-minute rule, issue #368). Every job in this
+      # file that touches Go begins by compiling the same compiler from the
+      # same sources on a runner that has never seen them. `go build
+      # ./cmd/schema` is about 15 s cold, and this file pays it forty-seven
+      # times over in the negative-control rows alone, again in each
+      # conformance leg, and again in every gate that shells out to `go run`.
+      #
+      # THE THING WORTH CARRYING IS THE BUILD CACHE, NOT THE MODULE CACHE.
+      # This module has no external dependency and no go.sum, so there is
+      # nothing to download and a module cache would cache the empty set.
+      # ~/.cache/go-build — about 100 MB of compiled package archives — is
+      # where the fifteen seconds actually are.
+      #
+      # A STALE ENTRY CANNOT MAKE A WRONG BUILD, and that is the load-bearing
+      # fact about this whole block. Go's build cache is content-addressed:
+      # every entry is keyed by a hash of the source, the compiler's own
+      # identity and the build flags, so a cache carried across a toolchain
+      # bump or a source change serves the parts that still match and is
+      # simply ignored for the parts that do not. The key below is therefore
+      # only ever about the HIT RATE, never about correctness — which is what
+      # lets the last fallback rung be as coarse as it is.
+      #
+      # THE KEY: the runner's OS, the toolchain's identity AS THE INSTALLED
+      # TOOLCHAIN REPORTS IT rather than a version restated here (a literal
+      # '1.26' in fourteen places would be a second home for a pin the
+      # setup-go step above owns), and a hash of every Go source and go.mod.
+      # The path comes from `go env GOCACHE` for the same reason — it is a
+      # different directory on the Windows runners, and reading it beats
+      # knowing it.
+      #
+      # THERE IS EXACTLY ONE FALLBACK RUNG, and the missing one is the point.
+      # `go-build-<os>-<toolchain>-` is the rung that matters: it is the same
+      # toolchain over an older tree, which is what a pull request restores
+      # from main and what makes its first run warm. A rung below that —
+      # `go-build-<os>-` — can only ever match a DIFFERENT toolchain, and a
+      # cache written by another toolchain hits nothing, because every entry
+      # in it is keyed on that compiler's build ID. So it would download
+      # 120 MB to find zero usable entries, every time, and it is not here.
+      #
+      # WHICH IS ALSO A FINDING ABOUT THIS FILE, and this branch measured it:
+      # `go-version: '1.26'` is a RANGE, and setup-go resolves it to whatever
+      # 1.26.x the runner image already carries. One warm run of this file put
+      # 1.26.7 on thirty-one of the forty-six negative-control rows and 1.26.8
+      # on the other fifteen, so only the fifteen could use a cache the
+      # go-test row wrote under 1.26.8. Pinning the patch would make the whole
+      # leg warm and would make what CI proves the same fact twice running;
+      # that is a decision about the toolchain pin rather than about caching,
+      # so it is named here and left for its own change.
+      #
+      # ONE WRITER PER OS, AND IT IS THIS JOB. `actions/cache` saves whenever
+      # the exact key missed, so fifty-five jobs sharing one key would be
+      # fifty-five jobs racing to upload the same 100 MB: GitHub reserves a
+      # key to exactly one of them and the rest warn and drop it. So every job
+      # takes the RESTORE half and exactly one job per OS takes the SAVE half
+      # — `go-test` for Linux, at the bottom of this job, because vet and
+      # `go test ./...` between them compile every package in the module and
+      # its cache is the widest one this tree can produce; and `windows`
+      # below for Windows, which vets and builds the whole module too.
+      #
+      # THE FIRST RUN OF A BRANCH IS ALREADY WARM. A cache written on main is
+      # readable from every branch, so a branch's first run restores main's
+      # entry through the fallback key, recompiles only what its own diff
+      # moved, and writes its own entry for its second run. A pull request
+      # pays for its diff and nothing else.
+      #
+      # THE `generated` GATE TAKES NO CACHE, deliberately. It is the job that
+      # decides whether the committed tree matches what the current compiler
+      # emits, and it is the one place in this file where "the build did no
+      # work" must not be an available explanation for a green.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      # The projection's three controls (SPEC §3.1): a projection that stopped
+      # carrying enum and flags variant names, or a union's arm names, would
+      # let a reorder ship as a false match, and one without the codec law line
+      # would let a rounding change ship as one. Only a control that has gone
+      # red proves a gate is watching. All three are Go-only and take seconds,
+      # so they belong on the diff.
+      - name: the projection's gates go red without what they watch
+        run: |
+          make projection-variant-order-negative-control
+          make projection-wire-law-negative-control
+          make projection-union-arm-order-negative-control
+
+      # THE TOOLCHAIN GATE's control (issue #599), on the same reasoning and in
+      # the same job. `make test` is the only thing that runs the gate, and no
+      # job on a pull request runs `make test`, so until this step existed the
+      # gate that stops a missing toolchain was itself unwatched on the diff
+      # that changes it. The control needs no toolchain of its own: it points
+      # each registered pin at a path that does not exist and reads the
+      # refusal, which is the state this runner is already in, and takes about
+      # a second.
+      - name: the toolchain gate goes red without the toolchains it pins
+        run: make toolchain-negative-control
+
+      # THE ONE LINUX WRITER, per the block at the top of this job. It is last
+      # so that what it uploads is the cache AFTER vet and the whole test
+      # suite have filled it, which is the widest cache this tree produces.
+      # `actions/cache/save` cannot redden a job: a key another run reserved
+      # first is a logged warning and this step's success.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+
+  # THE PINS ARE CURRENT (issue #461). The job above asks this question of
+  # generated/ and asks it of nothing under testdata/, so a pin regenerated
+  # against an older main auto-merges clean and every job stays green against a
+  # pin nobody wrote. That is not hypothetical: this job's first run found six,
+  # testdata/golden/tables/maps/*Table.h, pinned on a branch cut before the
+  # retain-unknown walk landed and merged after it.
+  #
+  # THE SHAPE IS THE GENERATED JOB'S, one door over. Every re-pinning rule takes
+  # bin/schema, the C++ reference and the conformance harness, so this job
+  # rewrites the whole of testdata/ IN PLACE and staleness is precisely a dirty
+  # tree afterwards: a tracked pin that changed, or a newly written pin nobody
+  # committed, which a diff-only check would miss.
+  #
+  # THE TARGETS ARE THE TREE'S OWN NAMES, `conformance-pin` and
+  # `update-goldens`, so a rule that starts writing a new pin is covered the
+  # moment it joins one of them, with no edit to this file. Locally the same
+  # check is those two targets and the same `git diff`.
+  #
+  # The C++ reference writes the wire pins. The Go and C# sibling runtimes
+  # supply the generated-code fixtures in update-goldens' closing compiler
+  # tests. Each checkout uses its shared release pin above.
+  #
+  # MEASURED at 1m44s on the run that introduced it (34113070433), against
+  # 4m27s for big-endian in the same run: this job is inside the two-minute
+  # rule and it is not the binding constraint. Its own budget is the C++
+  # reference binaries `update-goldens` builds plus that target's closing
+  # `go test ./...`, which is the duplicate of go-test's and the first place
+  # to look if this job ever wants the time back.
+  pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: rewrite every pin under testdata/ from the reference
+        run: make -j"$(nproc)" conformance-pin update-goldens
+
+      - name: the pins are current
+        run: |
+          git diff --exit-code -- testdata/ || {
+            echo "::error::a pin under testdata/ is stale: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
+            exit 1
+          }
+          untracked=$(git status --porcelain testdata/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the re-pin wrote files that are not committed under testdata/. Add them."
+            exit 1
+          fi
+
+  # C# WIRE AND REGION FUZZ (issue #751).
+  #
+  # The C# table wire is one of the four live table-wire languages on the roadmap
+  # (#748). Issue #751 found a wire-fuzz divergence in pointer arm trailing bytes.
+  # In accordance with the owner's rule, tests that fit under 2 minutes belong on
+  # the per-PR CI gate rather than solely in nightly certification.
+  #
+  # Running as its own matrix rows keeps each fuzz target well under 1 minute
+  # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
+  # leg over the 2-minute ceiling.
+  cs-fuzz:
+    name: C# fuzz (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: tables-cs-wire-fuzz
+            name: wire
+          - target: tables-cs-region-fuzz
+            name: region
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: build the harness and the C# driver
+        run: make build/conformance-harness build-conformance-cs
+
+      - name: run C# ${{ matrix.name }} fuzz
+        run: make ${{ matrix.target }}
+
+  # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
+  # little-endian and byte-oriented throughout; §7 says a cook is produced in
+  # the byte order of the build it is cooked for, and that Open refuses any
+  # other. Every host this repo has built on is little-endian, so both rules
+  # were assertions on a page: a generated codec that reached for HOST order
+  # anywhere would have passed every other leg in this file, and the goldens
+  # would have said nothing.
+  #
+  # This leg builds the tables battery for s390x — big-endian, and the target
+  # both qemu-user and the Ubuntu gcc cross packages support best — and runs it
+  # under emulation, plus a cross-endian cook pair the host and the target hand
+  # to each other. Its negative control puts one byte-order-neutral store back
+  # to a host-order copy and proves the leg goes red on the target while
+  # staying green here, which is the whole argument for having it.
+  #
+  # It is an iteration gate, not a certification one — it answers a question
+  # about the code in the diff, not about the compiler that built it — and it
+  # fits the budget.
+  #
+  # THE PINS. The runner image is named rather than `-latest`, because package
+  # versions are only meaningful against one archive; the cross compiler and
+  # the emulator are then installed by EXACT version, so this leg proves the
+  # same thing next month as today. Bumping either is a deliberate one-line
+  # edit, the same act as the golangci-lint pin below, and the versions come
+  # from the policy the failing install prints. The step after the install
+  # records the resolved closure both pins pull in.
+  big-endian:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: the pinned cross toolchain and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
+            qemu-user=1:8.2.2+ds-0ubuntu1.18
+
+      - name: what the pins resolved to
+        run: |
+          s390x-linux-gnu-g++-13 --version | head -1
+          qemu-s390x --version | head -1
+          dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
+
+      # The one sibling the C++ battery needs, header-only, at the pin every
+      # other job uses: a table unit declaring a 128-bit field takes its
+      # storage type (serialize::int128_t / uint128_t) from serialize.h.
+      - name: Check out the serialize runtime (pinned release)
+        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+
+      # The battery on the target, then the control that proves it can fail.
+      # BE_CXX and BE_CC name the pinned compilers: the exact-version package
+      # installs the SUFFIXED drivers, and the Makefile's unsuffixed defaults
+      # are for a workstation that installed the metapackage. The C leg needs
+      # the C driver because the tolerant wire has a C reader too, and the
+      # g++ cross package pulls its gcc sibling in.
+      #
+      # -j BECAUSE THIS IS THE JOB AT THE BOUND. Six independent binaries hang
+      # off `tables-big-endian` — the tables corpus, the block driver both
+      # ways, the cook reader both ways, and the cook fixtures — sharing only
+      # bin/schema and the generated tree, which make builds once. The runner
+      # has four cores and the leg was spending them one at a time.
+      - name: the big-endian leg, and its negative control
+        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      # The C twin of that control: put16 never reaches table_writer_finish's
+      # #else arm, so a C-side byte-order defect there would leave the job green.
+      # Serial after the C++ control because both overlay-rebuild the compiler.
+      - name: the C big-endian negative control
+        run: make tables-c-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      # The memcpy arm of the same function is a host soak
+      # (tables-c-little-endian-negative-control). The negative-controls matrix
+      # runs it; this job does not, because that arm is not compiled for s390x.
+
+      # And the GO table leg on the same target. Go cross-compiles, so the
+      # conformance driver is one env var away from a big-endian binary, and
+      # the harness's own goldens become the gate: a big-endian reader loads
+      # what a little-endian host wrote, writes it back, and is byte-compared
+      # over the wire, the read report and the text form.
+      #
+      # It needs the Go RUNTIME checkout, even though the table codec names no
+      # runtime at all: a generated unit's PACKET sources sit in the same
+      # package as its table sources, and those import it.
+      - name: Check out the Go serialize runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - name: the Go table leg, big-endian
+        run: make conformance-big-endian
+
+  # ————————————————————————————————————————————————————————————————————————
+  # THE CONFORMANCE LEGS ON THE NIGHTLY TIER (the law, 2026-09-13).
+  #
+  # One job per registered driver whose test/conformance/<lang>/ci.json names
+  # `"tier": "nightly"`, discovered exactly the way ci.yml discovers the
+  # per-commit ones — `harness matrix nightly` against the same registry, so a
+  # leg changes tier by one line in its own file and no edit to either
+  # workflow. THE JOB NAME IS THE SAME, `conformance (<lang>)`, because it is
+  # the same check.
+  #
+  # The C leg is what put this here: it measured 2:30 and 1:51 as one job (runs
+  # 34774357668 and 34780754076) against a 120 s rule, and its cost is the C
+  # driver's own build. Splitting the leg would mean splitting the driver; the
+  # tier is the smaller change, and `make test` in the job above still runs
+  # every leg including this one on both OSes.
+  # ————————————————————————————————————————————————————————————————————————
+
+  conformance-matrix-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.8'
+          cache: false
+
+      # The Go build cache, restore only — `conformance-matrix` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - id: discover
+        name: the registry's nightly tier, as a matrix
+        run: |
+          matrix=$(go run ./test/conformance/harness matrix nightly)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+
+  conformance:
+    name: conformance (${{ matrix.lang }})
+    needs: conformance-matrix-nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.conformance-matrix-nightly.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Siblings cloned exactly where README.md tells a newcomer to put them —
+      # CI exercises the documented path rather than a special one. The
+      # Makefile's SERIALIZE* defaults already point here, and the generated
+      # go.mod / Cargo.toml and the C# driver's project embed relative paths
+      # that only resolve under this layout. The row names the checkout and
+      # the workflow variable that pins it; a leg whose generated code names no
+      # runtime leaves both empty and clones nothing.
+      - name: Check out the sibling runtime this leg needs (pinned release)
+        if: matrix.runtime != ''
+        run: |
+          tag=$(printenv "${{ matrix.runtime_tag }}")
+          git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
+
+      # bin/schema and the generated table units come out of Go in every leg.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.8'
+          cache: false
+
+      # The Go build cache, restore only — `conformance-matrix` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # One step per toolchain, each keyed on the row's field for it. The
+      # version is the leg's to name, and it is the same pin the leg's
+      # make/<lang>.mk documents for the repo-local dist/.
+      #
+      # .NET IS THE ONE VERSION THAT IS NOT THE LEG'S ALONE: nine csproj files
+      # under test/ and bench/ name the same TargetFramework, and certify.yml
+      # builds all of them. So the row names WHERE the pin lives and
+      # .github/dotnet-version holds it, read by both files; internal/ci's gate
+      # fails when a csproj and that pin disagree (issue #470).
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      # The BEAM is two versions and one step. No ELIXIRC override is needed:
+      # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
+      # falls through to the toolchain this step installed.
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # Its own step so the run log carries the build cost and the run cost
+      # separately — the two halves answer different questions when a leg
+      # stops fitting. The row's env is the make overrides CI needs: a JDK on
+      # PATH rather than in dist/, cargo not in a homebrew keg.
+      # -j, for the same reason big-endian took it: a leg's build is several
+      # independent binaries off one generated tree, and the C leg measured
+      # 2:30 building them one at a time on a four-core runner (run
+      # 34774357668), which is outside the rule on its own.
+      - name: build the harness and the ${{ matrix.lang }} driver
+        run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
+
+      - name: the ${{ matrix.lang }} leg over every surface
+        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
