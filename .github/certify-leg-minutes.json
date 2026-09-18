@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "THE NIGHTLY'S PER-LEG TIME BUDGET, in minutes, read by .github/workflows/certify.yml.",
+    "",
+    "One entry per registered leg (make/<lang>.mk's TEST_LEGS), plus 'core' for",
+    "`make test` with every leg skipped. certify.yml's test-legs job refuses a",
+    "registered leg with no entry here and an entry naming no registered leg, so",
+    "this file and `make registry` cannot drift apart.",
+    "",
+    "EVERY NUMBER IS A MEASUREMENT PLUS HEADROOM, never a guess. Measure with",
+    "`time make test-<leg>` (and `time make test SCHEMA_SKIP_LEGS='<all legs>'`",
+    "for core) on a quiet box, or read the duration off the leg's own job in the",
+    "last green nightly, which is the runner these numbers are for. The headroom",
+    "is roughly double, because a GitHub runner is shared hardware and a leg that",
+    "runs long is a regression worth a red rather than a flake worth a retry.",
+    "",
+    "A leg that outgrows its budget is killed and NAMES ITSELF: the certified job",
+    "turns the run red and prints the leg. Raise the number only with a new",
+    "measurement in the pull request that raises it."
+  ],
+  "core": 100,
+  "c": 30,
+  "cs": 30,
+  "dart": 20,
+  "elixir": 20,
+  "go": 30,
+  "java": 20,
+  "js": 20,
+  "rust": 30
+}

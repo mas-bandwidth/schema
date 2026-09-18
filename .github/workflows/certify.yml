@@ -56,26 +56,96 @@ env:
   SERIALIZE_JS_TAG: v1.4.2
 
 jobs:
-  # THE FULL CHAIN. `make test` builds the corpus in every language and
-  # compares their wire against the C++-pinned goldens, then runs every
-  # negative control, every bounded fuzz battery, every block and cook gate and
-  # every port's own instruments. That cross-language bit identity is the
-  # property this project exists to provide, and this is where it gets proven
-  # on hardware we do not own.
+  # THE CHAIN'S LEGS, AS A MATRIX. `make test` is the core — the compiler, the
+  # C++ reference, the goldens, the block and cook gates, the fuzz batteries —
+  # and then one sub-make per registered leg, eight of them. In ONE job that is
+  # more than an hour of work: run 35329874611 spent 53 minutes in the core,
+  # reached `make test-c` at 10:24:52, and was killed at the 60-minute cap with
+  # seven legs never started. GitHub records a timed-out job's conclusion as
+  # `cancelled`, and a run with a cancelled job and no failed one reads
+  # `cancelled` too — which looks like somebody pressed the button. EVERY
+  # NIGHTLY SINCE 2026-09-07 HAS READ THAT WAY AND NOBODY LOOKED.
   #
+  # So the work is split the way release-gates is split: one job per leg, each
+  # with its own budget, and a leg that runs out of time names itself in the
+  # run. `core` is the ninth entry — `make test` with every leg skipped, which
+  # is exactly the C++ reference's half plus the compiler's own — and the
+  # language legs are `make test-<leg>`, the same sub-make the loop ran.
+  #
+  # THE LEG LIST IS DERIVED from TEST_LEGS, the same registry release-targets
+  # derives its matrix from, so a port lands its leg by adding it to
+  # make/<lang>.mk. The budget beside it is MEASURED and lives in
+  # .github/certify-leg-minutes.json; the producer below refuses a registered
+  # leg with no budget and a budget naming no leg, so a new leg cannot quietly
+  # run nowhere and cannot quietly run without a cap.
+  test-legs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      legs: ${{ steps.plan.outputs.legs }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: plan
+        name: the registered legs, each with its measured budget
+        run: |
+          set -euo pipefail
+          budget=.github/certify-leg-minutes.json
+          # `make registry` prints what the make/<lang>.mk includes registered;
+          # no build, no toolchain, just the variable.
+          legs=$(make registry | sed -n 's/^test: //p' | tr ' ' '\n' | sed 's/^test-//' | grep . | sort | tr '\n' ' ')
+          legs=${legs% }
+          echo "registered legs: $legs"
+
+          # `core` is this file's own entry — `make test` with every leg
+          # skipped — and not a registered leg, so it is required by name.
+          jq -e 'has("core")' "$budget" >/dev/null || { echo "::error::$budget carries no 'core' entry"; exit 1; }
+
+          missing=$(for l in $legs; do jq -e --arg l "$l" 'has($l)' "$budget" >/dev/null || echo "$l"; done)
+          if [ -n "$missing" ]; then
+            echo "::error::$budget carries no minutes for: $(echo $missing). A leg with no measured budget runs under somebody's guess — time 'make test-<leg>' once and add the line."
+            exit 1
+          fi
+          # An underscore-prefixed key is the file's own prose, not a budget.
+          stale=$(jq -r 'keys[] | select(startswith("_") | not)' "$budget" | grep -v '^core$' | while read -r k; do
+            case " $legs " in *" $k "*) ;; *) echo "$k" ;; esac
+          done)
+          if [ -n "$stale" ]; then
+            echo "::error::$budget budgets legs the tree no longer registers: $(echo $stale). Remove them, or the file describes a chain nobody runs."
+            exit 1
+          fi
+
+          plan=$(jq -c --arg legs "$legs" '
+            . as $b
+            | [ "core" ] + ( $legs | split(" ") )
+            | map( { leg: ., minutes: $b[.] } )
+          ' "$budget")
+          echo "$plan"
+          echo "legs=$plan" >> "$GITHUB_OUTPUT"
+          # What the core job hands SCHEMA_SKIP_LEGS: every registered leg, so
+          # the core measures the core and nothing else.
+          echo "skip=$legs" >> "$GITHUB_OUTPUT"
+
   # BOTH OSes, always. The macOS pool is 5 runners wide and a certification
   # run's fan-out saturates it — which is precisely the argument for keeping it
   # off the pull-request path (a PR macOS job pushed during those minutes
   # queued 1:34 before starting, measured, run 32830268855) and no argument at
   # all against running it here.
+  #
+  # Every toolchain is installed in every leg job, deliberately: the setup
+  # actions cost seconds against budgets measured in minutes, and one block
+  # that every job shares cannot drift leg by leg.
   test:
-    name: test (${{ matrix.os }})
+    needs: test-legs
+    name: test (${{ matrix.os }}, ${{ matrix.leg.leg }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ matrix.leg.minutes }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        leg: ${{ fromJson(needs.test-legs.outputs.legs) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -142,10 +212,13 @@ jobs:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
-      # vet rides here on both OSes: an emitter codebase built almost entirely
-      # out of format strings is exactly where printf-verb mismatches live
-      # (issue #31), and macOS is the OS the pull-request gate does not carry.
+      # vet rides on the core leg, on both OSes: an emitter codebase built
+      # almost entirely out of format strings is exactly where printf-verb
+      # mismatches live (issue #31), and macOS is the OS the pull-request gate
+      # does not carry. It is a question about the compiler, not about a leg,
+      # so it is asked once per OS rather than once per leg.
       - name: go vet
+        if: matrix.leg.leg == 'core'
         run: go vet ./...
 
       # No SERIALIZE* overrides: the Makefile defaults already point at the
@@ -154,14 +227,31 @@ jobs:
       # harmless. DART, JAVA/JAVAC, ELIXIR/MIX and NODE likewise default to the
       # repo-local dist/ toolchains; on CI setup-dart, setup-java, setup-node and
       # setup-beam put the pinned versions on PATH.
-      - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+      #
+      # THE CORE IS `make test` WITH EVERY LEG SKIPPED, and the skip list is the
+      # registry's own — so the two halves together are exactly the chain the
+      # one job ran, with no gate left out and none run twice. A leg is the same
+      # sub-make the loop invoked, `make test-<leg>`, which carries its own
+      # toolchain probe and its own generated trees as prerequisites.
+      - name: "${{ matrix.leg.leg == 'core' && 'make test — the core, every leg skipped' || format('make test-{0}', matrix.leg.leg) }}"
+        env:
+          LEG: ${{ matrix.leg.leg }}
+          SKIP: ${{ needs.test-legs.outputs.skip }}
+        run: |
+          if [ "$LEG" = core ]; then
+            set -- test "SCHEMA_SKIP_LEGS=$SKIP"
+          else
+            set -- "test-$LEG"
+          fi
+          make "$@" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # The committed generated/ tree is what this repo treats as ground
-      # truth — findings are receipted against its line numbers. `make test`
-      # above regenerated every tracked file IN PLACE, so staleness is
-      # precisely a dirty tree here: a tracked file that changed, or a newly
-      # emitted file nobody committed (which a diff-only check would miss).
+      # truth — findings are receipted against its line numbers. The step above
+      # regenerated every tracked file THIS JOB's half owns, IN PLACE, so
+      # staleness is precisely a dirty tree here: a tracked file that changed,
+      # or a newly emitted file nobody committed (which a diff-only check would
+      # miss). A file this job did not regenerate is untouched and cannot go
+      # red here, so the legs together still cover the whole tree.
       # The pull-request gate reaches the same verdict from bin/schema alone;
       # this is the same check against the whole chain's output.
       - name: generated tree is current
@@ -180,7 +270,9 @@ jobs:
       # Seeded corpus only — a short, bounded run that re-executes every
       # crasher ever found and checks the compiler still refuses bad input
       # cleanly. The long fuzzing campaigns run by hand, not on every push.
+      # The compiler's, so the core leg carries it, once per OS.
       - name: fuzz seeds
+        if: matrix.leg.leg == 'core'
         run: go test ./internal/fuzz/
 
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
@@ -541,3 +633,45 @@ jobs:
             status=1
           fi
           exit $status
+
+  # THE CERTIFICATE ITSELF, and it exists because a run's own conclusion could
+  # not be trusted. GitHub records a job killed by `timeout-minutes` as
+  # CANCELLED, not failed, and a run whose worst job is cancelled reads
+  # `cancelled` — indistinguishable in every list, badge and notification from
+  # a run somebody stopped on purpose. Every nightly from 2026-09-07 to
+  # 2026-09-18 read exactly that way, and nobody looked at one of them.
+  #
+  # So the verdict is a job. It needs every other job in the file, it runs
+  # `if: always()`, and it FAILS unless each of them ended `success` or
+  # `skipped` — a timeout, a cancellation and a failure are one answer here,
+  # and that answer is red. `skipped` is allowed because release-gates skips
+  # itself on a tree that carries no release target, which is a real green.
+  #
+  # A cancelled leg NAMES ITSELF: the loop below prints every job that is not
+  # green with its result, so the summary says which leg ran out of its budget
+  # rather than leaving a reader to open eighteen jobs.
+  certified:
+    needs: [test-legs, test, release-targets, release-gates, inline-gate, vuln, negative-controls-nightly-matrix, negative-controls-nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job green, or this run is red
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+          bad=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) (\(.value.result))"')
+          if [ -n "$bad" ]; then
+            echo "$bad" | while read -r line; do
+              echo "::error title=certification failed::$line"
+            done
+            echo
+            echo "A job that reads 'cancelled' here ran out of its timeout-minutes:"
+            echo "the leg's budget is in .github/certify-leg-minutes.json and it is a"
+            echo "MEASURED number — a leg that outgrew it either regressed or needs a"
+            echo "new measurement, and either way this run certifies nothing."
+            exit 1
+          fi
+          echo "certified: every job green at ${{ github.sha }}"
