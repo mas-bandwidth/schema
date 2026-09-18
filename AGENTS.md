@@ -1,9 +1,12 @@
 # AGENTS.md — the one page to read before touching this repo
 
-Every harness loads this file: Claude Code, OpenCode, Codex and anything else
-that reads `AGENTS.md`. There is no per-harness copy. The long maintainer
-context that used to live in `CLAUDE.md` is now
-[docs/MAINTAINERS.md](docs/MAINTAINERS.md), unchanged.
+OpenCode and Codex read this file natively; Claude Code **2.1.277 and later**
+reads it when the folder has no `CLAUDE.md` (Thariq, 2026-09-18 — the memory
+docs page still says otherwise). On an older Claude Code nothing loads it, so
+open the session with `read AGENTS.md first`. **There is no `CLAUDE.md`, no
+pointer file and no symlink** — Glenn's ruling of 2026-09-18 is AGENTS.md alone.
+The maintainer context behind these rules is
+[docs/MAINTAINERS.md](docs/MAINTAINERS.md).
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
@@ -103,7 +106,9 @@ corpus cite them.
 
 ## When the compiler refuses
 
-The break-the-language diagnostics suite is 70-plus refusal cases, and a
+Every refusal the language can produce is a case in the break-the-language
+suite (`internal/check/diagnostics_test.go`, and `tables_test.go` for the table
+half): an illegal schema and the substring its diagnostic must carry. A
 diagnostic is meant to say what the input WANTS, not only what was wrong. Do
 what it says rather than working around it. If it does not say enough, that is a
 bug in the diagnostic: open an issue with the schema text, the command and the

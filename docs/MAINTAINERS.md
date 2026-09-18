@@ -1,15 +1,15 @@
 # schema — maintainer context for a working session
 
-*Was `CLAUDE.md` until 2026-09-18, moved here unchanged when this repo
-standardized on one front page. The rules a session must not break are in
-[AGENTS.md](../AGENTS.md); this file is the context behind them.*
+*The rules a session must not break are in [AGENTS.md](../AGENTS.md); this file
+is the context behind them — the ledger, the performance program, what `make`
+proves in full.*
 
 - **docs/SPEC.md is the source of truth for the type wire, and docs/SPEC-TABLES.md is
   the source of truth for the table wire.** Both are written as clean references, and the
   two wires share one language, one unit and one compiler (SPEC.md §1 non-goals). Each states the
   most recent specification only — present tense, reference register, no history, no
   decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
-  implementer, not like a CLAUDE.md). Decision provenance — who ruled what, when, in
+  implementer, not like a page of maintainer notes). Decision provenance — who ruled what, when, in
   which words — lives in git history and `notes/road-to-v1.md`; maintainer context
   lives here. Open questions still get a numbered row in SPEC §9, never an inline
   aside; §9 rows keep their numbers forever because code and corpus cite them.
