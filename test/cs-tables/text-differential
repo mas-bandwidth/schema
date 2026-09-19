@@ -1,0 +1,238 @@
+#!/bin/sh
+# I13 — the text differential against a third implementation (schema#419).
+# The C# leg emits N random instances as (wire, text); the compiler's own Go
+# engine (`schema unpack` / `schema pack`) reads the same wire and writes its
+# text, the two texts byte-compare, then the other direction, then the leg
+# reads the engine's text back. The random generator is written here, in C#:
+# half the draws are dyadic rationals (m / 2^k, a short decimal that ends on a
+# midpoint), half are uniform random bits, non-finite redrawn (§16.2).
+set -eu
+dotnet=$1
+sabotage=${2:-}
+n=${TEXTDIFF_N:-64}
+seed=${TEXTDIFF_SEED:-4190}
+work=build/cs-textdiff
+
+if [ "$n" -le 0 ]; then
+    echo "text differential compared zero instances — not a pass"
+    exit 1
+fi
+echo "seed $seed"
+
+rm -rf "$work"
+mkdir -p "$work"
+
+cat > "$work/Probe.schema" <<'SCHEMA'
+package textdiff
+
+table Probe
+{
+    f32 float32
+    f64 float64
+}
+SCHEMA
+
+cat > "$work/probe.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="generated/*.cs"/></ItemGroup>
+</Project>
+PROJECT
+
+cat > "$work/Program.cs" <<'CS'
+using System;
+using System.IO;
+using Textdiff;
+
+class TextDiffDriver
+{
+    static float NextFloat32(Random rng)
+    {
+        if ((rng.Next() & 1) == 0)
+        {
+            int m = rng.Next(-(1 << 24), 1 << 24);
+            int k = rng.Next(0, 5);
+            return m / (float)(1 << k);
+        }
+        byte[] b = new byte[4];
+        for (;;)
+        {
+            rng.NextBytes(b);
+            float f = BitConverter.Int32BitsToSingle(BitConverter.ToInt32(b, 0));
+            if (!float.IsNaN(f) && !float.IsInfinity(f)) { return f; }
+        }
+    }
+
+    static double NextFloat64(Random rng)
+    {
+        if ((rng.Next() & 1) == 0)
+        {
+            long m = (long)(NextUInt64(rng) & ((1UL << 53) - 1)) - (1L << 53);
+            int k = rng.Next(0, 9);
+            return (double)m / (double)(1L << k);
+        }
+        byte[] b = new byte[8];
+        for (;;)
+        {
+            rng.NextBytes(b);
+            double f = BitConverter.Int64BitsToDouble(BitConverter.ToInt64(b, 0));
+            if (!double.IsNaN(f) && !double.IsInfinity(f)) { return f; }
+        }
+    }
+
+    static ulong NextUInt64(Random rng)
+    {
+        byte[] b = new byte[8];
+        rng.NextBytes(b);
+        return BitConverter.ToUInt64(b, 0);
+    }
+
+    static int Emit(string work, int n, int seed)
+    {
+        Directory.CreateDirectory(Path.Combine(work, "wire"));
+        Directory.CreateDirectory(Path.Combine(work, "bits"));
+        var rng = new Random(seed);
+        for (int i = 0; i < n; i++)
+        {
+            var p = new Probe();
+            p.F32 = NextFloat32(rng);
+            p.F64 = NextFloat64(rng);
+            long size = Schema.ProbeMeasure(p);
+            if (size < 0) { Console.Error.WriteLine("ProbeMeasure refused instance " + i); return 1; }
+            byte[] wire = new byte[size];
+            if (Schema.ProbeSave(p, wire) != size) { Console.Error.WriteLine("ProbeSave wrote a size its measure did not name, instance " + i); return 1; }
+            long textSize = Schema.ProbeToJsonMeasure(p);
+            if (textSize < 0) { Console.Error.WriteLine("ProbeToJsonMeasure refused instance " + i); return 1; }
+            byte[] text = new byte[textSize];
+            if (Schema.ProbeToJson(p, text) != textSize) { Console.Error.WriteLine("ProbeToJson wrote a size its measure did not name, instance " + i); return 1; }
+            string dir = Path.Combine(work, "leg", i.ToString());
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(work, "wire", i + ".bin"), wire);
+            File.WriteAllBytes(Path.Combine(dir, "Probe.json"), text);
+            uint f32 = unchecked((uint)BitConverter.SingleToInt32Bits(p.F32));
+            ulong f64 = unchecked((ulong)BitConverter.DoubleToInt64Bits(p.F64));
+            File.WriteAllText(Path.Combine(work, "bits", i + ".txt"),
+                "F32=" + f32.ToString("x8") + " F64=" + f64.ToString("x16") + "\n");
+        }
+        return 0;
+    }
+
+    static int Read(string work, int n)
+    {
+        Directory.CreateDirectory(Path.Combine(work, "read"));
+        for (int i = 0; i < n; i++)
+        {
+            byte[] wire = File.ReadAllBytes(Path.Combine(work, "wire", i + ".bin"));
+            byte[] text = File.ReadAllBytes(Path.Combine(work, "engine", i.ToString(), "Probe.json"));
+            var p = new Probe();
+            var report = new TableReport();
+            if (!Schema.ProbeFromJson(p, text, report)) { Console.Error.WriteLine("ProbeFromJson refused instance " + i); return 1; }
+            long size = Schema.ProbeMeasure(p);
+            if (size < 0) { Console.Error.WriteLine("ProbeMeasure refused after a clean read, instance " + i); return 1; }
+            byte[] buffer = new byte[size];
+            if (Schema.ProbeSave(p, buffer) != size) { Console.Error.WriteLine("ProbeSave wrote a size its measure did not name, instance " + i); return 1; }
+            File.WriteAllBytes(Path.Combine(work, "read", i + ".bin"), buffer);
+        }
+        return 0;
+    }
+
+    static int Main(string[] args)
+    {
+        if (args.Length < 3) { Console.Error.WriteLine("usage: probe <emit|read> <work> <n> [seed]"); return 2; }
+        if (args[0] == "emit") { return Emit(args[1], int.Parse(args[2]), int.Parse(args[3])); }
+        if (args[0] == "read") { return Read(args[1], int.Parse(args[2])); }
+        Console.Error.WriteLine("unknown mode " + args[0]);
+        return 2;
+    }
+}
+CS
+
+if [ "$sabotage" = "sabotage" ]; then
+    sed -e 's|int high = single ? 9 : 17;|int high = single ? 6 : 15;|' \
+        internal/codegen/cstable/json.go > "$work/json.gotext"
+    if cmp -s "$work/json.gotext" internal/codegen/cstable/json.go; then
+        echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"
+        exit 1
+    fi
+    count=$(grep -c 'int high = single ? 6 : 15;' "$work/json.gotext")
+    if [ "$count" -ne 1 ]; then
+        echo "NEGATIVE CONTROL FAILED: the sabotage landed $count times, not once"
+        exit 1
+    fi
+    printf '{"Replace":{"%s/internal/codegen/cstable/json.go":"%s/build/cs-textdiff/json.gotext"}}\n' "$PWD" "$PWD" > "$work/overlay.json"
+    go build -overlay="$work/overlay.json" -o "$work/schema" ./cmd/schema
+else
+    go build -o "$work/schema" ./cmd/schema
+fi
+
+"$work/schema" generate --lang cs --out "$work/generated" "$work/Probe.schema"
+"$dotnet" build "$work/probe.csproj" -v q
+"$dotnet" "$work/bin/Debug/net10.0/probe.dll" emit "$work" "$n" "$seed"
+
+report() {
+    idx=$1
+    why=$2
+    left=$3
+    right=$4
+    printf 'MISMATCH at instance %s (%s), seed %s\n' "$idx" "$why" "$seed"
+    printf 'raw F32/F64: %s\n' "$(cat "$work/bits/$idx.txt")"
+    printf '%s\n' '--- leg text (ProbeToJson) ---'
+    cat "$work/leg/$idx/Probe.json"
+    printf '%s\n' '--- engine text (schema unpack) ---'
+    cat "$work/engine/$idx/Probe.json"
+    mkdir -p "$work/failed/$idx"
+    cp "$left" "$work/failed/$idx/left"
+    cp "$right" "$work/failed/$idx/right"
+}
+
+reddened=
+i=0
+while [ "$i" -lt "$n" ]; do
+    mkdir -p "$work/engine/$i"
+    ./bin/schema unpack --root Probe --in "$work/wire/$i.bin" --one-file "$work/engine/$i" "$work/Probe.schema"
+    if ! cmp -s "$work/leg/$i/Probe.json" "$work/engine/$i/Probe.json"; then
+        report "$i" "the engine's text differs from the leg's text" "$work/leg/$i/Probe.json" "$work/engine/$i/Probe.json"
+        reddened=$i
+        break
+    fi
+    ./bin/schema pack --root Probe --out "$work/engine/$i/back.bin" "$work/leg/$i" "$work/Probe.schema"
+    if ! cmp -s "$work/wire/$i.bin" "$work/engine/$i/back.bin"; then
+        report "$i" "the engine's pack of the leg's text differs from the leg's wire" "$work/wire/$i.bin" "$work/engine/$i/back.bin"
+        reddened=$i
+        break
+    fi
+    i=$((i + 1))
+done
+
+if [ -z "$reddened" ]; then
+    "$dotnet" "$work/bin/Debug/net10.0/probe.dll" read "$work" "$n"
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        if ! cmp -s "$work/wire/$i.bin" "$work/read/$i.bin"; then
+            report "$i" "the leg's read of the engine's text differs from the leg's wire" "$work/wire/$i.bin" "$work/read/$i.bin"
+            reddened=$i
+            break
+        fi
+        i=$((i + 1))
+    done
+fi
+
+if [ -n "$reddened" ]; then
+    if [ "$sabotage" = "sabotage" ]; then
+        echo "negative control: the sabotaged C# writer reddened at instance $reddened (seed $seed)"
+        exit 0
+    fi
+    echo "text differential: RED at instance $reddened of $n (seed $seed)"
+    exit 1
+fi
+
+if [ "$sabotage" = "sabotage" ]; then
+    echo "NEGATIVE CONTROL FAILED: a writer that never checks the round-trip agreed with the engine anyway"
+    exit 1
+fi
+
+echo "text differential: $n instances compared, byte-identical across both directions (seed $seed)"

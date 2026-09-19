@@ -434,6 +434,14 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
+.PHONY: tables-cs-text-differential
+tables-cs-text-differential: bin/schema
+	sh test/cs-tables/text-differential "$(DOTNET)"
+
+.PHONY: tables-cs-text-differential-negative-control
+tables-cs-text-differential-negative-control: bin/schema
+	sh test/cs-tables/text-differential "$(DOTNET)" sabotage
+
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
