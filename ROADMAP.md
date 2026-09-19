@@ -1,6 +1,8 @@
 # Schema roadmap
 
-### Packet wire
+## Packet wire
+
+Constants, enums, flags and types - bit-picked structs exchanged between client and server without versioning.
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -33,9 +35,9 @@
 | string, bytes and flags defaults (#396) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the protocol id | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-### Fixed Tables
+## Fixed Tables
 
-Fixed tables provide basic versioning such that a new reader can always read an old writer. They are good for messages between the game server and a backend, or the backend and the website. 
+Fixed tables provide versioning such that a new reader can always read an old writer. They are good for messages between the game server and a backend, or the backend and the website where the reader and writer have different versions of the protocol.
 
 <!-- nova-work:fixed-tables:start -->
 
