@@ -4709,6 +4709,33 @@ tables-ref-ordinal-shared-negative-control:
 	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
 	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
 
+# THE CPP NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11, schema #414).
+# Every namespace-scope spelling of the C++ table runtime is either registered
+# in internal/tablenames or recorded in compiler's
+# TestCppEmittedRuntimeNamesAreClaimedOrRecorded, which holds the unregistered
+# remainder to a baseline list so the gap can only shrink. This plants one more
+# unregistered struct in the runtime through `go test -overlay` and requires
+# that test to go RED naming it. No tracked file is written to.
+.PHONY: tables-cpp-names-negative-control
+tables-cpp-names-negative-control:
+	@rm -rf build/cpp-names-nc && mkdir -p build/cpp-names-nc
+	@sed 's|^struct TableWideRange$$|struct TableBogusUnregistered {}\n\nstruct TableWideRange|' \
+		internal/codegen/cpptable/cpptable.go > build/cpp-names-nc/cpptable.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/cpp-names-nc/cpptable.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
+	@if go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
+			./compiler > build/cpp-names-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
+		cat build/cpp-names-nc/log; exit 1; \
+	fi
+	@grep -q "emits TableBogusUnregistered and internal/tablenames does not register it" build/cpp-names-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red for some other reason"; \
+		  cat build/cpp-names-nc/log; exit 1; }
+	@grep -m1 "TableBogusUnregistered" build/cpp-names-nc/log
+	@echo "negative control: one unregistered runtime struct turns the C++ name-claim test RED"
+
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
 # §6.6). certify.yml runs every `tables-<lang>-release` target by name.
