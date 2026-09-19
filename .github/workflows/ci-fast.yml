@@ -84,6 +84,51 @@ name: CI fast
 #   if: github.event.pull_request.head.repo.full_name == github.repository
 # and a fork's pull request is covered by ci-full.yml on hosted runners.
 #
+# THE STUDIO IS FOR PULL REQUESTS INTO main, per the owner's ruling of
+# 2026-09-11: "Only run tests when merging into main, local runners elsewhere."
+# fixed-table-form is a branch BELOW main and carries dozens of open pull
+# requests at a time; every one took all six runners for a lane whose verdict
+# nobody gates a landing on, against the owner's own window and the merge
+# queue's darwin leg. Load reached 111 on 2026-09-19 at 00:34Z.
+#
+# THE GATES ARE NOT DROPPED BELOW main -- THEY MOVE. Every job's `runs-on` is
+#   ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main')
+#        && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
+# so a pull request into main, and every workflow_dispatch, runs on the Studio
+# exactly as before, while a pull request into any branch below main runs the
+# SAME jobs on GitHub's hosted Linux. Nothing skips. block-gate is the reason:
+# it is what caught the C goldens on #1126 and #1127, and a branch with no
+# protection and no merge queue is exactly where that gate must not go quiet.
+#
+# THE LEG MATRIX IS THE ONE EXCEPTION, and it is evidence and not taste. It
+# keeps `runs-on: [self-hosted, studio]` and SKIPS below main, for two reasons.
+# It is the nine-way fan-out that saturates all six runners -- the four jobs
+# above are one runner each -- and its rows ARE NOT GREEN ON HOSTED LINUX YET:
+# measured on this branch, run 35411903961, `fixed form + versioning (cpp)` and
+# `(c)` failed on ubuntu-latest while the other seven legs passed and while all
+# nine pass on the Studio (run 35411629173). Those are the reds #981 is open on
+# -- C++ fixed there, C and Java still being named. Running this row on hosted
+# Linux today would redden all 41 below-main pull requests for a reason that is
+# in none of their diffs, which is worse than not running it. WHEN #981 LANDS
+# and the legs are green on Linux, give this job the same conditional `runs-on`
+# as the four above and delete this paragraph.
+#
+# THIS COSTS HOSTED MINUTES BELOW main and pays the floor documented above --
+# the setup-* steps a Studio runner skips all run on the fallback. That is the
+# trade: six Studio runners back, at hosted latency, for branches whose verdict
+# is advisory.
+#
+# THE FALLBACK IS NOT NEW and nothing below is darwin-only: every toolchain step
+# already carries `if: runner.environment == 'github-hosted'` precisely so these
+# jobs run on a hosted runner, and the equivalent gates run on ubuntu-latest in
+# ci-full.yml today. The `if:` conditions are untouched -- the fork guard still
+# keeps a fork's pull request off our hardware.
+#
+# THE OTHER SELF-HOSTED RUNNER IS NOT AN OPTION. `space-x64` is the only
+# self-hosted LINUX runner this repository has; it is OFFLINE, it has one core,
+# and no job names it (see below). Routing a gate there would queue it forever
+# rather than run it, which is why the fallback is GitHub's hosted Linux.
+#
 # SPACE IS NOT IN THE POOL, and the reason is worth writing down: the x86-64
 # Linux box has ONE CORE. It is registered as `space-x64` for a future
 # cross-architecture row that can afford to be slow, and no job here names it.
@@ -123,7 +168,7 @@ jobs:
   # start immediately does.
   plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [ self-hosted, studio ]
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     outputs:
       packages: ${{ steps.pick.outputs.packages }}
@@ -259,7 +304,7 @@ jobs:
   # they run in ci-full.yml.
   lint-fast:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [ self-hosted, studio ]
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -327,7 +372,7 @@ jobs:
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [ self-hosted, studio ]
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -349,7 +394,7 @@ jobs:
   go-test-touched:
     needs: plan
     if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [ self-hosted, studio ]
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -460,7 +505,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
