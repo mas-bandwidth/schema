@@ -444,6 +444,20 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        // AN UNGUARDED None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
+        // that set lands None (already written just above) and COUNTS, so the
+        // compiled plan counts it exactly as the identity plan's decode bound
+        // does and the SAME forged bytes land the SAME clamped == 1 on either
+        // plan (schema#1254, §5.4, §5.8 row 12). The source read is bounded
+        // here rather than at the push: TableFixedPush on this leg takes no
+        // record bound at all, so the entry that reads a record byte carries
+        // its own.
+        const arms = e[b + TableFixedLaneMeta] & 0xff;
+        if (v === 0 && arms !== 0 && guard === TableFixedNoGuard && s + size <= src.length) {
+          let raw = 0;
+          for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
+          if (raw > arms) { report.clamped++; }
+        }
         break;
       }
       default: break;
@@ -1029,6 +1043,24 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     case 15: { // a union: the tag, remapped, then each arm matched by id
       const theirTag = TableFixedTagBytes(theirs, ti);
       const myTag = TableFixedTagBytes(mine, mi);
+      // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed HERE,
+      // before plan.argw is retuned to this union's tag width, so it is stamped
+      // at the OUTER width: None answers to the OUTER tag (bill §12.7). Every
+      // tag value below is written under THEIR tag's guard, so a record naming
+      // an arm this build does not have — or a tag past the writer's arm set
+      // entirely — landed no tag at all from the plan and was answered by the
+      // PREFILL over the hole. That answer was right and silent: meta carries
+      // THE WRITER'S ARM COUNT for this one entry, and the read loop counts a
+      // clamp for a raw tag past that set, so the compiled plan counts what the
+      // identity plan's decode bound counts (schema#1254, §5.4, §5.8 row 12).
+      // TableFixedPush partitions on the guard, so this unguarded entry lands in
+      // pass 0 and every guarded arm const in pass 1: the arm that matches
+      // overwrites this one and it stands when none does.
+      {
+        const theirArmCount = TableFixedChildren(theirs, ti);
+        TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, 0, guard, arg,
+          (theirArmCount >= 1 && theirArmCount <= 255) ? theirArmCount : 0);
+      }
       const savedArgw = plan.argw;
       plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
       const theirArms = TableFixedChildren(theirs, ti);

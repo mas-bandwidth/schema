@@ -12,21 +12,28 @@ package jstable
 // plan (reader VOLD, no older) — and owe the same landing, which is §5.4's
 // agreement claim made concrete.
 //
-// THE COUNT IS ASYMMETRIC ON THIS LEG, so it was measured before it was
-// written. The identity plan copies the whole body in one OP_COPY, so the
-// forged 9 reaches the decode projection raw and the union-tag clamp fires
-// once: `clamped == 1` EXACTLY, never `>= 1`, because a leg that counts in the
-// plan's op AND again in the projection lands 2 and a looser read is the hole
-// this row exists to catch. The compiled plan's arms are guarded consts, so a
-// forged 9 matches no guard, leaves the prefill's None standing, and arrives at
-// the projection already 0: it lands 0 and counts NOTHING. That short count is
-// schema#1254, so this row asserts the compiled plan's LANDING and not its
-// count — `== 1` would red, `== 0` would cement the defect. When #1254 rules,
-// restore the decode union clamp in internal/codegen/jstable/fixedjs.go — the
-// `if (expr.Type > len(r.Variants)) { expr.Type = 0; report.clamped++; }`
-// bound — and assert `clamped == 1` on the compiled plan too. The site was
-// measured 2026-09-19 to be guarded by nothing: deleted from all nine legs'
-// emitters, not one landed fixed-table test went red.
+// BOTH PLANS COUNT `clamped == 1` EXACTLY, never `>= 1`, and that is
+// schema#1254 closed on this leg. The identity plan copies the whole body in
+// one OP_COPY, so the forged 9 reaches the decode projection raw and the
+// union-tag clamp fires once. THE COMPILED PLAN USED TO COUNT NOTHING: its arms
+// are guarded consts, a forged 9 matches no guard, and the tag lane was left to
+// the PREFILL over a hole — so the value was right and silent, and nothing on
+// the compiled path ever looked at the raw tag.
+//
+// The fix is not cpptable's eight lines, because this leg had no unguarded None
+// const to hang them on. `case 15:` now pushes one — stamped at the OUTER width
+// and carrying the WRITER'S ARM COUNT in the meta lane — and `TableFixedOpConst`
+// counts a raw tag past that set. TableFixedPush partitions on the guard, so the
+// unguarded None lands in pass 0 and every arm const in pass 1: the arm that
+// matches overwrites it and it stands when none does, at the same value the
+// prefill used to write.
+//
+// The site was measured 2026-09-19 to be guarded by nothing: the emitter's tag
+// bound deleted from all nine legs, not one landed fixed-table test went red.
+// TWO NEGATIVE CONTROLS on the fix itself, each edit counted to exactly 1 and
+// the file restored and proved byte-for-byte: the counter `if (false && raw >
+// arms)` and the arm-count lane set to 0 each leave 71 leaves with EXACTLY THIS
+// ROW red.
 
 import (
 	"fmt"
@@ -88,7 +95,7 @@ const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), repo
 %s
 `
 
-	compiled := fmt.Sprintf(forge, file, landing)
+	compiled := fmt.Sprintf(forge, file, landing+identityCount)
 	if out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, newTable, compiled); err != nil {
 		t.Fatalf("union_tag_both_plans, the COMPILED plan: %v\n%s", err, out)
 	}
