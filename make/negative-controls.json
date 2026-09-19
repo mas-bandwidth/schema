@@ -452,13 +452,15 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Rust port's name gate, its four packet families, and the accessor/descriptor agreement pair (a scalar control and a pointer-slot control), seven controls in all. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
-        "tables-rust-names-negative-control"
+        "tables-rust-accessor-negative-control",
+        "tables-rust-names-negative-control",
+        "tables-rust-slot-negative-control"
       ],
       "rust": "stable"
     },

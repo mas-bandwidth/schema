@@ -216,6 +216,81 @@ tables-rust-names-negative-control:
 	@grep -m1 "was accepted beside a table" build/rust-names-control/log
 	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
 
+# THE RUST ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1, schema#421).
+# The generated accessor and the generated descriptor are two independent
+# derivations of one layout, and a reading tier that walks only the descriptors
+# could read the descriptors twice and never know. The gate composes the whole
+# crate the way compiler/target_rust.go does, runs the probe under cargo test,
+# and greps for the probe's printed agreement count so a skip can never read as
+# a pass. The two negative controls below sabotage the EMITTER's descriptor
+# offsets through go test -overlay, so no tracked file is edited.
+.PHONY: tables-rust-accessor-descriptor-agreement
+tables-rust-accessor-descriptor-agreement:
+	@rm -rf build/rust-accessor-agreement && mkdir -p build/rust-accessor-agreement
+	@if SCHEMA_RUST_CRATE=1 go test -count=1 -run '^TestAccessorDescriptorAgreement' -v \
+			./internal/codegen/rusttable/ > build/rust-accessor-agreement/log 2>&1; then \
+		true; \
+	else \
+		echo "AGREEMENT GATE FAILED: the accessor/descriptor agreement probe went red"; \
+		cat build/rust-accessor-agreement/log; exit 1; \
+	fi
+	@grep -q "agreement compared" build/rust-accessor-agreement/log || \
+		{ echo "AGREEMENT GATE FAILED: no agreement count printed (a SKIP reads as a pass)"; \
+		  cat build/rust-accessor-agreement/log; exit 1; }
+	@grep -m1 "agreement compared" build/rust-accessor-agreement/log
+	@echo "rust accessor/descriptor agreement gate: every field read both ways agrees, count printed above"
+
+# THE SCALAR NEGATIVE CONTROL: a block field's DESCRIPTOR offset moves four
+# bytes while the accessor struct stays where it was, so the agreement gate
+# must go red naming the block field.
+.PHONY: tables-rust-accessor-negative-control
+tables-rust-accessor-negative-control:
+	@rm -rf build/rust-accessor-control && mkdir -p build/rust-accessor-control
+	@sed 's|fl\.Offset)|fl.Offset+4) // SABOTAGED|' \
+		internal/codegen/rusttable/block.go > build/rust-accessor-control/block.go.txt
+	@cmp -s internal/codegen/rusttable/block.go build/rust-accessor-control/block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the block-offset sabotage did not apply"; exit 1; } || true
+	@test "$$(grep -c SABOTAGED build/rust-accessor-control/block.go.txt)" -eq 1 || \
+		{ echo "NEGATIVE CONTROL: the sabotage hit $$(grep -c SABOTAGED build/rust-accessor-control/block.go.txt) lines, not 1"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/block.go":"%s/build/rust-accessor-control/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-accessor-control/overlay.json
+	@if SCHEMA_RUST_CRATE=1 go test -count=1 -overlay=build/rust-accessor-control/overlay.json \
+			-run '^TestAccessorDescriptorAgreement' ./internal/codegen/rusttable/ > build/rust-accessor-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the agreement suite stayed green with a block scalar offset four bytes off"; \
+		exit 1; \
+	fi
+	@grep -q "block.id: the accessor's offset is not the descriptor's" build/rust-accessor-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the block accessor/descriptor disagreement"; \
+		  cat build/rust-accessor-control/log; exit 1; }
+	@grep -m1 "block.id: the accessor's offset is not the descriptor's" build/rust-accessor-control/log
+	@echo "rust accessor negative control: a block scalar offset four bytes off turns the suite RED on the disagreement"
+
+# THE POINTER-SLOT NEGATIVE CONTROL: the cook pointer slot's own offset moves
+# eight bytes, the position a self-relative delta is relative to (§6.3), and it
+# is a POINTER-ONLY move — the scalar value stays put, so the red must name the
+# slot (next), never the scalar (value).
+.PHONY: tables-rust-slot-negative-control
+tables-rust-slot-negative-control:
+	@rm -rf build/rust-slot-control && mkdir -p build/rust-slot-control
+	@sed 's|fmt\.Fprintf(&b, "            offset: %d,\\n", fl\.Offset)|slotOff := fl.Offset; if f.Type.Pointer { slotOff += 8 }; fmt.Fprintf(\&b, "            offset: %d,\\n", slotOff) // SABOTAGED|' \
+		internal/codegen/rusttable/cook.go > build/rust-slot-control/cook.go.txt
+	@cmp -s internal/codegen/rusttable/cook.go build/rust-slot-control/cook.go.txt && \
+		{ echo "NEGATIVE CONTROL: the slot-offset sabotage did not apply"; exit 1; } || true
+	@test "$$(grep -c SABOTAGED build/rust-slot-control/cook.go.txt)" -eq 1 || \
+		{ echo "NEGATIVE CONTROL: the sabotage hit $$(grep -c SABOTAGED build/rust-slot-control/cook.go.txt) lines, not 1"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/cook.go":"%s/build/rust-slot-control/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-slot-control/overlay.json
+	@if SCHEMA_RUST_CRATE=1 go test -count=1 -overlay=build/rust-slot-control/overlay.json \
+			-run '^TestAccessorDescriptorAgreement' ./internal/codegen/rusttable/ > build/rust-slot-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the agreement suite stayed green with the pointer slot eight bytes off"; \
+		exit 1; \
+	fi
+	@grep -q "cook.next: the slot accessor's offset is not the descriptor's" build/rust-slot-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the pointer slot"; \
+		  cat build/rust-slot-control/log; exit 1; }
+	@grep -m1 "cook.next: the slot accessor's offset is not the descriptor's" build/rust-slot-control/log
+	@echo "rust slot negative control: the pointer slot's offset eight bytes off turns the suite RED on the slot"
+
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
 	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
@@ -376,6 +451,9 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.
 	$(MAKE) tables-rust-fixed-matched
+	$(MAKE) tables-rust-accessor-descriptor-agreement
+	$(MAKE) tables-rust-accessor-negative-control
+	$(MAKE) tables-rust-slot-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
