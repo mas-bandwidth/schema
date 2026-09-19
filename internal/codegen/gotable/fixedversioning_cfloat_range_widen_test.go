@@ -15,11 +15,22 @@ import (
 // own max 2.0. Clamped is asserted EXACTLY (0, 0, 1), never >=: hostile_ alone
 // reads the same whether the pass is the reader's or missing entirely, so past_
 // is the read that proves there is a pass at all.
+//
+// TWO OF THE THREE EXPECTED VALUES COME FROM THE CORPUS MANIFEST AND THE THIRD
+// CANNOT (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure
+// that a new reader can read an old writer"). `old_`'s 0.5 is the manifest's
+// `values=r0.aim`; `hostile_`'s 1.5 is the manifest's own `forged=r0.aim@104`,
+// which is the value the reference WROTE INTO those bytes. `past_`'s landing is
+// NOT a manifest value and must not be dressed as one: the file carries 5.0 and
+// what lands is THIS READER'S OWN DECLARED MAX, 2.0, so the literal stays and
+// says so. That is the whole content of the `past_` column.
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := fixedCorpus(t)
 	older := readSchema(t, "VOLD_cfloat_range_widen")
 	newer := readSchema(t, "VNEW_cfloat_range_widen")
 	table := fixedRootName(t, older)
+	oldAim := manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
+	hostileAim := manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
 	src := fmt.Sprintf(`package probe
 
 import ("math"; "os"; "testing")
@@ -51,8 +62,8 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if back[0].Lead != 1 || back[0].Trail != 2 {
 		t.Fatalf("old: the bracketing fields moved: %%+v", back[0])
 	}
-	if bits := math.Float32bits(back[0].Aim); bits != 0x3F000000 {
-		t.Fatalf("old: aim moved: %%#x, want 0x3F000000 (%%v)", bits, back[0].Aim)
+	if bits := math.Float32bits(back[0].Aim); bits != %#[5]x {
+		t.Fatalf("old: aim moved: %%#x, want %#[5]x from the corpus manifest (%%v)", bits, back[0].Aim)
 	}
 	if r.Clamped != 0 {
 		t.Fatalf("old: clamped %%d, want 0", r.Clamped)
@@ -71,8 +82,8 @@ func TestCfloatRangeWiden(t *testing.T) {
 	if back[0].Lead != 1 || back[0].Trail != 2 {
 		t.Fatalf("hostile: the bracketing fields moved: %%+v", back[0])
 	}
-	if bits := math.Float32bits(back[0].Aim); bits != 0x3FC00000 {
-		t.Fatalf("hostile: aim landed %%#x, want 0x3FC00000 (%%v)", bits, back[0].Aim)
+	if bits := math.Float32bits(back[0].Aim); bits != %#[6]x {
+		t.Fatalf("hostile: aim landed %%#x, want %#[6]x, the manifest's own forged value (%%v)", bits, back[0].Aim)
 	}
 	if r.Clamped != 0 {
 		t.Fatalf("hostile: clamped %%d, want 0", r.Clamped)
@@ -92,7 +103,7 @@ func TestCfloatRangeWiden(t *testing.T) {
 		t.Fatalf("past: the bracketing fields moved: %%+v", back[0])
 	}
 	if bits := math.Float32bits(back[0].Aim); bits != 0x40000000 {
-		t.Fatalf("past: aim landed %%#x, want 0x40000000 (%%v)", bits, back[0].Aim)
+		t.Fatalf("past: aim landed %%#x, want 0x40000000 — THIS READER'S OWN declared max 2.0, not a manifest value (%%v)", bits, back[0].Aim)
 	}
 	if r.Clamped != 1 {
 		t.Fatalf("past: clamped %%d, want 1", r.Clamped)
@@ -103,7 +114,7 @@ func TestCfloatRangeWiden(t *testing.T) {
 }
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"), table)
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), table, oldAim, hostileAim)
 	out, err := runVersionProbe(t, newer, []string{older}, src)
 	if err != nil {
 		t.Fatalf("cfloat_range_widen: %v\n%s", err, out)
