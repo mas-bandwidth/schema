@@ -43,6 +43,7 @@ package cstable
 // rewritten per probe, which is the unit's name and not the generated code.
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"maps"
@@ -50,6 +51,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -234,7 +236,7 @@ func csVersionBuildAndRun(t *testing.T, corpus string) ([]byte, error) {
 				reader: "VNEW_" + r.row,
 				older:  []string{"VOLD_" + r.row},
 				file:   "old_" + r.row + ".bin",
-				body:   csVersionNewReadsOld(r),
+				body:   csVersionNewReadsOld(t, corpus, r),
 			},
 			csVersionProbe{
 				name:   r.row + "/old_refuses_new",
@@ -487,7 +489,21 @@ const csVersionHead = `            byte[] data = System.IO.File.ReadAllBytes(Sys
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
 `
 
-func csVersionNewReadsOld(r csVersionRow) string {
+// THE SHARED BODY ASSERTED NO LANDED VALUE FOR 24 OF 26 ROWS: it read the
+// file, refused nothing, and demanded that no counter move, but only two rows
+// carried their own check, so a mislaid size that moved a neighbour stayed
+// green across the other twenty-four. Every row whose root declares the
+// lead/trail pair now asserts it by name.
+//
+// THE ORACLE IS THE CORPUS MANIFEST (§5.9 #32), read PER FILE and in DECIMAL,
+// not from the bytes under test. The brackets are not constant across rows —
+// 30 files use lead=2863311530 / trail=3149642683 and 8 use lead=1 / trail=2 —
+// and one row has two sides with different values, so the key is the file.
+//
+// THE GATE IS DERIVED FROM THE IR AND NOT FROM A FLAG: a hand-kept list drifts
+// the first time a schema gains or loses the pair, and that drift fails as a
+// row silently stops asserting a landed value.
+func csVersionNewReadsOld(t *testing.T, corpus string, r csVersionRow) string {
 	counters := `            if (r.Widened != 0)
             {
                 bad += ProbeLog.Fail(@NAME@, "widened " + r.Widened + ", and an append the reader knows is not an event");
@@ -504,6 +520,16 @@ func csVersionNewReadsOld(r csVersionRow) string {
                 bad += ProbeLog.Fail(@NAME@, "widened " + r.Widened + ", and the reference counts one per ELEMENT widened: %d");
             }`, r.widened, r.widened)
 	}
+	root := csFixedRoot(t, csUnitOf(t, csReadSchema(t, "VOLD_"+r.row)))
+	lead, trail := csBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+	bracket := ""
+	if csHasField(root, "lead") && csHasField(root, "trail") {
+		bracket = fmt.Sprintf(`
+            if (back[0].Lead != 0x%08Xu || back[0].Trail != 0x%08Xu)
+            {
+                bad += ProbeLog.Fail(@NAME@, "the row moved a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+            }`, lead, trail)
+	}
 	return csVersionHead + `            if (n < 1)
             {
                 bad += ProbeLog.Fail(@NAME@, "the newer reader refused the older writer's file: n=" + n + " reason=" + r.Reason);
@@ -513,7 +539,7 @@ func csVersionNewReadsOld(r csVersionRow) string {
                 bad += ProbeLog.Fail(@NAME@, "a clean NEW-READS-OLD is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
             }
             _ = want;
-` + csVersionClean + "\n" + counters + "\n" + r.check
+` + csVersionClean + "\n" + counters + "\n" + bracket + r.check
 }
 
 func csVersionOldRefusesNew(r csVersionRow) string {
@@ -705,10 +731,10 @@ func csUnitOf(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
-// csFixedRootName is §5.9 #9's answer: EVERY declared fixed table is a root, and
+// csFixedRoot is §5.9 #9's answer: EVERY declared fixed table is a root, and
 // the file's root is the one no other fixed table names BY VALUE — the outer
 // table, which is the root the dump wrote every corpus row from.
-func csFixedRootName(t *testing.T, u *ir.Unit) string {
+func csFixedRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 	t.Helper()
 	roots := ir.TableFixedRoots(u)
 	if len(roots) == 0 {
@@ -722,10 +748,136 @@ func csFixedRootName(t *testing.T, u *ir.Unit) string {
 	}
 	for _, st := range roots {
 		if !named[st.Name] {
-			return st.Name
+			return st
 		}
 	}
-	return roots[len(roots)-1].Name
+	return roots[len(roots)-1]
+}
+
+func csFixedRootName(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	return csFixedRoot(t, u).Name
+}
+
+// csBrackets is §5.9 #32's value oracle: per row the lead and trail the corpus
+// brackets it with, so a mislaid size moves a neighbour and the row says so by
+// name. THE MANIFEST is read when the tree carries one, and where it does not
+// the values are taken FROM THE CORPUS BYTES — which is where the manifest
+// itself reads them: the lead is the first four bytes of the first record's
+// body and the trail the last four.
+func csBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := csManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// csManifestBrackets reads ONE FILE'S row out of the corpus manifest, which is
+// the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,... — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// values= spelled r0.lead and r0.trail; and EVERY NUMBER IS DECIMAL. Matching
+// the row against the first field, or reading the brackets as hex, is how this
+// branch was dead: it never fired and every row read its oracle from the very
+// .bin it was asserting.
+//
+// The manifest is not tracked, so ok false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+func csManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := csManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS has nothing here to read,
+			// and the caller reads the bytes' own first and last four instead.
+			// That is not the dead branch: the row WAS found, and a row that is
+			// not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// csManifestRow answers one line's values= map when its file= is the one asked
+// for. The values are <path>=<number> pairs separated by commas, and a pair
+// whose value is not a number — a quoted string, a bool — is not a bracket and
+// is skipped.
+func csManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// csHasField answers whether a row's ROOT declares a member by that name. It is
+// how the bracket check knows which rows carry §5.9 #32's lead/trail pair, and
+// it is read off the IR on purpose: a flag kept by hand beside each row would
+// drift the first time a schema gained or lost the pair, and the failure mode
+// of that drift is a row that silently stops asserting a landed value — which
+// is exactly the vacuity being repaired here.
+func csHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 var _ = binary.LittleEndian
