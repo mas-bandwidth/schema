@@ -259,6 +259,8 @@ public final class %s {
         // looks exactly like a zero default and neither can tell a prefill
         // that ran from one that never did.
         poison(vals[0]);
+        // Row 9 of 5.8 asks for a TOTAL poison; every other row keeps the shallow one.
+        if (args.length > 1 && args[1].equals("deep")) { poisonFinals(vals[0]); }
 `)
 	}
 	fmt.Fprintf(&b, `        int n = %s.%sFixed.load(vals, vals.length, data, plan, remap, image, report);
@@ -328,6 +330,33 @@ public final class %s {
             if (Modifier.isStatic(f.getModifiers())) { continue; }
             String p = path.isEmpty() ? f.getName() : path + "." + f.getName();
             walk(tag, p, f.get(v));
+        }
+    }
+
+    // poisonFinals reaches what poison cannot: a FINAL field cannot be ASSIGNED,
+    // but a final REFERENCE's contents are as writable as any other, and a nested
+    // value is emitted final -- public final Vec v = new Vec(). Left unpoisoned,
+    // such a value carries its own field INITIALIZERS, which read back exactly
+    // like a prefill that ran. Row 9 of 5.8 is the row that has to tell those
+    // apart, so it asks for this by passing "deep"; every other row keeps the
+    // shallow poison it was written against.
+    static void poisonFinals(Object v) throws Exception {
+        if (v == null) { return; }
+        Class<?> c = v.getClass();
+        if (c.isArray()) {
+            if (c.getComponentType().isPrimitive()) { return; }
+            for (int i = 0, n = Array.getLength(v); i < n; i++) {
+                Object kid = Array.get(v, i);
+                if (kid != null) { poison(kid); poisonFinals(kid); }
+            }
+            return;
+        }
+        for (Field f : c.getFields()) {
+            if (Modifier.isStatic(f.getModifiers())) { continue; }
+            Class<?> t = f.getType();
+            if (t.isPrimitive() || t == String.class) { continue; }
+            Object kid = f.get(v);
+            if (kid != null) { poison(kid); poisonFinals(kid); }
         }
     }
 
