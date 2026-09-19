@@ -4038,11 +4038,18 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	add("Zero"+name, why, pos) // the C# §5 zero-form helper (branch zeroing, storage reset)
 	add("Init"+name, why, pos) // construction defaults applied to existing managed storage
 	add("init"+name, why+" (Dart form)", pos)
+	// Measure<Name>/measure_<name> — the exact-bits sizer. Only Dart, Java and
+	// Elixir emit one (SPEC §6.1), and they emit it because their write needs
+	// the size before it has a buffer; the name is claimed in ALL NINE anyway,
+	// so a schema that compiles for one target compiles for every target.
+	add("Measure"+name, why, pos)
+	add("measure"+name, why+" (Dart/Java form)", pos)
 	add(name+"MaxBits", why, pos)
 	add(name+"MaxBytes", why, pos)
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
+	addRust("measure_"+ir.RustSnake(name), whyRust, pos, "Measure"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }

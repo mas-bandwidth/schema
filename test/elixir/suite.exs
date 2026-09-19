@@ -288,6 +288,53 @@ defmodule SchemaTestElixir do
       "non-finite patterns round-trip as {:nonfinite, bits}"
     )
 
+    # The four patterns a float conversion MOVES (SPEC §4.3: a backend holding
+    # a float32 in a wider cell carries the pattern bit for bit and never
+    # through a float conversion). Elixir's cell is wider in the extreme — a
+    # BEAM float cannot hold a NaN at all — so the pattern travels as bits and
+    # this gate reads it back OFF THE WIRE: Input's five bare float32 fields
+    # are the first 160 bits of its wire, byte-aligned and LSB-first, so field
+    # i is bytes [4i, 4i + 4) little-endian.
+    patterns = [
+      {0x7F800001, "a signalling NaN keeps its quiet bit clear"},
+      {0x7FC00001, "a quiet NaN keeps its payload"},
+      {0xFFC00000, "a negative NaN keeps its sign"},
+      {0x80000000, "negative zero stays negative zero"},
+      {0x3FC00000, "a finite value is byte-exact"}
+    ]
+
+    fin = fn
+      0x80000000 -> -0.0
+      0x3FC00000 -> 1.5
+      bits -> {:nonfinite, bits}
+    end
+
+    pat_in = %Example.Input{
+      stick_x: fin.(0x7F800001),
+      stick_y: fin.(0x7FC00001),
+      throttle: fin.(0xFFC00000),
+      yaw: fin.(0x80000000),
+      pitch: fin.(0x3FC00000)
+    }
+
+    pat_wire = Example.Types.write_input(pat_in)
+
+    for {{bits, what}, i} <- Enum.with_index(patterns) do
+      <<on_wire::little-32>> = binary_part(pat_wire, i * 4, 4)
+
+      check(
+        on_wire == bits,
+        "float32 on the wire: #{what} (0x#{Integer.to_string(bits, 16)})"
+      )
+    end
+
+    {:ok, pat_out} = Example.Types.read_input(pat_wire, byte_size(pat_wire) * 8)
+
+    check(
+      Example.Types.write_input(pat_out) == pat_wire,
+      "float32 patterns round-trip bit for bit — sNaN, NaN payload, -NaN, -0.0"
+    )
+
     # ---- specified defaults: construction carries them; zero_* is the zero form ----
     check(%Example.ProbeSample{}.active, "ProbeSample.active defaults true")
 

@@ -882,6 +882,16 @@ func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
+	// THE INTEGER CLAMP IS NORMATIVE (serialize#88, schema#109): once the step
+	// count reaches 2^23 the float32 ulp at the top of the range is 1, so the
+	// rounded sum can land one PAST the count — 8388609 steps, value at max,
+	// writes 8388610, a code this field's own reader rejects. The runtime tier
+	// clamps (serialize.js serializeCompressedFloat) and the two tiers must be
+	// byte-identical, so this tier clamps on the same side of the floor. No
+	// byte moves for any declaration whose count is outside [2^23, 2^24).
+	if maxInt >= 1<<23 {
+		g.pf("%sif (v > %d) { v = %d; }\n", ind, maxInt, maxInt)
+	}
 	g.mergeW(bits, ind)
 }
 
