@@ -593,6 +593,16 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	// The census is a SAFE SUPERSET of the emitter's own shape tests — see
 	// unitWidenCensus.
 	widenRuntime := widen.runtime()
+	// kTableFixedWidenF's apply is the same census as packet TableWidenF32:
+	// a declared kind 11. A unit with no f32 must not carry the inline bit
+	// surgery (the six TestCppTableWiden*FollowsTheCensus cases search the
+	// header for the packet helper's name, which the surgery's comment
+	// would otherwise leak into a ladderless unit).
+	widenfApply := ""
+	if widen.f32 {
+		widenfApply = tableFixedWidenFApply
+	}
+	fixedRuntime := strings.ReplaceAll(tableFixedRuntime, "@WIDENF_APPLY@", widenfApply)
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
 	messageForm := tableMessageForm(u, anyVariable)
@@ -1457,7 +1467,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-` + tableFixedRuntime + fixed128 + `
+` + fixedRuntime + fixed128 + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `
