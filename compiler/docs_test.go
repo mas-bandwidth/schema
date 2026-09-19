@@ -41,6 +41,7 @@ var docExamples = []docExample{
 	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},               // §16.7, one declaration, two texts
 	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
 	{"../docs/USAGE.md", "table Node", 1},                             // pointers
+	{"../docs/USAGE.md", "fixed table ShipConfig", 1},                 // the fixed table, version to version
 }
 
 func TestDocExamplesParse(t *testing.T) {
