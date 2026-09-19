@@ -15,11 +15,14 @@ package cpptable
 // byte oracle the C leg reads.
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -49,11 +52,13 @@ func cppFixedCorpus(t *testing.T) string {
 	return dir
 }
 
-// cppFixedRootName is §5.9 #9's answer for a corpus row, copied from the C
-// leg's cFixedRootName (a different package, so it cannot be called): the
-// file's root is the OUTER table, the fixed table no other fixed table of the
-// unit names by value.
-func cppFixedRootName(t *testing.T, u *ir.Unit) string {
+// cppFixedRoot is §5.9 #9's answer for a corpus row, copied from the C leg's
+// cFixedRootName (a different package, so it cannot be called): the file's
+// root is the OUTER table, the fixed table no other fixed table of the unit
+// names by value. A row whose change is NESTED declares two fixed tables — the
+// nested type and the root that reaches it — and the root is the one no other
+// fixed table names by value.
+func cppFixedRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 	t.Helper()
 	roots := ir.TableFixedRoots(u)
 	if len(roots) == 0 {
@@ -67,10 +72,15 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 	}
 	for _, st := range roots {
 		if !named[st.Name] {
-			return st.Name
+			return st
 		}
 	}
-	return roots[len(roots)-1].Name
+	return roots[len(roots)-1]
+}
+
+func cppFixedRootName(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	return cppFixedRoot(t, u).Name
 }
 
 // cppRunVersionProbe generates the READER's unit — the VNEW_ file copied
@@ -192,6 +202,244 @@ int main( void )
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
 	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+}
+
+// ---- the rows ---------------------------------------------------------------
+//
+// THE NEW-READS-OLD ROWS SUITE. This leg landed ten fixed-table tests and no
+// rows suite, while every other leg carries the twenty-six §5.7 rows; this is
+// that suite. THE VALUE ORACLE is the corpus manifest (§5.9 #32), read per
+// FILE and in DECIMAL, not from the bytes under test. The brackets are not
+// constant across rows — 30 corpus files bracket lead=2863311530 (0xAAAAAAAA)
+// / trail=3149642683 (0xBBBBBBBB) and 8 bracket lead=1 / trail=2 — so a
+// constant assertion is wrong for eight of them, and reading them as hex is
+// how this branch was dead once. THE GATE IS DERIVED FROM THE IR AND NOT FROM
+// A FLAG: the OLD root's Fields say whether the `lead`/`trail` pair exists,
+// and a hand-kept list beside the row drifts into a row that silently stops
+// asserting a value.
+//
+// TWO RESIDUALS, BY NAME, AND A MISSING COLUMN. The §5.7 POISON is absent:
+// cppRunVersionProbe runs its forge BEFORE the memset and Reset loop, so there
+// is no hook for 0x5A written after the reset and before the load, and a row
+// that asserts an ELEMENT DEFAULT cannot prove the prefill writes without it.
+// The per-row CHECK bodies are absent too — c's array_fixed_grow, field_append,
+// fixed_I_grow_element, int_widen and uint_widen each carry one, and two of
+// them need the poison. OLD-REFUSES-NEW is the second column and is not in this
+// card. Each of the three needs a change to cppRunVersionProbe's signature,
+// which this card is not; a named residual is honest, a silent one is the bug
+// this suite exists to close.
+
+type cppVersionRow struct {
+	row string
+	// sameHash is a row whose edit moves no layout byte and no digest byte
+	// (`rename_without_was`, `field_deprecate`, `field_undeprecate`): the two
+	// hashes are equal, both sides take the identity plan and the file READS in
+	// BOTH directions — which is the test that the hash, and only the hash, is
+	// the version (§5.7).
+	sameHash bool
+	// widens is a row that grows a WIDTH, so `widened` moves at least once;
+	// every other row is an APPEND and owes all six counters at zero (§5.9 #10).
+	widens bool
+	// unported is a row this leg's harness cannot probe, cited by name (§5.9
+	// #44): the nil-lock sibling convention has no DISTINCT VOLD_ peer to
+	// compile against, so the row is skipped BY NAME, never green and never
+	// red — a green folds an unrun row into a pass, a red blames the row for
+	// the harness. A reader may not read either as "this row passed".
+	unported string
+}
+
+var cppVersionRows = []cppVersionRow{
+	{row: "array_bounded_grow"},
+	{row: "array_elem_widen", widens: true},
+	{row: "array_fixed_grow"},
+	{row: "bits_grow", widens: true},
+	{row: "bytes_grow"},
+	{row: "constant_grow"},
+	{row: "enum_append"},
+	{row: "enum_width", widens: true},
+	{row: "field_append"},
+	{row: "field_deprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "field_undeprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true},
+	{row: "flags_append"},
+	{row: "float_widen", widens: true},
+	{row: "int_widen", widens: true},
+	{row: "keyed_array_enum_append"},
+	{row: "nested_append"},
+	{row: "optional_add"},
+	{row: "range_widen"},
+	{row: "rename_without_was", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "string_grow"},
+	{row: "uint_widen", widens: true},
+	{row: "union_append"},
+	{row: "union_arm_payload_widen"},
+	{row: "wstring_grow"},
+}
+
+// ---- NEW-READS-OLD ----------------------------------------------------------
+//
+// The shared body is the C leg's, translated to this leg's spellings: a clean
+// read is `r.reason != newer_form` (never 0 — see
+// fixedversioning_count_clamp_ends_test.go), and the counters r.unknown,
+// r.kind_mismatch, r.clamped, r.duplicate must all stay zero. The widened
+// counter is zero for an APPEND and nonzero for a WIDEN — an append the reader
+// knows is not an event (§5.9 #10). Every row whose ROOT declares the
+// `lead`/`trail` pair also asserts the oracle's brackets by name.
+func TestFixedVersioningNewReadsOld(t *testing.T) {
+	corpus := cppFixedCorpus(t)
+	for _, r := range cppVersionRows {
+		t.Run(r.row, func(t *testing.T) {
+			t.Parallel()
+			if r.unported != "" {
+				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
+			}
+			older := loadUnit(t, filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+r.row+".schema"))
+			root := cppFixedRoot(t, older)
+			lead, trail := cppBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+			bracket := ""
+			if cppHasField(root, "lead") && cppHasField(root, "trail") {
+				bracket = fmt.Sprintf("\n    if ( back[0].lead != 0x%08Xu || back[0].trail != 0x%08Xu )\n        { printf( \"the row moved a neighbour: lead=%%u trail=%%u\\n\", back[0].lead, back[0].trail ); return 1; }", lead, trail)
+			}
+			counters := `if ( r.widened != 0 ) { printf( "widened %d, and an append is not an event\n", r.widened ); return 1; }`
+			if r.widens {
+				counters = `if ( r.widened == 0 ) { printf( "a widening row moved no widened counter\n" ); return 1; }`
+			}
+			body := fmt.Sprintf(`
+    if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
+    if ( r.reason != newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
+        { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+    %s
+    %s
+`, counters, bracket)
+			out, err := cppRunVersionProbe(t, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), body, "")
+			if err != nil {
+				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+			}
+		})
+	}
+}
+
+// ---- the value oracle --------------------------------------------------------
+
+// cppBrackets is §5.9 #32's value oracle: per row the `lead` and `trail` the
+// corpus brackets it with, so a mislaid size moves a neighbour and the row
+// says so by name. THE MANIFEST is read when the tree carries one
+// (`build/fixedform-corpus/manifest.txt`), and where it does not the values
+// the manifest would carry are taken FROM THE CORPUS BYTES — which is where
+// the manifest itself reads them: the lead is the first four bytes of the
+// first record's body and the trail the last four.
+func cppBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := cppManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// cppManifestBrackets reads ONE FILE'S row out of the corpus manifest, which
+// is the VALUE ORACLE and not the bytes under test (§5.9 #32). A line is
+// `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead. The manifest is not tracked, so `ok` false is
+// "the tree has no manifest" and the caller falls back to the corpus bytes —
+// but a manifest that IS there and does not carry this file is a FAILURE BY
+// NAME, never a silent fallback.
+func cppManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := cppManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// cppManifestRow answers one line's `values=` map when its `file=` is the one
+// asked for. The values are `<path>=<number>` pairs separated by commas, and a
+// pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func cppManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// cppHasField answers whether a row's ROOT declares a member by that name. It
+// is how the bracket check knows which rows carry §5.9 #32's `lead`/`trail`
+// pair, and it is read off the IR on purpose: a flag kept by hand beside each
+// row would drift the first time a schema gained or lost the pair, and the
+// failure mode of that drift is a row that silently stops asserting a landed
+// value — which is exactly the vacuity being repaired here.
+func cppHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- the row ----------------------------------------------------------------
