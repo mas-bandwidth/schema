@@ -24,6 +24,18 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 
+	// TWO OF THE THREE EXPECTED VALUES COME FROM THE CORPUS MANIFEST AND THE
+	// THIRD CANNOT (schema#1164). This leg already compared BITS, which is the
+	// right comparison; what it did not do is take the number from the
+	// reference. `old_`'s is the manifest's `values=r0.aim`, `hostile_`'s is the
+	// manifest's own `forged=r0.aim@104` -- the value the reference wrote into
+	// those bytes. `past_`'s 0x40000000 stays a literal and says why: the file
+	// carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0, which is
+	// the whole content of that column and must not be dressed as an oracle
+	// value.
+	oldAim := fmt.Sprintf("0x%08X", csManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"))
+	hostileAim := fmt.Sprintf("0x%08X", csManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"))
+
 	probes := []csVersionProbe{
 		{name: "cfloat_range_widen/new_reads_old", reader: "VNEW_cfloat_range_widen",
 			older: []string{"VOLD_cfloat_range_widen"}, file: "old_cfloat_range_widen.bin",
@@ -40,7 +52,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != 0x3F000000)
+            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @OLDAIM@)
             {
                 bad += ProbeLog.Fail(@NAME@, "the old writer's 0.5 did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8") + " clamped=" + r.Clamped);
             }
@@ -67,7 +79,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != 0x3FC00000)
+            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @HOSTILEAIM@)
             {
                 bad += ProbeLog.Fail(@NAME@, "1.5 inside the widened range did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8") + " clamped=" + r.Clamped);
             }
@@ -115,6 +127,8 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		csVersionWrite(t, gen, files)
 		probeClass := fmt.Sprintf("Probe%03d", i)
 		body := strings.NewReplacer(
+			"@OLDAIM@", oldAim,
+			"@HOSTILEAIM@", hostileAim,
 			"@NAME@", fmt.Sprintf("%q", p.name),
 			"@TABLE@", table,
 			"@FILE@", fmt.Sprintf("%q", p.file),
