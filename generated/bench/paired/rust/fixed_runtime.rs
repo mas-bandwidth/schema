@@ -982,7 +982,7 @@ pub fn table_fixed_compile(
         remap_used: 0,
         overflow: false,
     };
-    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, 0, report);
+    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, 0, true, report);
     if c.overflow {
         return None;
     }
@@ -1011,6 +1011,12 @@ pub fn table_fixed_compile(
 }
 
 /// Walks a TABLE's children on both sides, matching by id.
+//
+// The census flag is whether THIS entry is the FIRST time the peer's field is
+// seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
+// peer field dropped from a [4]Item is counted four times and the report says
+// 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 fn match_children(
     c: &mut Compiler,
     theirs: &TableFixedBlock,
@@ -1024,6 +1030,7 @@ fn match_children(
     arg: u64,
     argw: u8,
     depth: u32,
+    census: bool,
     report: &mut TableFixedReport,
 ) {
     if depth > MAX_DEPTH {
@@ -1043,7 +1050,7 @@ fn match_children(
             if tc.id == mc.id {
                 compile_entry(
                     c, theirs, their_child, their_off, mine, my_child, my_off, counted, guard, arg, argw,
-                    depth + 1, report,
+                    depth + 1, census, report,
                 );
                 break;
             }
@@ -1068,7 +1075,7 @@ fn match_children(
             }
             mc_at += mine.subtree(mc_at);
         }
-        if !named {
+        if !named && census {
             report.unknown += 1;
         }
         tc_at += theirs.subtree(tc_at);
@@ -1088,6 +1095,7 @@ fn compile_entry(
     arg: u64,
     argw: u8,
     depth: u32,
+    census: bool,
     report: &mut TableFixedReport,
 ) {
     if depth > MAX_DEPTH {
@@ -1121,7 +1129,7 @@ fn compile_entry(
         });
         compile_entry(
             c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, guard, arg, argw, depth + 1,
-            report,
+            census, report,
         );
         return;
     }
@@ -1164,11 +1172,11 @@ fn compile_entry(
             });
             compile_entry(
                 c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, guard, arg, argw,
-                depth + 1, report,
+                depth + 1, census, report,
             );
         }
         13 => match_children(
-            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, argw, depth + 1, report,
+            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, argw, depth + 1, census, report,
         ),
         14 => {
             // an array: the count, then min( their bound, my bound ) elements
@@ -1214,6 +1222,7 @@ fn compile_entry(
                     arg,
                     argw,
                     depth + 1,
+                    census && i == 0,
                     report,
                 );
             }
@@ -1247,6 +1256,7 @@ fn compile_entry(
                         arg,
                         argw,
                         depth + 1,
+                        census && k == 0,
                         report,
                     );
                     break;
@@ -1290,6 +1300,7 @@ fn compile_entry(
                             j as u64 + 1,
                             their_tag as u8,
                             depth + 1,
+                            census,
                             report,
                         );
                         break;
