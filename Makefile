@@ -202,6 +202,7 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VOLD_uint_widen.schema \
 	test/tables/VOLD_float_widen.schema \
 	test/tables/VOLD_range_widen.schema \
+	test/tables/VOLD_cfloat_range_widen.schema \
 	test/tables/VOLD_bits_grow.schema \
 	test/tables/VOLD_fixed_I_grow.schema \
 	test/tables/VOLD_fixed_I_grow_element.schema \
@@ -217,6 +218,7 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VNEW_uint_widen.schema \
 	test/tables/VNEW_float_widen.schema \
 	test/tables/VNEW_range_widen.schema \
+	test/tables/VNEW_cfloat_range_widen.schema \
 	test/tables/VNEW_bits_grow.schema \
 	test/tables/VNEW_fixed_I_grow.schema \
 	test/tables/VNEW_fixed_I_grow_element.schema \

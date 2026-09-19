@@ -57,6 +57,8 @@
 #include "VNEW_float_widenTable.h"
 #include "VOLD_range_widenTable.h"
 #include "VNEW_range_widenTable.h"
+#include "VOLD_cfloat_range_widenTable.h"
+#include "VNEW_cfloat_range_widenTable.h"
 #include "VOLD_bits_growTable.h"
 #include "VNEW_bits_growTable.h"
 #include "VOLD_fixed_I_growTable.h"
@@ -136,10 +138,12 @@ struct ManifestRow
     std::string file, row, side, root;
     long long records = 0;
     std::vector<std::string> values;
+    std::string forged; // the forged=<path>@<byte>=<value> field, empty when none
 };
 
 static std::vector<ManifestRow> g_manifest;     // the rows, in the order written
 static std::vector<std::string> g_values;       // the row being written
+static std::string g_forged;                    // the pending row's forged= field, if any
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
 // an enum takes the value the call site hands over, in order, so the path holds
@@ -298,8 +302,8 @@ static void man_row_and_side( const std::string & file, std::string & row, std::
 {
     const size_t dot = file.rfind( ".bin" );
     const std::string stem = dot == std::string::npos ? file : file.substr( 0, dot );
-    const char * sides[5] = { "old_", "new_", "mid_", "a_", "b_" };
-    for ( int k = 0; k < 5; ++k )
+    const char * sides[6] = { "old_", "new_", "mid_", "a_", "b_", "hostile_" };
+    for ( int k = 0; k < 6; ++k )
     {
         const std::string p( sides[k] );
         if ( stem.size() > p.size() && stem.compare( 0, p.size(), p ) == 0 )
@@ -320,6 +324,8 @@ static void man_finish( const char * file, const char * root, long long records 
     r.root = root;
     r.records = records;
     man_row_and_side( r.file, r.row, r.side );
+    r.forged = g_forged;
+    g_forged.clear();
     r.values.swap( g_values );
     g_manifest.push_back( r );
 }
@@ -331,8 +337,16 @@ static bool man_write( const char * dir )
     {
         const ManifestRow & r = g_manifest[i];
         char head[512];
-        std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld values=",
-                       r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records );
+        if ( r.forged.empty() )
+        {
+            std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld values=",
+                           r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records );
+        }
+        else
+        {
+            std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld forged=%s values=",
+                           r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records, r.forged.c_str() );
+        }
         text += head;
         for ( size_t k = 0; k < r.values.size(); ++k )
         {
@@ -794,6 +808,45 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 100 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_range_widen, RangeWiden, "new_range_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 150 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // §5.8 — `cfloat_range_widen`: a compressed float's range widened -1..1 to
+    // -2..2. The field rides AS THE FLOAT (SPEC §3.4), so min, max and
+    // resolution are DEFINITIONS in the digest and widening is LAWFUL here —
+    // the row's whole point, not a bug to "fix", and not the variable form's
+    // unlawful move of min. `aim` is the OLD value on the old grid (0.5).
+    VROW( vold_cfloat_range_widen, CfloatRangeWiden, "old_cfloat_range_widen.bin",
+          MS( v[0].lead, 1u ); MS( v[0].aim, 0.5f ); MS( v[0].trail, 2u ); );
+    VROW( vnew_cfloat_range_widen, CfloatRangeWiden, "new_cfloat_range_widen.bin",
+          MS( v[0].lead, 1u ); MS( v[0].aim, 1.5f ); MS( v[0].trail, 2u ); );
+
+    // THE HOSTILE PASS (docs "## Hostile rows"): old_cfloat_range_widen.bin's
+    // bytes with `aim` overwritten to 1.5 — outside the old writer's [-1, 1]
+    // but inside the new reader's [-2, 2]. The new reader clamps to the OLD
+    // bound the plan carries, never its own; `values=` below is what the OLD
+    // writer wrote, before the forge.
+    {
+        std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].aim, 0.5f );
+        MS( v[0].trail, 2u );
+        const int64_t aim_at = vold_cfloat_range_widen::kTableFixedHeaderBytes + 4
+                             + vold_cfloat_range_widen::CfloatRangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vold_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_cfloat_range_widen.bin: save refused\n" );
+            return false;
+        }
+        const float forged = 1.5f;
+        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
+        if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
+    }
 
     VROW( vold_bits_grow, BitsGrow, "old_bits_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xFFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
