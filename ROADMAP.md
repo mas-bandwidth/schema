@@ -143,20 +143,11 @@ Future capabilities we are thinking about, in particular around more advanced va
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | save games | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-## How the work is done
+## Fund this work
 
 Schema is built by Glenn Fiedler, together with AI collaborators that do much of 
 the building, testing and porting. Glenn owns every design decision. Every month a
 [public ledger](https://github.com/mas-bandwidth/patreon#public-ledgers) shows
 where the AI collaborator's tokens went, by repository, and what they bought.
 
-## Fund this work
-
-If you write games in more than one language, this is being built for you. If
-you have ever kept two schema systems in step by hand, or shipped a client and
-a server that disagreed about one field, this is the fix we are building.
-
-Your support pays for the tokens the AI collaborator runs on and the machines
-the benchmarks run on, and the ledger shows you where every one of them went.
-
-**[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
+If want to support this work you can **[become a supporter](https://www.patreon.com/MasBandwidth/membership)**
