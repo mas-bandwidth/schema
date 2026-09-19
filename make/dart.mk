@@ -176,6 +176,73 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md, schema#421; J1). The
+# generated ACCESSORS and the generated DESCRIPTORS are two independent
+# derivations of one layout, and a reading tier that only walks the descriptors
+# (the fuzzer above) could read them twice and never know. This reads both ways
+# and requires agreement, per field, on a PLANTED fresh copy so a byte comparison
+# on a live fixture cannot pass by luck. A scalar additionally gets a straight
+# two-way value read; a pointer slot is held on its OFFSET only, because the
+# emitter's pointer accessor reads one unsigned byte where the descriptor names
+# eight signed (block.go:360-362, block.go:413-437).
+.PHONY: tables-dart-accessor-descriptor-agreement
+tables-dart-accessor-descriptor-agreement: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	$(DART) test/dart-tables/accessor_descriptor.dart
+
+# Its NEGATIVE CONTROLS. The scalar half moves one generated block accessor four
+# bytes, and the pointer half moves one cooked pointer SLOT's descriptor offset
+# eight bytes; each must turn the gate red on its own message family, or the
+# accessor half could be reading the descriptors twice and nobody would know.
+.PHONY: tables-dart-accessor-negative-control
+tables-dart-accessor-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	@rm -rf build/dart-accessor-nc && mkdir -p build/dart-accessor-nc
+	@sed 's|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))|g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset+4))) // SABOTAGED|' \
+		internal/codegen/darttable/block.go > build/dart-accessor-nc/block.go.txt
+	@cmp -s internal/codegen/darttable/block.go build/dart-accessor-nc/block.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-accessor-nc/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-accessor-nc/overlay.json
+	go build -overlay build/dart-accessor-nc/overlay.json -o build/dart-accessor-nc/schema ./cmd/schema
+	./build/dart-accessor-nc/schema generate --lang dart --out build/dart-accessor-nc/generated/block tables/block
+	./build/dart-accessor-nc/schema generate --lang dart --out build/dart-accessor-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-accessor-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-accessor-nc/generated/pointers/|g" \
+		test/dart-tables/accessor_descriptor.dart > build/dart-accessor-nc/accessor_descriptor.dart
+	@if $(DART) build/dart-accessor-nc/accessor_descriptor.dart > build/dart-accessor-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a generated accessor four bytes off left the Dart leg green"; \
+		cat build/dart-accessor-nc/log; exit 1; \
+	fi
+	@grep -q "the accessor and the descriptor disagree" build/dart-accessor-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the accessor/descriptor disagreement"; \
+		  cat build/dart-accessor-nc/log; exit 1; }
+	@grep -m1 "the accessor and the descriptor disagree" build/dart-accessor-nc/log
+	@echo "negative control: one generated accessor four bytes off turns the Dart leg RED on the accessor/descriptor agreement"
+
+.PHONY: tables-dart-slot-negative-control
+tables-dart-slot-negative-control: build/tables-generated-dart/.stamp build/cook-fuzz/.stamp
+	@rm -rf build/dart-slot-nc && mkdir -p build/dart-slot-nc
+	@sed 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", func() int64 { if f.Type.Pointer { return fl.Offset + 8 }; return fl.Offset }()) // SABOTAGED|' \
+		internal/codegen/darttable/cook.go > build/dart-slot-nc/cook.go.txt
+	@cmp -s internal/codegen/darttable/cook.go build/dart-slot-nc/cook.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/cook.go":"%s/build/dart-slot-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-slot-nc/overlay.json
+	go build -overlay build/dart-slot-nc/overlay.json -o build/dart-slot-nc/schema ./cmd/schema
+	./build/dart-slot-nc/schema generate --lang dart --out build/dart-slot-nc/generated/block tables/block
+	./build/dart-slot-nc/schema generate --lang dart --out build/dart-slot-nc/generated/pointers tables/pointers
+	@sed -e "s|../../build/tables-generated-dart/block/|$(CURDIR)/build/dart-slot-nc/generated/block/|g" \
+	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-slot-nc/generated/pointers/|g" \
+		test/dart-tables/accessor_descriptor.dart > build/dart-slot-nc/accessor_descriptor.dart
+	@if $(DART) build/dart-slot-nc/accessor_descriptor.dart > build/dart-slot-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the Dart leg green"; \
+		cat build/dart-slot-nc/log; exit 1; \
+	fi
+	@grep -q "the slot accessor's offset is not the descriptor's" build/dart-slot-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the pointer slot"; \
+		  cat build/dart-slot-nc/log; exit 1; }
+	@grep -m1 "the slot accessor's offset is not the descriptor's" build/dart-slot-nc/log
+	@echo "negative control: a pointer slot eight bytes off turns the Dart leg RED on the cooked slot's offset"
+
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
@@ -190,6 +257,8 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
+	$(MAKE) tables-dart-accessor-negative-control
+	$(MAKE) tables-dart-slot-negative-control
 
 # THE FORGERY FUZZER over the Dart accelerators: valid images from the corpus,
 # mutated, and one oracle over every mutant — refuse, or open and be WHOLE, and
@@ -251,6 +320,9 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
 	$(MAKE) tables-dart-standalone-negative-control
+	$(MAKE) tables-dart-accessor-descriptor-agreement
+	$(MAKE) tables-dart-accessor-negative-control
+	$(MAKE) tables-dart-slot-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
