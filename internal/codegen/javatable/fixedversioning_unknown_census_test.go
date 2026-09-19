@@ -102,7 +102,7 @@ public final class %[1]s {
 	t.Logf("probe said:\n%s", got)
 
 	reads := map[string]map[string]string{}
-	for _, line := range strings.Split(got, "\n") {
+	for line := range strings.SplitSeq(got, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue

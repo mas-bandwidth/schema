@@ -47,7 +47,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 		t.Fatalf("%s: records begin at %d but the file is %d bytes", oldFile, recordsAt, len(raw))
 	}
 	forged := append([]byte(nil), raw...)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		forged[recordsAt+i] ^= 0xFF // the forge
 	}
 	if binary.LittleEndian.Uint64(forged[8:]) != binary.LittleEndian.Uint64(raw[8:]) {
