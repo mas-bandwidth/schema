@@ -31,14 +31,35 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// a debug assert that compiles out under NDEBUG, the same guard the
 		// C++ backend folds in. The READ side refuses it in every build, as
 		// validation of untrusted bytes (SPEC §4.7, §5).
-		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_length; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
+		//
+		// The assert compiles out, so the RELEASE path is obliged to be total:
+		// an out-of-contract length would walk off the buffer in
+		// serialize_write_bytes. Clamp the used length into [0, N] once and
+		// write THAT length — deterministic bytes, never a read past the end
+		// (SPEC §5).
+		strBound := g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))
+		g.pf("%sserialize_assert( value->%s_length >= 0 && value->%s_length <= %s );\n", ind, f.Name, f.Name, strBound)
+		g.pf("%s{\n%s    int32_t i;\n", ind, ind)
+		g.pf("%s    const int32_t clamped_length = value->%s_length < 0 ? 0 : ( value->%s_length > ( %s ) ? ( %s ) : value->%s_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */\n",
+			ind, f.Name, f.Name, strBound, strBound, f.Name)
+		g.pf("%s    for ( i = 0; i < clamped_length; i++ )\n%s    {\n", ind, ind)
 		g.pf("%s        serialize_assert( value->%s[i] != 0 ); /* interior null on write (SPEC §4.7) */\n", ind, f.Name)
-		g.pf("%s    }\n%s}\n", ind, ind)
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
-		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
+		g.pf("%s    }\n", ind)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_int( stream, clamped_length, 0, %s )", strBound))
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) clamped_length )", f.Name))
+		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TBytes:
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
-		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
+		// the used length is a writer contract, asserted in debug and gone
+		// under NDEBUG — so release clamps into [0, N] and writes the clamped
+		// length (SPEC §4.7, §5), as string(N) does above
+		bytesBound := g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))
+		g.pf("%sserialize_assert( value->%s_length >= 0 && value->%s_length <= %s );\n", ind, f.Name, f.Name, bytesBound)
+		g.pf("%s{\n", ind)
+		g.pf("%s    const int32_t clamped_length = value->%s_length < 0 ? 0 : ( value->%s_length > ( %s ) ? ( %s ) : value->%s_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */\n",
+			ind, f.Name, f.Name, bytesBound, bytesBound, f.Name)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_int( stream, clamped_length, 0, %s )", bytesBound))
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) clamped_length )", f.Name))
+		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		// the count is a writer contract like any other range: a debug assert
 		// that compiles out under NDEBUG, ahead of the runtime call whose own

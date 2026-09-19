@@ -894,10 +894,31 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// side rejects them (§4.7).
 		g.needsSystem = true
 		length := "value." + g.m(g.fieldBase(f)+"Length")
-		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
-			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
-			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
-		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, length), "")
+		// The contract check is Debug.Assert, gone from a release build (SPEC
+		// §5) — so the RELEASE path has to survive an out-of-contract length
+		// without unwinding: AsSpan(0, n) THROWS ArgumentOutOfRangeException on
+		// a negative or oversized n, and a throwing write is the one thing SPEC
+		// §5 says no target does outside Elixir. The contract still binds in
+		// debug; release clamps into [0, N] once and writes THAT length —
+		// deterministic bytes, never a trap.
+		bound := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false)
+		g.writeAssert(ind, fmt.Sprintf("%s >= 0 && %s <= %s", length, length, bound),
+			fmt.Sprintf("%s out of range [0, %s]", length, bound),
+			" // the length guards the slice (§6.3); an out-of-contract length is caller error")
+		g.sf("%s{\n", ind)
+		g.sf("%s    int clampedLength = Math.Clamp(%s, 0, %s); // release: an out-of-contract length writes the clamped length — never a trap (§5)\n",
+			ind, length, bound)
+		if f.Type.Kind == ir.TString {
+			// interior nulls among the used bytes are writer misuse, debug only,
+			// the same check the cpp and c backends fold in (SPEC §4.7, §5); the
+			// read side refuses them in every build
+			g.writeAssert(ind+"    ", fmt.Sprintf("%s.AsSpan(0, clampedLength).IndexOf((byte)0) < 0", name),
+				fmt.Sprintf("%s carries an interior null", name), "")
+		}
+		g.emitWriteFoldedRange("clampedLength", "0", bound,
+			big.NewInt(0), big.NewInt(f.Type.Size), false, false, false, "", ind+"    ")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, clampedLength))", g.rv(), name), "")
+		g.sf("%s}\n", ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

@@ -2206,6 +2206,35 @@ language and how it is used in best practice." (2026-09-07). **No target
 panics and none throws**: Elixir's raise is the only unwinding path in the
 nine, and it is the BEAM's own.
 
+**A debug-only check obliges the release path to be total.** Where a length
+guards a slice — `string(N)`, `bytes(N)`, `wstring(N)` (§4.7, §4.12) — the
+contract is an assert, so the release build reaches the slice with whatever
+length the caller set — and on **six of the nine** that is a write the leg
+cannot survive honestly. Four unwind: Rust panics on `&buf[..n]`, C# throws
+`IndexOutOfRangeException` indexing a `char[N]` (and
+`ArgumentOutOfRangeException` from `AsSpan(0, n)`), Java throws
+`ArrayIndexOutOfBoundsException`, Dart throws `RangeError`. Two do something
+worse: C and C++ have no bounds check to trip, so the loop and `write_bytes`
+simply read past the end of the buffer and the WIRE is then whatever the
+caller's memory held — no trap, and no deterministic bytes either. On all six
+the generated writers therefore **clamp the used length into `[0, N]` once**
+(`clamp` in Rust, `Math.Clamp` in C#, `Math.min`/`Math.max` in Java, `.clamp`
+in Dart, a `min` fold into `clamped_length` in C and C++) and write THAT
+length: the wire carries the clamped length and the clamped payload, so in a
+release build an out-of-contract length produces deterministic bytes — the
+bytes of the clamped write, byte for byte — and never a trap. The remaining
+three need no clamp, because the length never reaches their slice out of
+contract: **Go** latches `ErrValueOutOfRange` from the ranged write and returns
+before the slice in every build, **Elixir** raises (the BEAM's own, §5's one
+unwinding path), and **JavaScript**'s checked writer refuses with `-1` while
+its production writer reaches `subarray`, which clamps by the language's own
+definition. The debug assert on the declared contract is unchanged and still
+fires first wherever the leg has one, so a misusing writer is caught where it
+can be fixed; release is total by construction, not by hoping the caller is
+right. This is the same reason the rule above says no target panics and none
+throws: the tier split is only credible if compiling the checks out cannot turn
+misuse into an exception — or into bytes nobody can predict.
+
 **There is no exception to the tier split.** Settled 2026-09-07: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release
 build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A

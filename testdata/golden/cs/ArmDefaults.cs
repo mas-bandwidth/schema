@@ -372,15 +372,18 @@ namespace Example
             }
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= 2, "value.DataLength out of range [0, 2]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.DataLength);
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                int clampedLength = Math.Clamp(value.DataLength, 0, 2); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 2))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Data.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
-            {
-                return false;
             }
             return true;
         }

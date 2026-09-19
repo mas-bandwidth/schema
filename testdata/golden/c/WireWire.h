@@ -912,13 +912,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t
 /* Writes Block. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stream_t * stream, const Block * value )
 {
-    if ( !serialize_write_int( stream, value->data_length, 0, MAX_BLOCK_SIZE ) )
+    serialize_assert( value->data_length >= 0 && value->data_length <= MAX_BLOCK_SIZE );
     {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, value->data, (int) value->data_length ) )
-    {
-        return 0;
+        const int32_t clamped_length = value->data_length < 0 ? 0 : ( value->data_length > ( MAX_BLOCK_SIZE ) ? ( MAX_BLOCK_SIZE ) : value->data_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, MAX_BLOCK_SIZE ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, value->data, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     return 1;
 }
@@ -940,20 +944,22 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
 /* Writes Chat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
 {
+    serialize_assert( value->text_length >= 0 && value->text_length <= MAX_CHAT_LENGTH );
     {
         int32_t i;
-        for ( i = 0; i < value->text_length; i++ )
+        const int32_t clamped_length = value->text_length < 0 ? 0 : ( value->text_length > ( MAX_CHAT_LENGTH ) ? ( MAX_CHAT_LENGTH ) : value->text_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
-    }
-    if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) value->text_length ) )
-    {
-        return 0;
+        if ( !serialize_write_int( stream, clamped_length, 0, MAX_CHAT_LENGTH ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     return 1;
 }
@@ -1132,20 +1138,22 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
+    serialize_assert( value->text_length >= 0 && value->text_length <= 255 );
     {
         int32_t i;
-        for ( i = 0; i < value->text_length; i++ )
+        const int32_t clamped_length = value->text_length < 0 ? 0 : ( value->text_length > ( 255 ) ? ( 255 ) : value->text_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
-    }
-    if ( !serialize_write_int( stream, value->text_length, 0, 255 ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) value->text_length ) )
-    {
-        return 0;
+        if ( !serialize_write_int( stream, clamped_length, 0, 255 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->text, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     return 1;
 }

@@ -409,10 +409,14 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
     if value.flag {
         debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
         {
-            let mut offset_value = value.s_length as u32;
-            stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+            let clamped_length = value.s_length.clamp(0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+            debug_assert!(!value.s[..clamped_length as usize].contains(&0), "s_bytes carries an interior null");
+            {
+                let mut offset_value = clamped_length as u32;
+                stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+            }
+            stream.write_bytes(&value.s[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
         }
-        stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     } else {
         debug_assert!(value.b < 1 << 10, "b above the bits(10) wire width");
         {
@@ -879,10 +883,14 @@ pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfte
     }
     debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
     {
-        let mut offset_value = value.s_length as u32;
-        stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+        let clamped_length = value.s_length.clamp(0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.s[..clamped_length as usize].contains(&0), "s_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.s[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.q < 1 << 29, "q above the bits(29) wire width");
     debug_assert!(value.r < 1 << 19, "r above the bits(19) wire width");
     debug_assert!(value.tail < 1 << 4, "tail above the bits(4) wire width");

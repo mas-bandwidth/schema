@@ -539,15 +539,30 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
+		//
+		// The used length is a writer contract: serialize_assert, compiled out
+		// under NDEBUG (SPEC §5). That obliges the RELEASE path to be total —
+		// an out-of-contract length would walk off the buffer in write_bytes,
+		// and the bytes it wrote would be whatever the caller's memory held.
+		// Clamp into [0, N] once and write THAT length: the wire carries the
+		// clamped length and the clamped payload, so a release write of a bad
+		// length gives the bytes of the clamped write, byte for byte, and never
+		// a trap or a read past the end (SPEC §5).
+		bound := g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))
+		g.pf("%sserialize_assert( %s_length >= 0 && %s_length <= %s );\n", ind, name, name, bound)
+		g.pf("%s{\n", ind)
+		g.pf("%s    const int32_t clamped_length = %s_length < 0 ? 0 : ( %s_length > ( %s ) ? ( %s ) : %s_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)\n",
+			ind, name, name, bound, bound, name)
 		if f.Type.Kind == ir.TString {
 			// interior nulls are writer misuse: debug-assert per §5 (the read
 			// side rejects them as validation — §4.7)
-			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
+			g.pf("%s    for ( int32_t i = 0; i < clamped_length; i++ )\n%s    {\n", ind, ind)
+			g.pf("%s        serialize_assert( %s[i] != 0 );\n%s    }\n", ind, name, ind)
 		}
-		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
-		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
+		g.emitWriteRangedFold32("clamped_length", "0", bound,
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind+"    ")
+		g.pf("%s    write_bytes( stream, %s, clamped_length );\n", ind, name)
+		g.pf("%s}\n", ind)
 	case ir.TWString:
 		// length in [0, N], then one 32-BIT GROUP per code unit and NO ALIGN
 		// anywhere — the classic serialize_wstring framing over a buffer of
@@ -559,12 +574,24 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// rule in code-unit terms. Surrogate pairing is NOT checked here — it
 		// is a writer obligation the READER enforces, and the reader refuses
 		// an unpaired surrogate under §4.12's rules.
-		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-		g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
-		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
-		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)
+		//
+		// Both are asserts, compiled out under NDEBUG, so the RELEASE path is
+		// obliged to be total: an out-of-contract length would walk off a
+		// buffer of N + 1 units. Clamp into [0, N] once and write THAT length
+		// — deterministic bytes, never a trap (SPEC §5), the same shape the
+		// string(N) path above takes.
+		wbound := g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))
+		g.pf("%sserialize_assert( %s_length >= 0 && %s_length <= %s );\n", ind, name, name, wbound)
+		g.pf("%s{\n", ind)
+		g.pf("%s    const int32_t clamped_length = %s_length < 0 ? 0 : ( %s_length > ( %s ) ? ( %s ) : %s_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)\n",
+			ind, name, name, wbound, wbound, name)
+		g.pf("%s    for ( int32_t i = 0; i < clamped_length; i++ )\n%s    {\n", ind, ind)
+		g.pf("%s        serialize_assert( %s[i] != 0 );\n%s    }\n", ind, name, ind)
+		g.emitWriteRangedFold32("clamped_length", "0", wbound,
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind+"    ")
+		g.pf("%s    for ( int32_t i = 0; i < clamped_length; i++ )\n%s    {\n", ind, ind)
+		g.pf("%s        write_bits( stream, uint32_t( %s[i] ), 32 );\n%s    }\n", ind, name, ind)
+		g.pf("%s}\n", ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

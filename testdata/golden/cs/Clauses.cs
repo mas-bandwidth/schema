@@ -1372,27 +1372,34 @@ namespace Example
             }
             Debug.Assert(value.SLength >= 0 && value.SLength <= 8, "value.SLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.SLength);
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                int clampedLength = Math.Clamp(value.SLength, 0, 8); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.S.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.S carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 4))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.S.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
-            {
-                return false;
             }
             Debug.Assert(value.BLength >= 0 && value.BLength <= 8, "value.BLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.BLength);
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                int clampedLength = Math.Clamp(value.BLength, 0, 8); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 4))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.B.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.B.AsSpan(0, value.BLength)))
-            {
-                return false;
             }
             if (!stream.SerializeBits(ref value.Tail, 3))
             {

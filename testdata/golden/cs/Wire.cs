@@ -1390,15 +1390,18 @@ namespace Example
         {
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= (int)MaxBlockSize, "value.DataLength out of range [0, (int)MaxBlockSize]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.DataLength);
-                if (!stream.SerializeBits(ref offsetValue, 11))
+                int clampedLength = Math.Clamp(value.DataLength, 0, (int)MaxBlockSize); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 11))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Data.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
-            {
-                return false;
             }
             return true;
         }
@@ -1439,15 +1442,19 @@ namespace Example
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= (int)MaxChatLength, "value.TextLength out of range [0, (int)MaxChatLength]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 9))
+                int clampedLength = Math.Clamp(value.TextLength, 0, (int)MaxChatLength); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.Text.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.Text carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 9))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Text.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
-            {
-                return false;
             }
             return true;
         }
@@ -1734,15 +1741,19 @@ namespace Example
             }
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 255, "value.TextLength out of range [0, 255]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 8))
+                int clampedLength = Math.Clamp(value.TextLength, 0, 255); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.Text.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.Text carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 8))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Text.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
-            {
-                return false;
             }
             return true;
         }

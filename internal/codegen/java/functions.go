@@ -515,8 +515,18 @@ func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	case ir.TWString:
+		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+		// SPEC §4.12's second write rule — no zero code unit among the used
+		// units, §4.7's interior-null rule in code-unit terms. It used to be a
+		// `throw new IllegalArgumentException` in the write body, alive in a
+		// release build; write-side checks are DEBUG ONLY (SPEC §5), so it
+		// rides here with the rest of the dormant predicate.
+		wv := fmt.Sprintf("w%d", g.loopDepth)
+		g.pf("%sfor (int %s = 0; %s < %sLength; %s++) assert %s[%s] != 0;\n",
+			ind, wv, wv, name, wv, name, wv)
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
 		if f.Type.Width == 128 {

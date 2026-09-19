@@ -151,9 +151,13 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkArm( serialize::WriteStream & stream, c
     {
         return false;
     }
-    serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( 2 ) );
-    write_bits( stream, uint32_t( value.data_length ), 2 );
-    write_bytes( stream, value.data, value.data_length );
+    serialize_assert( value.data_length >= 0 && value.data_length <= 2 );
+    {
+        const int32_t clamped_length = value.data_length < 0 ? 0 : ( value.data_length > ( 2 ) ? ( 2 ) : value.data_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 2 ) );
+        write_bits( stream, uint32_t( clamped_length ), 2 );
+        write_bytes( stream, value.data, clamped_length );
+    }
     return true;
 }
 

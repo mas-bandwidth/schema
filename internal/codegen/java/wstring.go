@@ -8,13 +8,24 @@ import (
 
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	length := name + "Length"
-	g.pf("%sif (%s < 0 || %s > %d) throw new IllegalArgumentException(\"wstring length\");\n", ind, length, length, f.Type.Size)
-	g.emitWriteOffset(length, big.NewInt(0), big.NewInt(f.Type.Size), ind)
-	g.pf("%sfor (int wideIndex = 0; wideIndex < %s; wideIndex++) {\n", ind, length)
-	g.pf("%s    v = %s[wideIndex];\n", ind, name)
-	g.pf("%s    if (v == 0) throw new IllegalArgumentException(\"wstring null unit\");\n", ind)
-	g.mergeW(32, ind+"    ")
-	g.pf("%s}\n", ind)
+	// SPEC §4.12's two WRITE-side rules — the used length in [0, N], and no
+	// zero code unit among the used units — are the CALLER's contract, and
+	// write-side checks are DEBUG ONLY (SPEC §5). In Java that idiom is the
+	// dormant `assert checkWrite<Name>(value, data)` predicate, so both rules
+	// live in emitCheckScalar (functions.go) and nothing is emitted here.
+	// They were `throw new IllegalArgumentException(...)`, alive in every
+	// build. The READ side refuses both in every build.
+	// The release path must not unwind either: the buffer holds N units, so an
+	// out-of-contract length would throw ArrayIndexOutOfBoundsException. Clamp
+	// into [0, N] once and write THAT length — deterministic bytes, never a
+	// trap (SPEC §5). Math.clamp is JDK 21; the legs compile --release 17.
+	g.pf("%s{\n", ind)
+	g.pf("%s    final int wideUsed = Math.min(Math.max(%s, 0), %d);\n", ind, length, f.Type.Size)
+	g.emitWriteOffset("wideUsed", big.NewInt(0), big.NewInt(f.Type.Size), ind+"    ")
+	g.pf("%s    for (int wideIndex = 0; wideIndex < wideUsed; wideIndex++) {\n", ind)
+	g.pf("%s        v = %s[wideIndex];\n", ind, name)
+	g.mergeW(32, ind+"        ")
+	g.pf("%s    }\n%s}\n", ind, ind)
 }
 
 func (g *gen) emitReadWString(f *ir.Field, name, ind string) {
