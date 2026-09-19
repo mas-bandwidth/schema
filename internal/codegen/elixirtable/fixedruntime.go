@@ -1372,8 +1372,8 @@ const fixedRuntimeBody = `  @moduledoc """
          dst,
          at,
          aux_at,
-         _guard,
-         _tag,
+         guard,
+         tag,
          acc,
          report,
          census
@@ -1383,6 +1383,34 @@ const fixedRuntimeBody = `  @moduledoc """
     their_arms = children_at(theirs, ti)
     my_arms = children_at(mine, mi)
     argw = clamp_argw(their_tag)
+
+    # THE TAG PAST THE WRITER'S ARM SET IS COUNTED HERE, AND NOTHING IS WRITTEN.
+    # Every tag value below is written under THEIR tag's guard, so a record
+    # naming an arm this build does not have -- or a tag past the writer's set
+    # entirely -- lands no write at all and is answered by the PREFILL's None.
+    # That answer was right and silent: nothing on this path ever looked at the
+    # raw tag, so the compiled plan counted zero where the identity plan's
+    # decode bound counted one (schema#1254).
+    #
+    # THIS LEG CANNOT TAKE THE c / c++ / dart SHAPE, AND THE REASON IS splice
+    # three hundred lines below: it walks the writes in ASCENDING destination
+    # and DROPS any whose dst is behind the cursor, because "a union's arms
+    # overlap only under guards of which exactly one can fire". "The ONE byte
+    # this form writes twice" is UNREPRESENTABLE here by construction. It is
+    # also unnecessary: the prefill already lands the None, and the value was
+    # never what was missing.
+    #
+    # So :tagcount is its own op, it WRITES NOTHING, and it counts. It is not a
+    # wider :const for the same reason -- the other :const, the T into ?T
+    # present byte, must not grow a source it does not read. The width it reads
+    # the raw tag at is THE WRITER'S (their_tag), because the bytes are the
+    # writer's (§5.2 THE GUARD'S WIDTH).
+    acc =
+      if their_arms >= 1 do
+        guarded(acc, guard, tag, {:tagcount, their_at, their_tag, their_arms})
+      else
+        acc
+      end
 
     Enum.reduce(
       Enum.with_index(offsets(mine, mi, my_arms)),
@@ -1660,6 +1688,26 @@ const fixedRuntimeBody = `  @moduledoc """
 
   defp step([{:const, dst, size, value} | rest], body, writes, report) do
     step(rest, body, [{dst, <<value::little-unsigned-size(size)-unit(8)>>} | writes], report)
+  end
+
+  # THE UNION TAG PAST THE WRITER'S ARM SET, COUNTED AND NOT WRITTEN. The
+  # prefill already lands the None this reader shows; what was missing was the
+  # COUNT, so the compiled plan counts exactly what the identity plan's decode
+  # bound counts over the same bytes (schema#1254). Writing the None here would
+  # be a SECOND write at the arm consts' own destination, which splice drops
+  # by construction -- see compile_union.
+  #
+  # A body too short to hold the tag counts nothing: a short record is the
+  # caller's verdict through the record bounds, not this op's to invent.
+  defp step([{:tagcount, src, size, arms} | rest], body, writes, report) do
+    case body do
+      <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>>
+      when raw > arms ->
+        step(rest, body, writes, bump(report, :clamped))
+
+      _ ->
+        step(rest, body, writes, report)
+    end
   end
 
   # ---------------------------------------------------------------------------

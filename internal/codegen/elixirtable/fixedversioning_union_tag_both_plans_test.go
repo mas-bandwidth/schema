@@ -15,13 +15,24 @@ package elixirtable
 // LEGS left zero landed fixed-table tests red (c 0/72, cpp 0/36, cs 0/70, dart
 // 0/69, elixir 0/72, go 0/68, java 0/41, js 0/70, rust 0/70).
 //
-// schema#1254: over these forged bytes the COMPILED plan counts `clamped == 0`,
-// not 1. Its tag lands as a CONST written under an arm guard — MY ordinal only
-// when THEIR tag names a shared arm — so a tag naming no shared arm writes
-// nothing and the prefill's None stands with no counter moved. Only the
-// IDENTITY plan counts the clamp (its decode projection holds `c + 1`). When
-// #1254 is ruled on, delete the landing checks from `bodyCompiled` and hand the
-// `clamped == 1` assertion back into one shared body.
+// schema#1254, CLOSED ON THIS LEG AND CLOSED DIFFERENTLY. The compiled plan
+// used to count `clamped == 0`: its tag lands as a CONST written under an arm
+// guard — MY ordinal only when THEIR tag names a shared arm — so a tag naming
+// no shared arm wrote nothing and the prefill's None stood with no counter
+// moved. Only the identity plan counted (its decode projection holds `c + 1`).
+//
+// THE c / c++ / dart FIX IS UNREPRESENTABLE HERE, AND THAT IS NOT A LIMITATION
+// BUT THE PLAN'S OWN DESIGN. Those legs push an unguarded None const and let the
+// matching arm overwrite it — "the ONE byte this form writes twice". `splice` in
+// this runtime walks the writes in ASCENDING destination and DROPS any whose dst
+// is behind the cursor, because "a union's arms overlap only under guards of
+// which exactly one can fire": two writes at one destination cannot survive it.
+//
+// It is also unnecessary. The prefill already lands the None; the VALUE was
+// never what was missing. So the union case pushes `:tagcount`, an op that
+// WRITES NOTHING and counts a raw tag past THE WRITER'S arm set — at the
+// WRITER'S tag width, because the bytes are the writer's. Both plans now assert
+// `clamped == 1`.
 
 import (
 	"bytes"
@@ -69,10 +80,10 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
   check(report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and report.duplicate == 0,
     "no other counter moved: #{why(report)}")`
 
-	// THE COMPILED PLAN LANDS None WITH NO COUNT (schema#1254), so assert the
-	// landing and not the count: the tag is None, never the forged 9, the
-	// neighbour untouched, no refusal and no other counter. Asserting `== 1`
-	// here lands a red row; asserting `== 0` cements the defect.
+	// THE COMPILED PLAN COUNTS THE CLAMP TOO NOW (schema#1254 closed on this
+	// leg): the union case pushes an unguarded :tagconst carrying the WRITER'S
+	// ARM COUNT, and its step clause lands the None the prefill used to land AND
+	// counts a raw tag past that set. Both bodies are the same assertions.
 	bodyCompiled := `  data = File.read!(file())
   {tag, values, report} = load(data)
   check(tag == :ok, "the forged union tag is not a refusal: #{inspect({tag, why(report)})}")
@@ -83,6 +94,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
   check(v.pick.type != 9, "a forged union tag never lands the forged 9: #{inspect(v.pick.type)}")
   check(v.pick.type != 1, "a forged union tag never lands the writer's alpha arm: #{inspect(v.pick.type)}")
   check(v.seq == 15, "the scalar after the union is untouched: #{inspect(v.seq)}")
+  check(report.clamped == 1, "the forged union tag is counted exactly once: #{why(report)}")
   check(report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and report.duplicate == 0,
     "no other counter moved: #{why(report)}")`
 
