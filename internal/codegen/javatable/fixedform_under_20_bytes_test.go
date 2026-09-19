@@ -47,7 +47,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 			full.n, full.refused, full.reason, full.malformed)
 	}
 
-	for k := 0; k < fileHeaderBytes+4; k++ {
+	for k := range fileHeaderBytes + 4 {
 		shortFile := filepath.Join(t.TempDir(), "short.bin")
 		if err := os.WriteFile(shortFile, raw[:k], 0o644); err != nil {
 			t.Fatal(err)
