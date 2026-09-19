@@ -1270,7 +1270,11 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f0 = (uint64(uint32(float32(normalizedValue*200.0) + 0.5))) & 0xff
+			integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+			if integerValue > 200 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 200
+			}
+			f0 = (uint64(integerValue)) & 0xff
 		}
 		f1 := uint64(0)
 		{
@@ -1280,7 +1284,11 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f1 = (uint64(uint32(float32(normalizedValue*200.0) + 0.5))) & 0xff
+			integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+			if integerValue > 200 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 200
+			}
+			f1 = (uint64(integerValue)) & 0xff
 		}
 		f2 := uint64(0)
 		{
@@ -1290,7 +1298,11 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			} else if !(normalizedValue <= 1) {
 				normalizedValue = 1
 			}
-			f2 = (uint64(uint32(float32(normalizedValue*200.0) + 0.5))) & 0xff
+			integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+			if integerValue > 200 { // the normative integer clamp (SPEC §4.3)
+				integerValue = 200
+			}
+			f2 = (uint64(integerValue)) & 0xff
 		}
 		f3 := (uint64(math.Float32bits(value.Recoil))) & 0xffffffff
 		f4 := math.Float64bits(value.Drift)

@@ -647,6 +647,34 @@ int main()
         }
     }
 
+    // ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+    // steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+    // 8388609.0f, and the float32 sum 8388609.0f + 0.5f is a TIE that rounds
+    // half-to-even to 8388610 -- one past the step count. The normative
+    // integer clamp keeps the index at 8388609, and all nine legs on the same
+    // bytes.
+    {
+        CompressedCeiling in;
+        in.ceiling = 8388609.0f;
+
+        serialize::WriteStream ws( buffer, sizeof( buffer ) );
+        check( WriteCompressedCeiling( ws, in ) );
+        ws.Flush();
+        check( golden_wire( "compressed_ceiling", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
+
+        CompressedCeiling out;
+        serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
+        check( ReadCompressedCeiling( rs, out ) );      // an unclamped index would be REFUSED here
+        check( out.ceiling == 8388609.0f );             // exactly max
+
+        // the tie itself, so the vector cannot quietly stop discriminating
+        {
+            volatile float ceiling_n = ( 8388609.0f - 0.0f ) / 8388609.0f;
+            volatile float ceiling_scaled = ceiling_n * 8388609.0f;
+            check( (uint32_t) std::floor( ceiling_scaled + 0.5f ) == 8388610 );   // unclamped: one past the count
+        }
+    }
+
     // ---- the string UTF-8 contract's validator can FAIL (SPEC §4.7) ----
     // string(N) payloads are well-formed UTF-8 by contract, writer-trusted,
     // debug-asserted through schema_utf8_valid. The enforcement predicate is

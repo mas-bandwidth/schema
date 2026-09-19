@@ -217,3 +217,17 @@ type CompressedProbe
     boundary float32 | min = 0, max = 10, resolution = 0.01
     offset   float32 | min = -5, max = 5, resolution = 0.001
 }
+
+// The integer-clamp boundary SPEC §4.3 states, as a wire vector. The triple
+// min = 0, max = 8388609, resolution = 1 derives steps = 8388609 — ODD and in
+// [2^23, 2^24) — on a 24-bit wire. Writing exactly max normalizes to 1.0f,
+// scales to 8388609.0f, and fround(8388609.0f + 0.5f) is 8388610.0f: at that
+// magnitude the float32 ulp is 1, so the sum is a tie and rounds half-to-even
+// ONE PAST the step count. Without the normative integer clamp the writer
+// emits an index its own reader refuses (`v > steps`) — which is exactly what
+// four of the nine legs did before the clamp was stated. It costs no byte for
+// any declaration outside [2^23, 2^24).
+type CompressedCeiling
+{
+    ceiling float32 | min = 0, max = 8388609, resolution = 1
+}

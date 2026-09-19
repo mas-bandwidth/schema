@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -447,6 +447,9 @@ function writeProbeSampleFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -560,6 +563,9 @@ function writeProbeSampleFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1498,6 +1504,9 @@ function writeProbeArrayFlatProduction(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+    // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -1632,6 +1641,9 @@ function writeProbeArrayFlatChecked(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+    // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -2682,6 +2694,9 @@ function writeTestDataFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -2933,6 +2948,9 @@ function writeTestDataFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3410,6 +3428,9 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3422,6 +3443,9 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {
@@ -3446,6 +3470,9 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3461,6 +3488,9 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {
@@ -3503,6 +3533,85 @@ export function ReadCompressedProbeFlat(value, view, numBits) {
     return false;
   }
   value.Offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  return true;
+}
+
+// ---- type CompressedCeiling: the flat codec ----
+
+function writeCompressedCeilingFlatProduction(value, view) {
+  let v = 0, x = 0, n = 0;
+  let lo = 0, sb = 0, wi = 0;
+  x = Math.fround(value.Ceiling);
+  n = Math.fround(Math.fround(x - 0.0) / 8.388609e+06);
+  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+  v = Math.floor(Math.fround(Math.fround(n * 8.388609e+06) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 8388609) { v = 8388609; }
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 24;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeCompressedCeilingFlatChecked(value, view) {
+  let v = 0, x = 0, n = 0;
+  let lo = 0, sb = 0, wi = 0;
+  x = Math.fround(value.Ceiling);
+  if (!Number.isFinite(x)) {
+    return -1;
+  }
+  n = Math.fround(Math.fround(x - 0.0) / 8.388609e+06);
+  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+  v = Math.floor(Math.fround(Math.fround(n * 8.388609e+06) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 8388609) { v = 8388609; }
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 24;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteCompressedCeilingFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold CompressedCeilingMaxBytes.
+export const WriteCompressedCeilingFlat = PRODUCTION ? writeCompressedCeilingFlatProduction : writeCompressedCeilingFlatChecked;
+
+// ReadCompressedCeilingFlat(value, view, numBits) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadCompressedCeilingFlat(value, view, numBits) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let br = 0;
+  if (br + 24 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffffff) >>> 0;
+  if (v > 8388609) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.Ceiling = Math.fround(Math.fround(Math.fround(Math.fround(v) / 8.388609e+06) * 8.388609e+06) + 0.0);
   return true;
 }
 

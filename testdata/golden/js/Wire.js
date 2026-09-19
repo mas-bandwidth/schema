@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
@@ -1461,6 +1461,44 @@ export function ReadCompressedProbe(stream, value) {
     return false;
   }
   value.Offset = NUMBER_SCRATCH.value;
+  return true;
+}
+
+// type CompressedCeiling
+export class CompressedCeiling {
+  constructor() {
+    this.Ceiling = 0; // compressed float [0.0, 8.388609e+06] @ 1.0
+  }
+}
+
+// CompressedCeilingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// CompressedCeilingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+export const CompressedCeilingMaxBits = 24;
+export const CompressedCeilingMaxBytes = 8;
+
+// InitCompressedCeiling restores fresh construction values in place, preserving storage.
+export function InitCompressedCeiling(value) {
+  value.Ceiling = 0;
+}
+
+// The §5 zero form: all-zero storage, without declared defaults or birth counts.
+export function ZeroCompressedCeiling(value) {
+  value.Ceiling = 0;
+}
+
+export function WriteCompressedCeiling(stream, value) {
+  NUMBER_SCRATCH.value = value.Ceiling;
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 8.388609e+06, 1.0)) {
+    return false;
+  }
+  return true;
+}
+
+export function ReadCompressedCeiling(stream, value) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 8.388609e+06, 1.0)) {
+    return false;
+  }
+  value.Ceiling = NUMBER_SCRATCH.value;
   return true;
 }
 

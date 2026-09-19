@@ -266,6 +266,21 @@ public final class Main {
         check(out.offset == 142.0f / 10000.0f * 10.0f + -5.0f, "offset reconstructs integer 142");
     }
 
+    static void testCompressedCeiling() {
+        // the integer-clamp boundary (SPEC §4.3): steps = 8388609, odd and in
+        // [2^23, 2^24). Writing exactly max scales to 8388609.0f and the
+        // float32 sum + 0.5f is a TIE that rounds half-to-even to 8388610 —
+        // one past the step count. The normative integer clamp keeps the index
+        // at 8388609, and all nine legs on the same bytes.
+        final Wire.CompressedCeiling inp = new Wire.CompressedCeiling();
+        inp.ceiling = 8388609.0f;
+        final Wire.CompressedCeiling out = new Wire.CompressedCeiling();
+        // an unclamped index would be REFUSED by the read inside pin
+        pin("compressed_ceiling", inp, out,
+                Wire::writeCompressedCeiling, Wire::readCompressedCeiling, Wire::measureCompressedCeiling);
+        check(out.ceiling == 8388609.0f, "ceiling reads back exactly max");
+    }
+
     static void testDefaults() {
         final Wire.ProbeSample sample = new Wire.ProbeSample();
         check(sample.active, "ProbeSample.active defaults true");
@@ -755,6 +770,7 @@ public final class Main {
                     "TestData extremes round-trip — signed narrows and full-range ints");
         }
         testCompressedProbe();
+        testCompressedCeiling();
         testDefaults();
         testProbeBits();
         testProbeCollider();

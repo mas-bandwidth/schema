@@ -83,6 +83,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 20000) { v = 20000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 15;
   if (sb >= 32) {
@@ -345,6 +348,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 16) { v = 16; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -615,6 +621,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 360) { v = 360; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -664,6 +673,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 60) { v = 60; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -685,6 +697,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 800) { v = 800; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -697,6 +712,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 2000) { v = 2000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -718,6 +736,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 500) { v = 500; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -730,6 +751,9 @@ function writeRealPacketFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {
@@ -994,6 +1018,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 20000) { v = 20000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 15;
   if (sb >= 32) {
@@ -1289,6 +1316,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 16) { v = 16; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -1601,6 +1631,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 360) { v = 360; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -1659,6 +1692,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 60) { v = 60; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 6;
   if (sb >= 32) {
@@ -1686,6 +1722,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 800) { v = 800; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -1701,6 +1740,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 2000) { v = 2000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1728,6 +1770,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 500) { v = 500; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -1743,6 +1788,9 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  // the normative integer clamp (SPEC §4.3): at a step count in [2^23, 2^24)
+  // the float32 ulp is 1 and the rounded sum ties UP, one past the count
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {

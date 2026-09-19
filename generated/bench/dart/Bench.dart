@@ -2376,6 +2376,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 200) {
+      v = 200;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2395,6 +2400,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 200) {
+      v = 200;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2414,6 +2424,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 200) {
+      v = 200;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
