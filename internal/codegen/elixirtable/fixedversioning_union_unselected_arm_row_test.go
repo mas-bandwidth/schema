@@ -2,13 +2,15 @@ package elixirtable
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag did
-// not select is UNSPECIFIED. THIS ROW'S WHOLE CONTENT IS THE ASSERTION IT REFUSES
-// TO MAKE: it does NOT compare pick.beta or pick.gamma. The selected arm and the
-// tag are the whole of what a union read promises, and a reader who "completes"
-// this test by asserting pick.gamma.p == 0 has reversed a ruling and should read
-// the issue first. On this leg the read builds a fresh value and the runtime
-// assembles the record image from the prefill, so an unselected arm holds its
-// construction form — its declared default — and that is lawful, not a defect.
+// not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19: "as
+// designed it is 'undefined'"). THIS ROW'S WHOLE CONTENT IS THE ASSERTION IT
+// REFUSES TO MAKE: it does NOT compare pick.beta or pick.gamma. A union read
+// DEFINES the tag and the SELECTED arm and nothing else, and a reader who
+// "completes" this test by asserting pick.gamma.p == 0 has reversed a ruling and
+// should read the issue first. That on this leg the read builds a fresh value and
+// the runtime assembles the record image from the prefill, so an unselected arm
+// happens to hold its construction form — its declared default — is an
+// OBSERVATION AND NOT A GUARANTEE, and nothing may be relied on it.
 // THE BEAM HAS NO CALLER DESTINATION, so there is no poison to lay and none to
 // discard: #1212 deleted the poison that was once computed and thrown away here,
 // and this test writes no poison. (Named *_arm_row_test.go, not *_arm_test.go:

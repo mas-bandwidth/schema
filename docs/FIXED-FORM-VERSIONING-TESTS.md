@@ -186,14 +186,18 @@ the lock, this row needs the explicit test-only entry**, and a leg says which of
 
 ## A union's UNSELECTED ARMS after a read that returns: RULED LAWFUL AS IS (schema#1157)
 
-**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, and reversible by Glenn in one line.** After a read that
-RETURNS, an arm the landed tag did not select is **UNSPECIFIED** on separate-storage targets and
-INDETERMINATE on overlaid ones. The tag and the SELECTED arm are the whole of what a union read promises,
-and a consumer that reads any other arm has a bug whatever those bytes hold. Go and rust landing the
-declared default in every unselected arm is ALLOWED by "unspecified" and needs no change; java, dart, js
-and cs leaving the caller's bytes is equally allowed; c and cpp cannot state the question. **The row
-`union_unselected_arm` below is what this ruling lands, and its whole content is the assertion it REFUSES
-to make.** The rest of this section is the evidence the ruling was made on, kept because a reversal would
+**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, in Glenn's own word: "as designed it is 'undefined'".**
+After a read that RETURNS, an arm the landed tag did not select is **UNDEFINED** — one word, for every
+target, with no second word for overlaid storage. A union read DEFINES the tag and the SELECTED arm and
+nothing else; an unselected arm is undefined, and a consumer that reads one has a bug whatever those bytes
+hold.
+
+**What each leg happens to do is an OBSERVATION AND NOT A GUARANTEE, and nothing may be relied on it.**
+Go and rust happen to land the declared default in every unselected arm; java, dart, js and cs happen to
+leave the caller's bytes; c and cpp overlay, so the question cannot even be put to them. None of those six
+sentences is a promise, none is testable, and a row that asserted any of them would be asserting something
+this repo does not define. **The row `union_unselected_arm` below is what this ruling lands, and its whole
+content is the assertion it REFUSES to make.** The rest of this section is the evidence the ruling was made on, kept because a reversal would
 need it.
 
 **How it surfaced.** The java probe's poison (§5.9 #35's form (iii), "the unit's own value surface, field by
@@ -215,10 +219,12 @@ held`. The appended arm matches no writer arm and gets **no plan entry at all**.
 this; only a per-arm reset in the scatter, or §5.9 #38's named alternative of per-arm images selected by the
 landed tag, would.
 
-**The legs already disagree, observably.** Go and Rust land the declared default in every unselected arm on
-every record (rust's own words: "an unselected union arm keeps the default rather than the previous record").
-Java, Dart, JS and C# leave the caller's bytes. C and C++ are indeterminate by construction — a real C union
-has no other arm to reset.
+**The legs already disagree, observably — AND EVERY SENTENCE IN THIS PARAGRAPH IS AN OBSERVATION, NOT A
+GUARANTEE; nothing may be relied on any of it.** Go and Rust happen to land the declared default in every
+unselected arm on every record (rust's own words: "an unselected union arm keeps the default rather than the
+previous record"). Java, Dart, JS and C# happen to leave the caller's bytes. C and C++ overlay their arms by
+construction — a real C union has no other arm to reset — so the question cannot be put to them at all. The
+ruling is one word for all nine: undefined.
 
 **What the documents say.** `SPEC.md` §4.8 settles it for the VARIABLE form, naming these targets by name:
 
@@ -257,7 +263,7 @@ have guessed:
 
 | row | the rule | the oracle | which legs |
 |---|---|---|---|
-| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNSPECIFIED** on separate-storage targets and INDETERMINATE on overlaid ones; the selected arm and the tag are the whole of what a union read promises. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
+| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, Glenn: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
 
 **IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
 re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's
@@ -287,8 +293,8 @@ caller's bytes would go red, which is the whole of what changes.
    line is identical. It is not a receipt.
 
    **On go and rust the poison has NO receipt, and the row must say so rather than imply one.** Those legs
-   land the declared default in every arm, so the temporary assertion passes there and the poison is
-   invisible from the value surface. That is not a defect — it is "unspecified" being exercised the other
+   happen to land the declared default in every arm, so the temporary assertion passes there and the poison
+   is invisible from the value surface. That is not a defect — it is "undefined" being exercised the other
    way — but a go or rust probe that carries a poison it cannot observe is decoration, and its comment
    should state that the poison is present for uniformity with the other legs and is not load-bearing here.
 2. **BOTH COLUMNS are poisoned**, not just the `reads` one. The caution above is why: with only the reads
