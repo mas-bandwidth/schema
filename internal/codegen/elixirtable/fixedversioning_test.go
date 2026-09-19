@@ -70,11 +70,33 @@ type versionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes every counter at zero (§5.9 #10).
 	widens bool
-	// poison fills the reader's record image with 0x5A before the load, so a
-	// prefill that never ran cannot pass as a zero default (§5.7, §5.9 #17) —
-	// in the form a BEAM binary allows: the image is a binary, so the poison is
-	// a binary of 0x5A handed to the run in place of the prefill's own bytes.
-	poison bool
+	// THERE IS NO `poison` FIELD, AND THAT IS THE POINT (§5.7, §5.9 #17). There
+	// was one. It put two lines into the probe —
+	//
+	//	poison = :binary.copy(<<0x5A>>, byte_size(prefill()))
+	//	_ = poison
+	//
+	// — which computed a poison and threw it away. Nothing was ever handed it,
+	// and NOTHING ON THIS LEG CAN BE: the destination is not the caller's here.
+	// `<row>_fixed_load/2` takes `copy:`, `plan_capacity:`, `batch_capacity:`
+	// and `plan:` and no image, and the runtime assembles the record image FROM
+	// the prefill itself (`R.run(plan, body, @<row>_prefill, report)`), so "the
+	// prefill did not run" is not a state this leg's API can be put into.
+	//
+	// WHAT CARRIES §5.9 #17 HERE IS THE ROW'S NONZERO DECLARED DEFAULT, and
+	// that is measured, not argued (2026-09-19, on space, at `fe025445`):
+	// replacing `@<row>_prefill` with `:binary.copy(<<0x5A>>, byte_size(...))`
+	// at the one line that hands it to `R.run` — a real poison, applied where
+	// the image is actually assembled — turns exactly THREE rows red:
+	// `array_fixed_grow`, `keyed_array_enum_append` and `field_append`. The
+	// other twenty-four stay green, because their checks never look at a slot
+	// the prefill owns. And deleting the two poison lines outright left the
+	// whole suite `ok 1.996s` — the lines asserted nothing at all.
+	//
+	// So the marker is on the rows that measurably carry it, in words, and the
+	// obligation it states is the real one: A ROW THAT MEANS TO PROVE THE
+	// PREFILL RAN MUST CHECK A SLOT WHOSE DECLARED DEFAULT IS NOT ZERO.
+	//
 	// check is Elixir source asserting the landed values, over `values`.
 	check string
 }
@@ -82,11 +104,11 @@ type versionRow struct {
 var versionRows = []versionRow{
 	{row: "array_bounded_grow"},
 	{row: "array_elem_widen", widens: true},
-	// THE POISON ROWS (§5.7): the image the prefill lands in is filled with
-	// 0x5A first, because with a zero default over a zeroed image the row passes
-	// whether the prefill ran or not — and these two are the rows whose whole
-	// subject is that it ran. The appended slots owe THE ELEMENT'S OWN DEFAULTS.
-	{row: "array_fixed_grow", poison: true, check: `
+	// A PREFILL ROW (§5.7, §5.9 #17), one of the three measured to catch a
+	// prefill that did not run. The appended slots owe THE ELEMENT'S OWN
+	// DEFAULTS, and `x == 7`/`y == 9` are NONZERO on purpose: over a zeroed
+	// image a zero default passes whether the prefill ran or not.
+	{row: "array_fixed_grow", check: `
   leadtrail(v, want_lead, want_trail)
   for i <- 4..7 do
     e = Enum.at(v.vals, i)
@@ -97,6 +119,9 @@ var versionRows = []versionRow{
 	{row: "constant_grow"},
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
+	// A PREFILL ROW TOO, and it was never marked as one: the measurement of
+	// 2026-09-19 puts it with the other two, because `w == 77` is a NONZERO
+	// declared default and a prefill that did not run cannot produce it.
 	{row: "field_append", check: `
   check(v.x == 11 and v.y == 22 and v.z == 33, "the old writer values did not land: #{inspect(v)}")
   check(v.w == 77, "the appended field is not its declared default: #{inspect(v.w)}")`},
@@ -120,7 +145,9 @@ var versionRows = []versionRow{
     check(r.v == w, "record #{k} widened wrong: #{inspect(r.v)}")
     leadtrail(r, want_lead, want_trail)
   end)`},
-	{row: "keyed_array_enum_append", poison: true, check: `
+	// A PREFILL ROW (§5.7, §5.9 #17): `n == 7` is a NONZERO element default and
+	// the slot the appended key opened is the one the prefill owns.
+	{row: "keyed_array_enum_append", check: `
   slot = Enum.at(v.slots, 3)
   check(slot.n == 7, "the slot the appended key opened is not the element default: #{inspect(slot)}")`},
 	{row: "nested_append"},
@@ -152,7 +179,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			lead, trail := brackets(t, corpus, r.row, fixedTypeBytes(versionRoot(t, old)))
 			body := fmt.Sprintf(`  {want_lead, want_trail} = {0x%08X, 0x%08X}
   data = File.read!(file())
-%s
   {tag, values, report} = load(data)
   check(tag == :ok, "the newer reader refused the older writer file: #{inspect({tag, values})} #{why(report)}")
   check(report.malformed == false, "a clean NEW-READS-OLD is not malformed")
@@ -164,7 +190,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   %s
   v = hd(values)
   _ = {v, want_lead, want_trail}
-%s`, lead, trail, poisonLine(r.poison), counters, r.check)
+%s`, lead, trail, counters, r.check)
 			out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
@@ -172,19 +198,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 		})
 	}
-}
-
-func poisonLine(poison bool) string {
-	if !poison {
-		return ""
-	}
-	// THE POISON IN THE FORM A BEAM BINARY ALLOWS (§5.9 #17): there is no byte
-	// pointer into a value here, so the destination the prefill lands in — the
-	// record IMAGE, a binary — is handed to the read filled with 0x5A instead
-	// of with the declared defaults. A prefill that never ran leaves 0x5A where
-	// a default belongs and the row's own check names it.
-	return `  poison = :binary.copy(<<0x5A>>, byte_size(prefill()))
-  _ = poison`
 }
 
 // ---- OLD-REFUSES-NEW --------------------------------------------------------
