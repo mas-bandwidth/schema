@@ -1265,9 +1265,35 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
 		return
 	case ir.TFloat32:
+		// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged
+		// integer below does, and against THIS READER'S OWN min and max
+		// (schema#1164, ruled statement B): in the fixed form a compressed
+		// float rides AS THE FLOAT (SPEC §3.4), the bounds are DEFINITIONS in
+		// the digest and the compiled plan carries no range, so the pass can
+		// only be the reader's. `<` and `>` are IEEE comparisons on purpose: a
+		// NaN is below no min and above no max, so it survives uncounted, and
+		// a negative zero is not below a min of +0.
+		if lo, hi, ok := fixedFloatRange(owner); ok {
+			g.pf("%s{\n", ind)
+			g.pf("%s    float q = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, buf, at, off)
+			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
+				ind, lo, lo, rep, hi, hi, rep)
+			g.pf("%s    %s = q;\n", ind, expr)
+			g.pf("%s}\n", ind)
+			return
+		}
 		g.pf("%s%s = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, expr, buf, at, off)
 		return
 	case ir.TFloat64:
+		if lo, hi, ok := fixedFloatRange(owner); ok {
+			g.pf("%s{\n", ind)
+			g.pf("%s    double q = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, buf, at, off)
+			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
+				ind, lo, lo, rep, hi, hi, rep)
+			g.pf("%s    %s = q;\n", ind, expr)
+			g.pf("%s}\n", ind)
+			return
+		}
 		g.pf("%s%s = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, expr, buf, at, off)
 		return
 	}
@@ -1791,4 +1817,23 @@ func (g *fixedGen) emitDestArray(w *fixedWalk) {
 	for i, d := range w.dst {
 		g.pf("        %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
 	}
+}
+
+// fixedFloatRange answers a ranged float field's declared bounds as Java
+// literals, rendered from the exact bit pattern so the emitted clamp compares
+// against precisely the value the declaration named. A compressed float's
+// bounds are the READER'S here (schema#1164, statement B): the fixed form
+// carries the float itself, not a quantized index, so the compiled plan holds
+// no range and there is no writer bound to clamp to.
+func fixedFloatRange(f *ir.Field) (string, string, bool) {
+	if f == nil || !f.HasFloatRange {
+		return "", "", false
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return fixedFloatLit(float32(f.FMin)), fixedFloatLit(float32(f.FMax)), true
+	case ir.TFloat64:
+		return fixedDoubleLit(f.FMin), fixedDoubleLit(f.FMax), true
+	}
+	return "", "", false
 }
