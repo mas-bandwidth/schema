@@ -306,8 +306,11 @@ static void man_row_and_side( const std::string & file, std::string & row, std::
     const std::string stem = dot == std::string::npos ? file : file.substr( 0, dot );
     // `past_` (schema#1164) is the compressed float's second forged side: a
     // value past the READER's own bound, where `hostile_` is past the WRITER's.
-    const char * sides[7] = { "old_", "new_", "mid_", "a_", "b_", "hostile_", "past_" };
-    for ( int k = 0; k < 7; ++k )
+    // `many_` (R16) is the side that holds SEVERAL records of a row whose
+    // ordinary file holds one, so a once-per-peer claim can be told from a
+    // once-per-record one.
+    const char * sides[8] = { "old_", "new_", "mid_", "a_", "b_", "hostile_", "past_", "many_" };
+    for ( int k = 0; k < 8; ++k )
     {
         const std::string p( sides[k] );
         if ( stem.size() > p.size() && stem.compare( 0, p.size(), p ) == 0 )
@@ -948,6 +951,36 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 1 );
           for ( int i = 0; i < 4; ++i ) { MSI( v[0].items[i].a, 10 + i, (long long) ( i ) ); MSI( v[0].items[i].drop, 900 + i, (long long) ( i ) ); }
           MS( v[0].trail, 2 ); );
+
+    // ROW 11'S SECOND FILE, AND IT IS WHAT CLOSES R16 (§5.4: the compile census
+    // lands "once per peer AND NEVER PER RECORD"). `old_unknown_census.bin`
+    // holds ONE record, and with one record "once per peer" and "once per
+    // record" are THE SAME NUMBER — 1 — so no test reading it can tell them
+    // apart, and the clause has never been under a gate. A per-record
+    // `Unknown++` exists in these runtimes (the union-tag path) and row 11
+    // never reaches it.
+    //
+    // `many_unknown_census.bin` holds THREE records. The NEW reader, which
+    // dropped `Item.drop`, must count `unknown == 1` — not 3. The three
+    // records carry DISTINCT `a` values (10.., 20.., 30..) so a reader that
+    // lost, duplicated or reordered a record cannot pass by accident.
+    {
+        std::vector<vold_unknown_census::Census> m( 3 );
+        vold_unknown_census::CensusReset( m[0] );
+        MS( m[0].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[0].items[i].a, 10 + i, (long long) ( i ) ); MSI( m[0].items[i].drop, 900 + i, (long long) ( i ) ); }
+        MS( m[0].trail, 2 );
+        vold_unknown_census::CensusReset( m[1] );
+        MS( m[1].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[1].items[i].a, 20 + i, (long long) ( i ) ); MSI( m[1].items[i].drop, 910 + i, (long long) ( i ) ); }
+        MS( m[1].trail, 2 );
+        vold_unknown_census::CensusReset( m[2] );
+        MS( m[2].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[2].items[i].a, 30 + i, (long long) ( i ) ); MSI( m[2].items[i].drop, 920 + i, (long long) ( i ) ); }
+        MS( m[2].trail, 2 );
+        if ( !emit( dir, "many_unknown_census.bin", m, vold_unknown_census::CensusFixedMeasure,
+                    vold_unknown_census::CensusFixedSave ) ) { return false; }
+    }
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
