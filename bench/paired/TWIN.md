@@ -106,6 +106,17 @@ strips not one of them: the gate holds the two legs to every one.
 | enum case `te.size < me.size` as `kTableFixedWiden` | §5.2 "widen when the writer's ordinal width is narrower" | in the C runtime, compared |
 | `struct TableFixedKnownLayout` | §5.3 LOAD select by hash, never parse a stranger | in the C runtime, compared |
 | LOAD `layout_newer` / `layout_unsupported` / floor | §5.3 version-range gates | in the per-type codec, and `TableFixedRefuseHash` below |
+| the WRITER'S ARM COUNT on the unguarded `None` const — `none.dstsize = (uint8_t) te.children` | §5.2 the tag's None, bill §12.5 | in the C runtime, compared (schema#1254) |
+| the `kTableFixedConst` CLAMP COUNT for a raw tag past that arm set | §5.4, §5.8 row 12 | in the C runtime, compared (schema#1254) |
+
+The last two were the live entries in `canon.go`'s owed list until
+schema#1254. Over the same forged bytes the C compiled plan counted zero
+where the identity plan counted one, and this gate was silent about it
+because it was stripping the reference's own block. **A debt is closed by
+DELETING its rule, never by widening it**: both regexps are gone, and the
+gate now holds the two legs to both rows. What `stripOwedC` still removes
+is named in `canon.go`: the writer-side count bound, the compiled remap's
+clamp count on a forged ordinal, and the known float ranges.
 
 ## AHEAD of the reference, and stripped from the OTHER side (§5.8 row 3)
 

@@ -112,19 +112,25 @@ var (
 	// in the C runtime, spelled the same, so the gate holds the two legs to all
 	// five (bench/paired/TWIN.md).
 	// STILL OWED by the C leg: the writer-side count bound, the compiled remap's
-	// clamp count, the writer's arm count on the None const, and the known float
-	// RANGES the definitions digest now covers. C++ first; strip them so the
-	// gate stays green, and close them the way the first list was closed.
+	// clamp count, and the known float RANGES the definitions digest now covers.
+	// C++ first; strip them so the gate stays green, and close them the way the
+	// first list was closed.
+	//
+	// CLOSED BY rowan/c-union-tag-counts-on-both-plans (schema#1254): THE
+	// WRITER'S ARM COUNT ON THE None CONST AND THE CONST CLAMP ARE PAID. The C
+	// runtime now sets `none.dstsize = (uint8_t) te.children` on the unguarded
+	// None const and counts a clamp for a raw tag past that set, spelled exactly
+	// as the reference spells it, so the gate holds the two legs to both rows
+	// and strips neither. A debt is closed by DELETING its rule, never by
+	// widening it.
 	//
 	// CLOSED BY rowan/twin-full-width-lanes (§5.8 rows 5, 6, 7, 14): the
 	// full-width arg lane, the second guard lane an arm inside an arm answers
 	// to, the ordinal's 64-bit temporary and the writer-length remap are in BOTH
 	// runtimes, spelled the same, so the gate holds the two legs to all four and
 	// strips nothing.
-	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
-	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
-	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
-	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
+	reOwedOrdinalCount = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
+	reOwedKnownRange   = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
 )
 
 func tableFixedIdent(name string) string {
@@ -253,8 +259,10 @@ func stripOwedC(s string) string {
 	s = strings.ReplaceAll(s, "e.size = their_n;", "e.size = my_n;")
 	// owed 13: compiled remap COUNT clamped on a forged ordinal; C counts nothing.
 	s = reOwedOrdinalCount.ReplaceAllString(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }")
-	s = reOwedWriterArmCount.ReplaceAllString(s, "")
-	s = reOwedConstClamp.ReplaceAllString(s, "")
+	// schema#1254 PAID BOTH HALVES OF THE None CONST DEBT: the writer's arm
+	// count on the entry and the clamp count in the read loop are in the C
+	// runtime now, spelled as the reference spells them, so their two rules are
+	// DELETED rather than widened and the gate holds both legs to both rows.
 	s = reOwedKnownRange.ReplaceAllString(s, "")
 	s = stripFuncsWithPrefix(s, "inline void TableFixedClampKnownRanges")
 	return s
