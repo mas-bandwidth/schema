@@ -376,6 +376,22 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			for i := uint32(0); i < p.Size; i++ {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
+			// AN UNGUARDED None CONST WITH DstSize = THE WRITER'S ARM COUNT:
+			// a tag past that set lands None (already written just above) and
+			// COUNTS, so the compiled plan counts it exactly as the identity
+			// plan's decode bound does and the SAME forged bytes land the SAME
+			// Clamped == 1 on either plan (schema#1254, §5.4, §5.8 row 12).
+			// tableFixedSrcEnd gives this one entry a source reach, so the
+			// record bound has already refused a plan that would read past it.
+			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
+				var raw uint64
+				for i := uint32(0); i < p.Size; i++ {
+					raw |= uint64(src[p.Src+i]) << (8 * i)
+				}
+				if raw > uint64(p.DstSize) {
+					report.Clamped++
+				}
+			}
 		}
 	}
 }
@@ -719,6 +735,14 @@ func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 	switch e.Op {
 	case tableFixedConst:
 		end = 0 // a constant reads no source at all
+		if e.Aux == 0 && e.DstSize != 0 {
+			// EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
+			// to count a clamp past DstSize arms (schema#1254). It has a source
+			// reach, so one past the writer's record refuses the plan whole
+			// like every other entry — and the read loop needs no bound of its
+			// own.
+			end = uint64(e.Src) + uint64(e.Size)
+		}
 	case tableFixedCount:
 		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
 	case tableFixedText:
@@ -904,6 +928,23 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	case 15:
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
+		// THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed
+		// BEFORE c.argW is retuned below so it is stamped at the OUTER width:
+		// None answers to the OUTER tag (bill §12.7). Every tag value below is
+		// written under THEIR tag's guard, so a record naming an arm this build
+		// does not have — or a tag past the writer's arm set entirely — landed
+		// no tag at all from the plan and was answered by the prefill. That
+		// answer was right and silent: DstSize carries THE WRITER'S ARM COUNT
+		// for this one entry, and the read loop counts a clamp for a raw tag
+		// past that set, so the compiled plan counts what the identity plan's
+		// decode bound counts (schema#1254, §5.4, §5.8 row 12). Entries apply in
+		// push order, so the arm that matches overwrites this one and it stands
+		// when none does.
+		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
+		if te.Children > 0 && te.Children <= 255 {
+			none.DstSize = uint8(te.Children)
+		}
+		tableFixedPush(c, none)
 		// THE WRITER'S TAG WIDTH IS THE GUARD'S (§5.2 THE GUARD'S WIDTH): every
 		// entry pushed beneath this union is compared at it, whole.
 		savedW := c.argW

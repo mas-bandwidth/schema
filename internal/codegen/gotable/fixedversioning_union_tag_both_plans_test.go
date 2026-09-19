@@ -72,6 +72,9 @@ func TestUnionTag(t *testing.T) {
 	if back[0].Seq != 15 {
 		t.Fatalf("union_tag_both_plans: the neighbour after the union must stand at 15, not %%v (record %%+v)", back[0].Seq, back[0])
 	}
+	if r.Clamped != 1 {
+		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Clamped, r)
+	}
 	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
 		t.Fatalf("union_tag_both_plans: a counter other than Clamped moved: %%+v", r)
 	}
