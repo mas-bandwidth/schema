@@ -1207,6 +1207,7 @@ abstract final class TableFixedCompiler {
     int guard,
     int arg,
     TableFixedReport report,
+    bool census,
   ) {
     final theirs = plan.theirs;
     final mine = plan.mine;
@@ -1228,6 +1229,7 @@ abstract final class TableFixedCompiler {
             guard,
             arg,
             report,
+            census,
           );
           break;
         }
@@ -1248,7 +1250,7 @@ abstract final class TableFixedCompiler {
         }
         mc += mine.subtree(mc);
       }
-      if (!named) {
+      if (!named && census) {
         report.unknown++;
       }
       tc += theirs.subtree(tc);
@@ -1265,6 +1267,7 @@ abstract final class TableFixedCompiler {
     int guard,
     int arg,
     TableFixedReport report,
+    bool census,
   ) {
     final theirs = plan.theirs;
     final mine = plan.mine;
@@ -1282,7 +1285,18 @@ abstract final class TableFixedCompiler {
     // and then the payload lands under that same guard.
     if (myKind == 35 && theirKind != 35) {
       push(plan, TableFixedOp.present, theirAt, auxAt, 1, 0, guard, arg, 0);
-      compileEntry(plan, ti, theirAt, mi + 1, dst, myAt, guard, arg, report);
+      compileEntry(
+        plan,
+        ti,
+        theirAt,
+        mi + 1,
+        dst,
+        myAt,
+        guard,
+        arg,
+        report,
+        census,
+      );
       return;
     }
     if (theirKind != myKind) {
@@ -1320,10 +1334,22 @@ abstract final class TableFixedCompiler {
           guard,
           arg,
           report,
+          census,
         );
         break;
       case 13: // a nested table: match its fields
-        matchChildren(plan, ti, theirAt, mi, dst, at, guard, arg, report);
+        matchChildren(
+          plan,
+          ti,
+          theirAt,
+          mi,
+          dst,
+          at,
+          guard,
+          arg,
+          report,
+          census,
+        );
         break;
       case 14: // an array: the count, then min( their bound, my bound )
         final theirElem = theirs.size(ti + 1);
@@ -1352,6 +1378,10 @@ abstract final class TableFixedCompiler {
         final theirBase = theirAt + head;
         final elems = theirN < myN ? theirN : myN;
         for (var i = 0; i < elems; i++) {
+          // THE CENSUS IS ONCE PER FIELD PER PEER (§5.4), never once per
+          // ELEMENT: the four elements of an array are ONE field of ONE peer,
+          // so only element 0 carries the census into the walk. A leg that
+          // censuses every element lands the element count (§5.8 row 11).
           compileEntry(
             plan,
             ti + 1,
@@ -1362,6 +1392,7 @@ abstract final class TableFixedCompiler {
             guard,
             arg,
             report,
+            census && i == 0,
           );
         }
         break;
@@ -1386,6 +1417,7 @@ abstract final class TableFixedCompiler {
               guard,
               arg,
               report,
+              census && k == 0,
             );
             break;
           }
@@ -1461,6 +1493,7 @@ abstract final class TableFixedCompiler {
                 theirAt,
                 j + 1,
                 report,
+                census,
               );
               break;
             }
@@ -1720,7 +1753,7 @@ abstract final class TableFixedCompiler {
     // walk of the same pairs must not count them twice — the second report is
     // quiet and thrown away.
     plan.pass = 0;
-    matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report);
+    matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report, true);
     coalesce(plan, 0);
     plan.split = plan.count;
     plan.pass = 1;
@@ -1735,6 +1768,7 @@ abstract final class TableFixedCompiler {
       tableFixedNoGuard,
       0,
       TableFixedReport(),
+      false,
     );
     coalesce(plan, plan.split);
     plan.pass = 0;
