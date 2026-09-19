@@ -21,15 +21,25 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 
-	r := csVersionRow{row: "cfloat_res_refine", check: `
-            if (back[0].Aim != 0.3f)
+	// THE BITS, AND FROM THE MANIFEST (schema#1164, Glenn 2026-09-19: "do
+	// whatever is needed to make sure that a new reader can read an old
+	// writer"). It was `back[0].Aim != 0.3f` — a float comparison against a
+	// HARDCODED literal, an oracle written by the same hand as the code under
+	// test, and one that cannot tell 0.3 from the float32 beside it, which is
+	// exactly what a reader that requantized onto its own grid would produce.
+	// This leg's `range_widen` row already compared bits; its `res_refine` did
+	// not, and that asymmetry is what the nine-leg measurement found here.
+	aim := csManifestFloatBits(t, corpus, "old_cfloat_res_refine.bin", "values", "r0.aim")
+
+	r := csVersionRow{row: "cfloat_res_refine", check: fmt.Sprintf(`
+            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != unchecked((int)0x%08Xu))
             {
-                bad += ProbeLog.Fail(@NAME@, "the old writer's value did not land exactly: aim=" + back[0].Aim);
+                bad += ProbeLog.Fail(@NAME@, "the old writer's value did not land BIT-EXACT: aim bits=" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("X8") + ", the manifest says 0x%08X (aim=" + back[0].Aim + ")");
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
                 bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
-            }`}
+            }`, aim, aim)}
 
 	probes := []csVersionProbe{
 		{name: "cfloat_res_refine/new_reads_old", reader: "VNEW_cfloat_res_refine",
