@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xcaa884d7062cccc8
 
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's

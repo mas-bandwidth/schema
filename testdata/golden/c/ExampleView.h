@@ -13,6 +13,7 @@
 #include "Joins.h"
 #include "Render.h"
 #include "Types.h"
+#include "VoidArms.h"
 #include "Wire.h"
 #ifndef SCHEMA_EXAMPLE_TABLE_PRIMITIVES
 #define SCHEMA_EXAMPLE_TABLE_PRIMITIVES
@@ -463,6 +464,12 @@ static SCHEMA_UNUSED void vec2_reset( Vec2 * value );
 static SCHEMA_UNUSED void schema_example_vec2_reset_raw_( void * storage );
 static SCHEMA_UNUSED void vec3_reset( Vec3 * value );
 static SCHEMA_UNUSED void schema_example_vec3_reset_raw_( void * storage );
+static SCHEMA_UNUSED void void_level_reset( VoidLevel * value );
+static SCHEMA_UNUSED void schema_example_void_level_reset_raw_( void * storage );
+static SCHEMA_UNUSED void void_pulse_reset( VoidPulse * value );
+static SCHEMA_UNUSED void schema_example_void_pulse_reset_raw_( void * storage );
+static SCHEMA_UNUSED void void_signal_packet_reset( VoidSignalPacket * value );
+static SCHEMA_UNUSED void schema_example_void_signal_packet_reset_raw_( void * storage );
 static SCHEMA_UNUSED void w1_reset( W1 * value );
 static SCHEMA_UNUSED void schema_example_w1_reset_raw_( void * storage );
 static SCHEMA_UNUSED void w13_reset( W13 * value );
@@ -1258,6 +1265,39 @@ static SCHEMA_UNUSED void schema_example_vec3_reset_raw_( void * storage ) { vec
 
 extern const TableTypeInfo schema_example_vec3_info_;
 static SCHEMA_UNUSED const TableTypeInfo * vec3_table_type(void) { return &schema_example_vec3_info_; }
+static SCHEMA_UNUSED void void_level_reset( VoidLevel * value )
+{
+    value->level = 0;
+}
+
+static SCHEMA_UNUSED void schema_example_void_level_reset_raw_( void * storage ) { void_level_reset( (VoidLevel *) storage ); }
+
+extern const TableTypeInfo schema_example_void_level_info_;
+static SCHEMA_UNUSED const TableTypeInfo * void_level_table_type(void) { return &schema_example_void_level_info_; }
+static SCHEMA_UNUSED void void_pulse_reset( VoidPulse * value )
+{
+    value->strength = 0;
+}
+
+static SCHEMA_UNUSED void schema_example_void_pulse_reset_raw_( void * storage ) { void_pulse_reset( (VoidPulse *) storage ); }
+
+extern const TableTypeInfo schema_example_void_pulse_info_;
+static SCHEMA_UNUSED const TableTypeInfo * void_pulse_table_type(void) { return &schema_example_void_pulse_info_; }
+static SCHEMA_UNUSED void void_signal_packet_reset( VoidSignalPacket * value )
+{
+    value->lead = 0;
+    memset( &value->signal, 0, sizeof( value->signal ) );
+    memset( &value->echo, 0, sizeof( value->echo ) );
+    memset( &value->history[0], 0, sizeof( value->history[0] ) );
+    { int32_t i; for ( i = 1; i < (int32_t) ( 2 ); i++ ) { value->history[i] = value->history[0]; } }
+    value->history_count = 0;
+    value->tail = 0;
+}
+
+static SCHEMA_UNUSED void schema_example_void_signal_packet_reset_raw_( void * storage ) { void_signal_packet_reset( (VoidSignalPacket *) storage ); }
+
+extern const TableTypeInfo schema_example_void_signal_packet_info_;
+static SCHEMA_UNUSED const TableTypeInfo * void_signal_packet_table_type(void) { return &schema_example_void_signal_packet_info_; }
 static SCHEMA_UNUSED void w1_reset( W1 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );

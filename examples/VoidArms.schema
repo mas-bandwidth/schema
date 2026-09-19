@@ -1,0 +1,44 @@
+// A PAYLOAD-FREE union arm on the packet wire (SPEC §4.8): a row that is a
+// bare name is an arm with no payload, it rides as its tag alone, and it costs
+// what tag 0 costs — the two are told apart by the tag's value and by nothing
+// else. All nine backends carry it, so the construct belongs in this corpus
+// rather than in a C/C++-only fixture.
+//
+// Its own file: ProbeShape (Wire.schema) pins a 2-bit tag whose out-of-set
+// value 3 is a read-refusal negative control in all nine legs, and an arm
+// added there would make that value legal. Here the count is 4, so the tag is
+// 3 bits for [0, 4] and 5..7 stay out of set — the refusal keeps its teeth.
+
+package example
+
+type VoidPulse
+{
+    strength uint16
+}
+
+type VoidLevel
+{
+    level uint8 | min = 0, max = 7
+}
+
+// Two payload-free arms beside two typed ones, and one of each on either side,
+// so an emitter that special-cases "first arm" or "last arm" is caught.
+union VoidSignal
+{
+    ping
+    pulse VoidPulse
+    level VoidLevel
+    ack
+}
+
+// The message that carries it: a bare arm behind a lead field, so its tag is
+// not byte aligned, a second union field selecting the other bare arm, and a
+// counted array of unions.
+type VoidSignalPacket
+{
+    lead    bits(3)
+    signal  VoidSignal
+    echo    VoidSignal
+    history [..2]VoidSignal
+    tail    bits(3)
+}

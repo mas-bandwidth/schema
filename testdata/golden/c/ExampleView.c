@@ -688,6 +688,73 @@ static const TableFieldInfo schema_example_vec3_fields_[] = {
 
 const TableTypeInfo schema_example_vec3_info_ = { "Vec3", (uint32_t) sizeof( Vec3 ), 3, schema_example_vec3_fields_, schema_example_vec3_reset_raw_, TableDocNone, 0, NULL };
 
+static const TableFieldInfo schema_example_void_level_fields_[] = {
+    { "level", NULL, "uint8", 0x0000000000000000ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( VoidLevel, level ), (uint32_t) sizeof( ( (VoidLevel *) 0 )->level ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_void_level_info_ = { "VoidLevel", (uint32_t) sizeof( VoidLevel ), 1, schema_example_void_level_fields_, schema_example_void_level_reset_raw_, TableDocNone, 0, NULL };
+
+static const TableFieldInfo schema_example_void_pulse_fields_[] = {
+    { "strength", NULL, "uint16", 0x0000000000000000ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( VoidPulse, strength ), (uint32_t) sizeof( ( (VoidPulse *) 0 )->strength ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_void_pulse_info_ = { "VoidPulse", (uint32_t) sizeof( VoidPulse ), 1, schema_example_void_pulse_fields_, schema_example_void_pulse_reset_raw_, TableDocNone, 0, NULL };
+
+static const TableVariantInfo schema_example_void_signal_packet_signal_outside_variants_[] = {
+    { "None", 0 },
+    { "ping", 0x0000000000000000ull },
+    { "pulse", 0x0000000000000000ull },
+    { "level", 0x0000000000000000ull },
+    { "ack", 0x0000000000000000ull },
+};
+static const TableUnionArmInfo schema_example_void_signal_packet_signal_outside_arms_[] = {
+    { 0, NULL, NULL, 0 },
+    { 0, NULL, NULL, 0 },
+    { (uint32_t)offsetof( VoidSignal, as.pulse ), &schema_example_void_pulse_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.pulse ) },
+    { (uint32_t)offsetof( VoidSignal, as.level ), &schema_example_void_level_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.level ) },
+    { 0, NULL, NULL, 0 },
+};
+static const TableUnionInfo schema_example_void_signal_packet_signal_outside_union_ = { (uint32_t) offsetof( VoidSignal, type ), (uint32_t) sizeof( ( (VoidSignal *) 0 )->type ), schema_example_void_signal_packet_signal_outside_arms_ };
+static const TableVariantInfo schema_example_void_signal_packet_echo_outside_variants_[] = {
+    { "None", 0 },
+    { "ping", 0x0000000000000000ull },
+    { "pulse", 0x0000000000000000ull },
+    { "level", 0x0000000000000000ull },
+    { "ack", 0x0000000000000000ull },
+};
+static const TableUnionArmInfo schema_example_void_signal_packet_echo_outside_arms_[] = {
+    { 0, NULL, NULL, 0 },
+    { 0, NULL, NULL, 0 },
+    { (uint32_t)offsetof( VoidSignal, as.pulse ), &schema_example_void_pulse_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.pulse ) },
+    { (uint32_t)offsetof( VoidSignal, as.level ), &schema_example_void_level_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.level ) },
+    { 0, NULL, NULL, 0 },
+};
+static const TableUnionInfo schema_example_void_signal_packet_echo_outside_union_ = { (uint32_t) offsetof( VoidSignal, type ), (uint32_t) sizeof( ( (VoidSignal *) 0 )->type ), schema_example_void_signal_packet_echo_outside_arms_ };
+static const TableVariantInfo schema_example_void_signal_packet_history_outside_variants_[] = {
+    { "None", 0 },
+    { "ping", 0x0000000000000000ull },
+    { "pulse", 0x0000000000000000ull },
+    { "level", 0x0000000000000000ull },
+    { "ack", 0x0000000000000000ull },
+};
+static const TableUnionArmInfo schema_example_void_signal_packet_history_outside_arms_[] = {
+    { 0, NULL, NULL, 0 },
+    { 0, NULL, NULL, 0 },
+    { (uint32_t)offsetof( VoidSignal, as.pulse ), &schema_example_void_pulse_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.pulse ) },
+    { (uint32_t)offsetof( VoidSignal, as.level ), &schema_example_void_level_info_, NULL, (uint32_t)sizeof( ((VoidSignal *)0)->as.level ) },
+    { 0, NULL, NULL, 0 },
+};
+static const TableUnionInfo schema_example_void_signal_packet_history_outside_union_ = { (uint32_t) offsetof( VoidSignal, type ), (uint32_t) sizeof( ( (VoidSignal *) 0 )->type ), schema_example_void_signal_packet_history_outside_arms_ };
+static const TableFieldInfo schema_example_void_signal_packet_fields_[] = {
+    { "lead", NULL, "bits(3)", 0x0000000000000000ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( VoidSignalPacket, lead ), (uint32_t) sizeof( ( (VoidSignalPacket *) 0 )->lead ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "signal", NULL, "VoidSignal", 0x0000000000000000ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( VoidSignalPacket, signal ), (uint32_t) sizeof( ( (VoidSignalPacket *) 0 )->signal ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_example_void_signal_packet_signal_outside_variants_, 1, NULL, NULL, -1, &schema_example_void_signal_packet_signal_outside_union_, "", TableDocNone, 0, NULL, 0, NULL },
+    { "echo", NULL, "VoidSignal", 0x0000000000000000ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( VoidSignalPacket, echo ), (uint32_t) sizeof( ( (VoidSignalPacket *) 0 )->echo ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_example_void_signal_packet_echo_outside_variants_, 1, NULL, NULL, -1, &schema_example_void_signal_packet_echo_outside_union_, "", TableDocNone, 0, NULL, 0, NULL },
+    { "history", NULL, "VoidSignal", 0x0000000000000000ull, 15, 1, 1, 0, 2, (uint32_t) offsetof( VoidSignalPacket, history ), (uint32_t) sizeof( ( (VoidSignalPacket *) 0 )->history[0] ), (uint32_t) offsetof( VoidSignalPacket, history_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_example_void_signal_packet_history_outside_variants_, 1, NULL, NULL, -1, &schema_example_void_signal_packet_history_outside_union_, "", TableDocNone, 0, NULL, 0, NULL },
+    { "tail", NULL, "bits(3)", 0x0000000000000000ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( VoidSignalPacket, tail ), (uint32_t) sizeof( ( (VoidSignalPacket *) 0 )->tail ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_void_signal_packet_info_ = { "VoidSignalPacket", (uint32_t) sizeof( VoidSignalPacket ), 5, schema_example_void_signal_packet_fields_, schema_example_void_signal_packet_reset_raw_, TableDocNone, 0, NULL };
+
 static const TableFieldInfo schema_example_w1_fields_[] = {
     { "items", NULL, "uint8", 0x0000000000000000ull, 6, 1, 1, 0, 20, (uint32_t) offsetof( W1, items ), (uint32_t) sizeof( ( (W1 *) 0 )->items[0] ), (uint32_t) offsetof( W1, items_count ), 0xffffffffu, NULL, 1, 0.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
@@ -805,6 +872,13 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { 1, "narrow", 0x0000000000000000ull, "Narrow", &schema_example_narrow_info_, NULL, TableDocNone, 0, NULL },
         { 2, "wide", 0x0000000000000000ull, "Wide", &schema_example_wide_info_, NULL, TableDocNone, 0, NULL },
     };
+    static const ViewVariant VoidSignal_view_variants[] = {
+        { 0, "None", 0, NULL, NULL, NULL, TableDocNone, 0, NULL },
+        { 1, "ping", 0x0000000000000000ull, NULL, NULL, NULL, TableDocNone, 0, NULL },
+        { 2, "pulse", 0x0000000000000000ull, "VoidPulse", &schema_example_void_pulse_info_, NULL, TableDocNone, 0, NULL },
+        { 3, "level", 0x0000000000000000ull, "VoidLevel", &schema_example_void_level_info_, NULL, TableDocNone, 0, NULL },
+        { 4, "ack", 0x0000000000000000ull, NULL, NULL, NULL, TableDocNone, 0, NULL },
+    };
     static const ViewVocabulary enums[] = {
         { "MissileType", "Enums.schema", 3, 8, 4, MissileType_view_variants, TableDocNone, 0, NULL },
         { "Pending", "Enums.schema", 0, 8, 1, Pending_view_variants, TableDocNone, 0, NULL },
@@ -823,6 +897,7 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "EmptyUnion", "Clauses.schema", 2, 8, 3, EmptyUnion_view_variants, TableDocNone, 0, NULL },
         { "ProbeShape", "Wire.schema", 2, 8, 3, ProbeShape_view_variants, TableDocNone, 0, NULL },
         { "Uneven", "Joins.schema", 2, 8, 3, Uneven_view_variants, TableDocNone, 0, NULL },
+        { "VoidSignal", "VoidArms.schema", 4, 8, 5, VoidSignal_view_variants, TableDocNone, 0, NULL },
     };
     static const ViewType types[] = {
         { "ArmAlign", "Joins.schema", 0, &schema_example_arm_align_info_, TableDocNone, 0, NULL },
@@ -891,6 +966,9 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TrioStraddle", "Degenerate.schema", 0, &schema_example_trio_straddle_info_, TableDocNone, 0, NULL },
         { "Vec2", "Degenerate.schema", 0, &schema_example_vec2_info_, TableDocNone, 0, NULL },
         { "Vec3", "Types.schema", 0, &schema_example_vec3_info_, TableDocNone, 0, NULL },
+        { "VoidLevel", "VoidArms.schema", 0, &schema_example_void_level_info_, TableDocNone, 0, NULL },
+        { "VoidPulse", "VoidArms.schema", 0, &schema_example_void_pulse_info_, TableDocNone, 0, NULL },
+        { "VoidSignalPacket", "VoidArms.schema", 0, &schema_example_void_signal_packet_info_, TableDocNone, 0, NULL },
         { "W1", "Clauses.schema", 0, &schema_example_w1_info_, TableDocNone, 0, NULL },
         { "W13", "Clauses.schema", 0, &schema_example_w13_info_, TableDocNone, 0, NULL },
         { "W17", "Clauses.schema", 0, &schema_example_w17_info_, TableDocNone, 0, NULL },
@@ -923,12 +1001,12 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, TableDocNone, 0, NULL },
         { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "example", 0x8656ae68c06b97a7ull,
-        73, types,
+    static const UnitViewInfo info = { "example", 0xcaa884d7062cccc8ull,
+        76, types,
         0, NULL,
         6, enums,
         2, flags_decls,
-        5, unions,
+        6, unions,
         22, constants };
     return &info;
 }
