@@ -1522,8 +1522,11 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   for (let i = 0; i < 16; i++) { value.Payload[i] = view.getUint8(at + 1149 + i); }
   value.AimX = view.getFloat32(at + 1165, true);
+  if (value.AimX < -1) { value.AimX = -1; report.clamped++; } else if (value.AimX > 1) { value.AimX = 1; report.clamped++; }
   value.AimY = view.getFloat32(at + 1169, true);
+  if (value.AimY < -1) { value.AimY = -1; report.clamped++; } else if (value.AimY > 1) { value.AimY = 1; report.clamped++; }
   value.AimZ = view.getFloat32(at + 1173, true);
+  if (value.AimZ < -1) { value.AimZ = -1; report.clamped++; } else if (value.AimZ > 1) { value.AimZ = 1; report.clamped++; }
   value.Recoil = view.getFloat32(at + 1177, true);
   value.Drift = view.getFloat64(at + 1181, true);
   value.WideKey = view.getBigUint64(at + 1189, true) | (view.getBigUint64(at + 1189 + 8, true) << 64n);
