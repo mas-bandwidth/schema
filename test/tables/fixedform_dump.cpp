@@ -304,8 +304,10 @@ static void man_row_and_side( const std::string & file, std::string & row, std::
 {
     const size_t dot = file.rfind( ".bin" );
     const std::string stem = dot == std::string::npos ? file : file.substr( 0, dot );
-    const char * sides[6] = { "old_", "new_", "mid_", "a_", "b_", "hostile_" };
-    for ( int k = 0; k < 6; ++k )
+    // `past_` (schema#1164) is the compressed float's second forged side: a
+    // value past the READER's own bound, where `hostile_` is past the WRITER's.
+    const char * sides[7] = { "old_", "new_", "mid_", "a_", "b_", "hostile_", "past_" };
+    for ( int k = 0; k < 7; ++k )
     {
         const std::string p( sides[k] );
         if ( stem.size() > p.size() && stem.compare( 0, p.size(), p ) == 0 )
@@ -821,11 +823,26 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vnew_cfloat_range_widen, CfloatRangeWiden, "new_cfloat_range_widen.bin",
           MS( v[0].lead, 1u ); MS( v[0].aim, 1.5f ); MS( v[0].trail, 2u ); );
 
-    // THE HOSTILE PASS (docs "## Hostile rows"): old_cfloat_range_widen.bin's
-    // bytes with `aim` overwritten to 1.5 — outside the old writer's [-1, 1]
-    // but inside the new reader's [-2, 2]. The new reader clamps to the OLD
-    // bound the plan carries, never its own; `values=` below is what the OLD
-    // writer wrote, before the forge.
+    // THE HOSTILE PASS (docs "## Hostile rows"), and for a compressed float it
+    // is NOT the pass the bounded rows above take. schema#1164, ruled
+    // 2026-09-19 as statement B: THE BOUNDS PASS IS THE READER'S. A compressed
+    // float is the one bounded kind whose bound the plan does NOT carry —
+    // `emitFixedClamp` emits one pass over the reader's own FMin/FMax and the
+    // compiled plan carries no range at all — so the OLD writer's bound has
+    // nowhere to live once the record is resolved. Two forged files, and the
+    // PAIR is the point:
+    //
+    //   hostile_cfloat_range_widen.bin — `aim` forged to 1.5: outside the old
+    //     writer's [-1, 1], INSIDE the new reader's [-2, 2]. It lands WHOLE and
+    //     UNCOUNTED (aim == 1.5, clamped == 0). This is the file that tells the
+    //     two readings apart: a plan carrying the WRITER's range would land 1.0
+    //     and count 1.
+    //   past_cfloat_range_widen.bin — `aim` forged to 5.0, outside the NEW
+    //     READER's [-2, 2] as well. It clamps to the READER's bound and COUNTS
+    //     (aim == 2.0, clamped == 1 exactly). Without it, "lands whole,
+    //     uncounted" cannot be told from no bounds pass at all.
+    //
+    // `values=` below is what the OLD writer wrote, before the forge.
     {
         std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
         vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
@@ -848,6 +865,33 @@ static bool versioning_numbers_files( const char * dir )
         g_forged = forge;
         man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
         if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
+    }
+    // The second forged file: PAST THE READER'S OWN BOUND (schema#1164, B).
+    // Same old-generation bytes, `aim` forged to 5.0 — outside [-2, 2] as well
+    // as [-1, 1] — so the reader's pass clamps it to the READER's max 2.0 and
+    // counts exactly one. This is the file that proves the pass runs.
+    {
+        std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].aim, 0.5f );
+        MS( v[0].trail, 2u );
+        const int64_t aim_at = vold_cfloat_range_widen::kTableFixedHeaderBytes + 4
+                             + vold_cfloat_range_widen::CfloatRangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vold_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "past_cfloat_range_widen.bin: save refused\n" );
+            return false;
+        }
+        const float forged = 5.0f;
+        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        man_finish( "past_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
+        if ( !spill( dir, "past_cfloat_range_widen.bin", out ) ) { return false; }
     }
     // THE RESOLUTION REFINEMENT (row `cfloat_res_refine`): the old step 0.1 is
     // a whole multiple of the new step 0.01, so every old value lands exactly

@@ -99,11 +99,23 @@ a tag past the old arm count, a scalar past the old range), read by the NEW read
 wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
 a value the old writer could not have written. Named `<row>_hostile_case()`.
 
-**The compressed-float rows take the same hostile pass, and it clamps to the WRITER's range and COUNTS.**
-`hostile_cfloat_range_widen.bin` is `old_cfloat_range_widen.bin` with `aim` set to a float OUTSIDE the old
-writer's `[-1, 1]` but inside the new reader's `[-2, 2]`: the new reader clamps it to the OLD writer's bound
-the plan carries — never its own wider one, never the forged value — and `clamped == 1` exactly, every other
-counter `0`. The resolution takes no hostile row of its own: a value off the old grid is still a float32 the
+**The compressed-float rows take a hostile pass too, and it is NOT the one above: the bounds pass is the
+READER's** (schema#1164, ruled 2026-09-19 — statement B; reversible by Glenn). A compressed float is the one
+bounded kind whose bound the PLAN DOES NOT CARRY: `emitFixedClamp` emits a single pass over the reader's own
+`FMin`/`FMax` and the compiled plan carries no range at all, so the old writer's bound has nowhere to live
+once the record is resolved. Two forged files say it, and the pair is the point:
+
+- `hostile_cfloat_range_widen.bin` is `old_cfloat_range_widen.bin` with `aim` forged to `1.5` — OUTSIDE the
+  old writer's `[-1, 1]`, INSIDE the new reader's `[-2, 2]`. It lands WHOLE and UNCOUNTED: `aim == 1.5`,
+  `clamped == 0`, every other counter `0`. The new definition has made lawful what the old one would have
+  clamped, and that is the widening's stated price. This is the file that tells the two readings apart: a
+  plan that carried the WRITER's range instead would land `1.0` and count `clamped == 1`.
+- `past_cfloat_range_widen.bin` is that same old file with `aim` forged to `5.0`, outside the NEW READER's
+  `[-2, 2]` as well. It clamps to the READER's bound and COUNTS: `aim == 2.0` exactly, `clamped == 1`
+  exactly, every other counter `0`. This is the file that proves the bounds pass runs at all — without it
+  "lands whole, uncounted" is indistinguishable from no pass.
+
+The resolution takes no hostile row of its own: a value off the old grid is still a float32 the
 reader lands, and the law's refusal for a moved step is the LOCK's and the HASH's, not a counter's.
 
 **"A min that moves outward changes what the stored value MEANS" is form 1's concern, not this wire's.** In
