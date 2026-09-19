@@ -277,6 +277,29 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
+# THE ALLOCATION GATE (docs/PORTING.md I14). The gate reads the JDK's feature
+# version and the JVM's per-thread allocation counter, and refuses to certify on
+# any JDK other than the pin — or with no counter at all — without measuring.
+# SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative control;
+# SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does not
+# certify.
+.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control
+tables-java-allocator: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Main allocator
+
+tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
+	@mkdir -p build/java-allocator-runtime-negative-control
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator > build/java-allocator-runtime-negative-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
+		cat build/java-allocator-runtime-negative-control/log; exit 1; \
+	fi
+	@grep -Fq 'allocation certification requires JDK 17, running 21' build/java-allocator-runtime-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
+	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
