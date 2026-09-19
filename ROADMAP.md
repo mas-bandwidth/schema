@@ -2,7 +2,7 @@
 
 ## Packet wire
 
-Constants, enums, flags and types - bit-picked structs exchanged between client and server without versioning.
+Constants, enums, flags and types: bit-picked structs exchanged between client and server without versioning.
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
