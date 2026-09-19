@@ -101,6 +101,75 @@ var sameHashRows = map[string]bool{
 	"field_undeprecate":  true,
 }
 
+// manifestFloatBits is the FLOAT half of the corpus oracle (schema#1164,
+// Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
+// read an old writer"). Every compressed-float row on every leg asserted a
+// HARDCODED literal until now — an oracle written by the same hand as the code
+// under test — while the manifest carried the reference's own answer with its
+// bits:
+//
+//	file=old_cfloat_res_refine.bin ... values=r0.lead=1,r0.aim=0.300000012|0x3E99999A,r0.trail=2
+//
+// SECTION is "values" or "forged". A forged line spells its key with the byte
+// offset attached (`forged=r0.aim@104=1.5|0x3FC00000`), so a key equal to
+// `path` or beginning `path+"@"` is the one asked for. It returns the BITS,
+// and FAILS LOUDLY three ways — no manifest, no row, no such value — because a
+// float oracle that can degrade to "not checked" is the vacuity this repairs.
+func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var values string
+		named := false
+		for _, field := range strings.Fields(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for _, pair := range strings.Split(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			return parseDumpedFloatBits(t, v)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
+// parseDumpedFloatBits reads the `<decimal>|0x<bits>` spelling that BOTH the
+// corpus manifest and this leg's probe dump use for a float, and answers the
+// bits. A value with no `|0x` half is a hard failure and never a pass: it means
+// the thing being compared is a decimal string, which cannot tell one float32
+// from the one beside it.
+func parseDumpedFloatBits(t *testing.T, v string) uint32 {
+	t.Helper()
+	_, hexPart, ok := strings.Cut(v, "|0x")
+	if !ok {
+		t.Fatalf("%q carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", v)
+	}
+	bits, err := strconv.ParseUint(hexPart, 16, 32)
+	if err != nil {
+		t.Fatalf("%q has unreadable bits %q: %v", v, hexPart, err)
+	}
+	return uint32(bits)
+}
+
 // corpusDir answers where the C++ reference's bytes are, or skips — unless
 // SCHEMA_REQUIRE_CORPUS is set, under which a missing corpus is a FAILURE. A
 // bare `go test ./...` on a tree that never built the oracle is right to skip;
@@ -317,6 +386,25 @@ public final class %s {
                 return;
             }
             for (int i = 0; i < n; i++) { walk(tag, path + "[" + i + "]", Array.get(v, i)); }
+            return;
+        }
+        // A FLOAT IS DUMPED WITH ITS RAW BITS BESIDE IT, IN THE CORPUS
+        // MANIFEST'S OWN SPELLING -- <decimal>|0x<bits> (schema#1164). This
+        // probe's value surface is TEXT, so a compressed float used to be
+        // compared as Float.toString output: "0.3" is the shortest decimal
+        // that round-trips, and it is the SAME string for more than one
+        // float32, so a reader that requantized onto its own grid could land a
+        // neighbouring float and this leg would call it equal. The bits cannot
+        // be argued with. Arrays keep their decimal spelling: no row compares a
+        // float ARRAY, and the day one does it wants this same treatment.
+        if (v instanceof Float) {
+            out.append(tag).append(' ').append(path).append('=').append(String.valueOf(v))
+               .append("|0x").append(String.format("%08X", Float.floatToRawIntBits((Float) v))).append('\n');
+            return;
+        }
+        if (v instanceof Double) {
+            out.append(tag).append(' ').append(path).append('=').append(String.valueOf(v))
+               .append("|0x").append(String.format("%016X", Double.doubleToRawLongBits((Double) v))).append('\n');
             return;
         }
         if (c == String.class || c.isPrimitive() || v instanceof Number || v instanceof Boolean
@@ -670,6 +758,20 @@ func assertValuesLand(t *testing.T, oracle, got probeRun, was map[string]string)
 		}
 		if sameNumber(want, have) {
 			continue // one number, two Java storage widths (see sameNumber)
+		}
+		// A FLOAT IS DUMPED AS <decimal>|0x<bits> (schema#1164), AND THE BITS
+		// ARE A WIDTH'S SPELLING RATHER THAN THE VALUE. This comparison is
+		// between TWO BUILDS, and `float_widen` is an f32 file read by an f64
+		// reader: 1.5 is 0x3FC00000 as a float and 0x3FF8000000000000 as a
+		// double, and calling that a mismatch would be calling a lawful widen a
+		// defect. So across builds the DECIMAL is what must agree. The bit half
+		// is for a row asserting ONE build's landing, which is where the two
+		// cfloat rows read it — and this escape does NOT weaken them, because
+		// they compare bits directly and never come through here.
+		if wd, _, ok := strings.Cut(want, "|0x"); ok {
+			if hd, _, ok2 := strings.Cut(have, "|0x"); ok2 && wd == hd {
+				continue
+			}
 		}
 		if strings.HasPrefix(want, "bytes:") && strings.HasPrefix(have, "bytes:") {
 			if strings.HasPrefix(strings.TrimPrefix(have, "bytes:"), strings.TrimPrefix(want, "bytes:")) {

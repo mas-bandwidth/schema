@@ -36,14 +36,22 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		{key: "reads", schema: "VNEW_cfloat_range_widen.schema", older: []string{"VOLD_cfloat_range_widen.schema"}},
 	})
 
+	// THE BITS, AND TWO OF THE THREE FROM THE MANIFEST (schema#1164). These
+	// were the decimal strings "0.5"/"1.5"/"2.0" — the weakest comparison of
+	// the nine legs. `old_`'s value is the manifest's `values=r0.aim`;
+	// `hostile_`'s is the manifest's own `forged=r0.aim@104`, the value the
+	// reference wrote into those bytes. `past_` is NOT a manifest value and is
+	// not dressed as one: the file carries 5.0 and what lands is THIS READER'S
+	// OWN DECLARED MAX, 2.0 = 0x40000000, which is the whole content of that
+	// column.
 	for _, tc := range []struct {
 		file    string
-		aim     string
+		aim     uint32
 		clamped int
 	}{
-		{"old_cfloat_range_widen.bin", "0.5", 0},
-		{"hostile_cfloat_range_widen.bin", "1.5", 0},
-		{"past_cfloat_range_widen.bin", "2.0", 1},
+		{"old_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"), 0},
+		{"hostile_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"), 0},
+		{"past_cfloat_range_widen.bin", 0x40000000, 1},
 	} {
 		r := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, tc.file))
 
@@ -56,8 +64,8 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		if got := r.value["lead"]; got != "1" {
 			t.Errorf("%s: lead=%s, want 1", tc.file, got)
 		}
-		if got := r.value["aim"]; got != tc.aim {
-			t.Errorf("%s: aim=%s, want %s", tc.file, got, tc.aim)
+		if got := parseDumpedFloatBits(t, r.value["aim"]); got != tc.aim {
+			t.Errorf("%s: aim=%#x, want %#x", tc.file, got, tc.aim)
 		}
 		if got := r.value["trail"]; got != "2" {
 			t.Errorf("%s: trail=%s, want 2", tc.file, got)
