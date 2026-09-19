@@ -10,6 +10,7 @@ package rusttable
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -37,6 +38,7 @@ func (g *gen) cookModule() []byte {
 		return nil
 	}
 	var b strings.Builder
+	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package, "the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half"))
 	b.WriteString(cookModuleBanner)
 	b.WriteString("use crate::*;\n\n")
@@ -72,6 +74,7 @@ func (g *gen) recordsModule() []byte {
 	}
 
 	var b strings.Builder
+	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package,
 		"the BLITTABLE RECORDS both accelerators are built from (docs/SPEC-TABLES.md §7.2, §19.3)"))
 	b.WriteString(recordsModuleBanner)
@@ -361,8 +364,12 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.Type.Pointer:
+	case f.IsList() || f.IsMap():
+		g.pf("pub %s:i64,pub %s_count:i32,pub %s_padding:i32,\n", f.Name, f.Name, f.Name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
+	case f.Type.Kind == ir.TWString:
+		g.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size+1, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
@@ -392,6 +399,9 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 // wire rides the variant-name hash — so the slot is the plain unsigned, not
 // the wire newtype.
 func cookElemType(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "i64"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -399,7 +409,7 @@ func cookElemType(f *ir.Field) string {
 		return "f32"
 	case ir.TFloat64:
 		return "f64"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
@@ -462,8 +472,10 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Pointer:
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.IsList() || f.IsMap():
+		names = append(names, f.Name+"_count")
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -574,8 +586,9 @@ pub enum TableCookStorage {
     Signed,
     Unsigned, // an unsigned integer, an enum ordinal, a bits(N), a flags mask
     Float,
-    String, // [u8; N + 1] with an i32 used length beside it
-    Bytes,  // [u8; N] with an i32 used length beside it
+    WideString, // [u16; N + 1], length in code units
+    String,     // [u8; N + 1] with an i32 used length beside it
+    Bytes,      // [u8; N] with an i32 used length beside it
 }
 
 // One record's layout as DATA — the mechanism behind a reflective read of a
@@ -585,13 +598,13 @@ pub enum TableCookStorage {
 // record it names.
 pub struct TableCookFieldInfo {
     pub name: &'static str,
-    pub offset: i32,      // the field's offset in the record this describes
-    pub size: i32,        // its whole storage there, companions included
-    pub elem_size: i32,   // one element's size, for an array; the field's own otherwise
+    pub offset: i32,    // the field's offset in the record this describes
+    pub size: i32,      // its whole storage there, companions included
+    pub elem_size: i32, // one element's size, for an array; the field's own otherwise
     pub is_array: bool,
     pub array_bound: i32, // the DECLARED bound: a counted array's N, a string's length
     pub is_pointer: bool, // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    pub count_offset: i32,   // the count companion's offset, or -1
+    pub count_offset: i32, // the count companion's offset, or -1
     pub present_offset: i32, // an optional's presence bool, or -1
     pub storage: TableCookStorage,
     // the record this field NAMES, behind a function so the table stays
@@ -609,7 +622,6 @@ pub struct TableCookInfo {
     pub num_fields: i32,
     pub fields: &'static [TableCookFieldInfo],
 }
-
 `
 
 // emitCookDescriptors emits one <name>_cook_info() per cookable record.
@@ -658,7 +670,11 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	switch {
 	case f.Type.Pointer:
 		storage, elemSize = "TableCookStorage::Reference", 8
-		record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		if !f.Type.Blob() {
+			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		}
+	case f.Type.Kind == ir.TWString:
+		storage, elemSize, arrayBound = "TableCookStorage::WideString", (f.Type.Size+1)*2, f.Type.Size
 	case f.Type.Kind == ir.TString:
 		storage, elemSize, arrayBound = "TableCookStorage::String", f.Type.Size+1, f.Type.Size
 	case f.Type.Kind == ir.TBytes:
@@ -666,7 +682,9 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	default:
 		storage, elemSize = cookStorageOf(g.unit, f)
 		if isStruct(f) {
-			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+			if !f.Type.Blob() {
+				record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+			}
 		}
 		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 			isArray = true
@@ -700,7 +718,7 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 		return "TableCookStorage::Float", 4
 	case ir.TFloat64:
 		return "TableCookStorage::Float", 8
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return "TableCookStorage::Signed", int64(f.Type.Width) / 8
 		}
@@ -749,6 +767,34 @@ func buildVersionModule(u *ir.Unit) []byte {
 		"the unit's BUILD VERSION (docs/SPEC-TABLES.md §20)"))
 	b.WriteString(buildVersionSource)
 	fmt.Fprintf(&b, "pub const BUILD_VERSION: u64 = 0x%016x;\n", ir.BuildVersion(u))
+	alignTypes := map[string]bool{}
+	for name := range ir.TableClosure(u) {
+		alignTypes[name] = true
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsList() || f.IsMap() {
+				alignTypes[sequenceType(f)] = true
+			}
+		}
+	}
+	names := make([]string, 0, len(alignTypes))
+	for name := range alignTypes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	b.WriteString("use crate::*;\npub const TABLE_REGION_ALIGNMENT:usize = { let mut alignment=8;\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "if core::mem::align_of::<%s>()>alignment {alignment=core::mem::align_of::<%s>();}\n", name, name)
+	}
+	b.WriteString("alignment };\n")
+	emitAnnouncement(&b, u)
+
 	return []byte(b.String())
 }
 
