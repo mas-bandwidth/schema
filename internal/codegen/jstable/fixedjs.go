@@ -603,6 +603,19 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 // a bound sitting on the storage width's own limit — are dropped, because no
 // loaded value can fail them.
 func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
+	// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged integer
+	// below does, and against THIS READER'S own min and max (schema#1164,
+	// ruled statement B): in the fixed form a compressed float rides AS THE
+	// FLOAT (SPEC §3.4), its bounds are DEFINITIONS in the digest, and the
+	// compiled plan carries no range at all, so the pass can only be the
+	// reader's. `<` and `>` are IEEE comparisons on purpose: a NaN is below no
+	// min and above no max, so it survives uncounted, and a negative zero is
+	// not below a min of +0.
+	if lo, hi, ok := fixedFloatClampEnds(f); ok {
+		g.pf("%sif (%s < %s) { %s = %s; report.clamped++; } else if (%s > %s) { %s = %s; report.clamped++; }\n",
+			ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		return
+	}
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		asBig := fixedIsBig(f.Type)
 		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
@@ -969,4 +982,38 @@ func (g *fixedGen) emitPayloadReset(f *ir.Field, ind, target string) {
 		}
 		g.pf("%s%s.%s = %s;\n", ind, target, name, fixedZeroFor(f))
 	}
+}
+
+// fixedFloatClampEnds answers a ranged float's bounds as JavaScript number
+// literals. A float32 field's ends are narrowed to float32 first, so the
+// comparison is against exactly the value the reader's own declaration names
+// and not a double that is a hair wider. Which bound is the reader's own and
+// not the writer's is schema#1164, statement B.
+func fixedFloatClampEnds(f *ir.Field) (lo, hi string, ok bool) {
+	if f == nil || !f.HasFloatRange {
+		return "", "", false
+	}
+	l, h := f.FMin, f.FMax
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		l, h = float64(float32(l)), float64(float32(h))
+	case ir.TFloat64:
+	default:
+		return "", "", false
+	}
+	return jsFloatLit(l), jsFloatLit(h), true
+}
+
+// jsFloatLit renders a float64 as a literal JavaScript accepts. Go's %v spells
+// an infinity `+Inf`, which is a syntax error there.
+func jsFloatLit(v float64) string {
+	switch {
+	case math.IsNaN(v):
+		return "NaN"
+	case math.IsInf(v, 1):
+		return "Infinity"
+	case math.IsInf(v, -1):
+		return "-Infinity"
+	}
+	return strconv.FormatFloat(v, 'g', -1, 64)
 }
