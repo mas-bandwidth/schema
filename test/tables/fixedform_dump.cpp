@@ -59,6 +59,8 @@
 #include "VNEW_range_widenTable.h"
 #include "VOLD_cfloat_range_widenTable.h"
 #include "VNEW_cfloat_range_widenTable.h"
+#include "VOLD_cfloat_res_refineTable.h"
+#include "VNEW_cfloat_res_refineTable.h"
 #include "VOLD_bits_growTable.h"
 #include "VNEW_bits_growTable.h"
 #include "VOLD_fixed_I_growTable.h"
@@ -847,6 +849,15 @@ static bool versioning_numbers_files( const char * dir )
         man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
         if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
     }
+    // THE RESOLUTION REFINEMENT (row `cfloat_res_refine`): the old step 0.1 is
+    // a whole multiple of the new step 0.01, so every old value lands exactly
+    // and nothing requantizes. The float rides as the float32 itself in the
+    // fixed form (SPEC §3.4), so the resolution moves the digest ('Q', bill
+    // §13) and the hash, not the bytes — this row takes no hostile file.
+    VROW( vold_cfloat_res_refine, CfloatResRefine, "old_cfloat_res_refine.bin",
+          MS( v[0].lead, 1 ); MS( v[0].aim, 0.3f ); MS( v[0].trail, 2 ); );
+    VROW( vnew_cfloat_res_refine, CfloatResRefine, "new_cfloat_res_refine.bin",
+          MS( v[0].lead, 1 ); MS( v[0].aim, 0.33f ); MS( v[0].trail, 2 ); );
 
     VROW( vold_bits_grow, BitsGrow, "old_bits_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xFFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
