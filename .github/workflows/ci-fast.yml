@@ -84,6 +84,28 @@ name: CI fast
 #   if: github.event.pull_request.head.repo.full_name == github.repository
 # and a fork's pull request is covered by ci-full.yml on hosted runners.
 #
+# ONLY A PULL REQUEST INTO main REACHES THE STUDIO, per the owner's ruling of
+# 2026-09-11: "Only run tests when merging into main, local runners elsewhere."
+# fixed-table-form is a branch BELOW main and it carries dozens of open pull
+# requests at a time; every one of them used to take all six runners for a lane
+# whose verdict nobody gates a landing on. So every job below carries
+#   github.event_name != 'pull_request' || github.base_ref == 'main'
+# folded into the fork guard it already had. A pull request into main runs this
+# lane exactly as before. A pull request into fixed-table-form (or any other
+# branch below main) SKIPS it, and the proof it used to give is owed at the
+# pull request into main, where the same jobs run on the integrated diff.
+#
+# WHAT STILL RUNS BELOW main: ci-full.yml, which is hosted-only and already
+# label-gated (`full-ci`), and certify.yml, which has no pull-request trigger at
+# all. Nothing self-hosted is left on the below-main pull-request path -- the
+# only other self-hosted runner, space-x64, is named by no job in this file.
+#
+# THE TWO `needs: plan` JOBS BELOW GET THE SAME CLAUSE rather than
+# `if: always()` plus a result check. Skipping is the INTENT here, not a gate
+# lost to a silent skip: when the whole lane is off, a dependent that ran would
+# be the bug. Each job therefore skips on its own condition and never on an
+# empty output it inherited from a skipped `plan`.
+#
 # SPACE IS NOT IN THE POOL, and the reason is worth writing down: the x86-64
 # Linux box has ONE CORE. It is registered as `space-x64` for a future
 # cross-architecture row that can afford to be slow, and no job here names it.
@@ -122,7 +144,7 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     outputs:
@@ -258,7 +280,7 @@ jobs:
   # compiles a tool of its own, which is a minute this lane does not have, and
   # they run in ci-full.yml.
   lint-fast:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
@@ -326,7 +348,7 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
@@ -348,7 +370,7 @@ jobs:
   # below are where they are made to run.
   go-test-touched:
     needs: plan
-    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
     steps:
@@ -460,7 +482,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
