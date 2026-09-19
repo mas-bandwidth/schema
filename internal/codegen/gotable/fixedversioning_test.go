@@ -523,6 +523,74 @@ func TestFormHeader(t *testing.T) {
 	}
 }
 
+// ---- forged_ordinal_both_plans ----------------------------------------------
+//
+// §5.8 row 12: the SAME forged bytes read by BOTH plans. r0.tier is set to 4,
+// past the WRITER's three variants and a name only the NEW reader has; both
+// plans carry the WRITER's count, so 4 lands None on both and never Platinum.
+// Clamped is == 1 and never >= 1: the BOUNDS pass's count, once per field
+// (§5.4), and the two plans' equal 1 is the row's whole proof.
+func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	corpus := fixedCorpus(t)
+	newer := readSchema(t, "VNEW_enum_append")
+	older := readSchema(t, "VOLD_enum_append")
+	table := fixedRootName(t, older)
+	src := fmt.Sprintf(`package probe
+
+import ("bytes"; "os"; "testing")
+
+func TestForgedOrdinal(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	needle := []byte{0x03, 0x09, 0x00, 0x00, 0x00}
+	at := bytes.Index(data, needle)
+	if at < 0 {
+		t.Fatalf("the record body (tier=Gold, seq=9) is not in the file: tail=%% x", data[len(data)-5:])
+	}
+	if bytes.Index(data[at+1:], needle) >= 0 {
+		t.Fatalf("the record body occurs more than once in the file")
+	}
+	if at != len(data)-5 {
+		t.Fatalf("the record body is not the tail of the file: at=%%d len=%%d", at, len(data))
+	}
+	data[at] = 4 // the forge
+
+	back := make([]%[2]s, 8)
+	var r TableReport
+	plan := make([]TableFixedEntry, 4096)
+	n := %[2]sFixedLoad(back, data, plan, &r)
+	if n != 1 {
+		t.Fatalf("the forged file reads one record, not %%d (report %%+v)", n, r)
+	}
+	if r.Verdict == TableOpenRefused || r.Reason != "" || r.Malformed {
+		t.Fatalf("the forged read is not a refusal: %%+v", r)
+	}
+	if back[0].Tier != TierNone {
+		t.Fatalf("the forged ordinal lands None, not %%v (record %%+v)", back[0].Tier, back[0])
+	}
+	if back[0].Seq != 9 {
+		t.Fatalf("the scalar after the enum must stand at 9, not %%v (record %%+v)", back[0].Seq, back[0])
+	}
+	if r.Clamped != 1 {
+		t.Fatalf("Clamped is the BOUNDS pass's count, once per field: %%d (report %%+v)", r.Clamped, r)
+	}
+	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+		t.Fatalf("only Clamped may move on a forged ordinal: %%+v", r)
+	}
+}
+`, filepath.Join(corpus, "old_enum_append.bin"), table)
+	out, err := runVersionProbe(t, newer, []string{older}, src)
+	if err != nil {
+		t.Fatalf("forged_ordinal_both_plans, the compiled plan: %v\n%s", err, out)
+	}
+	out, err = runVersionProbe(t, older, nil, src)
+	if err != nil {
+		t.Fatalf("forged_ordinal_both_plans, the identity plan: %v\n%s", err, out)
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func fixedCorpus(t *testing.T) string {
