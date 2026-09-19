@@ -319,3 +319,40 @@ packet-wide-dart-negative-control: packet-wide-dart
 	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
 
 test-dart: packet-wide-dart packet-wide-dart-negative-control
+
+# THE DART ALLOCATION GATE's RUNTIME PIN (docs/PORTING.md §I14, schema#420). The
+# gate reads the running SDK and REFUSES to certify on any other than the pin,
+# which it reads from test/conformance/dart/ci.json — the same row CI builds its
+# matrix from, so the gate cannot drift from the SDK CI installs.
+# SCHEMA_DART_ALLOC_ANY_DART=1 reports without certifying.
+# THERE IS NO ALLOCATION MEASUREMENT ON THIS LEG YET (schema#420): this target
+# holds the refusal only, takes no generated code and costs milliseconds, which
+# is why it rides the per-commit leg.
+.PHONY: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control
+tables-dart-allocator-runtime:
+	$(DART) analyze test/dart-tables/allocator_runtime_pin.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/allocator_runtime_pin.dart
+	$(DART) test/dart-tables/allocator_runtime_pin.dart
+
+# ITS NEGATIVE CONTROL, on the same three moves as the go one
+# (test/conformance/go/ownership-negative-control:23-28): run the gate under a
+# DIFFERENT runtime, FAIL IF THE RUN SUCCEEDS, and grep the exact refusal back
+# out of the log. Dart has no GOTOOLCHAIN, so the off-pin runtime is simulated
+# with SCHEMA_DART_ALLOC_VERSION; that seam can only ever force a refusal,
+# because an override equal to the pin is itself refused.
+tables-dart-allocator-runtime-negative-control:
+	@mkdir -p build/dart-allocator-runtime-nc
+	@if SCHEMA_DART_ALLOC_VERSION=3.14.1 SCHEMA_DART_ALLOC_ANY_DART=0 \
+			$(DART) test/dart-tables/allocator_runtime_pin.dart \
+			> build/dart-allocator-runtime-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate certified an off-pin runtime"; \
+		cat build/dart-allocator-runtime-nc/log; exit 1; \
+	fi
+	@grep -Fq "allocation certification requires dart 3.13.2, running dart 3.14.1" \
+		build/dart-allocator-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat build/dart-allocator-runtime-nc/log; exit 1; }
+	@grep -m1 -F "allocation certification requires dart" build/dart-allocator-runtime-nc/log
+	@echo "negative control: Dart allocation certification refuses SDK 3.14.1"
+
+test-dart: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control
