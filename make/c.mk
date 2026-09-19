@@ -1126,3 +1126,68 @@ test-c tables-c: tables-c-retain tables-c-retain-negative-control
 
 # Collection adapters belong to the common roster as well as their direct differential.
 build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan: test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
+
+# THE RUNTIME HOME ON THE C LEG IS A GUARD NAME, NOT A FILE (docs/PORTING.md
+# J2, #422). The C emitter writes one <Base>Table.h per unit FILE and puts the
+# shared runtime into EVERY one of them behind SCHEMA_<PACKAGE>_TABLE_PRIMITIVES
+# (ctable.go:267-269, :287), so there is no home file to relocate and every
+# header stands alone. The gate adds an earlier-sorting file to a copy of the
+# unit and requires the guard name not to move and every header to still stand
+# alone; the control puts the file-order rule back and requires a move.
+.PHONY: tables-c-runtime-home
+tables-c-runtime-home: bin/schema test/c-tables/runtime_home_main.c
+	@rm -rf build/c-runtime-home && mkdir -p build/c-runtime-home/src
+	@cp tables/examples/*.schema build/c-runtime-home/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/c-runtime-home/src/Aaa.schema
+	./bin/schema generate --lang c --out build/c-runtime-home/base tables/examples
+	./bin/schema generate --lang c --out build/c-runtime-home/added build/c-runtime-home/src
+	@set -e; for tree in base added; do \
+		dir=build/c-runtime-home/$$tree; \
+		headers=$$(cd $$dir && ls *Table.h | wc -l | tr -d ' '); \
+		carriers=$$(cd $$dir && grep -l 'SCHEMA_TABLEDEMO_TABLE_PRIMITIVES' *Table.h | wc -l | tr -d ' '); \
+		if [ "$$headers" != "$$carriers" ]; then \
+			echo "C RUNTIME HOME GATE FAILED: in the $$tree tree $$carriers of $$headers <Base>Table.h carry the shared runtime — on this leg there is no home FILE, every header carries it behind the package guard"; exit 1; \
+		fi; \
+		names=$$(cd $$dir && grep -ho 'SCHEMA_[A-Z0-9_]*_TABLE_PRIMITIVES' *Table.h | sort -u | tr '\n' ' '); \
+		if [ "$$names" != "SCHEMA_TABLEDEMO_TABLE_PRIMITIVES " ]; then \
+			echo "C RUNTIME HOME GATE FAILED: the $$tree tree's runtime guard is [$$names] — expected the one package-named SCHEMA_TABLEDEMO_TABLE_PRIMITIVES, so the home is the PACKAGE and not the file that sorts first"; exit 1; \
+		fi; \
+		for h in $$(cd $$dir && ls *Table.h); do \
+			$(CC) $(TABLES_CFLAGS) -I$$dir -I$(SERIALIZE_C) -DRUNTIME_HOME_HEADER="\"$$h\"" \
+				test/c-tables/runtime_home_main.c -o build/c-runtime-home/alone -lm; \
+			./build/c-runtime-home/alone; \
+		done; \
+	done
+	@echo "C runtime home gate: the shared runtime is reached by SCHEMA_TABLEDEMO_TABLE_PRIMITIVES in every <Base>Table.h, before and after an earlier-sorting file joins, and every header still stands alone"
+
+.PHONY: tables-c-runtime-home-negative-control
+tables-c-runtime-home-negative-control: bin/schema tables-c-runtime-home
+	@rm -rf build/c-runtime-home-sabotage && mkdir -p build/c-runtime-home-sabotage
+	@sed 's|h.WriteString(g.wirePrimitives())|if f.Base == ir.ProtocolIdHome(u) { h.WriteString(g.wirePrimitives()) } // SABOTAGED: the file-order rule put back|' \
+		internal/codegen/ctable/ctable.go > build/c-runtime-home-sabotage/ctable.go.txt
+	@n=$$(grep -c SABOTAGED build/c-runtime-home-sabotage/ctable.go.txt); \
+		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the sabotage patched $$n lines, expected exactly 1"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/build/c-runtime-home-sabotage/ctable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-runtime-home-sabotage/overlay.json
+	go build -overlay build/c-runtime-home-sabotage/overlay.json -o build/c-runtime-home-sabotage/schema ./cmd/schema
+	@rm -rf build/c-runtime-home/base-sabotage build/c-runtime-home/added-sabotage
+	./build/c-runtime-home-sabotage/schema generate --lang c --out build/c-runtime-home/base-sabotage tables/examples
+	./build/c-runtime-home-sabotage/schema generate --lang c --out build/c-runtime-home/added-sabotage build/c-runtime-home/src
+	@base=$$(cd build/c-runtime-home/base-sabotage && grep -l 'SCHEMA_TABLEDEMO_TABLE_PRIMITIVES' *Table.h | tr '\n' ' '); \
+	 added=$$(cd build/c-runtime-home/added-sabotage && grep -l 'SCHEMA_TABLEDEMO_TABLE_PRIMITIVES' *Table.h | tr '\n' ' '); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in [$$base] — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "negative control: the file-order rule moves the shared runtime from [$$base] to [$$added]"
+	@set -e; fell=0; for h in $$(cd build/c-runtime-home/base-sabotage && ls *Table.h); do \
+		if ! $(CC) $(TABLES_CFLAGS_CONTROL) -I build/c-runtime-home/base-sabotage -I$(SERIALIZE_C) \
+			-DRUNTIME_HOME_HEADER="\"$$h\"" test/c-tables/runtime_home_main.c \
+			-o build/c-runtime-home-sabotage/alone -lm > build/c-runtime-home-sabotage/$$h.log 2>&1; then \
+			fell=1; echo "negative control: $$h no longer stands alone"; \
+		fi; \
+	done; \
+	if [ "$$fell" = "0" ]; then \
+		echo "NEGATIVE CONTROL FAILED: every header still compiled alone with the runtime in one home"; exit 1; \
+	fi
+
+test-c tables-c: tables-c-runtime-home tables-c-runtime-home-negative-control

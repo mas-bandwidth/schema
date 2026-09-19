@@ -14,6 +14,7 @@
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
         "tables-c-ref-ordinal-negative-control",
+        "tables-c-runtime-home-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
         "tables-float-nan-negative-control",
