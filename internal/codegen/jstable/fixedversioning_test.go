@@ -566,6 +566,67 @@ type jsManifestKV struct{ key, value string }
 
 // jsManifestRow is the one line for one corpus file: its record count and its
 // values, IN THE ORDER THE MANIFEST WROTE THEM.
+// jsManifestFloatBits is the BIT half of the manifest's float spelling
+// (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure that a new
+// reader can read an old writer"). The manifest writes a float as
+// `<decimal>|0x<bits>`, and `jsManifestCompare` below reads only the DECIMAL —
+// `Number(path) !== dec && Math.fround(dec) !== Math.fround(Number(path))` —
+// so even this leg's whole-manifest oracle, the strongest on the branch, could
+// not tell 0.3 from the float32 beside it. THAT IS A NAMED RESIDUAL, not
+// something this helper fixes: widening `jsManifestCompare` itself would have
+// to know each value's WIDTH, because an f64's bit half is sixteen digits and
+// `float_widen` reads an f32 file with an f64 reader. What this does fix is the
+// two rows whose whole subject is a compressed float, where the width is known.
+//
+// SECTION is "values" or "forged"; a forged key carries its byte offset
+// (`forged=r0.aim@104=1.5|0x3FC00000`), so a key equal to `path` or beginning
+// `path+"@"` is the one asked for. It FAILS LOUDLY three ways.
+func jsManifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is the value oracle (§5.9 #37) and it is not readable: %v", err)
+	}
+	for line := range strings.Lines(string(data)) {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "file="+file+" ") {
+			continue
+		}
+		var values string
+		for f := range strings.FieldsSeq(line) {
+			if k, v, ok := strings.Cut(f, "="); ok && k == section {
+				values = v
+			}
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
+// jsFloatBitsPrelude is the JS side of the same thing: a scratch DataView and a
+// `f32bits(x)` that answers a number's float32 bit pattern. JS has one numeric
+// type, so the ONLY way to compare a float32 exactly is to store it as one.
+const jsFloatBitsPrelude = `
+const _f32 = new DataView(new ArrayBuffer(4));
+function f32bits(x) { _f32.setFloat32(0, x, true); return _f32.getUint32(0, true); }
+`
+
 func jsManifestRow(t *testing.T, corpus, file string) (int, []jsManifestKV) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))

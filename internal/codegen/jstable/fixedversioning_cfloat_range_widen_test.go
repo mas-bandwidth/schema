@@ -25,8 +25,10 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	newer := jsReadSchema(t, "VNEW_cfloat_range_widen")
 	older := jsReadSchema(t, "VOLD_cfloat_range_widen")
 	table := jsFixedRootName(t, older)
-	src := fmt.Sprintf(`
-const READ = (f, want, clamped, tag) => {
+	oldAim := jsManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
+	hostileAim := jsManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
+	src := jsFloatBitsPrelude + fmt.Sprintf(`
+const READ = (f, wantBits, clamped, tag) => {
   const data = readFileSync(f);
   const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
   const report = new TableFixedReport(); const r = report;
@@ -36,8 +38,8 @@ const READ = (f, want, clamped, tag) => {
   if (back[0].Lead !== 1 || back[0].Trail !== 2) {
     fail(tag + ": the row moved a neighbour: " + show(back[0]));
   }
-  if (back[0].Aim !== Math.fround(want)) {
-    fail(tag + ": aim landed " + back[0].Aim + ", want " + Math.fround(want));
+  if (f32bits(back[0].Aim) !== wantBits) {
+    fail(tag + ": aim landed bits " + f32bits(back[0].Aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].Aim + ")");
   }
   if (r.clamped !== clamped) {
     fail(tag + ": clamped landed " + r.clamped + ", want exactly " + clamped + ": " + reason(r));
@@ -48,12 +50,12 @@ const READ = (f, want, clamped, tag) => {
   if (r.malformed) { fail(tag + ": not malformed: " + reason(r)); }
   if (r.refused !== 0) { fail(tag + ": not a refusal: " + reason(r)); }
 };
-READ(%q, 0.5, 0, "old_");
-READ(%q, 1.5, 0, "hostile_");
-READ(%q, 2.0, 1, "past_");
+READ(%[1]q, %[4]d, 0, "old_");
+READ(%[2]q, %[5]d, 0, "hostile_");
+READ(%[3]q, 0x40000000, 1, "past_");
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"))
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim, hostileAim)
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 	if err != nil {
 		t.Fatalf("cfloat_range_widen: %v\n%s", err, out)
