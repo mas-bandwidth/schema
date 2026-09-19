@@ -170,3 +170,75 @@ handed to `GenerateLineage` directly. Under §5.8 row 1's INTERIM — the backen
 schema files by the `VOLD_`/`VNEW_` convention — naming the two files the convention's way is all the handing-in
 the row needs, because the convention never runs `BASELINE`. **The day row 1 closes and the lineage comes from
 the lock, this row needs the explicit test-only entry**, and a leg says which of the two its probe used.
+
+## A union's UNSELECTED ARMS after a read that returns: NEEDS GLENN
+
+**How it surfaced.** The java probe's poison (§5.9 #35's form (iii), "the unit's own value surface, field by
+field ... every field set to the poison value its type can hold") skipped every Java `final` field, and a
+nested value and a union arm are both emitted `final`. Made TOTAL, the poison survives a returning read in
+two rows:
+
+```
+union_append:             pick.beta.n  = 1515870810 (0x5A5A5A5A), the writer wrote 0
+                          pick.gamma.p = 1515870810, where its declared default 0 belongs
+union_arm_payload_widen:  pick.beta.n  = 1515870810, the writer wrote 0
+```
+
+**The mechanism, and it is the scatter and not the prefill.** Every union entry is GUARDED, so `holes` leaves
+the whole union — tag and overlay — a hole, and the record image does take the defaults arm by arm in declared
+order (§5.2, §5.9 #38). The image-to-value scatter is where it stops: the generated union decode is a switch on
+the landed tag, and its own comment says so — `the tag, then the selected arm; an unselected arm keeps what it
+held`. The appended arm matches no writer arm and gets **no plan entry at all**. No prefill change reaches
+this; only a per-arm reset in the scatter, or §5.9 #38's named alternative of per-arm images selected by the
+landed tag, would.
+
+**The legs already disagree, observably.** Go and Rust land the declared default in every unselected arm on
+every record (rust's own words: "an unselected union arm keeps the default rather than the previous record").
+Java, Dart, JS and C# leave the caller's bytes. C and C++ are indeterminate by construction — a real C union
+has no other arm to reset.
+
+**What the documents say.** `SPEC.md` §4.8 settles it for the VARIABLE form, naming these targets by name:
+
+> in mutable targets whose storage lays every arm out separately (Go, C#, JS, Dart, Java) an unselected arm
+> keeps whatever it last held — the reused-storage discipline
+
+and §5 repeats it as a carve-out from "read success fully initializes it". **`SPEC-TABLES.md` carries no
+"fully initializes" sentence of its own** — the phrase does not occur in it — so the fixed form neither
+inherits that promise nor overrides the carve-out. §3.4's own prefill line is still a bare `Reset( value )`,
+under which Java WOULD restore every arm; Glenn's fix 15 ("prefill the bytes the plan does not write;
+identity's list is empty") is what opened the gap, and its cost to unions was never priced.
+
+**This page has never claimed it.** Every sibling row that owes a default says so in its own cell —
+`field_append`'s "w = default", `array_bounded_grow`'s "slots 4..7 default", `array_fixed_grow`'s "4 at the
+ELEMENT DEFAULT". `union_append`'s NEW-READS-OLD cell says "an `a` record lands a; the tag width equal" and
+stops. Nor does the C++ reference assert it: `union_append_case()` reads `pick.type`, `pick.alpha.m`, the
+ordinal and `seq`, and never reads `beta` or `gamma`. **No assertion about an unselected arm exists anywhere
+in the tree.**
+
+**One caution about the evidence.** `pick.beta.n` is the weaker half. The java probe poisons only the `reads`
+column (`probeSource(class, pkg, root.Name, side.key != "refuses")`), and `beta` is a SHARED field compared
+old-value against new-value — so the unpoisoned older build's constructor zero against the poisoned newer
+build's `0x5A` reds it whatever the codec does. **`pick.gamma.p` is the honest half**: a NEW-only field
+compared against the probe's own `FRESH` dump, red because the read genuinely never writes it.
+
+**The ruling is NEEDS GLENN, and the lean is LAWFUL AS IS.** Lawful because the only statement the project has
+made on the subject says exactly this behaviour, names Java in the list, and this page declined to claim
+otherwise in the one cell where it would have. Needs Glenn because that statement is §4.8's, about the
+variable form, and §3.4 says §3.4 is the law here — and because nine ports written from prose have come out
+three ways, which is the exact condition §3.4 exists to end. It is cheap to close in one line and expensive
+to leave: a leg that "fixes" this on its own has guessed.
+
+**The proposed row line, for §5.8, if the answer is that it is lawful:**
+
+| row | the rule | the oracle | which legs |
+|---|---|---|---|
+| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNSPECIFIED** on separate-storage targets and INDETERMINATE on overlaid ones; the selected arm and the tag are the whole of what a union read promises. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
+
+**If Glenn rules it a defect instead**, the expectation is: *after a read that returns, every arm holds either
+the writer's value (selected) or the arm's own declared defaults (unselected)*, delivered in the scatter
+because the flat image provably cannot carry two arms' defaults at one byte (§5.9 #38). That is a scatter
+shape change in four legs, a per-record per-arm reset on the hot path, and unstatable for C and C++ — so the
+rule would have to be worded for separate-storage targets only, which is precisely what §4.8 already does in
+the other direction.
+
+**Named here rather than answered**, as row 9's multi-record question is.
