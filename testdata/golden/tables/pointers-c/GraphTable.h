@@ -702,7 +702,7 @@ enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 enum
 {
     kTableFixedCopy    = 0, /* move size bytes */
-    kTableFixedCount   = 1, /* a count: clamp it to the reader's own bound */
+    kTableFixedCount   = 1, /* a count: clamp it to the ENTRY's bound, which the compiled plan sets to the WRITER's (§5.3 step 11) */
     kTableFixedText    = 2, /* a length, then the units, then terminate */
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
@@ -1937,13 +1937,20 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t their_base = their_at + head;
                 uint32_t n;
                 uint32_t i;
+                n = their_n < my_n ? their_n : my_n;
                 if ( d->counted )
                 {
+                    /* THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind
+                       14, §5.3 step 11: BOUNDS runs against the PLAN's bounds).
+                       The reader's own my_n is the wrong number: a forged 7 from
+                       a writer bounded at 4 must land 4 AND COUNT, not be
+                       admitted because THIS reader grew to 8. n is their_n held
+                       to this reader's storage, which is their_n itself on every
+                       legal widening. */
                     TableFixedEntry e = table_fixed_entry_zero();
-                    e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                    e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                     table_fixed_push( c, e );
                 }
-                n = their_n < my_n ? their_n : my_n;
                 for ( i = 0; i < n; ++i )
                 {
                     table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
