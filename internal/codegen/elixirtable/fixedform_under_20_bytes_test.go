@@ -81,7 +81,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
   check(report.layout_hash == 0, "no layout_hash: #{why(report)}")`
 
 	dir := t.TempDir()
-	for k := 0; k < fixedMinFileBytes; k++ {
+	for k := range fixedMinFileBytes {
 		truncFile := filepath.Join(dir, fmt.Sprintf("under_20_%d.bin", k))
 		if err := os.WriteFile(truncFile, data[:k], 0o600); err != nil {
 			t.Fatal(err)
