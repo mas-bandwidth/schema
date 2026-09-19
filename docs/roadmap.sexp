@@ -2518,7 +2518,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1145: §5.8 row 12 on cpp, internal/codegen/cpptable/fixedversioning_forged_ordinal_both_plans_test.go, merged at 3ccd39c36db4b36719385ef6a5af1901046bf8b1"
     "row 11 unknown_census on cpp is NOT landed: #1152 is OPEN and a confirmed red (counts the census once per element)") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged PR in :evidence proves ONE clause of this task: §5.8 row 12, the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well. Row 11 is NOT landed on this leg — the census PR named in :evidence is OPEN and a confirmed red — so the unknown clause is unproved here. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. And this task first clause is about the census at COMPILE time, while row 11 is a runtime load: even where row 11 has landed it does not close it. Stays :unknown.")
   (:id "cpp/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -2534,7 +2534,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1156: §5.8 row 11 on c (runtime fix in internal/codegen/ctable/fixedruntime.go), merged at 6710f96dc69515308292dbc18f3aefcd957ec3ab"
     "https://github.com/mas-bandwidth/schema/pull/1127: §5.8 row 12 on c (runtime fix, an ordinal past the WRITER set counts Clamped), merged at e165f052b29fbb8ba443a4a95cd70cf1410bdd83") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "c/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state :unknown
    :evidence nil :audit-item "R18" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -2564,7 +2564,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1133: §5.8 row 11 on go, merged at 29f0b7f7c7fd1f82c5a0e6f8b65367ee82cf1a91"
     "https://github.com/mas-bandwidth/schema/pull/1123: §5.8 row 12 on go, merged at 73f68081f0a5ef377f597e75e16aeec6dbba57b3") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "go/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -2580,7 +2580,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1150: §5.8 row 12 on rust, internal/codegen/rusttable/fixedversioning_forged_ordinal_both_plans_test.go, merged at 7421d34ae8e398130e048d1c8d9aea4a004291e1"
     "row 11 unknown_census on rust is NOT landed: #1154 is OPEN and a confirmed red (counts the census once per element)") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged PR in :evidence proves ONE clause of this task: §5.8 row 12, the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well. Row 11 is NOT landed on this leg — the census PR named in :evidence is OPEN and a confirmed red — so the unknown clause is unproved here. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. And this task first clause is about the census at COMPILE time, while row 11 is a runtime load: even where row 11 has landed it does not close it. Stays :unknown.")
   (:id "rust/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -2596,7 +2596,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1140: §5.8 row 11 on java (runtime fix in internal/codegen/javatable/fixedruntime.go), merged at 5e8a35ab2fbabb0fca8e85532616267702c59c25"
     "https://github.com/mas-bandwidth/schema/pull/1136: §5.8 row 12 on java, merged at a524ee619fe6f4bfe23443d84f6cfbb4fe29122a") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "java/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -2612,7 +2612,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1135: §5.8 row 11 on js, merged at a721189f727ca6cc2aff9a9a8c751fc0cde63964"
     "https://github.com/mas-bandwidth/schema/pull/1142: §5.8 row 12 on js, merged at c14dafe6e2d378b4f2e936181e20ef355c82fb52") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "js/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -2628,7 +2628,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1138: §5.8 row 11 on dart (runtime fix, the census is once per FIELD not once per element), merged at d9c9ecc95fb392ccf3a0a9a6cc713d3781f461d7"
     "https://github.com/mas-bandwidth/schema/pull/1132: §5.8 row 12 on dart, merged at b546dff76714de3c6a4191a1aaae28dbc919a669") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "dart/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -2644,7 +2644,7 @@
    ("https://github.com/mas-bandwidth/schema/pull/1156: §5.8 row 11 on elixir (runtime fix in internal/codegen/elixirtable/fixedruntime.go), merged at 6710f96dc69515308292dbc18f3aefcd957ec3ab"
     "https://github.com/mas-bandwidth/schema/pull/1149: §5.8 row 12 on elixir, merged at bd96b4e546061fcf728e07d8f0a72fd81dc03a12") :audit-item "R16" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19: the merged row PRs in :evidence prove §5.4's unknown clause (once per FIELD per peer, never per element — §5.8 row 11) and the forged-ordinal-on-BOTH-plans clause (§5.8 row 12, clamped == 1 counted in the bounds pass and not in the ordinal op as well). The widened clause and the text lane of clamped are NOT proven by any landed row, so this task stays :unknown.")
+   "Partly reconciled 2026-09-19. The merged row PRs in :evidence prove §5.8 row 12 — the bounds pass counts a forged ordinal remapped to None on BOTH plans, clamped == 1 and not counted in the ordinal op as well — and §5.8 row 11, which asserts unknown == 1 because the dropped field is one field of one peer however many elements carry it. Row 11 does NOT close this task first clause: that clause is about the census at COMPILE time, and row 11 is a runtime load. The widened clause is unproved by any landed row (row 11 asserts widened == 0), and so is the text lane of clamped. Stays :unknown.")
   (:id "elixir/R18" :type :task :title "a clamp that cannot fire is not emitted and nothing moves" :state
    :unknown :evidence nil :audit-item "R18" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -2659,12 +2659,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "cpp/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1131"
-    "internal/codegen/cpptable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, ONE lineage peer"
+    "internal/codegen/cpptable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, via cppRunVersionProbe on the single VOLD_/VNEW_array_bounded_grow pair"
     "merged into fixed-table-form at d48673455c58311e275813ec76f87d7be72ed796") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/cpp" :type :work-set :children ("cpp/C1" "cpp/C2" "cpp/R11"))
   (:id "c/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "owed" :reported-source
@@ -2675,12 +2675,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "c/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1126"
-    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, cRunVersionProbe with []string{older} — ONE peer; runtime fix in internal/codegen/ctable/fixedruntime.go"
+    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, cRunVersionProbe with one peer; the runtime fix is in internal/codegen/ctable/fixedruntime.go"
     "merged into fixed-table-form at bcf51c859a91be64485776abbf4f55fdade6b5a1") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/c" :type :work-set :children ("c/C1" "c/C2" "c/R11"))
   (:id "cs/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2705,12 +2705,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "go/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1122"
-    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, runVersionProbe with []string{older} — ONE peer"
+    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, runVersionProbe with one peer"
     "merged into fixed-table-form at 60fd9156638e95ad6a332ff9a889cff8bcb86bca") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/go" :type :work-set :children ("go/C1" "go/C2" "go/R11"))
   (:id "rust/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "owed" :reported-source
@@ -2735,12 +2735,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "java/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1140"
-    "internal/codegen/javatable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow.schema} — ONE peer; runtime fix in internal/codegen/javatable/fixedruntime.go"
+    "internal/codegen/javatable/fixedversioning_writer_bound_count_test.go, one peer; the runtime fix is in internal/codegen/javatable/fixedruntime.go"
     "merged into fixed-table-form at 5e8a35ab2fbabb0fca8e85532616267702c59c25") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/java" :type :work-set :children ("java/C1" "java/C2" "java/R11"))
   (:id "js/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "implemented-asserted" :reported-source
@@ -2751,12 +2751,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "js/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1130"
-    "internal/codegen/jstable/fixedversioning_writer_bound_count_test.go, []string{older} — ONE peer"
+    "internal/codegen/jstable/fixedversioning_writer_bound_count_test.go, jsRunVersionProbe with one peer"
     "merged into fixed-table-form at 7a6a2c707913e6a915170ca46972f33e1806f686") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/js" :type :work-set :children ("js/C1" "js/C2" "js/R11"))
   (:id "dart/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2767,12 +2767,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "dart/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1146"
-    "internal/codegen/darttable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow} — ONE peer"
+    "internal/codegen/darttable/fixedversioning_writer_bound_count_test.go, one peer"
     "merged into fixed-table-form at 3d0bcb2c1faed5c76efdd4931cfd691021494c80") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/dart" :type :work-set :children ("dart/C1" "dart/C2" "dart/R11"))
   (:id "elixir/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2783,12 +2783,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "elixir/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1148"
-    "internal/codegen/elixirtable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow} — ONE peer"
+    "internal/codegen/elixirtable/fixedversioning_writer_bound_count_test.go, one peer"
     "merged into fixed-table-form at da6cdc101ad6e390c578ff1621f3b935a4be78a9") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly — never the reader own bound of 8, never the forged 7 — with clamped == 1, never >= 1. That is both clauses of this task for the one compiled plan in play. RESIDUAL, named rather than hidden: every landed row-4 probe puts exactly ONE lineage peer in front of the reader, so two-plan distinctness — one writer bound per plan where two plans are held at once — is unexercised, and the identity plan is never in play either. A runtime that stashed one writer bound globally would pass. A two_peers row is being cut to close it.")
   (:id "array-bounds/elixir" :type :work-set :children ("elixir/C1" "elixir/C2" "elixir/R11"))
   (:id "cpp/C3" :type :task :title "text length clamp" :state :unknown :evidence nil :audit-item "C3"
    :reported-state "owed" :reported-source
