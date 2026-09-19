@@ -1139,6 +1139,17 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void table_fixed_apply( cons
                reads the member beside it (§4.5, §5.8 row 7). */
             const uint64_t lands = p->aux;
             memcpy( dst + p->dst, &lands, p->size );
+            /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
+               a tag past that set lands None (already written) and COUNTS, so
+               the compiled plan counts it exactly as the identity plan's bounds
+               pass does and the SAME forged bytes land the SAME clamped == 1 on
+               either plan (schema#1254, §5.4, §5.8 row 12). */
+            if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_TABLE_FIXED_NO_GUARD )
+            {
+                uint64_t raw = 0;
+                memcpy( &raw, src + p->src, p->size );
+                if ( raw > (uint64_t) p->dstsize ) { (*clamped)++; }
+            }
             break;
         }
         /* T INTO ?T: the reader wraps what the writer sent plain, so the present
@@ -1995,6 +2006,8 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     TableFixedEntry none = table_fixed_entry_zero();
                     none.src = their_at; none.dst = aux_at; none.size = my_tag;
                     none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                    /* Writer arm count, for a tag past the old set (bill §12.5). */
+                    if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                     table_fixed_push( c, none );
                     c->argw = inner_argw;
                 }

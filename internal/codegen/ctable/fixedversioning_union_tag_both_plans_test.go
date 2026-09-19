@@ -17,25 +17,29 @@ package ctable
 // `TestFixedCompiledPlanTagPastArmSet` reads the COMPILED plan only. Nothing
 // anywhere read the identity half.
 //
-// THE COMPILED HALF DOES NOT ASSERT `clamped`, AND THAT OMISSION IS THIS ROW'S
-// CONTENT, NOT ITS WEAKNESS — schema#1254. Over these same forged bytes the
-// identity plan counts ONE and the compiled plan counts ZERO. Both of this
-// repo's own comments say they must agree: fixedruntime.go's kTableFixedOrdinal
-// ("the compiled plan counts it exactly as the identity plan's bounds pass does,
-// so the SAME forged bytes land the SAME clamped == 1 on either plan") and
-// darttable/fixeddart.go's union decode ("the same landing the compiled plan
-// gives it through its own remap, so the identity path and a stranger's plan
-// agree about a hostile tag") — and dart's own compiled-plan test asserts
-// clamped == 1 and passes. The cause is that the compiled plan lands a tag
-// naming no shared arm through an unguarded `kTableFixedConst`, which is a bare
-// memcpy with no counter, while the enum path uses kTableFixedOrdinal, which
-// counts.
+// BOTH HALVES ASSERT `clamped == 1`, AND THAT IS schema#1254 CLOSED ON THIS LEG.
+// When this row first landed the compiled half asserted the LANDING and not the
+// count, because over these same forged bytes the identity plan counted ONE and
+// the compiled plan counted ZERO — while both of this repo's own comments say
+// they must agree: fixedruntime.go's kTableFixedOrdinal ("the compiled plan
+// counts it exactly as the identity plan's bounds pass does, so the SAME forged
+// bytes land the SAME clamped == 1 on either plan") and darttable/fixeddart.go's
+// union decode ("the same landing the compiled plan gives it through its own
+// remap, so the identity path and a stranger's plan agree about a hostile tag").
+// dart and cpp held the invariant; c did not.
 //
-// Asserting == 1 on the compiled half would land a red row; asserting == 0 would
-// cement the defect. So that half asserts the LANDING — None, never the forged
-// 9, the neighbour untouched, no refusal and no other counter — and names the
-// count as owed. WHEN #1254 IS RULED ON, delete this paragraph and hand
-// `clampedOnce` to both halves.
+// THE CAUSE WAS TWO MISSING PIECES, NOT ONE, AND cpptable ALREADY CARRIED BOTH.
+// The compiled plan lands a tag naming no shared arm through the UNGUARDED None
+// `kTableFixedConst` entry. (a) That entry never carried the WRITER'S ARM COUNT
+// in `dstsize`, so nothing downstream could tell a tag past the old set from one
+// inside it; (b) `case kTableFixedConst:` was a bare memcpy with no counter,
+// where the enum path's kTableFixedOrdinal counts. Both are now ctable's, copied
+// from cpptable, and the negative control below is what proves they are live.
+//
+// MEASURED, each edit counted to exactly 1 and the file restored and proved
+// byte-for-byte: with `if ( raw > (uint64_t) p->dstsize ) { (*clamped)++; }`
+// turned into `if ( 0 && raw > ... )` the whole leg is 74 leaves and EXACTLY ONE
+// red — this row's `compiled` subtest. Nothing else on the leg reads that block.
 
 import (
 	"fmt"
@@ -89,9 +93,9 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 
 	t.Run("compiled", func(t *testing.T) {
 		t.Parallel()
-		// The NEW build reads the OLD file through the lineage. No `clamped`
-		// assertion here: schema#1254, and the header says why.
-		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, body(""), "", pre)
+		// The NEW build reads the OLD file through the lineage, and it counts
+		// the clamp the identity plan counts: schema#1254, fixed above.
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, body(clampedOnce), "", pre)
 		if err != nil {
 			t.Fatalf("union_tag_both_plans, the compiled plan: %v\n%s", err, out)
 		}
