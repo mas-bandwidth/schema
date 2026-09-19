@@ -414,7 +414,9 @@ tables-cs-view: build/tables-generated-cs/.stamp
 # Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
 # `make tables-cs-leg` remains the full-CI and release gate, running both.
 # Fast CI uses Debug with versioning to stay within its two-minute budget.
-tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
+tables-cs-leg:
+	$(MAKE) tables-cs-leg-debug
+	$(MAKE) tables-cs-leg-release
 
 tables-cs-leg-debug: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
