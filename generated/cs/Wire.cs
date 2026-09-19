@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 using System;
 using System.Diagnostics;
@@ -210,6 +210,12 @@ namespace Example
     {
         public float Boundary; // compressed float [0.0, 10.0] @ 0.01
         public float Offset; // compressed float [-5.0, 5.0] @ 0.001
+    }
+
+    // type CompressedCeiling
+    public sealed class CompressedCeiling
+    {
+        public float Ceiling; // compressed float [0.0, 8.388609e+06] @ 1.0
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -1949,6 +1955,44 @@ namespace Example
                 return false;
             }
             if (!batch.SerializeCompressedFloatPrecomputed(ref value.Offset, 10000u, 14, 10.0f, -5.0f))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // CompressedCeilingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+        // CompressedCeilingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+        public const long CompressedCeilingMaxBits = 24;
+        public const long CompressedCeilingMaxBytes = 8;
+
+        // The §5 zero form: all-zero storage; specified defaults live only in construction.
+        public static void ZeroCompressedCeiling(CompressedCeiling value)
+        {
+            value.Ceiling = 0.0f;
+        }
+
+        // Restore construction defaults in place; buffers and objects are retained.
+        public static void InitCompressedCeiling(CompressedCeiling value)
+        {
+            value.Ceiling = 0.0f;
+        }
+
+        public static bool WriteCompressedCeiling(WriteStream stream, CompressedCeiling value)
+        {
+            {
+                float compressedValue = value.Ceiling;
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 8388609u, 24, 8.388609e+06f, 0.0f))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static bool ReadCompressedCeiling(ReadStream stream, CompressedCeiling value)
+        {
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.Ceiling, 8388609u, 24, 8.388609e+06f, 0.0f))
             {
                 return false;
             }

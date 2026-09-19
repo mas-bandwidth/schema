@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 package example;
 
@@ -691,6 +691,11 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 36000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 36000L) {
+                v = 36000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 16;
@@ -2192,6 +2197,11 @@ public final class Wire {
                 // two roundings, not one: the product rounds to float32 BEFORE 0.5
                 // is added, and the sum rounds before the floor (SPEC §4.3)
                 v = (long) Math.floor(n * 36000.0f + 0.5f);
+                // the normative integer clamp (SPEC §4.3): at a step count in
+                // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+                if (v > 36000L) {
+                    v = 36000L;
+                }
             }
             scratch |= v << scratchBits;
             scratchBits += 16;
@@ -3680,6 +3690,11 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 1000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 1000L) {
+                v = 1000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 10;
@@ -4325,6 +4340,11 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 1000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 1000L) {
+                v = 1000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 10;
@@ -4344,6 +4364,11 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 10000.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 10000L) {
+                v = 10000L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 14;
@@ -4417,6 +4442,126 @@ public final class Wire {
     // measureCompressedProbe is the exact wire bits writeCompressedProbe would produce for value —
     // trusted like the writer; static runs fold to literals at generation time.
     public static int measureCompressedProbe(CompressedProbe value) {
+        return 24;
+    }
+
+    // type CompressedCeiling
+    public static final class CompressedCeiling {
+        // compressed float [0.0, 8.388609e+06] @ 1.0
+        public float ceiling;
+    }
+
+    // compressedCeilingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+    // compressedCeilingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+    public static final int compressedCeilingMaxBits = 24;
+    public static final int compressedCeilingMaxBytes = 8;
+
+    // The §5 zero form: all-zero storage; specified defaults live only in
+    // construction.
+    public static void zeroCompressedCeiling(CompressedCeiling value) {
+        value.ceiling = 0.0f;
+    }
+
+    // Restore construction defaults in place; buffers and objects are retained.
+    public static void initCompressedCeiling(CompressedCeiling value) {
+        value.ceiling = 0.0f;
+    }
+
+    // checkWriteCompressedCeiling is writeCompressedCeiling's contract walk, called once through assert —
+    // the predicate-extraction form: dormant assert bodies count against the
+    // JIT's inline thresholds, so the hot body carries one small call and the
+    // contracts live here (issue #156).
+    private static boolean checkWriteCompressedCeiling(CompressedCeiling value, byte[] data) {
+        assert data.length % 8 == 0;
+        assert data.length >= compressedCeilingMaxBytes;
+        assert value.ceiling - value.ceiling == 0.0f; // finite: NaN and both infinities fail this
+        return true;
+    }
+
+    // writeCompressedCeiling packs value into data — the trusted writer (contracts in the
+    // checkWriteCompressedCeiling predicate, one dormant assert call without -ea). The buffer
+    // must hold compressedCeilingMaxBytes. Returns the bytes written.
+    public static int writeCompressedCeiling(CompressedCeiling value, byte[] data) {
+        assert checkWriteCompressedCeiling(value, data);
+        long scratch = 0;
+        int scratchBits = 0;
+        int wordIndex = 0;
+        long v = 0;
+        {
+            float n = (value.ceiling - 0.0f) / 8.388609e+06f;
+            if (!(n >= 0.0f)) {
+                n = 0.0f;
+            } else if (!(n <= 1.0f)) {
+                n = 1.0f;
+            }
+            // two roundings, not one: the product rounds to float32 BEFORE 0.5
+            // is added, and the sum rounds before the floor (SPEC §4.3)
+            v = (long) Math.floor(n * 8.388609e+06f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 8388609L) {
+                v = 8388609L;
+            }
+        }
+        scratch |= v << scratchBits;
+        scratchBits += 24;
+        if (scratchBits >= 64) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+            wordIndex++;
+            scratchBits -= 64;
+            scratch = v >>> (24 - scratchBits);
+        }
+        if (scratchBits != 0) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+        }
+        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    }
+
+    // readCompressedCeiling decodes value from the first numBits of data — the family read
+    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+    // hostile bytes never throw. No slack past the payload is required.
+    public static boolean readCompressedCeiling(CompressedCeiling value, byte[] data, int numBits) {
+        if (numBits > (long) data.length * 8) {
+            return false; // the payload cannot exceed the buffer behind data
+        }
+        // the final 64-bit window, assembled once so every load stays inside
+        // the buffer (the family's no-slack reader stance)
+        int tailBase = data.length - 8;
+        long tailWord = 0;
+        if (tailBase >= 0) {
+            tailWord = (long) LONG_LE.get(data, tailBase);
+        } else {
+            tailBase = 0;
+            for (int i = data.length - 1; i >= 0; i--) {
+                tailWord = (tailWord << 8) | (data[i] & 0xffL);
+            }
+        }
+        int bitsRead = 0;
+        long window = 0;
+        int shift = 0;
+        long v = 0;
+        if (bitsRead + 24 > numBits) {
+            return false;
+        }
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xffffffL;
+        bitsRead += 24;
+        if (v > 8388609L) {
+            return false; // headroom above the quantum count is refused
+        }
+        value.ceiling = (float) v / 8.388609e+06f * 8.388609e+06f + 0.0f;
+        return true;
+    }
+
+    // measureCompressedCeiling is the exact wire bits writeCompressedCeiling would produce for value —
+    // trusted like the writer; static runs fold to literals at generation time.
+    public static int measureCompressedCeiling(CompressedCeiling value) {
         return 24;
     }
 }

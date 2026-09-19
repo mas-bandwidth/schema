@@ -113,6 +113,12 @@ static const TableFieldInfo schema_example_chat_fields_[] = {
 
 const TableTypeInfo schema_example_chat_info_ = { "Chat", (uint32_t) sizeof( Chat ), 1, schema_example_chat_fields_, schema_example_chat_reset_raw_, TableDocNone, 0, NULL };
 
+static const TableFieldInfo schema_example_compressed_ceiling_fields_[] = {
+    { "ceiling", NULL, "float32", 0x0000000000000000ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( CompressedCeiling, ceiling ), (uint32_t) sizeof( ( (CompressedCeiling *) 0 )->ceiling ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 8.388609e+06, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_compressed_ceiling_info_ = { "CompressedCeiling", (uint32_t) sizeof( CompressedCeiling ), 1, schema_example_compressed_ceiling_fields_, schema_example_compressed_ceiling_reset_raw_, TableDocNone, 0, NULL };
+
 static const TableFieldInfo schema_example_compressed_probe_fields_[] = {
     { "boundary", NULL, "float32", 0x0000000000000000ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( CompressedProbe, boundary ), (uint32_t) sizeof( ( (CompressedProbe *) 0 )->boundary ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "offset", NULL, "float32", 0x0000000000000000ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( CompressedProbe, offset ), (uint32_t) sizeof( ( (CompressedProbe *) 0 )->offset ), 0xffffffffu, 0xffffffffu, NULL, 1, -5.0, 5.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
@@ -837,6 +843,7 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "ArrUneven", "Joins.schema", 0, &schema_example_arr_uneven_info_, TableDocNone, 0, NULL },
         { "Block", "Wire.schema", 0, &schema_example_block_info_, TableDocNone, 0, NULL },
         { "Chat", "Wire.schema", 0, &schema_example_chat_info_, TableDocNone, 0, NULL },
+        { "CompressedCeiling", "Wire.schema", 0, &schema_example_compressed_ceiling_info_, TableDocNone, 0, NULL },
         { "CompressedProbe", "Wire.schema", 0, &schema_example_compressed_probe_info_, TableDocNone, 0, NULL },
         { "DefaultArm", "ArmDefaults.schema", 0, &schema_example_default_arm_info_, TableDocNone, 0, NULL },
         { "DefaultBulkArm", "ArmDefaults.schema", 0, &schema_example_default_bulk_arm_info_, TableDocNone, 0, NULL },
@@ -923,8 +930,8 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, TableDocNone, 0, NULL },
         { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "example", 0x8656ae68c06b97a7ull,
-        73, types,
+    static const UnitViewInfo info = { "example", 0x2ad00ce4e6bbdc26ull,
+        74, types,
         0, NULL,
         6, enums,
         2, flags_decls,

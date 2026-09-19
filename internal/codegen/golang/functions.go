@@ -522,6 +522,18 @@ func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
+	// A non-finite value at a compressed float is a write contract like every
+	// range (SPEC §4.3, §5), and Go has no debug-only idiom to hold it in: the
+	// refusal is every-build, exactly as ErrValueOutOfRange is for an int out
+	// of its range. `x-x != 0` is the family's finiteness spelling — NaN and
+	// both infinities fail it (Inf - Inf is NaN) — and Go never contracts it
+	// away. The clamp below stays: it is what the other SEVEN targets — the
+	// debug-only ones, whose assert is gone in release — leave standing, and
+	// the bytes must not depend on the tier. Elixir is not among them: like Go
+	// it refuses every-build, so a non-finite value never reaches its clamp
+	// either (compiler/nonfinitecompressed_test.go, claim 2).
+	g.pf("%sif %s-%s != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)\n", ind, name, name)
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 	g.pf("%s{\n", ind)
 	if min32 == 0 {
 		g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))
@@ -531,6 +543,8 @@ func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
 	g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
 	g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
+	g.pf("%s\tif integerValue > %d { // the normative integer clamp (SPEC \u00a74.3)\n", ind, steps)
+	g.pf("%s\t\tintegerValue = %d\n%s\t}\n", ind, steps, ind)
 	g.pf("%s\tstream.SerializeBits(&integerValue, %d)\n%s}\n", ind, bits, ind)
 }
 

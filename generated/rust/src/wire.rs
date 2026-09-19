@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -1268,6 +1268,42 @@ pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedPr
 pub fn read_compressed_probe(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
     stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
+    Ok(())
+}
+
+// type CompressedCeiling
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct CompressedCeiling {
+    pub ceiling: f32, // compressed float [0.0, 8.388609e+06] @ 1.0
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for CompressedCeiling {
+    fn default() -> Self {
+        CompressedCeiling {
+            ceiling: 0.0,
+        }
+    }
+}
+
+// COMPRESSED_CEILING_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// COMPRESSED_CEILING_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const COMPRESSED_CEILING_MAX_BITS: u64 = 24;
+pub const COMPRESSED_CEILING_MAX_BYTES: usize = 8;
+
+#[inline(always)]
+pub fn write_compressed_ceiling(stream: &mut WriteStream<'_>, value: &CompressedCeiling) -> Result {
+    {
+        let mut compressed_value = value.ceiling;
+        stream.serialize_compressed_float_precomputed(&mut compressed_value, 8388609, 24, 8.388609e+06_f32, 0.0_f32)?; // compressed float [0.0, 8.388609e+06] @ 1.0, constants folded at generation
+    }
+    Ok(())
+}
+
+#[inline]
+pub fn read_compressed_ceiling(stream: &mut ReadStream<'_>, value: &mut CompressedCeiling) -> Result {
+    stream.serialize_compressed_float_precomputed(&mut value.ceiling, 8388609, 24, 8.388609e+06_f32, 0.0_f32)?; // compressed float [0.0, 8.388609e+06] @ 1.0, constants folded at generation
     Ok(())
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 #pragma once
 
@@ -349,5 +349,13 @@ struct CompressedProbe {
 
 inline constexpr int64_t CompressedProbeMaxBits = 24; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t CompressedProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
+
+// type CompressedCeiling
+struct CompressedCeiling {
+    float ceiling = 0.0f; // compressed float [0, 8.388609e+06] @ 1
+};
+
+inline constexpr int64_t CompressedCeilingMaxBits = 24; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t CompressedCeilingMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 } // namespace example

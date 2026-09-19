@@ -473,6 +473,27 @@ function testDataInstance() {
   check(out.Offset === Math.fround(Math.fround(Math.fround(142 / 10000) * 10) - 5), "offset reconstructs integer 142");
 }
 
+// ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+// steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+// 8388609 and Math.fround(8388609 + 0.5) is a TIE that rounds half-to-even to
+// 8388610 — one past the step count. The normative integer clamp keeps the
+// index at 8388609, and all nine legs on the same bytes.
+{
+  const inp = new ex.CompressedCeiling();
+  inp.Ceiling = 8388609;
+
+  const ws = newWriteStream();
+  check(ex.WriteCompressedCeiling(ws, inp), "write CompressedCeiling");
+  ws.flush();
+  goldenWire("compressed_ceiling", ws.data());
+
+  const out = new ex.CompressedCeiling();
+  const rs = new ReadStream(ws.data());
+  // an unclamped index is REFUSED here
+  check(ex.ReadCompressedCeiling(rs, out), "read CompressedCeiling");
+  check(out.Ceiling === 8388609, "ceiling reads back exactly max");
+}
+
 // ---- specified defaults: construction carries them; Zero* is the zero form ----
 {
   const sample = new ex.ProbeSample();
@@ -939,6 +960,11 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   inp.Boundary = 0.005;
   inp.Offset = -4.8585;
   flatCross("flat compressed_probe", ex, exFlat, "CompressedProbe", inp, "compressed_probe");
+}
+{
+  const inp = new ex.CompressedCeiling();
+  inp.Ceiling = 8388609;
+  flatCross("flat compressed_ceiling", ex, exFlat, "CompressedCeiling", inp, "compressed_ceiling");
 }
 {
   const inp = new ex.ProbeBits();

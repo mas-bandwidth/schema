@@ -266,6 +266,26 @@ func main() {
 		check(out.Offset == float32(142)/maxIntOffset*float32(10)-float32(5), "offset reconstructs integer 142")
 	}
 
+	// ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+	// steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+	// 8388609.0 and the float32 sum + 0.5 is a TIE that rounds half-to-even to
+	// 8388610 — one past the step count. The normative integer clamp keeps the
+	// index at 8388609, and all nine legs on the same bytes.
+	{
+		in := example.CompressedCeiling{}
+		in.Ceiling = 8388609
+
+		ws, _ := newWriteStream()
+		checkErr(example.WriteCompressedCeiling(ws, &in), "write CompressedCeiling")
+		ws.Flush()
+		goldenWire("compressed_ceiling", ws.Data())
+
+		out := example.CompressedCeiling{}
+		rs := serialize.NewReadStream(ws.Data())
+		checkErr(example.ReadCompressedCeiling(rs, &out), "read CompressedCeiling") // an unclamped index is REFUSED here
+		check(out.Ceiling == float32(8388609), "ceiling reads back exactly max")
+	}
+
 	// ---- specified defaults: New* carries them; the zero value stays zero ----
 	{
 		sample := example.NewProbeSample()

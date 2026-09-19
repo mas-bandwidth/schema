@@ -958,6 +958,11 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%s    // two roundings, not one: the product rounds to float32 BEFORE 0.5\n", ind)
 	g.pf("%s    // is added, and the sum rounds before the floor (SPEC §4.3)\n", ind)
 	g.pf("%s    v = (long) Math.floor(n * %sf + 0.5f);\n", ind, f32lit(float64(mivF)))
+	g.pf("%s    // the normative integer clamp (SPEC \u00a74.3): at a step count in\n", ind)
+	g.pf("%s    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP\n", ind)
+	g.pf("%s    if (v > %dL) {\n", ind, maxInt)
+	g.pf("%s        v = %dL;\n", ind, maxInt)
+	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
 	g.needV = true
 	g.mergeW(bits, ind)
