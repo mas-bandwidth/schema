@@ -36,7 +36,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the forge needle % x is not in %s", needle, oldFile)
 	}
-	if bytes.Index(raw[at+1:], needle) >= 0 {
+	if bytes.Contains(raw[at+1:], needle) {
 		t.Fatalf("the forge needle % x occurs more than once in %s", needle, oldFile)
 	}
 	forged := append([]byte(nil), raw...)

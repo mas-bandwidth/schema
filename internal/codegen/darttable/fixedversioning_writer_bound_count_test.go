@@ -32,7 +32,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the lead/count needle is not in %s", old)
 	}
-	if bytes.Index(data[at+1:], needle) >= 0 {
+	if bytes.Contains(data[at+1:], needle) {
 		t.Fatalf("the lead/count needle occurs more than once in %s", old)
 	}
 	binary.LittleEndian.PutUint32(data[at+4:at+8], 7) // the forge
