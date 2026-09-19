@@ -72,6 +72,8 @@
 #include "VBRA_lineage_mergeTable.h"
 #include "VBRB_lineage_mergeTable.h"
 #include "VNEW_lineage_mergeTable.h"
+#include "VOLD_unknown_censusTable.h"
+#include "VNEW_unknown_censusTable.h"
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
 // docs/FIXED-FORM-VERSIONING-TESTS.md: two schemas per row, one table name,
@@ -828,6 +830,16 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vbra_lineage_merge, Merged, "a_lineage_merge.bin", MS( v[0].anchor, 100 ); MS( v[0].from_a, 111 ); );
     VROW( vbrb_lineage_merge, Merged, "b_lineage_merge.bin", MS( v[0].anchor, 200 ); MS( v[0].from_b, 222 ); );
     VROW( vnew_lineage_merge, Merged, "new_lineage_merge.bin", MS( v[0].anchor, 300 ); MS( v[0].from_a, 1 ); MS( v[0].from_b, 2 ); );
+
+    // §5.8 ROW 11 — `unknown_census`: the census of unknown fields on a read.
+    // There is deliberately NO `new_unknown_census.bin` — the NEW side removes
+    // Item.drop, which §5.1 refuses, so the row's only read column is
+    // NEW-READS-OLD and the NEW side is a schema generated but never dumped.
+    // The pair is unlawful by design (row 11's LOCK column), not a bug to fix.
+    VROW( vold_unknown_census, Census, "old_unknown_census.bin",
+          MS( v[0].lead, 1 );
+          for ( int i = 0; i < 4; ++i ) { MSI( v[0].items[i].a, 10 + i, (long long) ( i ) ); MSI( v[0].items[i].drop, 900 + i, (long long) ( i ) ); }
+          MS( v[0].trail, 2 ); );
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
