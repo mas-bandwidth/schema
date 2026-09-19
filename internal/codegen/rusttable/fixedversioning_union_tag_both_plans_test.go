@@ -21,16 +21,22 @@ package rusttable
 // ENUM ordinal, a separate site; dart's compiled-plan test reads only the
 // compiled half. The identity half is what nothing guarded.
 //
-// THE COMPILED HALF DOES NOT ASSERT `clamped`, AND THAT OMISSION IS THIS ROW'S
-// CONTENT, NOT ITS WEAKNESS — schema#1254. Over these same forged bytes the
-// identity plan counts ONE and the compiled plan counts ZERO: the compiled
-// plan's remap lands a tag naming no shared arm as None before the decode bound
-// is reached, where the identity path's scatter is the straight-line decode that
-// holds the bound and counts the clamp. Asserting == 1 on the compiled half
-// would land a red row; asserting == 0 would cement the defect. So that half
-// asserts the LANDING — None, never the forged 9, the neighbour untouched, no
-// refusal and no other counter — and names the count as owed. WHEN #1254 IS
-// RULED ON, delete this paragraph and hand `clampedOnce` to both halves.
+// BOTH HALVES ASSERT `clampedOnce` NOW, AND THAT IS schema#1254 CLOSED ON THIS
+// LEG. Over these same forged bytes the compiled plan used to count ZERO where
+// the identity plan counted ONE: the compiled plan's arms are guarded consts, a
+// forged 9 matched no guard, and the tag lane was left to the PREFILL over a
+// hole — the right value, written by something that looked at nothing.
+//
+// THE FIX IS NOT cpptable's EIGHT LINES, because this leg had no unguarded None
+// const to hang them on. The union case pushes one — at the OUTER argw, with the
+// WRITER'S ARM COUNT in `dstsize` — and `TableFixedOp::Const` counts a raw tag
+// past that set. `Compiler::push` on this leg takes no record bound at all, so
+// that one entry carries its own, through `src.get(..)`: a short record is a
+// malformed verdict and never a panic.
+//
+// TWO NEGATIVE CONTROLS, each edit counted to exactly 1 and the file restored
+// and proved byte-for-byte: the counter disabled, and the arm-count lane forced
+// to 0, each leave 71 leaves with EXACTLY this row red.
 
 import (
 	"bytes"
@@ -134,7 +140,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 /// this half asserts the LANDING and not the count (schema#1254, see header).
 #[test]
 fn v_union_tag_both_plans_compiled() {
-` + body("") + `}
+` + body(clampedOnce) + `}
 `),
 		},
 		{
