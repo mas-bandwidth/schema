@@ -510,6 +510,25 @@ public final class TableFixed {
                 }
                 case opConst: {
                     putUint(image, p.dst, p.aux & 0xFFFFFFFFL, p.size);
+                    // AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM
+                    // COUNT: a tag past that set lands None (already written
+                    // just above) and COUNTS, so the compiled plan counts it
+                    // exactly as the identity plan's decode bound does and the
+                    // SAME forged bytes land the SAME clamped == 1 on either
+                    // plan (schema#1254, 5.4, 5.8 row 12).
+                    //
+                    // THE BOUND IS HERE AND NOT AT THE PUSH, and that is stated
+                    // rather than left to be found: opReach returns 0 for
+                    // opConst -- "reads no record byte at all" -- which is true
+                    // of every other const and is why the compile-time bound
+                    // cannot cover this one. The entry that reads a record byte
+                    // carries its own check, in the same shape the neighbouring
+                    // cases use.
+                    if (p.aux == 0 && p.dstsize != 0 && p.guard == noGuard) {
+                        if (p.src < 0 || p.src + p.size > srcLength) { report.malformed = true; return; }
+                        final long raw = tagAt(src, srcAt + p.src, p.size);
+                        if (raw > (p.dstsize & 0xFFL)) { report.clamped++; }
+                    }
                     break;
                 }
                 default: break;
@@ -1037,6 +1056,22 @@ public final class TableFixed {
                 final int myTag = mine.tagBytes(mi);
                 final long theirArms = theirs.children(ti);
                 final long myArms = mine.children(mi);
+                // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, and it is
+                // pushed HERE, before c.argw is retuned to this union's tag
+                // width, so it is stamped at the OUTER width: None answers to
+                // the OUTER tag (bill 12.7). Every tag value below is written
+                // under THEIR tag's guard, so a record naming an arm this build
+                // does not have -- or a tag past the writer's arm set entirely
+                // -- landed no tag at all from the plan and was answered by the
+                // PREFILL over the hole. That answer was right and silent:
+                // dstsize carries THE WRITER'S ARM COUNT for this one entry, and
+                // the read loop counts a clamp for a raw tag past that set, so
+                // the compiled plan counts what the identity plan's decode bound
+                // counts (schema#1254, 5.4, 5.8 row 12). Entries apply in push
+                // order, so the arm that matches overwrites this one and it
+                // stands when none does -- at the same value the prefill wrote.
+                c.push(theirAt, auxAt, myTag, 0, guard, opConst, arg,
+                        (byte) ((theirArms >= 1 && theirArms <= 255) ? theirArms : 0), (byte) 0);
                 // THE GUARD'S WIDTH IS THIS UNION'S TAG WIDTH, for the tag
                 // entry itself and for every entry under an arm, restored on the
                 // way out so a nested union does not leak its width upward.
