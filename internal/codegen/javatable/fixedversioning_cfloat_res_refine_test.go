@@ -38,8 +38,14 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	if got := r.value["lead"]; got != "1" {
 		t.Errorf("lead=%s, want 1", got)
 	}
-	if got := r.value["aim"]; got != "0.3" {
-		t.Errorf("aim=%s, want 0.3 — the old writer's 0.1 grid is a whole multiple of the reader's 0.01, so the float rides whole", got)
+	// THE BITS, AND FROM THE MANIFEST (schema#1164). This was `got != "0.3"` —
+	// a DECIMAL STRING, the weakest of the nine legs' comparisons, and "0.3" is
+	// the shortest decimal that round-trips for more than one float32, so a
+	// reader that requantized onto its own grid could land a neighbouring float
+	// and this row would have called it equal.
+	wantAim := manifestFloatBits(t, corpus, "old_cfloat_res_refine.bin", "values", "r0.aim")
+	if got := parseDumpedFloatBits(t, r.value["aim"]); got != wantAim {
+		t.Errorf("aim=%#x, want %#x from the corpus manifest — the old writer's 0.1 grid is a whole multiple of the reader's 0.01, so the float rides whole and bit-exact", got, wantAim)
 	}
 	if got := r.value["trail"]; got != "2" {
 		t.Errorf("trail=%s, want 2", got)
