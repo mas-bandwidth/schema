@@ -290,3 +290,68 @@ packet-wide-elixir-negative-control: packet-wide-elixir
 	@echo 'packet wide Elixir negative control: removed pairing fails bit-flip agreement'
 
 test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
+
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md §J1, issue #421).
+# The leg emits two derivations of one layout — the TYPED row/slot accessors
+# beside the block-record and cook descriptors — and this gate reads the same
+# SYNTHETIC bytes twice and requires agreement. It is VALUE agreement, not
+# offset agreement: on Go the accessor's offset is a number unsafe.Offsetof
+# will tell you, and on the BEAM the accessor's offset is a literal baked into
+# a generated function body that nothing can read back. The bytes are
+# synthetic, so this gate needs no harness run and its prerequisite is the
+# compiled corpus alone — build/elixir-tables-ebin/.stamp, not the derived
+# manifest — which is a minute per invocation it does not spend.
+#
+# SCOPE: the walk holds PLAIN SCALAR block-record fields and POINTER cook
+# slots, and nothing else — exactly what the two controls below move. Every
+# other descriptor class is counted and named `not yet held` by the script,
+# never silently skipped.
+.PHONY: tables-elixir-accessor-descriptor-agreement
+tables-elixir-accessor-descriptor-agreement: build/elixir-tables-ebin/.stamp
+	$(MIX) format --check-formatted test/elixir-tables/*.exs
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
+
+# The two controls for that gate, on the EMITTER for the fuzz control's reason:
+# each moves ONE derivation — a generated block scalar accessor four bytes, a
+# cook pointer slot eight — through `go build -overlay`, and the gate must find
+# the defect in generated code and red on its own disagreement message.
+CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR := build/elixir-accessor-negative
+ELIXIR_ACCESSOR_SED := -e 's|b.readAt(f, fmt.Sprint(fl.Offset), size)|b.readAt(f, fmt.Sprint(fl.Offset+4), size)|'
+
+.PHONY: tables-elixir-accessor-negative-control
+tables-elixir-accessor-negative-control:
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR),internal/codegen/elixirtable/block.go,ELIXIR_ACCESSOR_SED)
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR)/ebin \
+			$(ELIXIR) test/elixir-tables/accessor_descriptor.exs \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a generated accessor four bytes off left the gate green"; \
+		exit 1; \
+	fi
+	@grep -q "the accessor and the descriptor disagree about the value" $(CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the accessor/descriptor disagreement"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_ACCESSOR)/log; exit 1; }
+	@echo "elixir accessor negative control: a generated accessor four bytes off reds the agreement gate"
+
+CONFORMANCE_NEGATIVE_ELIXIR_SLOT := build/elixir-slot-negative
+ELIXIR_SLOT_SED := -e 's|do: C.deref(region, node + %d)|do: C.deref(region, node + 8 + %d)|'
+
+.PHONY: tables-elixir-slot-negative-control
+tables-elixir-slot-negative-control:
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SLOT),internal/codegen/elixirtable/cook.go,ELIXIR_SLOT_SED)
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SLOT)/ebin \
+			$(ELIXIR) test/elixir-tables/accessor_descriptor.exs \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_SLOT)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the gate green"; \
+		exit 1; \
+	fi
+	@grep -q "the slot accessor and the descriptor disagree about the delta" $(CONFORMANCE_NEGATIVE_ELIXIR_SLOT)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the pointer slot"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SLOT)/log; exit 1; }
+	@echo "elixir slot negative control: a pointer slot eight bytes off reds the agreement gate"
+
+# THE SPLIT the CI files draw: the cheap agreement gate rides `test-elixir`, the
+# two controls ride `tables-elixir-release` beside the fuzz and block-lead
+# controls, because each does a whole `go build -overlay` plus a regeneration
+# plus an `elixirc` of the entire corpus.
+test-elixir: tables-elixir-accessor-descriptor-agreement
+tables-elixir-release: tables-elixir-accessor-negative-control tables-elixir-slot-negative-control
