@@ -22,7 +22,6 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
   check(rec0 + 8 <= byte_size(data), "record 0 does not fit the corpus file")
   <<head::binary-size(rec0), h::little-unsigned-64, rest::binary>> = data
   data = <<head::binary, Bitwise.bxor(h, 0xFFFFFFFFFFFFFFFF)::little-unsigned-64, rest::binary>> # the forge: record 0's per-record hash, inverted
-  fresh = fresh_value()
   {tag, why, report} = load(data)
   check(tag == :error, "a record whose hash names no held layout must refuse: #{inspect(tag)}")
   check(why == :no_layout, "the record hash owes no_layout, not #{inspect(why)}")
@@ -33,7 +32,17 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
       report.clamped == 0 and report.duplicate == 0,
     "REFUSE is total: no counter moves: #{why(report)}"
   )
-  check(fresh == fresh_value(), "REFUSE wrote destination values")`
+  # THE DESTINATION, WHICH IS THE ROW (§5.8 row 9). The BEAM has no caller-owned
+  # image to poison: a read's destination is the value it RETURNS, so "refuse
+  # writes nothing" is a claim about the return. The refusal's value slot (the
+  # tuple's second element) is the reason ATOM — no built value comes back at all —
+  # and the SAME reader on the SAME record unforged returns {:ok, values, report}
+  # with exactly one value, so the refusal is shown to withhold a value this
+  # reader can and does build.
+  check(is_atom(why), "REFUSE wrote a destination value: #{inspect(why)}")
+  {ok_tag, ok_values, ok_report} = load(File.read!(file()))
+  check(ok_tag == :ok, "the unforged control read refuses: #{inspect(ok_tag)} #{why(ok_report)}")
+  check(length(ok_values) == 1, "the unforged file builds one value, not #{length(ok_values)}")`
 	out, err := runVersionProbe(t, elixirBin, "VNEW_nested_append", []string{"VOLD_nested_append"}, 0,
 		filepath.Join(corpus, "old_nested_append.bin"), body)
 	if err != nil {
