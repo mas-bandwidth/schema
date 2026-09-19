@@ -20,6 +20,18 @@ package javatable
 // `TestFixedCompiledPlanTagPastArmSet` reads the COMPILED plan only. Nothing
 // anywhere read the identity half.
 //
+// BOTH HALVES ASSERT `clamped == 1` NOW, AND THAT IS schema#1254 CLOSED ON THIS
+// LEG. The paragraph below is what the row said while the defect stood, kept
+// because it names the cause; what changed is that `case 15:` now pushes an
+// UNGUARDED None const carrying the WRITER'S ARM COUNT in dstsize, and `opConst`
+// counts a raw tag past that set. This leg had NO such entry — its arms are
+// guarded consts and the tag lane was left to the PREFILL over a hole, which
+// wrote the right value and looked at nothing. THE BOUND IS IN THE READ LOOP AND
+// NOT AT THE PUSH: `opReach` returns 0 for `opConst` ("reads no record byte at
+// all"), which is true of every other const, so the one entry that reads a
+// record byte carries its own check.
+//
+// (What follows is the residual as it was written, for the record.)
 // THE COMPILED HALF DOES NOT ASSERT `clamped`, AND THAT OMISSION IS THIS ROW'S
 // CONTENT, NOT ITS WEAKNESS — schema#1254. Over these same forged bytes the
 // identity plan counts ONE and the compiled plan counts ZERO: the compiled plan
@@ -99,9 +111,14 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	landing("the NEW build (compiled plan)", compiled)
 	landing("the OLD build (identity plan)", identity)
 
+	// BOTH PLANS COUNT THE CLAMP, EXACTLY ONCE. That is schema#1254 closed on
+	// this leg: `== 1` and never `>= 1`, because a leg that counted in the plan's
+	// op AND again in the decode bound would land 2 and a looser read would pass
+	// it.
 	if identity.clamped != 1 {
 		t.Errorf("the OLD build (identity plan): clamped=%d, want 1 exactly", identity.clamped)
 	}
-	// The compiled plan's clamped is deliberately NOT asserted: schema#1254, and
-	// the header says why.
+	if compiled.clamped != 1 {
+		t.Errorf("the NEW build (compiled plan): clamped=%d, want 1 exactly", compiled.clamped)
+	}
 }
