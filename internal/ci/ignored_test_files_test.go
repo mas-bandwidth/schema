@@ -33,6 +33,7 @@ package ci
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -63,7 +64,8 @@ func TestNoTestFileIsExcludedByABuildConstraint(t *testing.T) {
 	out, err := cmd.Output()
 	if err != nil {
 		var stderr string
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			stderr = string(ee.Stderr)
 		}
 		t.Fatalf("go list -json %s: %v\n%s", strings.Join(ignoredScanRoots, " "), err, stderr)
