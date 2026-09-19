@@ -566,6 +566,33 @@ pub fn table_fixed_run(
                 for i in 0..n {
                     image[d + i] = (v >> (8 * i)) as u8;
                 }
+                // AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM
+                // COUNT: a tag past that set lands None (already written just
+                // above) and COUNTS, so the compiled plan counts it exactly as
+                // the identity plan's decode bound does and the SAME forged
+                // bytes land the SAME clamped == 1 on either plan
+                // (schema#1254, §5.4, §5.8 row 12). Compiler::push on this leg
+                // takes no record bound at all, so the one entry that reads a
+                // record byte carries its own — and src.get is the bounds-safe
+                // read, so a short record is a malformed verdict and never a
+                // panic.
+                if p.aux == 0 && p.dstsize != 0 && p.guard == TABLE_FIXED_NO_GUARD {
+                    match src.get(s..s + n) {
+                        None => {
+                            report.malformed = true;
+                            return;
+                        }
+                        Some(bytes) => {
+                            let mut raw: u64 = 0;
+                            for (i, b) in bytes.iter().enumerate() {
+                                raw |= u64::from(*b) << (8 * i);
+                            }
+                            if raw > u64::from(p.dstsize) {
+                                report.clamped += 1;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1288,6 +1315,34 @@ fn compile_entry(
             // follow-on), and a stranger's union still lands correctly here.
             let their_tag = theirs.tag_bytes(ti);
             let my_tag = mine.tag_bytes(mi);
+            // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, at the OUTER
+            // argw and not this union's tag width: None answers to the OUTER
+            // tag (bill §12.7). Every tag value below is written under THEIR
+            // tag's guard, so a record naming an arm this build does not have
+            // — or a tag past the writer's arm set entirely — landed no tag at
+            // all from the plan and was answered by the PREFILL over the hole.
+            // That answer was right and silent: dstsize carries THE WRITER'S
+            // ARM COUNT for this one entry, and the read loop counts a clamp
+            // for a raw tag past that set, so the compiled plan counts what the
+            // identity plan's decode bound counts (schema#1254, §5.4, §5.8 row
+            // 12). Entries apply in push order, so the arm that matches
+            // overwrites this one and it stands when none does.
+            c.push(TableFixedEntry {
+                src: their_at,
+                dst: my_at,
+                size: my_tag,
+                aux: 0,
+                guard,
+                arg,
+                argw,
+                op: TableFixedOp::Const,
+                dstsize: if te.children >= 1 && te.children <= 255 {
+                    te.children as u8
+                } else {
+                    0
+                },
+                ..TableFixedEntry::default()
+            });
             let mut my_arm = mi + 1;
             for k in 0..me.children as usize {
                 let ma = mine.entry(my_arm);
