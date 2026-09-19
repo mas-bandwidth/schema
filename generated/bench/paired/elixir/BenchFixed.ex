@@ -718,6 +718,9 @@ defmodule Bench.BenchFixed do
       R.text(binary_part(b_player_name, 0, min(max(n_player_name, 0), 15)), <<>>, m, true)
 
     c = R.clamps(c, n_payload, 0, 16)
+    c = R.fclamps(c, R.f32_value(f_aim_x), -1.0, 1.0)
+    c = R.fclamps(c, R.f32_value(f_aim_y), -1.0, 1.0)
+    c = R.fclamps(c, R.f32_value(f_aim_z), -1.0, 1.0)
 
     c =
       R.clamps(
@@ -747,9 +750,9 @@ defmodule Bench.BenchFixed do
        loadout: [f_loadout_0, f_loadout_1, f_loadout_2, f_loadout_3],
        player_name: t_player_name,
        payload: binary_part(b_payload, 0, min(max(n_payload, 0), 16)),
-       aim_x: R.f32_value(f_aim_x),
-       aim_y: R.f32_value(f_aim_y),
-       aim_z: R.f32_value(f_aim_z),
+       aim_x: R.fclamp(R.f32_value(f_aim_x), -1.0, 1.0),
+       aim_y: R.fclamp(R.f32_value(f_aim_y), -1.0, 1.0),
+       aim_z: R.fclamp(R.f32_value(f_aim_z), -1.0, 1.0),
        recoil: R.f32_value(f_recoil),
        drift: R.f64_value(f_drift),
        wide_key: f_wide_key,
