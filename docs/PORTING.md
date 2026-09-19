@@ -1114,7 +1114,8 @@ and requires the scan to see it.
 
 **Reference.** `internal/tablenames/tablenames.go`;
 `TestTableRuntimeNamesAreClaimed` (`compiler/tables_test.go:918`, with the
-refusal loop for every language); `TestJavaRuntimeNameScanGoesRed`.
+refusal loop for every language); `TestJavaRuntimeNameScanGoesRed`;
+`TestGoRuntimeNameScanGoesRed`.
 
 **Proven in.** C++; the control in Java.
 
@@ -1128,7 +1129,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1279,7 +1280,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ❌ #418 | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 |
 
 ### I13 — The text differential against a third implementation
 
@@ -1390,7 +1391,7 @@ each through `go build -overlay`; each must turn the leg red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
 
 ### J2 — The runtime home, with a file-order control
 

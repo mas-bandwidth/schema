@@ -1,0 +1,3 @@
+govulncheck: loading packages: there are errors with the provided package patterns:
+
+internal/ir/parse.go:1204:1: syntax error: unexpected EOF, expecting }
