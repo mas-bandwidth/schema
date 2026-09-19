@@ -298,6 +298,13 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 # sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
 # name a missing corpus can never pass silently.
 #
+# AND BECAUSE IT IS A GO TEST UNDER A PREPENDED PATH, RUSTUP_BIN MUST NOT NAME A
+# DIRECTORY HOLDING A SECOND go: CI fast's rust row handed /usr/bin here and the
+# runner image's go 1.24.13 answered in front of the installed 1.26, so the gate
+# died on `go.mod requires go >= 1.26` with no row asserted (run 34600421804).
+# The default below is a homebrew keg that does not exist on a runner, which is
+# why prepending it is harmless there.
+#
 # AND IT IS A GO TEST THAT SHELLS OUT TO CARGO, so the PATH carries $(RUSTUP_BIN)
 # the way every other Rust row in this file does: the suite's one `cargo test
 # --workspace` resolves cargo out of the environment it is handed and nothing
