@@ -676,10 +676,10 @@ func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 
 	if err != nil {
 		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		var values string
 		named := false
-		for _, field := range strings.Fields(line) {
+		for field := range strings.FieldsSeq(line) {
 			k, v, ok := strings.Cut(field, "=")
 			if !ok {
 				continue
@@ -694,7 +694,7 @@ func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 
 		if !named {
 			continue
 		}
-		for _, pair := range strings.Split(values, ",") {
+		for pair := range strings.SplitSeq(values, ",") {
 			k, v, ok := strings.Cut(pair, "=")
 			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
 				continue
