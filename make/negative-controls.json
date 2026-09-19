@@ -531,6 +531,7 @@
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
+        "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-versioning-negative-control"
       ],
       "otp": "29.0.5",

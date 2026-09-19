@@ -22,6 +22,13 @@ ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
 
+# THE PINNED RUNTIME THIS LEG CERTIFIES ON (docs/PORTING.md I14). The two
+# versions above live in a comment and in dist/ path names; these are the two
+# the gate COMPARES AGAINST, and they are the same strings
+# make/negative-controls.json and test/conformance/elixir/ci.json carry.
+ELIXIR_PIN_OTP    ?= 29.0.5
+ELIXIR_PIN_ELIXIR ?= 1.20.4
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
 # docs/CONTRIBUTING.md, "Adding a language"). The three pins carry an
 # environment prefix rather than a path, so each probe resolves the launcher
@@ -206,6 +213,23 @@ tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
 		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
 	fi
 
+.PHONY: tables-elixir-runtime-pin
+tables-elixir-runtime-pin:
+	$(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
+
+.PHONY: tables-elixir-runtime-pin-negative-control
+tables-elixir-runtime-pin-negative-control:
+	@mkdir -p build/elixir-runtime-pin
+	@$(ELIXIR) -e 'IO.puts(System.version())' > build/elixir-runtime-pin/running.txt
+	@if $(ELIXIR) test/elixir/runtime_pin.exs 0.0.0 0.0.0 > build/elixir-runtime-pin/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate certified on a pin nothing can be running"; \
+		cat build/elixir-runtime-pin/log; exit 1; fi
+	@grep -Fq '0.0.0' build/elixir-runtime-pin/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the pin it wanted"; cat build/elixir-runtime-pin/log; exit 1; }
+	@grep -Fq "$$(cat build/elixir-runtime-pin/running.txt)" build/elixir-runtime-pin/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal did not name the Elixir it is actually running"; cat build/elixir-runtime-pin/log; exit 1; }
+	@echo 'elixir runtime pin negative control: a pin nothing is running is refused, naming both versions'
+
 # THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
 # landing it is this target and nothing else — no edit to that file).
 #
@@ -220,6 +244,8 @@ ELIXIR_RELEASE_FUZZ_N ?= 200000
 
 .PHONY: tables-elixir-release
 tables-elixir-release:
+	$(MAKE) tables-elixir-runtime-pin
+	$(MAKE) tables-elixir-runtime-pin-negative-control
 	$(MAKE) tables-elixir-fuzz ELIXIR_FUZZ_N=$(ELIXIR_RELEASE_FUZZ_N)
 	$(MAKE) tables-elixir-fuzz-negative-control
 	$(MAKE) tables-elixir-block-lead
