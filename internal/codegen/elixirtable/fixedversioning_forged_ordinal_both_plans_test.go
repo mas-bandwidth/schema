@@ -31,7 +31,7 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("tier=3 followed by seq=9 is not in %s", old)
 	}
-	if bytes.Index(data[at+1:], needle) >= 0 {
+	if bytes.Contains(data[at+1:], needle) {
 		t.Fatalf("tier=3 followed by seq=9 occurs more than once in %s", old)
 	}
 	data[at] = 4 // the forge
