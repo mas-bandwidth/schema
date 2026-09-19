@@ -904,10 +904,33 @@ func fixedBitsClamp(t ir.FieldType) (*big.Int, bool) {
 	return new(big.Int).Sub(new(big.Int).Lsh(one, uint(t.Width)), one), true
 }
 
+// fixedFloatClampEnds answers a ranged float's bounds as Dart double literals.
+// A float32 field's ends are narrowed to float32 first, so the comparison is
+// against exactly the value the reader's own declaration names and not a
+// double that is a hair wider. Which bound is the reader's own and not the
+// writer's is schema#1164, statement B.
+func fixedFloatClampEnds(f *ir.Field) (lo, hi string, ok bool) {
+	if f == nil || !f.HasFloatRange {
+		return "", "", false
+	}
+	l, h := f.FMin, f.FMax
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		l, h = float64(float32(l)), float64(float32(h))
+	case ir.TFloat64:
+	default:
+		return "", "", false
+	}
+	return fixedFloatLit(l), fixedFloatLit(h), true
+}
+
 // fixedHasClamp reports a leaf whose decode writes any comparison at all.
 func fixedHasClamp(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
+	case ir.TFloat32, ir.TFloat64:
+		_, _, ok := fixedFloatClampEnds(f)
+		return ok
 	default:
 		return false
 	}
@@ -948,6 +971,27 @@ func (g *fixedGen) fixedClampTerms(t ir.FieldType, expr string, v *big.Int) (lhs
 func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
+	case ir.TFloat32, ir.TFloat64:
+		// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as a ranged
+		// integer does, and against THIS READER'S own min and max
+		// (schema#1164, ruled statement B): in the fixed form a compressed
+		// float rides AS THE FLOAT (SPEC §3.4), its bounds are DEFINITIONS in
+		// the digest, and the compiled plan carries no range at all, so the
+		// pass can only be the reader's. `<` and `>` are IEEE comparisons on
+		// purpose: a NaN is below no min and above no max, so it survives
+		// uncounted, and a negative zero is not below a min of +0.
+		lo, hi, ok := fixedFloatClampEnds(f)
+		if !ok {
+			return
+		}
+		g.pf("%sif (%s < %s) {\n", ind, expr, lo)
+		g.pf("%s  %s = %s;\n", ind, expr, lo)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s} else if (%s > %s) {\n", ind, expr, hi)
+		g.pf("%s  %s = %s;\n", ind, expr, hi)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}\n", ind)
+		return
 	default:
 		return
 	}
