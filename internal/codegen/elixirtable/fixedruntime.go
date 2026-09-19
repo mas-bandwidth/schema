@@ -311,6 +311,27 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
+  from 'clamps/4' because a float32 that is not finite does not arrive here as
+  a number at all: 'f32_value/1' answers the TUPLE '{:nonfinite, bits}' for an
+  infinity or a NaN, and in Erlang's term order every tuple sorts ABOVE every
+  number, so an unguarded 'v > hi' would "clamp" a NaN to the maximum and count
+  it. The 'is_float/1' guard is the whole point of these two, and IEEE does the
+  rest: a NaN is below no min and above no max, and a negative zero is not
+  below a min of +0.
+
+  Which bound is the reader's own and not the writer's is schema#1164, ruled
+  statement B: a compressed float rides AS THE FLOAT in the fixed form, its
+  bounds are definitions in the digest, and the compiled plan carries no range.
+  """
+  def fclamp(v, lo, _hi) when is_float(v) and v < lo, do: lo
+  def fclamp(v, _lo, hi) when is_float(v) and v > hi, do: hi
+  def fclamp(v, _lo, _hi), do: v
+
+  def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1
+  def fclamps(acc, _v, _lo, _hi), do: acc
+
+  @doc """
   The count moved by an ORDINAL past the last variant the reader declares: an
   enum value, or a union tag, that names nothing lands None and counts one.
   """
