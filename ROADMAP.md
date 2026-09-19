@@ -102,13 +102,11 @@ Fixed tables provide versioning such that a new reader can always read an old wr
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | complete | 24% | 19% | 29% | 7% | 28% | 28% | 40% | 43% | 21% |
 
-[Source data](docs/roadmap.sexp)
-
 <!-- nova-work:fixed-tables:end -->
 
-### Future
+## Future
 
-Future capabilities we are thinking about, in particular around more advanced variable (recursive) table definitions and cooking data to efficient binary formats.
+Future capabilities we are thinking about, in particular around more advanced variable and recursive table definitions and cooking data to efficient binary formats.
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
