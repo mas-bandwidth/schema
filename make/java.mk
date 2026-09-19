@@ -503,12 +503,98 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
+# J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421). The
+# generated ACCESSOR and the generated DESCRIPTOR are two independent
+# derivations of ONE layout, so the read must go both ways and require
+# agreement. This leg already ships TableBlockLayout.verify(), but it compares
+# two CONSTANTS — <Name>Row.offsets against the descriptor's offsets, both out
+# of the same derivation — and never calls an accessor BODY, so a moved
+# accessor body leaves it green. This gate compares two READS: call the
+# accessor, read at the descriptor's own offset, require the same answer.
+# The two controls move the emitter, through `go build -overlay`: the block
+# projection scalar +4 bytes (block.go), and the pointer slot +8 bytes
+# (rows.go) — the SLOT, not the delta reader one line below it, because only a
+# slot comparison reddens.
+build/java-accessor/.stamp: build/tables-generated-java/.stamp test/java-tables/src/AccessorDescriptor.java
+	@rm -rf build/java-accessor && mkdir -p build/java-accessor
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-accessor \
+		build/tables-generated-java/pointers/*.java build/tables-generated-java/block/*.java \
+		test/java-tables/src/AccessorDescriptor.java
+	@touch $@
+
+.PHONY: tables-java-accessor-descriptor-agreement
+tables-java-accessor-descriptor-agreement: build/java-accessor/.stamp build/cook-open/.stamp
+	$(JAVA) -cp build/java-accessor AccessorDescriptor testdata/wire/tables/block_render.bin build/cook-open/Scene.cook
+
+# ITS SCALAR NEGATIVE CONTROL: move one generated block projection scalar
+# accessor four bytes and the gate must go red. Without this the accessor half
+# of the gate could be reading the descriptors twice and nobody would know.
+JAVA_ACCESSOR_SABOTAGE := build/java-accessor-sabotage
+JAVA_ACCESSOR_SABOTAGE_SED := s|readCall(typ, fmt.Sprintf(\"at + %d\", pieces\[0\].Offset)))|readCall(typ, fmt.Sprintf(\"at + %d\", pieces[0].Offset+4))) // SABOTAGED|
+.PHONY: tables-java-accessor-negative-control
+tables-java-accessor-negative-control: build/cook-open/.stamp
+	@rm -rf $(JAVA_ACCESSOR_SABOTAGE) && mkdir -p $(JAVA_ACCESSOR_SABOTAGE)
+	@sed '$(JAVA_ACCESSOR_SABOTAGE_SED)' internal/codegen/javatable/block.go > $(JAVA_ACCESSOR_SABOTAGE)/javatable-block.go.txt
+	@cmp -s internal/codegen/javatable/block.go $(JAVA_ACCESSOR_SABOTAGE)/javatable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java block scalar sabotage did not apply"; exit 1; } || true
+	@if [ "$$(grep -c SABOTAGED $(JAVA_ACCESSOR_SABOTAGE)/javatable-block.go.txt)" != "1" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotage did not land exactly once"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_ACCESSOR_SABOTAGE)/javatable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_ACCESSOR_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_ACCESSOR_SABOTAGE)/overlay.json -o $(JAVA_ACCESSOR_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_ACCESSOR_SABOTAGE)/generated/pointers tables/pointers
+	$(JAVA_ACCESSOR_SABOTAGE)/schema generate --lang java --out $(JAVA_ACCESSOR_SABOTAGE)/generated/block tables/block
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_ACCESSOR_SABOTAGE)/classes \
+		$(JAVA_ACCESSOR_SABOTAGE)/generated/*/*.java test/java-tables/src/AccessorDescriptor.java
+	@if $(JAVA) -cp $(JAVA_ACCESSOR_SABOTAGE)/classes AccessorDescriptor testdata/wire/tables/block_render.bin \
+			build/cook-open/Scene.cook > $(JAVA_ACCESSOR_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a block scalar accessor four bytes off left the gate green"; \
+		cat $(JAVA_ACCESSOR_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the accessor and the descriptor disagree" $(JAVA_ACCESSOR_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the accessor/descriptor disagreement"; \
+		  cat $(JAVA_ACCESSOR_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_ACCESSOR_SABOTAGE)/log
+	@echo "negative control: a block scalar accessor four bytes off turns the Java gate RED on the accessor/descriptor agreement"
+
+# ITS POINTER-SLOT NEGATIVE CONTROL: move a pointer SLOT's own offset eight
+# bytes — the position a self-relative delta is relative to (§6.3) — and the
+# cook accessors must part company with the cook descriptors. The DELTA reader
+# one line below it does not move, so only a SLOT comparison reddens.
+JAVA_SLOT_SABOTAGE := build/java-slot-sabotage
+JAVA_SLOT_SABOTAGE_SED := s|^\(.*Slot(int at) { return at + %d; }.*\)pieces\[0\].Offset)|\1pieces[0].Offset+8) // SABOTAGED|
+.PHONY: tables-java-slot-negative-control
+tables-java-slot-negative-control: build/cook-open/.stamp
+	@rm -rf $(JAVA_SLOT_SABOTAGE) && mkdir -p $(JAVA_SLOT_SABOTAGE)
+	@sed '$(JAVA_SLOT_SABOTAGE_SED)' internal/codegen/javatable/rows.go > $(JAVA_SLOT_SABOTAGE)/javatable-rows.go.txt
+	@cmp -s internal/codegen/javatable/rows.go $(JAVA_SLOT_SABOTAGE)/javatable-rows.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Java slot sabotage did not apply"; exit 1; } || true
+	@if [ "$$(grep -c SABOTAGED $(JAVA_SLOT_SABOTAGE)/javatable-rows.go.txt)" != "1" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotage did not land exactly once"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/javatable/rows.go":"%s/$(JAVA_SLOT_SABOTAGE)/javatable-rows.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_SLOT_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_SLOT_SABOTAGE)/overlay.json -o $(JAVA_SLOT_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_SLOT_SABOTAGE)/generated/pointers tables/pointers
+	$(JAVA_SLOT_SABOTAGE)/schema generate --lang java --out $(JAVA_SLOT_SABOTAGE)/generated/block tables/block
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_SLOT_SABOTAGE)/classes \
+		$(JAVA_SLOT_SABOTAGE)/generated/*/*.java test/java-tables/src/AccessorDescriptor.java
+	@if $(JAVA) -cp $(JAVA_SLOT_SABOTAGE)/classes AccessorDescriptor testdata/wire/tables/block_render.bin \
+			build/cook-open/Scene.cook > $(JAVA_SLOT_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the gate green"; \
+		cat $(JAVA_SLOT_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the slot accessor's offset is not the descriptor's" $(JAVA_SLOT_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the pointer slot"; \
+		  cat $(JAVA_SLOT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_SLOT_SABOTAGE)/log
+	@echo "negative control: a pointer slot eight bytes off turns the Java gate RED on the cook's slot accessor"
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
 # timeout, and that headroom was thin before this backend existed — this leg's
 # gates cost about twenty seconds there. So the expensive half is here, by
-# name — every unit compiled under -Werror, and the three planted controls,
+# name — every unit compiled under -Werror, and the five planted controls,
 # each of which rebuilds the compiler over a sabotaged emitter — and the cheap
 # half rides every build. The split is a budget decision and is written down
 # as one rather than left as an absence.
@@ -529,6 +615,8 @@ tables-java-release:
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
+	$(MAKE) tables-java-accessor-negative-control
+	$(MAKE) tables-java-slot-negative-control
 
 # THE PAIRED UNIT, in the discovered generation graph beside the four the
 # driver already tracks (c, cpp, cs, go each have this rule in their own .mk).
@@ -642,7 +730,7 @@ conformance-negative-control-java-block: build/conformance-harness
 
 # THE JAVA LEG of `make test`: the compile, standalone and zero-cost gates, the
 # readers' fuzz oracle, the byte-order leg and the reference extent gate. The
-# three planted controls are `make tables-java-release`, because `make test`
+# five planted controls are `make tables-java-release`, because `make test`
 # has no budget for them (see that target). Then the packet tests, with and
 # without -ea.
 .PHONY: test-java
@@ -656,6 +744,7 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
 	$(MAKE) tables-java-fixedform
 	$(MAKE) tables-java-fixedform-bench
+	$(MAKE) tables-java-accessor-descriptor-agreement
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
