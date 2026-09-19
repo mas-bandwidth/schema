@@ -780,11 +780,19 @@ if ( !ReadShipCreate( stream, value ) )
 }
 ```
 
-The slack requirement differs per language: **C ≥8 bytes, C++ ≥8, Go ≥7,
-Rust ≥8, C# none, Dart none, Java none, Elixir none, and JavaScript's flat tier ≥8 past
-the payload.** The
-per-target columns are normative in [SPEC.md](SPEC.md) §6.3. Write
-buffers are a multiple of 8 in every language.
+**The slack is ONE number in all nine languages: 8.** The read buffer contract
+is law in [SPEC.md](SPEC.md) §4.3 — a caller hands a reader a buffer with at
+least 8 bytes readable past the payload's logical length, an implementation may
+read up to 8 of them so it can load 64 bits at a time, and one that reads none
+of them is conforming too. Size every receive buffer that way and any target
+will take it. What each language reads TODAY (C up to 8, C++ up to 8, Go's fast
+path up to 7, Rust up to 8, JavaScript's flat tier up to 8, and C#, Dart, Java
+and Elixir nothing) is the per-target table in §6.3, and it is a record, not a
+per-language contract to code against — a target that reads none of the slack
+may start reading it. A buffer shorter than the contract is a CALLER error, not
+a malformed payload (§5): the target fails however that target fails, and
+JavaScript's flat tier throws a `RangeError`. Write buffers are a multiple of 8
+in every language.
 
 That covers ranges, counts past an array bound, string lengths past their
 maximum, enum values outside the declared range, and reads that run past the
@@ -798,8 +806,9 @@ variants can be added later without
 moving the field width — and a read of that enum accepts anything in `[0, 15]`.
 That is the point of the headroom, but it means a value you have not defined
 yet can arrive, and your `switch` should have a default. The same VALIDATION rules hold in all nine languages, because
-the same compiler wrote all nine — the buffer-slack contract above is the one
-thing that differs per language.
+the same compiler wrote all nine — and the buffer-slack contract is the same in
+all nine too (SPEC.md §4.3); only how much of the slack a target reads today
+differs.
 
 ---
 
