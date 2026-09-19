@@ -985,6 +985,167 @@ func TestOldArgLaneControl(t *testing.T) {
 `)
 }
 
+// TestFixedFormRecordBound is the Go twin of the C++ reference's
+// record_bound_case() (test/tables/fixedform_main.cpp): W10 — EVERY COMPILED
+// ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+// (docs/FIXED-FORM-ALGORITHM.md §4.2 fix 3). The plan's source offsets are
+// arithmetic over sizes a WRITER wrote down, so a layout that passes every rule
+// of §1.1 and still names a byte past `root.size` is refused WHOLE, never partly
+// compiled, under `layout_record_too_large`.
+//
+// The layout is hand-built out of THIS build's own field ids, read out of
+// HostFixedLayout rather than spelled as hashes, so the case does not quietly
+// stop naming the fields it means. The overrun comes from an ARRAY entry's
+// admitted size — `size % elem == 0` OR `4 + n*elem` — so a size of ZERO is a
+// valid bare array of no elements, and the compiler takes the head from the
+// READER's own row (d.Counted, `bytes(N)` is a counted array on this wire), so a
+// reader whose field carries a live count subtracts four from zero: the elements
+// land past a record that ends at four.
+func TestFixedFormRecordBound(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Host {
+    keep  uint32 = 7
+    label string(8) = "hi"
+    blob  bytes(6)
+}
+`, `package probe
+import (
+	"encoding/binary"
+	"testing"
+	"unsafe"
+)
+
+func putEntry(layout []byte, id uint64, kind uint8, size, children uint32) []byte {
+	e := make([]byte, 17)
+	binary.LittleEndian.PutUint64(e, id)
+	e[8] = kind
+	binary.LittleEndian.PutUint32(e[9:], size)
+	binary.LittleEndian.PutUint32(e[13:], children)
+	return append(layout, e...)
+}
+
+func count4(n uint32) []byte {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, n)
+	return b
+}
+
+func hashOf(layout []byte) uint64 {
+	h := uint64(0xcbf29ce484222325)
+	for _, c := range layout {
+		h ^= uint64(c)
+		h *= 0x100000001b3
+	}
+	return h
+}
+
+func TestRecordBound(t *testing.T) {
+	// the ids are READ OUT of this build's own layout, not spelled as hashes
+	mine, why := tableFixedParseLayout(HostFixedLayout)
+	if why != "" {
+		t.Fatalf("W10: my own layout does not parse: %s", why)
+	}
+	rootID := tableFixedEntryAt(mine, 0).Id
+	var keepID, blobID, blobElemID, labelID uint64
+	for i := int32(1); i < mine.Count; i++ {
+		e := tableFixedEntryAt(mine, i)
+		if e.Kind == 8 && e.Size == 4 && keepID == 0 {
+			keepID = e.Id // keep, a uint32
+		}
+		if e.Kind == 12 && labelID == 0 {
+			labelID = e.Id // label, a string(8)
+		}
+		if e.Kind == 14 && i+1 < mine.Count {
+			el := tableFixedEntryAt(mine, i+1)
+			if el.Kind == 6 && el.Size == 1 {
+				blobID = e.Id     // blob, bytes(6): an array of u8
+				blobElemID = el.Id // the u8 element; may be zero
+			}
+		}
+	}
+	if rootID == 0 || keepID == 0 || blobID == 0 || labelID == 0 {
+		t.Fatalf("W10: the ids this case names are the ids this build's own layout carries")
+	}
+
+	// 1. AN ENTRY WHOSE src+size REACHES PAST root.size. The record body is
+	//    FOUR bytes (root kind 13 size 4), keep fills it at 0, then an array
+	//    of size ZERO at offset 4. A size of zero is a valid bare array, but
+	//    the reader's counted head turns it into elements past the record.
+	blobSize := uint32(0)
+	hostile := count4(4)
+	hostile = putEntry(hostile, rootID, 13, 4+blobSize, 2)
+	hostile = putEntry(hostile, keepID, 8, 4, 0)
+	hostile = putEntry(hostile, blobID, 14, blobSize, 1)
+	hostile = putEntry(hostile, blobElemID, 6, 1, 0)
+
+	parsed, why := tableFixedParseLayout(hostile)
+	if why != "" {
+		t.Fatalf("W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND; got %s", why)
+	}
+	plan := make([]TableFixedEntry, 256)
+	var cr TableReport
+	made := tableFixedCompile(parsed, HostFixedLayout, HostFixedDst, plan, &cr)
+	if made != -3 {
+		t.Fatalf("W10: COMPILE answers %d, want -3 (hostile) for an entry past the writer's record size", made)
+	}
+	known := []TableFixedKnownLayout{{Hash: 0xDEADBEEF, Layout: hostile, Record: 4}}
+	lineage := tableFixedLineagePlans(known, HostFixedLayout, HostFixedDst, HostFixedHash)
+	if lineage[0].Why != "layout_record_too_large" {
+		t.Fatalf("W10: COMPILE's refusal is named %q, want layout_record_too_large", lineage[0].Why)
+	}
+
+	// LOAD of the same bytes: hash selects, and a stranger is layout_newer.
+	file := make([]byte, TableFixedHeaderBytes+4)
+	file[0] = TableFixedForm
+	tableFixedPut64(file[TableFixedHashAt:], hashOf(hostile))
+	tableFixedPut32(file[TableFixedHeaderBytes:], uint32(len(hostile)))
+	file = append(file, hostile...)
+	got := make([]Host, 1)
+	HostReset(&got[0])
+	var r TableReport
+	n := HostFixedLoad(got, file, make([]TableFixedEntry, 256), &r)
+	if n >= 0 || r.Reason != "layout_newer" || r.Verdict != TableOpenRefused {
+		t.Fatalf("W10: LOAD of the same bytes is not refused: n=%d %+v", n, r)
+	}
+	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Malformed {
+		t.Fatalf("W10: the refusal sets nothing and counts nothing: %+v", r)
+	}
+	if got[0].Keep != 7 || got[0].BlobLength != 0 {
+		t.Fatalf("W10: NOT PARTLY COMPILED — no entry of the plan ran: keep=%d blob_length=%d", got[0].Keep, got[0].BlobLength)
+	}
+
+	// 2. THE BOUNDARY ITSELF STANDS: a text entry whose length word and payload
+	//    END EXACTLY at root.size is a layout with nothing wrong with it, and a
+	//    bound that refused it would be a bound that refuses the wire.
+	boundary := count4(3)
+	boundary = putEntry(boundary, rootID, 13, 16, 2)
+	boundary = putEntry(boundary, keepID, 8, 4, 0)
+	boundary = putEntry(boundary, labelID, 12, 12, 0) // src 4, +4 the length word, 12 bytes to 16
+	bparsed, bwhy := tableFixedParseLayout(boundary)
+	if bwhy != "" {
+		t.Fatalf("W10: the boundary layout does not parse: %s", bwhy)
+	}
+	bplan := make([]TableFixedEntry, 256)
+	var br TableReport
+	bmade := tableFixedCompile(bparsed, HostFixedLayout, HostFixedDst, bplan, &br)
+	if bmade < 0 {
+		t.Fatalf("W10: a text entry ending EXACTLY at root.size must still compile, got %d", bmade)
+	}
+	body := make([]byte, 16)
+	tableFixedPut32(body, 4242)  // keep
+	tableFixedPut32(body[4:], 2) // the label's length
+	body[8] = 'h'
+	body[9] = 'i'
+	var v Host
+	HostReset(&v)
+	tableFixedRun(bplan, bmade, body, tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &br)
+	if v.Keep != 4242 || v.LabelLength != 2 || v.Label[0] != 'h' || v.Label[1] != 'i' {
+		t.Fatalf("W10: the bound admits the last byte of the record: %+v", v)
+	}
+}
+`)
+}
+
 func tableFile(files map[string][]byte) string {
 	body := ""
 	for name, data := range files {
