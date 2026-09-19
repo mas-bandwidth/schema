@@ -271,9 +271,26 @@ caller's bytes would go red, which is the whole of what changes.
 **THE PROBE'S TWO OBLIGATIONS, because a row made of an absence is one edit from being vacuous:**
 
 1. **The poison must be PROVED TO HAVE REACHED THE DESTINATION.** A poison computed and discarded asserts
-   nothing — that exact bug stood on the elixir leg until #1212. The probe's own negative control is to
-   demand `pick.alpha` be the POISON instead of the writer's value: it must go RED, and that red is the
-   receipt that the destination really was poisoned before the read.
+   nothing — that exact bug stood on the elixir leg until #1212.
+
+   **The receipt is the UNSELECTED arm, and it is only available on some legs.** Add, temporarily, the very
+   assertion this row refuses — `pick.gamma.p == 0` — and run it. On a leg that keeps the caller's bytes
+   (java, dart, js, cs) it comes back **red naming the poison**, and that is the proof: on js, at `37d4c1ca`,
+   `FAIL: pick.gamma.p is its declared default 0, not 1515870810` — `1515870810` is `0x5A5A5A5A`, so the
+   destination really was poisoned and the read really did leave that arm alone. **Then take the line back
+   out**; it must not be in the committed file.
+
+   **What does NOT work, stated because this page said it did until #1218 corrected it**: demanding
+   `pick.alpha` be the poison instead of the writer's value. That control goes red — but it goes red whether
+   the destination was poisoned or not, because `alpha` is the SELECTED arm and the read overwrites it
+   either way; with no poison at all the field is constructor-zero, then the writer's value, and the failure
+   line is identical. It is not a receipt.
+
+   **On go and rust the poison has NO receipt, and the row must say so rather than imply one.** Those legs
+   land the declared default in every arm, so the temporary assertion passes there and the poison is
+   invisible from the value surface. That is not a defect — it is "unspecified" being exercised the other
+   way — but a go or rust probe that carries a poison it cannot observe is decoration, and its comment
+   should state that the poison is present for uniformity with the other legs and is not load-bearing here.
 2. **BOTH COLUMNS are poisoned**, not just the `reads` one. The caution above is why: with only the reads
    column poisoned, `beta` — a SHARED field — reds against the older build's constructor zero whatever the
    codec does, and the row would be measuring the harness.
