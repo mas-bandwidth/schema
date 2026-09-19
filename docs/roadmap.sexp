@@ -9,7 +9,7 @@
  :nodes
  ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "acceptance-gates" "integration"))
   (:id "fixed-tables" :type :roadmap :title "NEW Fixed Tables" :scope-revision 2 :source-revision
-   "c95bee90e573429db1b5929d87406a480fcd1fd0" :rows
+   "202af6e84e5d92312ac49144d2fbe9fe020b3999" :rows
    (("file-envelope" "File framing and layout announcements") ("batch-capacity" "Bounded batches")
     ("plan-selection" "Select known layouts and refuse unsupported input")
     ("compiled-plans" "Static plans, record sizes and caller capacity")
@@ -836,10 +836,13 @@
    "Historical report at b7ab66a8; current completion has not been reconciled." :children
    ("cpp/R9/seven-corruptions" "cpp/R9/remaining-boundaries"))
   (:id "cpp/R12" :type :task :title
-   "the per-record hash check is before the prefill: no_layout writes nothing" :state :unknown :evidence nil
+   "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1236: §5.8 row 9 refuse_writes_nothing on cpp, the last leg to land it"
+    "internal/codegen/cpptable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing, which poisons with memset( back, 0x5A, sizeof( back ) ) and sweeps every byte"
+    "merged into fixed-table-form at 1cb98104f32d1e517d54560261ddabe193bcba6f")
    :audit-item "R12" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill. With this leg the row stands on all nine.")
   (:id "cpp/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -2747,14 +2750,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "reports/elixir" :type :work-set :children ("elixir/E9" "elixir/R16" "elixir/R18"))
-  (:id "cpp/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "cpp/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1240: the count_clamp_ends row on cpp, the NEGATIVE end (roadmap cpp/C1)"
+    "internal/codegen/cpptable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at c791fce8a8b56a93a6a2160720ac8ca495845c03") :audit-item "C1"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cpp/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red.")
+  (:id "cpp/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1240: the count_clamp_ends row on cpp, the PAST-THE-READER-MAX end (roadmap cpp/C2)"
+    "internal/codegen/cpptable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at c791fce8a8b56a93a6a2160720ac8ca495845c03") :audit-item "C2"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "cpp/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1131: §5.8 row 4 writer_bound_count on cpp"
@@ -2766,14 +2775,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/cpp" :type :work-set :children ("cpp/C1" "cpp/C2" "cpp/R11"))
-  (:id "c/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "c/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1237: the count_clamp_ends row on c, the NEGATIVE end (roadmap c/C1)"
+    "internal/codegen/ctable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 95aedfb4325460caa14b3d4b932f086fa29f0cb6") :audit-item "C1"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "c/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red.")
+  (:id "c/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1237: the count_clamp_ends row on c, the PAST-THE-READER-MAX end (roadmap c/C2)"
+    "internal/codegen/ctable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 95aedfb4325460caa14b3d4b932f086fa29f0cb6") :audit-item "C2"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "c/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1126: §5.8 row 4 writer_bound_count on c"
@@ -2785,14 +2800,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/c" :type :work-set :children ("c/C1" "c/C2" "c/R11"))
-  (:id "cs/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "cs/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1241: the count_clamp_ends row on cs, the NEGATIVE end (roadmap cs/C1)"
+    "internal/codegen/cstable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at edb82ca7901a83baf33eb3776a8fda13360b2844") :audit-item "C1"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red.")
+  (:id "cs/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1241: the count_clamp_ends row on cs, the PAST-THE-READER-MAX end (roadmap cs/C2)"
+    "internal/codegen/cstable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at edb82ca7901a83baf33eb3776a8fda13360b2844") :audit-item "C2"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "cs/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1210: §5.8 row 4 writer_bound_count on cs"
@@ -2804,14 +2825,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/cs" :type :work-set :children ("cs/C1" "cs/C2" "cs/R11"))
-  (:id "go/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "go/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1238: the count_clamp_ends row on go, the NEGATIVE end (roadmap go/C1)"
+    "internal/codegen/gotable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at c52059700802ad40c82d44be5baf00bb4a24d33d") :audit-item "C1"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "go/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red.")
+  (:id "go/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1238: the count_clamp_ends row on go, the PAST-THE-READER-MAX end (roadmap go/C2)"
+    "internal/codegen/gotable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at c52059700802ad40c82d44be5baf00bb4a24d33d") :audit-item "C2"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "go/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1122: §5.8 row 4 writer_bound_count on go"
@@ -2823,14 +2850,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/go" :type :work-set :children ("go/C1" "go/C2" "go/R11"))
-  (:id "rust/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "rust/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1244: the count_clamp_ends row on rust, the NEGATIVE end (roadmap rust/C1)"
+    "internal/codegen/rusttable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at a830d793cf52c97e833908c7061bafabc489efea") :audit-item "C1"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+  (:id "rust/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1244: the count_clamp_ends row on rust, the PAST-THE-READER-MAX end (roadmap rust/C2)"
+    "internal/codegen/rusttable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at a830d793cf52c97e833908c7061bafabc489efea") :audit-item "C2"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "rust/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1214: §5.8 row 4 writer_bound_count on rust"
@@ -2842,14 +2875,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/rust" :type :work-set :children ("rust/C1" "rust/C2" "rust/R11"))
-  (:id "java/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "java/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1243: the count_clamp_ends row on java, the NEGATIVE end (roadmap java/C1)"
+    "internal/codegen/javatable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 6b4874da476b8ed18d1f160504b1b4182513aba5") :audit-item "C1"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+  (:id "java/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1243: the count_clamp_ends row on java, the PAST-THE-READER-MAX end (roadmap java/C2)"
+    "internal/codegen/javatable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 6b4874da476b8ed18d1f160504b1b4182513aba5") :audit-item "C2"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "java/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1140: §5.8 row 4 writer_bound_count on java"
@@ -2861,14 +2900,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/java" :type :work-set :children ("java/C1" "java/C2" "java/R11"))
-  (:id "js/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "js/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1242: the count_clamp_ends row on js, the NEGATIVE end (roadmap js/C1)"
+    "internal/codegen/jstable/fixedversioning_count_clamp_ends_test.go: TestJSFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 8795d13fccbb94df7e1453d19f9775c714289524") :audit-item "C1"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "js/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+  (:id "js/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1242: the count_clamp_ends row on js, the PAST-THE-READER-MAX end (roadmap js/C2)"
+    "internal/codegen/jstable/fixedversioning_count_clamp_ends_test.go: TestJSFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 8795d13fccbb94df7e1453d19f9775c714289524") :audit-item "C2"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "js/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1130: §5.8 row 4 writer_bound_count on js"
@@ -2880,14 +2925,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/js" :type :work-set :children ("js/C1" "js/C2" "js/R11"))
-  (:id "dart/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "dart/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1235: the count_clamp_ends row on dart, the NEGATIVE end (roadmap dart/C1)"
+    "internal/codegen/darttable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 22e75164733ab57369dec503bb46c6f79102b061") :audit-item "C1"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red.")
+  (:id "dart/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1235: the count_clamp_ends row on dart, the PAST-THE-READER-MAX end (roadmap dart/C2)"
+    "internal/codegen/darttable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at 22e75164733ab57369dec503bb46c6f79102b061") :audit-item "C2"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "dart/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1146: §5.8 row 4 writer_bound_count on dart"
@@ -2899,14 +2950,20 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
   (:id "array-bounds/dart" :type :work-set :children ("dart/C1" "dart/C2" "dart/R11"))
-  (:id "elixir/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
+  (:id "elixir/C1" :type :task :title "count clamp v<0" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1239: the count_clamp_ends row on elixir, the NEGATIVE end (roadmap elixir/C1)"
+    "internal/codegen/elixirtable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at b7383abcd828b06504f7011edb680a950fc20e68") :audit-item "C1"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/C2" :type :task :title "count clamp v>Max" :state :unknown :evidence nil :audit-item "C2"
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+  (:id "elixir/C2" :type :task :title "count clamp v>Max" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1239: the count_clamp_ends row on elixir, the PAST-THE-READER-MAX end (roadmap elixir/C2)"
+    "internal/codegen/elixirtable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
+    "merged into fixed-table-form at b7383abcd828b06504f7011edb680a950fc20e68") :audit-item "C2"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "elixir/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1148: §5.8 row 4 writer_bound_count on elixir"
