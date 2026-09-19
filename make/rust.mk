@@ -143,6 +143,16 @@ tables-rust-clippy: build/tables-generated-rust/.stamp
 # the two accelerators carry cfg!(target_endian) order words that refuse a
 # foreign file), so what the runtime leg would add is proof rather than
 # suspicion.
+#
+# AND THE 128-BIT CRATE RIDES HERE BECAUSE s390x IS WHERE IT BREAKS. ir's model
+# puts a 128-bit integer at SIXTEEN BYTES ALIGNED SIXTEEN — the `alignas( 16 )`
+# the C++ reference spells — while Rust's own u128 takes the TARGET's C
+# alignment, which is SIXTEEN on x86-64 and aarch64 and EIGHT on s390x. A bare
+# u128 in a Row therefore lands at a different offset on this target only, and
+# nothing on the developer's machine would ever say so. The paired bench unit
+# (bench/corpus/Bench.schema's wide_key and flux) is the crate that carries the
+# family, so it is the one checked: its Row's layout const asserts are what fail
+# if the aligned wrapper ever goes away.
 RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
@@ -152,9 +162,11 @@ tables-rust-big-endian: build/tables-generated-rust/.stamp
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \
 	fi; \
-	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
-		cargo check --quiet --target $(RUST_BE_TARGET) && \
-		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
+	( cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	( cd build/tables-generated-rust/benchfixed && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), the 128-bit family with it, every layout const assert evaluated"
 
 
 .PHONY: tables-rust-fuzz
@@ -219,9 +231,21 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
-	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblfx1:test/tables/FX1.schema tblfx2:test/tables/FX2.schema \
+	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
+	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+# THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
+# (bench/corpus/FixedTable.schema wraps Bench.schema's own BenchMixed), so it
+# cannot ride the name:path loop above and gets its own line. It is the unit
+# that carries a UNION through the fixed form — BenchMixed's `game_event` — and
+# the C++ reference has already written its 64 records to
+# bench/paired/corpus/bench_fixed.bin, so this crate is what holds Rust to
+# those bytes (docs/SPEC-TABLES.md §3.4, §15).
+RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -230,7 +254,61 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
 			> build/tables-generated-rust/$$name/Cargo.toml; \
 	done
+	@rm -rf build/tables-generated-rust/benchfixed/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
+	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
+		> build/tables-generated-rust/benchfixed/Cargo.toml
 	@touch $@
+
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4). The C++ reference
+# writes the bytes (`make tables-fixedform-corpus`) and this leg holds Rust to
+# them: every file read and saved back has to come out BYTE FOR BYTE the same,
+# and every cross-schema case reads a record written under ANOTHER block
+# through a plan compiled from it — a widened field, a rename under `was`, a
+# field this reader cannot name, a field the writer does not carry, a whole
+# nested TYPE stepped over by its block size, and an optional against a value.
+# The negative controls ride in the same binary, because a leg that never
+# watched the wrong plan fail never checked the right one worked.
+#
+# BOTH BUILD MODES, for the reason the packet corpus already runs both: the
+# generated writer's caller contracts are debug-only, so debug proves they FIRE
+# and release proves they are GONE and the bytes are still the reference's.
+.PHONY: tables-rust-fixedform
+tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+
+# THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/rusttable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — generates ONE CARGO WORKSPACE of
+# probe crates under build/rust-versioning-probes, and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3). The Go leg's `tables-go-versioning` is the same target on the
+# same rows; this is its twin.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green, since the go-test job
+# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+#
+# AND IT IS A GO TEST THAT SHELLS OUT TO CARGO, so the PATH carries $(RUSTUP_BIN)
+# the way every other Rust row in this file does: the suite's one `cargo test
+# --workspace` resolves cargo out of the environment it is handed and nothing
+# else. One workspace and ONE cargo invocation is the two-minute rule — fifty
+# separate `cargo run`s would serialize on the target directory's build lock and
+# compile `serialize-official` behind each of them.
+.PHONY: tables-rust-versioning
+tables-rust-versioning: tables-fixedform-corpus
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
@@ -239,14 +317,65 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+# THE PAIRED BENCH UNIT, for bench/tables/rust — the FIXED FORM's leg in
+# `bench/paired` (bench/paired/main.go, bench/tables/rust/src/main.rs).
+# Bench.schema and FixedTable.schema are ONE unit, exactly as the C, C++, Go
+# and C# paired generations are: the fixed root reaches the packet type so the
+# compiler emits its table codec. The manifest beside the modules is TRACKED
+# build wiring rather than something this stamp writes — the paired unit is
+# generated to the crate ROOT (that is the --out path `bench/paired` passes for
+# every language), so its Cargo.toml names `[lib] path = "lib.rs"` and does not
+# change when the emitter adds or drops a module. The driver regenerates the
+# same .rs files itself, so the two agree byte for byte or `generated-current`
+# says so.
+#
+# IT IS THE ONE RUST UNIT WHOSE MANIFEST IS NOT WRITTEN WITH $(SERIALIZE_RS)
+# SUBSTITUTED IN, so it names build/paired/serialize.rs — a symlink — instead,
+# and the two places that build the crate point that link first
+# (`tables-rust-fixed-matched` below, and bench/paired's own build step). That
+# is what keeps a tracked file from moving on a checkout that is not beside
+# serialize.rs: the paired driver refuses a dirty checkpoint.
+generated/bench/paired/rust/.stamp: bin/schema $(RUST_TABLE_BENCH_SCHEMAS)
+	@mkdir -p generated/bench/paired/rust
+	./bin/schema generate --lang rust --out generated/bench/paired/rust $(RUST_TABLE_BENCH_SCHEMAS)
+	@touch $@
+
+# THE FIXED FORM'S PAIRED LEG, gated and not timed: the same no-clock `--gate`
+# the C++ and C legs answer in `tables-fixed-matched`, over the same corpus.
+# The clock lives in `go run ./bench/paired`, and a clock does not gate a build.
+#
+# RELEASE, because that is the build the driver measures and the build whose
+# write-side `debug_assert!`s are gone (the 2026-09-07 ruling) — the debug
+# build's contracts are already proved by `tables-rust-fixedform`, which runs
+# both modes over these same bytes.
+.PHONY: tables-rust-fixed-matched
+tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
+	@mkdir -p build/paired
+	@ln -sfn "$(abspath $(SERIALIZE_RS))" build/paired/serialize.rs
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release \
+		--manifest-path bench/tables/rust/Cargo.toml --target-dir build/paired/rust
+	./build/paired/rust/release/table-rust --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
-test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
+test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-rust-fixedform
+	# AND ITS VERSIONING HALF (§5): every row of
+	# docs/FIXED-FORM-VERSIONING-TESTS.md, both read columns, over the same
+	# reference bytes. `tables-rust-fixedform` above proves this leg reads the
+	# corpus; this proves it reads BACKWARD and refuses FORWARD.
+	$(MAKE) tables-rust-versioning
+	# THE PAIRED LEG's own no-clock gate (bench/tables/rust): the block is the
+	# corpus's, the file loads, it saves back identical, reused storage
+	# round-trips twice.
+	$(MAKE) tables-rust-fixed-matched
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.

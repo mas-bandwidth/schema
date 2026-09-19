@@ -120,7 +120,7 @@ func (g *tableGen) wirePrimitives() string {
 	if len(ir.WideTextFields(g.unit)) > 0 {
 		wideText = tableTextRuntime
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit)) + wideText
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), ir.TableFixedHasWriteBound(g.unit)) + wideText
 }
 
 // tableWidenF32Runtime is the FLOAT RUNG of the widening rule (§4): f32 into

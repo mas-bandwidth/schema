@@ -1,0 +1,15 @@
+// HB.schema — the two WIRE BYTES A READER MUST NORMALISE (docs/FIXED-FORM-ALGORITHM.md
+// §4.5's last row, "Reference fixes pending" fix 2): a `bool` and a PRESENT flag
+// land as `byte != 0`, never verbatim.
+//
+// `trail` brackets the two, so a mislaid size moves it and the check sees it.
+package hb
+
+type Pay { n int32 = 5 }
+
+fixed table Hostile
+{
+    flag  bool
+    link  ?Pay
+    trail uint32 = 2
+}

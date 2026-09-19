@@ -1,0 +1,82 @@
+// FN1.schema — THE SHAPES THE FIXED FORM'S CONFORMANCE SET COULD NOT REACH
+// (docs/SPEC-TABLES.md §3.4). FX1/FX2 carry the
+// scalar edits, V1/V2 the enum and the arm inserted in the middle, FM1/FM2 the
+// text and the counted array under an arm, and Scalars/Scalars2 the widths.
+// Between them they still leave six of §3.4's rows with no fixture at all, and
+// each of the six is a row where a leg gets a WRONG VALUE rather than an error:
+//
+//   1 A BOOL         C is 1 and §3 admits two values; the wire can carry 256.
+//                    Nothing in the set had a bool in a fixed root at all.
+//   2 AN OPTIONAL    kind 35's PRESENT BYTE, same story, and the payload rides
+//     `?T`           WHOLE whether the flag is set or not — so an ABSENT
+//                    optional over NON-ZERO residue is the one shape where a
+//                    reader that trusts the payload instead of the flag hands
+//                    a caller a value the writer never sent.
+//   3 AN ENUM        "the ORDINAL is the variant's POSITION IN THE LAYOUT,
+//                    from 1, and 0 is None" — so an ordinal PAST the last
+//                    variant has an answer, and it is None and not a variant.
+//   4 AN ARRAY OF    a count, and then MAX elements each of which is a TAG and
+//     UNIONS         the widest arm. Every arm entry of the plan is guarded,
+//                    and now the guard has to be re-tested PER ELEMENT.
+//   5 THREE-DEEP     the layout is a PRE-ORDER walk and an offset at depth
+//     NESTING        three is a sum of three parents' partial sums. Two deep
+//                    is the deepest anything in the set went.
+//   6 AN ARM THAT    a union arm whose nested type carries a FIXED array —
+//     HOLDS AN ARRAY the widest arm, so every other arm rides in front of
+//                    declared slack.
+//
+// FN2 is this schema one generation on, so every one of them is read through a
+// COMPILED plan as well as through the identity plan.
+package tblfn1
+
+// TWO VARIANTS, so the ordinal's storage width is one byte and an ordinal past
+// the last variant is one poked byte away. FN2 inserts Silver in the middle.
+enum Tier { Bronze, Gold }
+
+type Deep3
+{
+    z int32 = 30 | min = 0, max = 1000
+}
+
+type Deep2
+{
+    y      int32 = 20 | min = 0, max = 1000
+    deeper Deep3
+}
+
+type Deep1
+{
+    x   int32 = 10 | min = 0, max = 1000
+    mid Deep2
+}
+
+type CellA
+{
+    n int32 = 0 | min = 0, max = 1000
+}
+
+// THE WIDEST ARM, and it is the one carrying an ARRAY: every other arm of Pick
+// rides in front of declared slack, which is the shape §3.4's union row states
+// ("ZERO on write behind a narrower arm, IGNORED on read").
+type CellB
+{
+    pts [2]int32 | min = 0, max = 1000
+    m   int32 = 0 | min = 0, max = 1000
+}
+
+union Pick
+{
+    a CellA
+    b CellB
+}
+
+fixed table FnRoot
+{
+    flag  bool
+    tier  Tier
+    opt   ?Deep3
+    picks [..2]Pick
+    deep  Deep1
+    label string(4)
+    after int32 = 7 | min = 0, max = 1000
+}

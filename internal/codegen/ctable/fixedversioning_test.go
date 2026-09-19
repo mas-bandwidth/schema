@@ -1,0 +1,979 @@
+package ctable
+
+// THE VERSIONING FIXTURES ON THE C LEG (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// the procedures in docs/FIXED-FORM-ALGORITHM.md §5). Every row of that page is
+// one definition change and owes TWO read columns:
+//
+//	NEW-READS-OLD    the widened reader reads the older writer's file: every
+//	                 old value lands exactly, the reader's tail is its declared
+//	                 default, and the counters are §5.4's — for an APPEND, all
+//	                 of them zero, because an append the reader knows is not an
+//	                 event.
+//	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
+//	                 `layout_newer` BEFORE any record, reporting THE FILE'S
+//	                 HASH and nothing else, with no counter moved and
+//	                 `malformed` clear (§5.3's joint answer).
+//
+// The bytes are the C++ reference's: `make tables-fixedform-corpus` writes
+// `build/fixedform-corpus/old_<row>.bin` and `new_<row>.bin`. The two schemas
+// of a row are `test/tables/VOLD_<row>.schema` and `VNEW_<row>.schema`; they
+// carry ONE table name in two packages, because the two layouts are ONE
+// LINEAGE.
+//
+// EACH SIDE IS ITS OWN TRANSLATION UNIT, which is the one place this leg's
+// harness cannot copy the Go leg's. C has no namespace, so two generations of
+// one table name have no spelling inside one binary (SPEC §6.1, and the
+// FX1/FX2 precedent in make/c.mk). So a row is TWO PROBE BINARIES and not one:
+// NEW-READS-OLD compiles the NEW generation alone and reads `old_<row>.bin`,
+// OLD-REFUSES-NEW compiles the OLD generation alone and reads `new_<row>.bin`.
+// The probe units are GENERATED, one per row per column, into the test's own
+// temp dir — nothing is checked in that a schema edit could leave stale.
+//
+// THE LINEAGE IS DATA THE BUILD HANDS THE BACKEND (§5.2, COMPILE(lock, T)):
+// the test plays the lock, handing the newer unit the older unit's locked entry
+// — the wire hash, the layout bytes verbatim and the record size. A reader
+// NEVER parses the layout a file carries; it matches the header's hash against
+// the lineage and compares the bytes it already holds.
+
+import (
+	"bufio"
+	"encoding/binary"
+	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// ---- the rows ---------------------------------------------------------------
+
+type cVersionRow struct {
+	row string
+	// sameHash is a row whose edit moves no layout byte and no digest byte
+	// (`rename_without_was`, `field_deprecate`, `field_undeprecate`): the two
+	// hashes are equal, both sides take the identity plan and the file READS in
+	// BOTH directions — which is the test that the hash, and only the hash, is
+	// the version (§5.7).
+	sameHash bool
+	// widens is a row that grows a WIDTH, so `widened` moves at least once;
+	// every other row is an APPEND and owes all six counters at zero (§5.9 #10).
+	widens bool
+	// check is C asserting the landed values, over `back`.
+	check string
+	// poison writes 0x5A over every byte of `back` AFTER the reset and BEFORE
+	// the load (§5.7, and the C++ reference's own harness does it). A row that
+	// asserts an ELEMENT DEFAULT cannot prove the prefill WRITES unless the
+	// destination held something else first: against zeroed storage "the slot
+	// reads 7" and "the slot was never touched" are the same sentence when the
+	// default is 0, and for a nonzero default they are the same sentence the
+	// day the prefill's ranges are wrong and the zeros are the memset's. 0x5A
+	// is neither a default nor a written value, so every byte the read owes is
+	// a byte that must CHANGE.
+	poison bool
+}
+
+var cVersionRows = []cVersionRow{
+	{row: "array_bounded_grow"},
+	{row: "array_elem_widen", widens: true},
+	{row: "array_fixed_grow", poison: true, check: `
+    /* THE GROWN SLOTS ARE THE ELEMENT'S DECLARED DEFAULTS, not zeros and not the
+       0x5A the storage held a line ago: [4]Vec -> [8]Vec, so slots 4..7 are
+       §3.4's PREFILL and the law reads x = 7, y = 9 (the row's own comment). */
+    {
+        int k;
+        for ( k = 4; k < 8; ++k )
+        {
+            if ( back[0].vals[k].x != 7 || back[0].vals[k].y != 9 )
+                { printf( "the grown slot %d is not the ELEMENT'S defaults: x=%d y=%d\n", k, back[0].vals[k].x, back[0].vals[k].y ); return 1; }
+        }
+        /* and the slots THE WRITER carried were landed by the plan, over the poison */
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( back[0].vals[k].x == 0x5A5A5A5A || back[0].vals[k].y == 0x5A5A5A5A )
+                { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
+        }
+    }
+    if ( back[0].lead == 0x5A5A5A5Au || back[0].trail == 0x5A5A5A5Au )
+        { printf( "a bracketing field kept the poison: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }`},
+	{row: "bits_grow", widens: true},
+	{row: "bytes_grow"},
+	{row: "constant_grow"},
+	{row: "enum_append"},
+	{row: "enum_width", widens: true},
+	{row: "field_append", check: `
+    if ( back[0].x != 11 || back[0].y != 22 || back[0].z != 33 )
+        { printf( "the old writer's values did not land: %d %d %d\n", back[0].x, back[0].y, back[0].z ); return 1; }
+    if ( back[0].w != 77 )
+        { printf( "the appended field is not its declared default: %d\n", back[0].w ); return 1; }`},
+	{row: "field_deprecate", sameHash: true},
+	{row: "field_undeprecate", sameHash: true},
+	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+    if ( n != 1 ) { printf( "the fixed_I_grow_element file carries one record, not %lld\n", (long long) n ); return 1; }
+    {
+        const int32_t want[4] = { -1, -128, 0, 112 };
+        int k;
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( (int32_t) back[0].vals[k] != want[k] ) { printf( "slot %d widened wrong: %d\n", k, (int) back[0].vals[k] ); return 1; }
+        }
+        if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu ) { printf( "the row moved a neighbour\n" ); return 1; }
+    }`},
+	{row: "flags_append"},
+	{row: "float_widen", widens: true},
+	{row: "int_widen", widens: true, check: `
+    if ( n != 3 ) { printf( "the int_widen file carries three records, not %lld\n", (long long) n ); return 1; }
+    {
+        const int32_t want[3] = { -1, -32768, 32767 };
+        int k;
+        for ( k = 0; k < 3; ++k )
+        {
+            if ( (int32_t) back[k].v != want[k] ) { printf( "record %d widened wrong\n", k ); return 1; }
+            if ( back[k].lead != 0xAAAAAAAAu || back[k].trail != 0xBBBBBBBBu ) { printf( "record %d moved a neighbour\n", k ); return 1; }
+        }
+    }`},
+	{row: "keyed_array_enum_append", poison: true, check: `
+    /* ONE VARIANT APPENDED TO THE KEY, so the array gains its last slot and that
+       slot is §3.4's PREFILL: Qty.n = 7, over 0x5A and not over zeros. */
+    if ( back[0].slots[TIER_MAX - 1].n != 7 )
+        { printf( "the appended key's slot is not Qty's declared default: %d\n", back[0].slots[TIER_MAX - 1].n ); return 1; }
+    {
+        int k;
+        for ( k = 0; k < TIER_MAX - 1; ++k )
+        {
+            if ( back[0].slots[k].n == 0x5A5A5A5A )
+                { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
+        }
+    }
+    if ( back[0].seq == 0x5A5A5A5A ) { printf( "seq kept the poison\n" ); return 1; }`},
+	{row: "nested_append"},
+	{row: "optional_add"},
+	{row: "range_widen"},
+	{row: "rename_without_was", sameHash: true},
+	{row: "string_grow"},
+	{row: "uint_widen", widens: true},
+	{row: "union_append"},
+	{row: "union_arm_payload_widen"},
+	{row: "wstring_grow"},
+}
+
+// ---- NEW-READS-OLD ----------------------------------------------------------
+//
+// THE SHARED BODY ASSERTED NO LANDED VALUE FOR 21 OF 26 ROWS: it read the file,
+// refused nothing, and demanded that no counter move, but only five rows carried
+// their own check, so a mislaid size that moved a neighbour stayed green. Every
+// row whose root declares the `lead`/`trail` pair now asserts it by name.
+//
+// THE ORACLE IS THE CORPUS MANIFEST (§5.9 #32), read PER FILE and in DECIMAL,
+// not from the bytes under test. The brackets are not constant across rows — 30
+// files use lead=2863311530 / trail=3149642683 and 8 use lead=1 / trail=2.
+//
+// THE GATE IS DERIVED FROM THE IR AND NOT FROM A FLAG: a hand-kept list drifts
+// the first time a schema gains or loses the pair, and that drift fails as a
+// row silently stopping to assert a value.
+
+func TestFixedVersioningNewReadsOld(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	for _, r := range cVersionRows {
+		t.Run(r.row, func(t *testing.T) {
+			t.Parallel()
+			newer := cReadSchema(t, "VNEW_"+r.row)
+			older := cReadSchema(t, "VOLD_"+r.row)
+			root := cFixedRoot(t, cUnitOf(t, older))
+			lead, trail := cBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+			bracket := ""
+			if cHasField(root, "lead") && cHasField(root, "trail") {
+				bracket = fmt.Sprintf(`
+    if ( back[0].lead != 0x%08Xu || back[0].trail != 0x%08Xu )
+        { printf( "the row moved a neighbour: lead=%%u trail=%%u\n", back[0].lead, back[0].trail ); return 1; }`, lead, trail)
+			}
+			counters := `if ( r.widened != 0 ) { printf( "widened %d, and an append is not an event\n", r.widened ); return 1; }`
+			if r.widens {
+				counters = `if ( r.widened == 0 ) { printf( "a widening row moved no widened counter\n" ); return 1; }`
+			}
+			body := fmt.Sprintf(`
+    if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
+    if ( r.reason != 0 || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", r.reason, r.malformed ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
+        { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+    %s
+    %s
+    %s
+`, counters, bracket, r.check)
+			poison := ""
+			if r.poison {
+				// §5.7'S 0x5A, and it goes in AFTER the reset: the harness
+				// resets `back` so a refusal's "wrote not one byte" check has
+				// something to compare against, and this row's claim is the
+				// opposite one — that the prefill WRITES — so the poison has to
+				// survive to the load.
+				poison = `    memset( back, 0x5A, sizeof( back ) ); /* §5.7: every byte the read owes must CHANGE */`
+			}
+			out, err := cRunVersionProbe(t, newer, []string{older}, 0,
+				filepath.Join(corpus, "old_"+r.row+".bin"), body, poison)
+			if err != nil {
+				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+			}
+		})
+	}
+}
+
+// ---- OLD-REFUSES-NEW --------------------------------------------------------
+
+func TestFixedVersioningOldRefusesNew(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	for _, r := range cVersionRows {
+		t.Run(r.row, func(t *testing.T) {
+			t.Parallel()
+			older := cReadSchema(t, "VOLD_"+r.row)
+			file := filepath.Join(corpus, "new_"+r.row+".bin")
+			var body string
+			if r.sameHash {
+				// A row whose edit moves no layout byte and no digest byte has
+				// NO second column: the hashes are equal and the file reads in
+				// both directions (§5.7).
+				body = `
+    if ( n < 1 ) { printf( "a row that moved no layout byte must READ in both directions: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( r.reason != 0 || r.malformed ) { printf( "an equal hash is not a version: reason=%d\n", r.reason ); return 1; }
+`
+			} else {
+				body = `
+    if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%lld\n", (long long) n ); return 1; }
+    if ( r.reason != SCHEMA_TABLE_LAYOUT_NEWER ) { printf( "a hash in no lineage entry owes layout_newer, not %d\n", r.reason ); return 1; }
+    if ( r.layout_hash != want ) { printf( "layout_newer reports THE FILE'S hash\n" ); return 1; }
+    if ( r.malformed ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
+    if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
+        { printf( "REFUSE is total: no counter moves\n" ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "REFUSE wrote destination bytes\n" ); return 1; }
+`
+			}
+			out, err := cRunVersionProbe(t, older, nil, 0, file, body, "")
+			if err != nil {
+				t.Fatalf("OLD-REFUSES-NEW %s: %v\n%s", r.row, err, out)
+			}
+		})
+	}
+}
+
+// ---- the floor --------------------------------------------------------------
+//
+// The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
+// index cut and the operator's two answers stay distinct: below the floor is
+// `layout_unsupported` (upgrade the client), outside the lineage is
+// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+
+func TestFixedVersioningFloor(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	older := cReadSchema(t, "VOLD_floor")
+	mid := cReadSchema(t, "VMID_floor")
+	newer := cReadSchema(t, "VNEW_floor")
+	oldFile := filepath.Join(corpus, "old_floor.bin")
+	midFile := filepath.Join(corpus, "mid_floor.bin")
+
+	t.Run("floor_at", func(t *testing.T) {
+		t.Parallel()
+		// Nothing retired: the OLDEST file is at the floor and it reads.
+		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 0, oldFile, `
+    if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "a file AT the floor must read: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("floor_at: %v\n%s", err, out)
+		}
+	})
+	t.Run("floor_below", func(t *testing.T) {
+		t.Parallel()
+		// Entry 0 retired: the floor is 1, and the file one below it refuses
+		// layout_unsupported — nothing decoded, no counter moved.
+		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 1, oldFile, `
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
+        { printf( "a file below the floor owes layout_unsupported: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( r.malformed || r.widened != 0 || r.unknown != 0 || r.clamped != 0 ) { printf( "REFUSE is total\n" ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("floor_below: %v\n%s", err, out)
+		}
+	})
+	t.Run("floor_raise_live", func(t *testing.T) {
+		t.Parallel()
+		// The floor raised by one: the file that read yesterday refuses today.
+		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 2, midFile, `
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
+        { printf( "the floor raised by one: yesterday's file must refuse: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("floor_raise_live: %v\n%s", err, out)
+		}
+	})
+}
+
+// ---- the hash ---------------------------------------------------------------
+
+func TestFixedVersioningHash(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	newer := cReadSchema(t, "VNEW_field_append")
+	older := cReadSchema(t, "VOLD_field_append")
+
+	// hash_unknown: a hash in no lineage refuses layout_newer, on the FILE's
+	// hash alone. The probe stamps a hash nothing can hold over the header.
+	t.Run("hash_unknown", func(t *testing.T) {
+		t.Parallel()
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
+			filepath.Join(corpus, "old_field_append.bin"), `
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.malformed )
+        { printf( "hash_unknown: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+`, "", `
+    memcpy( data + kTableFixedHashAt, &(uint64_t){ 0xDEADBEEFCAFEF00Dull }, 8 );
+`)
+		if err != nil {
+			t.Fatalf("hash_unknown: %v\n%s", err, out)
+		}
+	})
+
+	// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
+	// lock's is ONE name, layout_malformed — "a lie about a known version". The
+	// seven §1.1 malformations under a known hash all land here, never in a
+	// runtime walk (§5.3).
+	t.Run("hash_known_bytes_differ", func(t *testing.T) {
+		t.Parallel()
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
+			filepath.Join(corpus, "old_field_append.bin"), `
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_MALFORMED || r.malformed )
+        { printf( "hash_known_bytes_differ: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+`, "", `
+    data[kTableFixedHeaderBytes + 4] ^= 0xFF;
+`)
+		if err != nil {
+			t.Fatalf("hash_known_bytes_differ: %v\n%s", err, out)
+		}
+	})
+
+	// hash_identity: the reader's own hash selects the identity plan.
+	t.Run("hash_identity", func(t *testing.T) {
+		t.Parallel()
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
+			filepath.Join(corpus, "new_field_append.bin"), `
+    if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "hash_identity: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( back[0].w != 777 ) { printf( "the identity plan lost a value: %d\n", back[0].w ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("hash_identity: %v\n%s", err, out)
+		}
+	})
+}
+
+// ---- lineage_merge ----------------------------------------------------------
+//
+// Two branches append different fields; after the merge BOTH pre-merge files
+// read on the merged build (the name-subset rule, bill §8a.1).
+
+func TestFixedVersioningLineageMerge(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	merged := cReadSchema(t, "VNEW_lineage_merge")
+	a := cReadSchema(t, "VBRA_lineage_merge")
+	b := cReadSchema(t, "VBRB_lineage_merge")
+	base := cReadSchema(t, "VOLD_lineage_merge")
+	for _, name := range []string{"a_lineage_merge.bin", "b_lineage_merge.bin"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			out, err := cRunVersionProbe(t, merged, []string{base, a, b}, 0,
+				filepath.Join(corpus, name), `
+    if ( n < 1 || r.reason != 0 || r.malformed )
+        { printf( "both pre-merge files read on the merged build: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+`, "")
+			if err != nil {
+				t.Fatalf("lineage_merge %s: %v\n%s", name, err, out)
+			}
+		})
+	}
+}
+
+// ---- writer_bound_count (§5.8 row 4) ---------------------------------------
+//
+// The forged file is `old_array_bounded_grow.bin` with its count word set to 7,
+// BETWEEN the writer's 4 and the reader's 8. The plan is COMPILED, so the bound
+// is the WRITER's, carried by the plan: vals_count stays 4, never the reader's 8
+// and never the forged 7. `clamped` is asserted == 1 and never >= 1: the bounds
+// pass counts the clamp once per entry per record (§5.4), and a leg that also
+// counted in the `count` op would land 2 and be wrong.
+func TestFixedVersioningWriterBoundCount(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	newer := cReadSchema(t, "VNEW_array_bounded_grow")
+	older := cReadSchema(t, "VOLD_array_bounded_grow")
+
+	pre := `
+    {
+        int seen = 0;
+        int64_t at;
+        for ( at = 0; at + 8 <= len; ++at )
+        {
+            if ( data[at] == 0xAA && data[at+1] == 0xAA && data[at+2] == 0xAA && data[at+3] == 0xAA &&
+                 data[at+4] == 0x04 && data[at+5] == 0x00 && data[at+6] == 0x00 && data[at+7] == 0x00 )
+            {
+                if ( seen ) { printf( "the count word's needle matched twice: the forge has no single locator\n" ); return 1; }
+                seen = 1;
+                /* the forge */
+                data[at+4] = 0x07;
+                data[at+5] = 0x00;
+                data[at+6] = 0x00;
+                data[at+7] = 0x00;
+            }
+        }
+        if ( !seen ) { printf( "the count word's needle (AA AA AA AA 04 00 00 00) never occurred\n" ); return 1; }
+    }`
+
+	body := `
+    if ( n != 1 ) { printf( "writer_bound_count: n == %lld, not 1\n", (long long) n ); return 1; }
+    if ( back[0].vals_count != 4 ) { printf( "writer_bound_count: vals_count == %d, not the writer's 4\n", back[0].vals_count ); return 1; }
+    if ( back[0].vals[0] != 1000 || back[0].vals[1] != 1001 || back[0].vals[2] != 1002 || back[0].vals[3] != 1003 )
+        { printf( "writer_bound_count: the writer's values did not land: %d %d %d %d\n", back[0].vals[0], back[0].vals[1], back[0].vals[2], back[0].vals[3] ); return 1; }
+    if ( back[0].vals[4] != 0 || back[0].vals[5] != 0 || back[0].vals[6] != 0 || back[0].vals[7] != 0 )
+        { printf( "writer_bound_count: the reader's grown slots are not the declared default 0: %d %d %d %d\n", back[0].vals[4], back[0].vals[5], back[0].vals[6], back[0].vals[7] ); return 1; }
+    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
+        { printf( "writer_bound_count: a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
+    if ( r.clamped != 1 ) { printf( "writer_bound_count: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "writer_bound_count: a counter moved on a clean hostile read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.malformed || r.refused ) { printf( "writer_bound_count: a clean read refused: malformed=%d refused=%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.reason != 0 ) { printf( "writer_bound_count: reason == %d, not 0\n", r.reason ); return 1; }
+`
+
+	out, err := cRunVersionProbe(t, newer, []string{older}, 0,
+		filepath.Join(corpus, "old_array_bounded_grow.bin"), body, "", pre)
+	if err != nil {
+		t.Fatalf("writer_bound_count: %v\n%s", err, out)
+	}
+}
+
+// ---- forged_ordinal_both_plans (§5.8 row 12) --------------------------------
+//
+// THE SAME FORGED BYTES READ TWICE. `old_enum_append.bin`'s `r0.tier` is set to
+// 4 — past the WRITER's three variants, and a name only the NEW reader has — and
+// the file is then read by BOTH plans: once by the NEW build through the lineage
+// (a COMPILED plan, whose ordinal table is the WRITER's) and once by the OLD
+// build on its own hash (the IDENTITY plan). Both land `None` and never
+// `Platinum`, both leave `seq` at 9, and `clamped` is `== 1` on BOTH — the
+// equality of the two is the row's whole proof. `== 1` and not `>= 1`: a leg
+// that counts in the `ordinal` op AS WELL as in the bounds pass lands 2 and is
+// wrong (§5.4).
+//
+// The forge is located by NEEDLE and never by a hard-coded offset: the record
+// body is `03 09 00 00 00` (tier=Gold, seq=9), asserted to occur exactly once
+// and to BE the tail of the file, as the Go leg's row does (#1123).
+func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	newer := cReadSchema(t, "VNEW_enum_append")
+	older := cReadSchema(t, "VOLD_enum_append")
+	file := filepath.Join(corpus, "old_enum_append.bin")
+
+	pre := `
+    {
+        int seen = 0;
+        int64_t at;
+        int64_t found = -1;
+        for ( at = 0; at + 5 <= len; ++at )
+        {
+            if ( data[at] == 0x03 && data[at+1] == 0x09 && data[at+2] == 0x00 && data[at+3] == 0x00 && data[at+4] == 0x00 )
+            {
+                if ( seen ) { printf( "the record body (tier=Gold, seq=9) occurs more than once in the file\n" ); return 1; }
+                seen = 1;
+                found = at;
+            }
+        }
+        if ( !seen ) { printf( "the record body (tier=Gold, seq=9) is not in the file\n" ); return 1; }
+        if ( found != len - 5 ) { printf( "the record body is not the tail of the file: at=%lld len=%lld\n", (long long) found, (long long) len ); return 1; }
+        data[found] = 4; /* the forge */
+    }`
+
+	body := `
+    if ( n != 1 ) { printf( "forged_ordinal: the forged file reads one record, not %lld\n", (long long) n ); return 1; }
+    if ( r.refused || r.malformed || r.reason != 0 )
+        { printf( "forged_ordinal: the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, r.reason ); return 1; }
+    if ( back[0].tier != TIER_NONE ) { printf( "forged_ordinal: the forged ordinal lands None, not %s (%d)\n", enum_name_tier( back[0].tier ), (int) back[0].tier ); return 1; }
+    if ( back[0].seq != 9 ) { printf( "forged_ordinal: the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
+    if ( r.clamped != 1 ) { printf( "forged_ordinal: clamped is the bounds pass's count, once per field: %d\n", r.clamped ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "forged_ordinal: only clamped may move on a forged ordinal: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+`
+
+	// THE TWO COLUMNS ARE TWO PROBE BINARIES, as every row on this leg is: C has
+	// no namespace, so the two generations have no spelling inside one binary.
+	t.Run("compiled", func(t *testing.T) {
+		t.Parallel()
+		// the NEW build reads the OLD file through the lineage.
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, body, "", pre)
+		if err != nil {
+			t.Fatalf("forged_ordinal_both_plans, the compiled plan: %v\n%s", err, out)
+		}
+	})
+	t.Run("identity", func(t *testing.T) {
+		t.Parallel()
+		// the OLD build reads its own file on its own hash.
+		out, err := cRunVersionProbe(t, older, nil, 0, file, body, "", pre)
+		if err != nil {
+			t.Fatalf("forged_ordinal_both_plans, the identity plan: %v\n%s", err, out)
+		}
+	})
+}
+
+// ---- the harness ------------------------------------------------------------
+
+func cFixedCorpus(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.Abs("../../../build/fixedform-corpus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
+		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
+		// `go test ./...` on a tree that never built the oracle has nothing to
+		// read and says so; `make tables-c-versioning` builds the corpus first
+		// and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a missing file
+		// means the build did not do what the target says it did — and a suite
+		// that skips itself there would report green over §5 having never run.
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		}
+		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+	}
+	return dir
+}
+
+func cReadSchema(t *testing.T, base string) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "test", "tables", base+".schema")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func cUnitOf(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
+
+// cFixedRoot is §5.9 #9's answer for a corpus row: the file's root is the
+// OUTER table, the fixed table no other fixed table of the unit names by value.
+func cFixedRoot(t *testing.T, u *ir.Unit) *ir.Struct {
+	t.Helper()
+	roots := ir.TableFixedRoots(u)
+	if len(roots) == 0 {
+		t.Fatal("a versioning row declares a fixed root")
+	}
+	named := map[string]bool{}
+	for _, st := range roots {
+		for _, f := range st.Fields {
+			named[f.Type.Name] = true
+		}
+	}
+	for _, st := range roots {
+		if !named[st.Name] {
+			return st
+		}
+	}
+	return roots[len(roots)-1]
+}
+
+func cFixedRootName(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	return cFixedRoot(t, u).Name
+}
+
+// cBrackets is §5.9 #32's value oracle: per row the `lead` and `trail` the
+// corpus brackets it with, so a mislaid size moves a neighbour and the row
+// says so by name. THE MANIFEST is read when the tree carries one
+// (`build/fixedform-corpus/manifest.txt`, §5.7 step 1's one line per row), and
+// where it does not the values the manifest would carry are taken FROM THE
+// CORPUS BYTES — which is where the manifest itself reads them: the lead is
+// the first four bytes of the first record's body and the trail the last four.
+func cBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := cManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// cManifestBrackets reads ONE FILE'S row out of the corpus manifest, which is
+// the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead: it never fired and every row read its oracle
+// from the very .bin it was asserting.
+//
+// The manifest is not tracked, so `ok` false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+// cManifestFloatBits is the FLOAT half of the corpus oracle, and it exists
+// because `cManifestRow` below cannot carry one: that function parses every
+// value as a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
+// CONSTRUCTION — and every leg's compressed-float row asserted a HARDCODED
+// literal instead of the reference's answer (schema#1164, measured 2026-09-19
+// on all nine legs; Glenn: "do whatever is needed to make sure that a new
+// reader can read an old writer").
+//
+// It returns the BITS. A `!= 0.3f` comparison cannot tell 0.3 from the float32
+// beside it, which is exactly what a reader that requantized onto its own grid
+// would produce.
+//
+// SECTION is "values" or "forged". A forged line spells its key with the byte
+// offset attached — `forged=r0.aim@104=1.5|0x3FC00000` — so a key equal to
+// `path` OR beginning `path+"@"` is the one asked for. It FAILS LOUDLY three
+// ways — no manifest, no row, no such value — because a float oracle that can
+// degrade to "not checked" is the vacuity this repairs.
+func cManifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var values string
+		named := false
+		for field := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
+func cManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := cManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// cManifestRow answers one line's `values=` map when its `file=` is the one
+// asked for. The values are `<path>=<number>` pairs separated by commas, and a
+// pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func cManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// cHasField answers whether a row's ROOT declares a member by that name. It is
+// how the bracket check knows which rows carry §5.9 #32's `lead`/`trail` pair,
+// and it is read off the IR on purpose: a flag kept by hand beside each row
+// would drift the first time a schema gained or lost the pair, and the failure
+// mode of that drift is a row that silently stops asserting a landed value —
+// which is exactly the vacuity being repaired here.
+func cHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// cRunVersionProbe generates the READER's unit as C with the OLDER units'
+// locked entries handed to it as its lineage — oldest first, the reader's own
+// layout last — marks the first `retire` entries retired, writes a probe main
+// that loads `file`, compiles the pair and runs it. `pre` is C that may damage
+// the bytes before the load (the hash cases), and `poison` is C that runs AFTER
+// the reset and immediately before the load — §5.7's 0x5A over the destination,
+// for the rows whose claim is that the PREFILL WRITES.
+func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, file, body, poison string, pre ...string) ([]byte, error) {
+	t.Helper()
+	u := cUnitOf(t, reader)
+	lineage := map[string][]FixedLineageEntry{}
+	for i, src := range older {
+		o := cUnitOf(t, src)
+		for _, st := range ir.TableFixedRoots(o) {
+			e, ok := FixedLineageOf(o, st.Name)
+			if !ok {
+				t.Fatalf("no lineage entry for %s", st.Name)
+			}
+			e.Retired = i < retire
+			if e.Retired {
+				e.Reason = "retired by the test's lock"
+			}
+			lineage[st.Name] = append(lineage[st.Name], e)
+		}
+	}
+	files, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateLineage(u, lineage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	var header string
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasSuffix(name, "Table.h") {
+			header = name
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table.h was generated")
+	}
+	root := cFixedRootName(t, u)
+	snake := ir.RustSnake(root)
+	damage := strings.Join(pre, "\n")
+	probe := fmt.Sprintf(`#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "%s"
+
+int main( void )
+{
+    static uint8_t data[1 << 20];
+    int64_t len;
+    FILE * f = fopen( %q, "rb" );
+    %s back[8];
+    %s fresh;
+    uint64_t want;
+    TableReport r;
+    static TableFixedEntry plan[4096];
+    int64_t n;
+    int k;
+    if ( f == NULL ) { printf( "the corpus file is missing\n" ); return 1; }
+    len = (int64_t) fread( data, 1, sizeof( data ), f );
+    fclose( f );
+    if ( len < 20 ) { printf( "the corpus file is short\n" ); return 1; }
+    memcpy( &want, data + 8, 8 );
+%s
+    /* THE PADDING IS ZEROED ON BOTH SIDES BEFORE RESET, which is what makes the
+       OLD-REFUSES-NEW byte comparison a statement at all: a generated struct's
+       padding is not a value reset covers, so two fresh values differ in their
+       slack unless the slack is settled first — the same reason the generated
+       load memsets its default image before it resets it (§5.3's "REFUSE writes
+       not one destination byte" is about VALUES, and this makes the check see
+       only those). */
+    memset( &fresh, 0, sizeof( fresh ) );
+    memset( back, 0, sizeof( back ) );
+    %s( &fresh );
+    for ( k = 0; k < 8; ++k ) { %s( &back[k] ); }
+%s
+    memset( &r, 0, sizeof( r ) );
+    n = %s( back, 8, data, len, plan, 4096, NULL, &r );
+    (void) want; (void) fresh;
+%s
+    return 0;
+}
+`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
+	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = "cc"
+	}
+	serialize, err := filepath.Abs("../../../../serialize.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"-std=c99", "-O1", "-I" + dir, "-I" + serialize}, gccFortifySilence(cc)...)
+	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
+	build := exec.Command(cc, args...)
+	if out, err := build.CombinedOutput(); err != nil {
+		return out, fmt.Errorf("the probe did not compile: %w", err)
+	}
+	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+}
+
+var _ = binary.LittleEndian
+
+// ---- THE ONCE-FLAG IS PUBLISHED AFTER THE LOOP ------------------------------
+//
+// This one asserts an ORDER IN THE EMITTED C and needs no corpus, no compiler
+// and no thread, because the bug it guards is not a timing bug in a test's eye:
+// the flag used to be raised BEFORE the walk that fills the plans, so a second
+// thread racing the first older-peer load returned from the build with
+// <name>_fixed_lineage still zeros — entries NULL, count 0, reason 0 — and step
+// 8 of §5.3 ACCEPTS that shape. The read would land a prefill-only record where
+// it owed a refusal. A race is a hard thing to catch twice; the order that makes
+// it impossible is one sentence about the generated text, so it is asserted as
+// one.
+func TestFixedLineageOnceFlagPublishedLast(t *testing.T) {
+	t.Parallel()
+	newer := cUnitOf(t, cReadSchema(t, "VNEW_field_append"))
+	older := cUnitOf(t, cReadSchema(t, "VOLD_field_append"))
+	lineage := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(older) {
+		e, ok := FixedLineageOf(older, st.Name)
+		if !ok {
+			t.Fatalf("no lineage entry for %s", st.Name)
+		}
+		lineage[st.Name] = append(lineage[st.Name], e)
+	}
+	files, err := GenerateLineage(newer, lineage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := ""
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.h") && !strings.Contains(name, "/") {
+			header = string(data)
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table.h was generated")
+	}
+	// the build function's own text, and nothing else's
+	const open = "_fixed_lineage_build( void )\n{\n"
+	at := strings.Index(header, open)
+	if at < 0 {
+		t.Fatal("the lazy build of the older plans is not in the emitted C")
+	}
+	end := strings.Index(header[at:], "\n}\n")
+	if end < 0 {
+		t.Fatal("the lazy build has no end")
+	}
+	body := header[at+len(open) : at+end]
+
+	loop := strings.Index(body, "for ( i = 0; i < ")
+	publish := strings.Index(body, "table_fixed_once_publish(")
+	switch {
+	case loop < 0:
+		t.Fatal("the build no longer walks the lineage")
+	case publish < 0:
+		t.Fatal("the build never publishes the once-flag: nothing can tell a built plan from a zeroed one")
+	case publish < loop:
+		t.Fatalf("THE FLAG IS PUBLISHED BEFORE THE LOOP, so a racing load reads a zeroed "+
+			"TableFixedLineagePlan and lands a prefill-only record instead of refusing (§5.9 #7):\n%s", body)
+	}
+	// and it is published ONCE, after the loop — not also before it
+	if n := strings.Count(body, "table_fixed_once_publish("); n != 1 {
+		t.Fatalf("the once-flag is published %d times; the order is only a claim if there is one store", n)
+	}
+	// nothing else writes the flag: no plain assignment anywhere in the body
+	if strings.Contains(body, "_fixed_lineage_ready = ") {
+		t.Fatalf("the once-flag is assigned directly inside the build — the publish is the only store that may\n%s", body)
+	}
+	// a load that arrives before the publication WAITS for it rather than
+	// reading what is not there (the refuse-or-wait obligation, discharged by
+	// waiting: the build is a bounded walk over the lock's own bytes)
+	if !strings.Contains(body, "table_fixed_once_claim(") || !strings.Contains(body, "table_fixed_once_wait(") {
+		t.Fatalf("a racing load must claim the build or wait for it, never read the zeroed plan\n%s", body)
+	}
+	if claim, wait := strings.Index(body, "table_fixed_once_claim("), strings.Index(body, "table_fixed_once_wait("); claim > wait || wait > loop {
+		t.Fatalf("the claim comes first, then the wait, then the walk\n%s", body)
+	}
+}

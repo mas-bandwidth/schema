@@ -25,9 +25,23 @@ func TestJsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
-		for _, unwanted := range []string{"ProbeTable.js"} {
-			if _, ok := with[unwanted]; ok {
-				t.Fatalf("--lang %s emitted unwanted dead wire surface %s", target, unwanted)
+		// <Base>Table.js USED TO BE THE DEAD ONE. It was asserted absent while
+		// the only thing that could have gone in it was the form-1 table wire,
+		// which this backend does not carry (schema#516) — an empty module
+		// nobody could import is worse than no module. The FIXED FORM (§3.4)
+		// now lands there, so the file is WANTED and what has to hold is the
+		// reason it was refused before: it carries form 3 and no form-1 verb.
+		// The assertion moved with the fact rather than being deleted with it.
+		table, ok := with["ProbeTable.js"]
+		if !ok {
+			t.Fatalf("--lang %s emitted no ProbeTable.js for a unit with a fixed-size table; got %d files", target, len(with))
+		}
+		if !strings.Contains(string(table), "export function ConfigFixedSave(") {
+			t.Errorf("--lang %s: ProbeTable.js carries no fixed form for Config, so it is the empty module again", target)
+		}
+		for _, dead := range []string{"export function ConfigSave(", "export function ConfigLoad(", "export function ConfigMeasure("} {
+			if strings.Contains(string(table), dead) {
+				t.Errorf("--lang %s: ProbeTable.js carries %q — the form-1 table wire, which this backend does not have (schema#516)", target, dead)
 			}
 		}
 		for _, want := range []string{"ProbeBlock.js", "ProbeCook.js"} {
@@ -63,7 +77,8 @@ func TestJsEmitsTableSources(t *testing.T) {
 			if _, ok := without[name]; ok {
 				continue
 			}
-			if !strings.HasSuffix(name, "Block.js") && !strings.HasSuffix(name, "Cook.js") {
+			if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
+				!strings.HasSuffix(name, "Cook.js") {
 				t.Errorf("--lang %s: adding a table grew unexpected non-table module %s", target, name)
 			}
 		}

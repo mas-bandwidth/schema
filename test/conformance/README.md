@@ -285,7 +285,7 @@ directory and touches nothing another port touches (`docs/CONTRIBUTING.md`,
 "Adding a language"). The reference leg is `cpp` — the harness's own constant,
 sorted first — and the rest follow by name.
 
-**`ci.json` is one JSON object of strings**, and `.github/workflows/ci.yml`'s
+**`ci.json` is one JSON object of strings**, and `.github/workflows/ci-full.yml`'s
 conformance job reads it as the leg's matrix row:
 
 | key | what it is |

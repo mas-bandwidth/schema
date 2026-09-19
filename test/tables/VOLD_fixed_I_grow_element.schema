@@ -1,0 +1,16 @@
+// VOLD_fixed_I_grow_element.schema — OLD: [4]fixed(12,4)
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vold_fixed_i_grow_element
+
+fixed table FixedIGrowElement
+{
+    lead  uint32 = 1
+    vals  [4]fixed(12, 4) | min = -8, max = 7
+    trail uint32 = 2
+}

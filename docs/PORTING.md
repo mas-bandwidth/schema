@@ -16,6 +16,13 @@ port belongs to every language. When it lands anywhere, it is written into
 this register the same day, and every other port either carries it or states
 here why the platform cannot.
 
+**Where a FIXED-FORM port starts.** `docs/FIXED-FORM-ALGORITHM.md` is the
+language-neutral algorithm for form `3` — the layout, the framings, the record
+and its writer, the one reader path, evolution, the bounds, and what a port
+takes from its own packet codec and must not take from form `1`. A form-`3` leg
+is written from that page and proved against the byte oracle it names, not from
+the C++ reference's source. This register is still read first, for the methods.
+
 **How the page is used.** It is read BEFORE a port brief is written, so the
 brief carries every row and the port PR is not ready until its column is
 filled. It is read BEFORE a performance round is started, so a lever found in

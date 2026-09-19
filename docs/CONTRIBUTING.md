@@ -73,10 +73,66 @@ certification installs every toolchain and overrides the pins, which resolve
 and pass the gate. `make toolchain` runs the gate alone, and
 `make toolchain-negative-control` proves it still has its blade, on every pin
 of every leg. That control runs inside `make test` and on every pull request,
-in the `go-test` job of `ci.yml`.
+in the `go-test` job of `ci-full.yml`.
 
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
+
+## How to run the tests, and the rule that sets their shape
+
+The owner's rule, said twice in one day:
+
+> Remember the 1-2 minute iteration rule on unit tests.
+
+And its general form: anything we iterate on answers in **one minute ideally,
+two at most**. Anything over two minutes runs **once at the end as a check, or
+nightly** — never in the loop.
+
+We had slipped. A unit test that shells out to a foreign toolchain — `cc`,
+`c++`, `dotnet`, `javac`, `cargo`, `dart`, `node`, `elixir`, or the Go toolchain
+compiling the generated unit — costs one to thirty SECONDS of somebody else's
+compiler, every run. Two packages were carrying almost all of it:
+
+| command | before | after |
+| --- | --- | --- |
+| `go test ./compiler/` | 199 s | **18 s** |
+| `go test ./internal/codegen/gotable/` | 163 s | **2.8 s** |
+| `go test ./internal/codegen/...` (19 packages) | 164 s | **22 s** (slowest: `ctable`, 17 s) |
+| `make tables-cs-leg` | 74 s | unchanged — now also `-debug` / `-release`, ~37 s each |
+
+Nothing was dropped. `internal/slowtest` gates the toolchain half:
+
+- **the default, for the loop** — `go test ./compiler/`,
+  `go test ./internal/codegen/<leg>table/`, `go test ./...`: every pure-Go
+  test, the IR, the emitters' text, the goldens, the refusals. Each package
+  answers in seconds.
+- **the full set, for the check** — `SCHEMA_SLOW=1 go test ./compiler/
+  ./internal/codegen/...`: the same plus every toolchain test. Minutes. Run it
+  once before you open a pull request, not between edits.
+- **the nine leg gates** are unchanged, because each already exports
+  `SCHEMA_REQUIRE_CORPUS=1` and `slowtest.Enabled` counts that as the slow half
+  being on. `make tables-<leg>-fixedform`, `make tables-<leg>-versioning` and
+  `make tables-cs-leg` prove exactly what they proved before.
+- **`ci-full.yml`** sets `SCHEMA_SLOW=1` on both of its `go test` steps, so the
+  merge and nightly lanes run the whole of both halves. **`ci-fast.yml`** does
+  not, deliberately: its per-leg rows drive the make gates, which turn the slow
+  half on for the leg the diff touched — which is the two-minute lane's whole
+  idea.
+
+A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
+therefore never reads whether a toolchain is present; absence still fails
+wherever `SCHEMA_REQUIRE_CORPUS` says it must.
+
+The per-leg make gates, measured on an M-series Studio:
+
+| gate | time |
+| --- | --- |
+| `make tables-cs-leg-debug` | ~37 s |
+| `make tables-cs-leg-release` | ~37 s |
+| `make tables-cs-leg` (both, the CI gate) | 74 s |
+
+Any leg gate that grows past 60 s gets split the same way: two names for the
+loop, one combined name for CI.
 
 ## The gates a change has to pass
 
@@ -252,7 +308,7 @@ column on [PORTING.md](PORTING.md), the techniques register, is written by
 hand — every technique carried, cited or stated impossible — and its gate
 reads the columns from the page and holds them to the discovered drivers, so
 the column is the edit and no other file lists the language; a toolchain with
-no step yet in `.github/workflows/ci.yml` (and the `test` job of
+no step yet in `.github/workflows/ci-full.yml` (and the `test` job of
 `certify.yml`) adds one step, keyed on a new `ci.json` field; and the
 per-language prose in [SPEC.md](SPEC.md), [SPEC-TABLES.md](SPEC-TABLES.md)
 and [USAGE.md](USAGE.md) is prose, written by hand where the language's

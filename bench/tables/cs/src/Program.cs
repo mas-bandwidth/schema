@@ -380,6 +380,176 @@ static class Program
         }
     }
 
+#if BENCH_MATCHED
+    // ------------------------------------------------------------------
+    // the FIXED form, form byte 3 (docs/SPEC-TABLES.md §3.4)
+    // ------------------------------------------------------------------
+    //
+    // The same 64 logical records, on the same table wire, in the form that spends
+    // no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
+    // not a record: the vocabulary block rides once, the records follow it to the
+    // end, and every one of them is the same size — so the write is one call for
+    // all 64 and the read is one call back, and an OP is one RECORD of that call.
+    //
+    // The gates before the clock are the same three in a different spelling, plus
+    // the one this form adds: THE BLOCK THIS BUILD EMITS IS THE CORPUS'S BLOCK,
+    // byte for byte. That is the whole claim a port makes on this form — the record
+    // layout, the ids, the kinds and the hash are all in those bytes — so it is
+    // checked first and by itself.
+    const int FixedCount = 64;
+    const int FixedPlanCapacity = 4096;
+    static readonly Bench.FixedTable[] gFixedValues = new Bench.FixedTable[FixedCount];
+    static readonly Bench.FixedTable[] gFixedOut = new Bench.FixedTable[FixedCount];
+    static readonly Bench.TableFixedEntry[] gFixedPlan = new Bench.TableFixedEntry[FixedPlanCapacity];
+    static readonly BenchReport gFixedReport = new BenchReport();
+
+    static long FixedLoadAll(Bench.FixedTable[] values, ReadOnlySpan<byte> bytes)
+    {
+        return BenchSchema.FixedTableFixedLoad(values, bytes, gFixedPlan, gFixedReport);
+    }
+
+    static void BenchFixed(string name, long baseIters)
+    {
+        long iters = gIterations > 0 ? gIterations : baseIters;
+        string filePath = Path.Combine(gVariantDir, "bench_fixed.bin");
+        if (!File.Exists(filePath))
+        {
+            Console.Error.WriteLine("missing fixed corpus " + filePath + " — run from the schema repo root (or pass --variant-dir)");
+            failed = true;
+            return;
+        }
+        byte[] file = File.ReadAllBytes(filePath);
+
+        string layoutPath = Path.Combine(gVariantDir, "bench_fixed.layout");
+        if (!File.Exists(layoutPath))
+        {
+            Console.Error.WriteLine("missing fixed corpus " + layoutPath + " — run from the schema repo root (or pass --variant-dir)");
+            failed = true;
+            return;
+        }
+        byte[] layout = File.ReadAllBytes(layoutPath);
+
+        if (file.Length == 0 || layout.Length == 0)
+        {
+            Console.Error.WriteLine("empty fixed corpus in " + gVariantDir);
+            failed = true;
+            return;
+        }
+
+        gGoldensLoaded["bench_fixed.bin"] = file;
+        gGoldensLoaded["bench_fixed.layout"] = layout;
+        double bytesPerOp = (double)file.Length / FixedCount;
+        byte[] twin = new byte[file.Length];
+
+        // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
+        if (layout.Length != BenchSchema.FixedTableFixedLayoutBytes ||
+            !layout.AsSpan().SequenceEqual(BenchSchema.FixedTableFixedLayout))
+        {
+            Fail(name, "this build's layout block is not the corpus's, byte for byte");
+            return;
+        }
+
+        // gate 2: the whole file loads clean.
+        long loaded = FixedLoadAll(gFixedValues, file);
+        if (loaded != FixedCount)
+        {
+            Fail(name, "the fixed corpus did not load");
+            return;
+        }
+
+        // gate 3: writing them back reproduces the file, byte for byte.
+        if (BenchSchema.FixedTableFixedSave(gFixedValues, twin) != file.Length ||
+            !twin.AsSpan().SequenceEqual(file))
+        {
+            Fail(name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus");
+            return;
+        }
+
+        // gate 4: reused storage round-trips too. The load owns the prefill, so
+        // nothing is reset between the two passes.
+        for (int k = 0; k < 2; k++)
+        {
+            if (FixedLoadAll(gFixedOut, file) != FixedCount ||
+                BenchSchema.FixedTableFixedSave(gFixedOut, twin) != file.Length ||
+                !twin.AsSpan().SequenceEqual(file))
+            {
+                Fail(name, "reused target round-trip bytes differ");
+                return;
+            }
+        }
+
+        if (gGate) return;
+
+        double[] writeRates = new double[gNumRuns];
+        double[] roundtripRates = new double[gNumRuns];
+
+        // WRITE: one call lays down all 64 records; an op is one record.
+        for (int run = -1; run < gNumRuns; run++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i += FixedCount)
+            {
+                long wrote = BenchSchema.FixedTableFixedSave(gFixedValues, twin);
+                if (wrote != file.Length)
+                {
+                    Fail(name, "save failed in loop");
+                    return;
+                }
+                gSink = gSink + (ulong)wrote;
+            }
+            sw.Stop();
+            if (run >= 0)
+            {
+                writeRates[run] = iters / sw.Elapsed.TotalSeconds;
+            }
+        }
+
+        // ROUND-TRIP: read the file back, then write what came out.
+        for (int run = -1; run < gNumRuns; run++)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            for (long i = 0; i < iters; i += FixedCount)
+            {
+                if (FixedLoadAll(gFixedOut, file) != FixedCount)
+                {
+                    Fail(name, "load failed in loop");
+                    return;
+                }
+                long wrote = BenchSchema.FixedTableFixedSave(gFixedOut, twin);
+                if (wrote != file.Length)
+                {
+                    Fail(name, "re-save failed in loop");
+                    return;
+                }
+                gSink = gSink + (ulong)wrote;
+            }
+            sw.Stop();
+            if (run >= 0)
+            {
+                roundtripRates[run] = iters / sw.Elapsed.TotalSeconds;
+            }
+        }
+
+        GC.KeepAlive(gFixedValues);
+        GC.KeepAlive(gFixedOut);
+        GC.KeepAlive(twin);
+
+        RunStats w = Stats(writeRates);
+        RunStats rt = Stats(roundtripRates);
+        Report(name, "write", iters, bytesPerOp, w);
+        Report(name, "round_trip", iters, bytesPerOp, rt);
+
+        // READ is DERIVED, never measured (§2.9): stderr only, never a row.
+        double readTime = 1.0 / rt.Median - 1.0 / w.Median;
+        if (readTime > 0)
+        {
+            Console.Error.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "{0,-18} {1,-11} {2,10:F3} M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)",
+                name, "read", 1e-6 / readTime));
+        }
+    }
+#endif
+
     static int Main(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -433,17 +603,32 @@ static class Program
             Console.WriteLine("lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline");
         }
 
-        // The one measured shape, named once — the generated type at the call
-        // site and nothing else about it (bench/SHAPE-GATE.allow).
+        // The measured shape, named once — the generated type at the call site and
+        // nothing else about it (bench/SHAPE-GATE.allow).
+        //
+        // IN THE MATCHED BUILD THE MEASURED WIRE IS THE FIXED FORM (§3.4), and the
+        // tolerant form still runs every correctness gate it always ran, without a
+        // clock: the corpus is one corpus, both forms carry the same 64 logical
+        // records, and a run that stopped loading the tolerant half would report a
+        // corpus id the paired driver could not match.
+#if BENCH_MATCHED
+        bool measured = gGate;
+        gGate = true;
         BenchReport report = new BenchReport();
         BenchTable<BenchValue>(
             "bench_table", "bench_table", 400000L,
             () => new BenchValue(),
             v => BenchSchema.TableReset(v),
-#if BENCH_MATCHED
             (v, b) => BenchSchema.BenchMixedSave(v, b),
             (v, b) => BenchSchema.BenchMixedLoad(v, b, report) && !report.Malformed);
+        gGate = measured;
+        BenchFixed("bench_fixed", 400000L);
 #else
+        BenchReport report = new BenchReport();
+        BenchTable<BenchValue>(
+            "bench_table", "bench_table", 400000L,
+            () => new BenchValue(),
+            v => BenchSchema.TableReset(v),
             (v, b) => BenchSchema.TableMixedSave(v, b),
             (v, b) => BenchSchema.TableMixedLoad(v, b, report) && !report.Malformed);
 #endif

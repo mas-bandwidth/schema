@@ -182,24 +182,85 @@ func refuseFileCollisions(u *ir.Unit) error {
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated JavaScript is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). A nil map is a build with no
+// lock — a unit that was never locked promises nothing — and every table then
+// carries the one entry it can always compute: its own.
+//
+// THE BACKEND OPENS NO FILE: `lockfile.Open`, `lockfile.Lineage` and
+// `lockfile.Floor` are the CALLER's three calls, so the disk is read in one
+// place and a test can play the lock in one line.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "JavaScript"); err != nil {
-		return nil, err
+	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
+	// (ir.WideTableKinds). The rule lives in ir because a rule five ports each
+	// spell for themselves is five rules — and the day this backend gained
+	// §3.4's fixed form is the day the block form and the cooked form stood down
+	// alone, with the unit NOT refused whole because there is a wire left to
+	// emit. The refusal still names every wide field, and it is stated by name in
+	// every module this unit gets.
+	//
+	// THE ANSWER IS THIS LEG'S OWN ROOTS, the way java and elixir answer it
+	// (len(jsFixedUnitRoots) > 0), and not a hard-coded `true`: a unit this leg lays no
+	// fixed table out for has no wire left to put in the accelerators' place, and
+	// `true` would have told ir otherwise and let the unit through unrefused.
+	scope := ir.WideTableKinds(u, "JavaScript", len(jsFixedUnitRoots(u)) > 0)
+	if scope.Unit {
+		return nil, scope.Refusal
 	}
 	if err := refuseFileCollisions(u); err != nil {
 		return nil, err
 	}
-	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
+	// A HANDED ENTRY THAT IS A LOCK BUG FAILS THE BUILD, before a line is
+	// emitted (§5.9 #8, #26): a layout that does not parse, or a record size
+	// that is not what the entry's own layout accounts for, is never a wire
+	// event and never a refusal at the first file that matches its hash.
+	if err := refuseFixedLineage(u, lineage); err != nil {
+		return nil, err
+	}
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
+	// ACCELERATORS, NOT OF THE FIXED FORM. A block row and a cooked node are
+	// laid out in the ID-TABLE's kind vocabulary, which has no fixed-point and
+	// no 128-bit kind in this backend yet (schema#366) — but §3.4's fixed form
+	// carries both by its own constant-size table, a `fixed(I, F)` riding as
+	// the raw scaled integer at its storage width and an `int128`/`uint128` as
+	// sixteen bytes, the low half then the high. So the refusal is SCOPED to
+	// the two accelerators and stated by name in every module this unit gets,
+	// rather than taken out on a form that carries the kinds fine.
+	wide := ir.TableWideFields(u)
+	out := map[string][]byte{}
+	if len(wide) == 0 {
+		blocks := ir.Blocks(u)
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
+	}
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
+	// FIRST table wire. Form 1 is still deferred to #516 and nothing here
+	// reads or writes one.
+	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	maps.Copy(out, fixed)
+	// A unit whose wide kinds cost it the accelerators AND that has no fixed
+	// form to put in their place has nothing to emit, so it is refused whole
+	// and by name, exactly as it was before the form arrived.
+	if len(wide) > 0 && len(fixed) == 0 {
+		return nil, scope.Refusal
 	}
-	maps.Copy(out, cooks)
 	return out, nil
 }

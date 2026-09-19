@@ -439,7 +439,7 @@ static benchtable::TableFixedEntry g_fixed_plan[FixedPlanCapacity];
 static int64_t fixed_load_all( benchtable::FixedTable * values, const uint8_t * bytes, int64_t size )
 {
     benchtable::TableReport report;
-    return benchtable::FixedTableFixedLoad( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, &report );
+    return benchtable::FixedTableFixedLoad( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 static void bench_fixed( const char * name, long base_iters )

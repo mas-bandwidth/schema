@@ -110,13 +110,14 @@ func TestEveryGroupRunsInATier(t *testing.T) {
 // package and the workflows. The enumeration is only worth its cost while a
 // leg's target list IS the manifest: a job that typed its own list would pass
 // every test above and still miss a control. So both workflows are read here,
-// and each must reach its matrix and its targets through this tool: ci.yml for
-// the pull-request tier, certify.yml for the nightly one, which is where this
-// repository's schedule lives.
+// and each must reach its matrix and its targets through this tool:
+// ci-full.yml for the merge tier (the 47 rows are too many runners for the
+// per-push fast lane; that split is in ci-fast.yml's header), certify.yml for
+// the nightly one, which is where this repository's schedule lives.
 func TestTheLegRunsTheManifestAndNotATypedList(t *testing.T) {
 	root := testRoot(t)
 	for workflow, wants := range map[string][]string{
-		"ci.yml": {
+		"ci-full.yml": {
 			"go run ./tools/negativecontrols check",
 			"go run ./tools/negativecontrols matrix",
 			"go run ./tools/negativecontrols targets",
@@ -258,7 +259,7 @@ var legs = []struct {
 	matrixJob string
 	command   string
 }{
-	{"ci.yml", "negative-controls", "negative-controls-matrix", "go run ./tools/negativecontrols matrix"},
+	{"ci-full.yml", "negative-controls", "negative-controls-matrix", "go run ./tools/negativecontrols matrix"},
 	{"certify.yml", "negative-controls-nightly", "negative-controls-nightly-matrix", "go run ./tools/negativecontrols matrix nightly"},
 }
 

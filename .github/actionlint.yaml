@@ -1,0 +1,10 @@
+# The self-hosted runner labels this repository registers, so actionlint can
+# type-check `runs-on:` instead of reporting every one of them as unknown.
+# Read off the wire, 2026-09-19:
+#   gh api repos/mas-bandwidth/schema/actions/runners
+#     studio-arm64, studio-arm64-2..6  self-hosted,macOS,ARM64,studio
+#     space-x64                        self-hosted,Linux,X64,space
+self-hosted-runner:
+  labels:
+    - studio
+    - space

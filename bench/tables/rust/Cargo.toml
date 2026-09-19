@@ -1,0 +1,20 @@
+# THE RUST LEG OF THE FIXED FORM'S PAIRED BENCH (docs/SPEC-TABLES.md §3.4).
+#
+# The crate under measurement is the PAIRED unit — Bench.schema and
+# FixedTable.schema generated as ONE unit, exactly as the C, C++, Go and C#
+# paired generations are, because the fixed root reaches the packet type and
+# that is what makes the compiler emit its table codec.
+#
+# `bench/paired` builds this with `cargo build --release` and a `--target-dir`
+# under build/, then runs the binary it copies to build/paired/table-rust.
+[package]
+name = "benchtablesrust"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "table-rust"
+path = "src/main.rs"
+
+[dependencies]
+benchpaired = { path = "../../../generated/bench/paired/rust" }

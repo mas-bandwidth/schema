@@ -359,32 +359,6 @@ func TableTypeSpelling(f *Field) string {
 	return "?"
 }
 
-// ArmFixedWidth is the payload width a union ARM's `L` must equal, or 0 where
-// the arm's payload is length-shaped (docs/SPEC-TABLES.md §2.6, §3). AN ARM
-// CARRIES NO KIND BYTE, so this is the whole of what a reader can check about
-// an arm's declared type: a length that is not this width is a KIND MISMATCH,
-// and an arm retyped under one width is §4.1's silent class, which §18's
-// baseline refuses.
-func ArmFixedWidth(f *Field) int {
-	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TWString || f.Type.Kind == TBytes {
-		return 0
-	}
-	if f.Type.Pointer {
-		return 4 // a node index (§3.1)
-	}
-	kind := TableScalarKind(f)
-	switch kind {
-	case TableKindTable, TableKindUnion:
-		return 0
-	}
-	if f.Type.Kind == TNamed {
-		if _, isEnum := f.Type.Ref.(*Enum); isEnum {
-			return 2 // the u16 hash of the variant's name (§3)
-		}
-	}
-	return TableKindWidth(kind)
-}
-
 func itoa(v int) string { return big.NewInt(int64(v)).String() }
 
 func itoa64(v int64) string { return big.NewInt(v).String() }
@@ -438,6 +412,49 @@ func RefuseWideTableKinds(u *Unit, backend string) error {
 	return fmt.Errorf("the %s table backend does not carry the fixed-point and 128-bit table-wire kinds yet — %s "+
 		"(docs/SPEC-TABLES.md §3, §15: every type the type wire carries rides in a table in the C++ reference and the tool, "+
 		"and each port lands them as a row on schema#366)", backend, strings.Join(fields, ", "))
+}
+
+// WideTableKindScope is §15's refusal SCOPED: which of a backend's outputs a
+// unit's wide kinds stand down, and whether there is anything left to emit at
+// all.
+//
+// §15'S REFUSAL IS OWED BY THE FORM-1 ACCELERATORS AND NOT BY THE WIRE. It
+// exists because a backend that emits the BLOCK FORM (§19) or the COOKED FORM
+// (§7) has to name a kind's storage column and its reflection descriptor, and a
+// port that does not carry the fixed-point and 128-bit families cannot name
+// theirs. THE FIXED FORM (§3.4) NAMES NO KIND AT ALL on the emitted path: a
+// field is a store of its declared width at its declared offset, so a 128-bit
+// field is a sixteen-byte store and a fixed-point one is its raw integer, and
+// the kind byte a reader compares rides in the LAYOUT the emitter already
+// writes. So a unit that declares the wide kinds still gets its form-3 codec,
+// and it is the two accelerators that stand down.
+//
+// THE RULE IS HERE RATHER THAN IN EACH PORT because a rule five ports each
+// spell for themselves is five rules: the Rust, JS, Dart and Elixir legs each
+// scoped it locally first, and this is that one answer.
+type WideTableKindScope struct {
+	// Refusal is §15's error, by name, naming every field — nil when the unit
+	// declares no wide kind at all.
+	Refusal error
+	// Accelerators says the BLOCK FORM and the COOKED FORM must not be emitted
+	// for this unit: their columns are the ones that cannot be named.
+	Accelerators bool
+	// Unit says the WHOLE unit is refused and Refusal is the whole answer:
+	// there is nothing left for this backend to emit.
+	Unit bool
+}
+
+// WideTableKinds answers [WideTableKindScope] for one backend. `fixedForm` is
+// the BACKEND'S OWN answer to "do I emit a form-3 codec for this unit", because
+// which types a port lays out in the fixed form is that port's own state and
+// not a fact about the unit: each port answers it from its OWN roots, which is
+// why there is no helper here to answer it for them.
+func WideTableKinds(u *Unit, backend string, fixedForm bool) WideTableKindScope {
+	refusal := RefuseWideTableKinds(u, backend)
+	if refusal == nil {
+		return WideTableKindScope{}
+	}
+	return WideTableKindScope{Refusal: refusal, Accelerators: true, Unit: !fixedForm}
 }
 
 // TableKindWidens reports whether a payload under `kind` decodes EXACTLY into

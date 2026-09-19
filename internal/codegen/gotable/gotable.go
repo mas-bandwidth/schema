@@ -75,6 +75,7 @@ type tableGen struct {
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
 
+	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -159,6 +160,14 @@ func (g *tableGen) pf(format string, args ...any) {
 // unit that declares tables, and nothing when it declares none — a table-free
 // unit's generated tree is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
+// every table then carries the one entry it can always compute: its own.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -186,12 +195,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	armSlots := unionArmSlots(u, closure)
 	idOrdinal := wireIdOrdinals(u)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
 		members := fileMembers(f, closure)
 		if g.home {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
 			g.pf("%s", tableCookWriteSource(u))
 			if regional {
 				g.emitRegionRuntime(blocks)
@@ -258,6 +267,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				}
 			}
 		}
+		g.emitFixedForm(members)
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -487,6 +497,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
+	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
+	// reports it too — the operator's other answer, a layout this build served
+	// and has retired.
+	LayoutHash uint64
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
