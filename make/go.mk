@@ -594,3 +594,18 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
+
+# I13 (docs/PORTING.md:1278): the go leg's text differential against a third
+# implementation. The test generates N random float-only instances with the
+# generated setters, writes each as (wire, text), then byte-compares the leg's
+# text against internal/tabletext's text and packs the leg's text back to wire
+# the other way. The probe builds its own unit into a temp directory, so
+# build/tables-generated-go/.stamp is not a prerequisite and the control is not
+# slowed by a corpus build. test-go is wired only because the row is GREEN at
+# base.
+.PHONY: tables-go-text-differential tables-go-text-differential-negative-control
+tables-go-text-differential:
+	go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
+tables-go-text-differential-negative-control:
+	go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
+test-go: tables-go-text-differential
