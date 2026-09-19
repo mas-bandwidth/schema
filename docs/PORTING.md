@@ -1122,7 +1122,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1297,7 +1297,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #517 | ❌ #516 | ❌ #419 | ❌ #419 |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1325,7 +1325,7 @@ prints observations without certification. The default requires Go 1.26.0.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; there is no java allocation gate at all to skip — nothing in `make/java.mk` names one) | ✅ `test/js-tables/main.mjs:903` | ❌ #420 (pinned SDK 3.13.2; there is no dart allocation measurement at all — nothing in `make/dart.mk` names one) | ❌ #420 (pinned OTP; there is no elixir allocation audit at all — `make/elixir.mk:231-233` says so in the leg's own words) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
