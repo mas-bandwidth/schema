@@ -13,13 +13,31 @@ package elixirtable
 // the writer's 1.0) and past_ landing 2.0 (not 5.0) is what says there is a
 // pass at all.
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
+
+	// `aim` IS COMPARED BY ITS float32 BITS, AND TWO OF THE THREE COME FROM THE
+	// CORPUS MANIFEST (schema#1164). The BEAM has one float type and it is a
+	// double, so `v.aim == 0.5` was exact -- but exact by accident of a literal
+	// transcribed by hand, with nothing tying it to the reference. `old_`'s value
+	// is the manifest's `values=r0.aim`, `hostile_`'s is the manifest's own
+	// `forged=r0.aim@104`. `past_`'s 0x40000000 stays a literal and says why: the
+	// file carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0,
+	// which is the whole content of that column.
+	aimCheck := func(which string, bits uint32, note string) string {
+		return fmt.Sprintf(`  <<aimbits::little-unsigned-32>> = <<v.aim::float-little-32>>
+  check(aimbits == %[2]d, "%[1]s: aim bits 0x#{Integer.to_string(aimbits, 16)}, want 0x#{Integer.to_string(%[2]d, 16)} -- %[3]s (#{inspect(v.aim)})")`, which, bits, note)
+	}
+	oldAim := aimCheck("old_", manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"), "the writer's own value, from the corpus manifest")
+	hostileAim := aimCheck("hostile_", manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"), "the manifest's own forged value, landed WHOLE because the bounds pass is the READER's")
+	pastAim := aimCheck("past_", 0x40000000, "THIS READER'S OWN declared max 2.0, not a manifest value: the file carries 5.0")
 
 	oldFile := filepath.Join(corpus, "old_cfloat_range_widen.bin")
 	hostileFile := filepath.Join(corpus, "hostile_cfloat_range_widen.bin")
@@ -33,7 +51,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(length(values) == 1, "n == #{length(values)}, want 1")
   v = hd(values)
   leadtrail(v, 1, 2)
-  check(v.aim == 0.5, "the old value did not land exactly: #{inspect(v.aim)}")
+@AIM@
   check(report.clamped == 0, "clamped == #{report.clamped}, want 0: the old value is not clamped")
   check(
     report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and
@@ -42,7 +60,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   )
   check(report.malformed == false, "a clean NEW-READS-OLD is not malformed")`
 	out, err := runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
-		[]string{"VOLD_cfloat_range_widen"}, 0, oldFile, oldBody)
+		[]string{"VOLD_cfloat_range_widen"}, 0, oldFile, strings.ReplaceAll(oldBody, "@AIM@", oldAim))
 	if err != nil {
 		t.Fatalf("old_: %v\n%s", err, out)
 	}
@@ -56,7 +74,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(length(values) == 1, "n == #{length(values)}, want 1")
   v = hd(values)
   leadtrail(v, 1, 2)
-  check(v.aim == 1.5, "the hostile value did not land whole: #{inspect(v.aim)}")
+@AIM@
   check(report.clamped == 0, "clamped == #{report.clamped}, want 0: inside the reader's range lands whole")
   check(
     report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and
@@ -65,7 +83,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   )
   check(report.malformed == false, "a clean in-range read is not malformed")`
 	out, err = runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
-		[]string{"VOLD_cfloat_range_widen"}, 0, hostileFile, hostileBody)
+		[]string{"VOLD_cfloat_range_widen"}, 0, hostileFile, strings.ReplaceAll(hostileBody, "@AIM@", hostileAim))
 	if err != nil {
 		t.Fatalf("hostile_: %v\n%s", err, out)
 	}
@@ -78,7 +96,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(length(values) == 1, "n == #{length(values)}, want 1")
   v = hd(values)
   leadtrail(v, 1, 2)
-  check(v.aim == 2.0, "aim == #{inspect(v.aim)}, want 2.0: the READER's own max, not the writer's 1.0")
+@AIM@
   check(report.clamped == 1, "clamped == #{report.clamped}, want 1: past the reader's own max clamps once")
   check(
     report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and
@@ -87,7 +105,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   )
   check(report.malformed == false, "a clean clamped read is not malformed")`
 	out, err = runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
-		[]string{"VOLD_cfloat_range_widen"}, 0, pastFile, pastBody)
+		[]string{"VOLD_cfloat_range_widen"}, 0, pastFile, strings.ReplaceAll(pastBody, "@AIM@", pastAim))
 	if err != nil {
 		t.Fatalf("past_: %v\n%s", err, out)
 	}
