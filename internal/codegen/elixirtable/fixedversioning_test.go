@@ -87,15 +87,27 @@ type versionRow struct {
 	// that is measured, not argued (2026-09-19, on space, at `fe025445`):
 	// replacing `@<row>_prefill` with `:binary.copy(<<0x5A>>, byte_size(...))`
 	// at the one line that hands it to `R.run` — a real poison, applied where
-	// the image is actually assembled — turns exactly THREE rows red:
-	// `array_fixed_grow`, `keyed_array_enum_append` and `field_append`. The
-	// other twenty-four stay green, because their checks never look at a slot
-	// the prefill owns. And deleting the two poison lines outright left the
-	// whole suite `ok 1.996s` — the lines asserted nothing at all.
+	// the image is actually assembled — turned exactly THREE of the twenty-six
+	// rows red: `array_fixed_grow`, `keyed_array_enum_append` and
+	// `field_append`. Twenty-three stayed green, because their checks never
+	// looked at a slot the prefill owns. And deleting the two poison lines
+	// outright left the whole suite `ok 1.996s` — they asserted nothing at all.
 	//
 	// So the marker is on the rows that measurably carry it, in words, and the
 	// obligation it states is the real one: A ROW THAT MEANS TO PROVE THE
 	// PREFILL RAN MUST CHECK A SLOT WHOSE DECLARED DEFAULT IS NOT ZERO.
+	//
+	// RE-MEASURED at `c95bee90` (2026-09-19): the same mutation now turns FIVE
+	// of the twenty-six red — `nested_append` (`w int32 = 88`, appended inside
+	// the nested `Vec`) and `union_arm_payload_widen` (`y int32 = 55`, appended
+	// to the SELECTED arm's payload) joined the three. THOSE FIVE ARE ALL THE
+	// ROWS THERE CAN BE. Every remaining row either WIDENS a member the old
+	// writer already wrote — so the prefill owns no byte of it — or opens a slot
+	// whose DECLARED DEFAULT IS ZERO (`array_bounded_grow`, `bytes_grow`,
+	// `constant_grow`, `enum_append`, `flags_append`, `optional_add`,
+	// `string_grow`, `union_append`, `wstring_grow`), and over a zeroed image a
+	// zero default passes whether the prefill ran or not. Those rows owe §5.9
+	// #32 instead, and the bracket check below is how they pay it.
 	//
 	// check is Elixir source asserting the landed values, over `values`.
 	check string
@@ -198,7 +210,27 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 				counters = `check(report.widened != 0, "a widening row moved no widened counter")`
 			}
 			old := versionSchema(t, "VOLD_"+r.row)
-			lead, trail := brackets(t, corpus, r.row, fixedTypeBytes(versionRoot(t, old)))
+			root := versionRoot(t, old)
+			lead, trail := brackets(t, corpus, r.row, fixedTypeBytes(root))
+			// THE ORACLE WAS COMPUTED AND THROWN AWAY, and that was the larger
+			// of this file's two vacuities (measured 2026-09-19 at `c95bee90`).
+			// `brackets` reads §5.9 #32's value oracle out of the corpus
+			// manifest FOR EVERY ROW, hands it in as `{want_lead, want_trail}`
+			// — and the body then said `_ = {v, want_lead, want_trail}`.
+			// Exactly THREE rows called `leadtrail` themselves; the other
+			// twenty-three asserted no landed value at all, only that the file
+			// read and that no counter moved. A row whose root declares the
+			// bracket pair now checks it, so a mislaid size that moves a
+			// neighbour says so by name.
+			//
+			// IT IS DERIVED FROM THE IR, not from a flag beside the row: ten of
+			// the twenty-six roots declare no `lead`/`trail` (they are the
+			// scalar and union rows), and a hand-kept list would drift the
+			// first time a schema gained or lost the pair.
+			bracket := ""
+			if hasField(root, "lead") && hasField(root, "trail") {
+				bracket = "\n  leadtrail(v, want_lead, want_trail)"
+			}
 			body := fmt.Sprintf(`  {want_lead, want_trail} = {0x%08X, 0x%08X}
   data = File.read!(file())
   {tag, values, report} = load(data)
@@ -211,8 +243,8 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   )
   %s
   v = hd(values)
-  _ = {v, want_lead, want_trail}
-%s`, lead, trail, counters, r.check)
+  _ = {v, want_lead, want_trail}%s
+%s`, lead, trail, counters, bracket, r.check)
 			out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
@@ -951,4 +983,19 @@ func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	if fired == 0 {
 		t.Fatal("not one row read its brackets from the manifest: the branch is dead again")
 	}
+}
+
+// hasField answers whether a row's ROOT declares a member by that name. It is
+// how the bracket check knows which rows carry §5.9 #32's `lead`/`trail` pair,
+// and it is read off the IR on purpose: a flag kept by hand beside each row
+// would drift the first time a schema gained or lost the pair, and the failure
+// mode of that drift is a row that silently stops asserting a landed value —
+// which is exactly the vacuity being repaired here.
+func hasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }
