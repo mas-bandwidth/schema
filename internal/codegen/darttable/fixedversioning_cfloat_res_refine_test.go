@@ -1,7 +1,9 @@
 package darttable
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +17,10 @@ import (
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
+	// THE NUMBER COMES FROM THE CORPUS MANIFEST, not from a literal here
+	// (schema#1164). This leg already compared BITS, which is the right
+	// comparison; what it did not do is take the number from the REFERENCE.
+	aim := fmt.Sprintf("0x%08X", versionManifestFloatBits(t, corpus, "old_cfloat_res_refine.bin", "values", "r0.aim"))
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the newer reader did not read the older writer one record: n=$n ${why(report)}');
@@ -28,11 +34,11 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
   check(values[0].lead == 1 && values[0].trail == 2,
       'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
   final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
-  check(aimBits.getUint32(0, Endian.little) == 0x3E99999A,
-      'aim is not the float32 the old writer quantized to 0.1: ${values[0].aim}');
+  check(aimBits.getUint32(0, Endian.little) == @AIM@,
+      'aim is not the corpus manifest value @AIM@, bit for bit: ${values[0].aim}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_cfloat_res_refine", []string{"VOLD_cfloat_res_refine"}, 0,
-		filepath.Join(corpus, "old_cfloat_res_refine.bin"), body)
+		filepath.Join(corpus, "old_cfloat_res_refine.bin"), strings.ReplaceAll(body, "@AIM@", aim))
 	if err != nil {
 		t.Fatalf("cfloat_res_refine: %v\n%s", err, out)
 	}

@@ -19,6 +19,10 @@ import (
 
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	corpus := versionCorpus(t)
+	// THE NUMBER COMES FROM THE CORPUS MANIFEST, not from a literal here
+	// (schema#1164). This leg already compared BITS, which is the right
+	// comparison; what it did not do is take the number from the REFERENCE.
+	aim := versionManifestFloatBits(t, corpus, "old_cfloat_res_refine.bin", "values", "r0.aim")
 
 	tests := fmt.Sprintf(`
 /// §5.8 row cfloat_res_refine, NEW-READS-OLD: the NEW reader (aim resolution
@@ -48,9 +52,9 @@ fn v_cfloat_res_refine_new_reads_old() {
     assert_eq!(values[0].lead, 1, "the lead bracket moved: lead={}", values[0].lead);
     assert_eq!(values[0].trail, 2, "the trail bracket moved: trail={}", values[0].trail);
     assert_eq!(
-        values[0].aim.to_bits(), 0x3E99999A,
-        "the refined reader must land the old writer's float EXACTLY: aim={:#x}, want 0x3E99999A",
-        values[0].aim.to_bits()
+        values[0].aim.to_bits(), %[2]d,
+        "the refined reader must land the old writer's float BIT-EXACT: aim={:#x}, the manifest says {:#x}",
+        values[0].aim.to_bits(), %[2]d
     );
     assert_eq!(
         report.clamped, 0,
@@ -61,7 +65,7 @@ fn v_cfloat_res_refine_new_reads_old() {
         "counters moved on a clean backward read: {:?}", report
     );
 }
-`, filepath.Join(corpus, "old_cfloat_res_refine.bin"))
+`, filepath.Join(corpus, "old_cfloat_res_refine.bin"), aim)
 
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
