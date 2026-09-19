@@ -9,7 +9,7 @@
  :nodes
  ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "acceptance-gates" "integration"))
   (:id "fixed-tables" :type :roadmap :title "NEW Fixed Tables" :scope-revision 2 :source-revision
-   "f20738b27a12cac40ab7e8d210c9c44b05055b80" :rows
+   "f2d33e802a4933b5e8212ce87c3fa67280faf98a" :rows
    (("file-envelope" "File framing and layout announcements") ("batch-capacity" "Bounded batches")
     ("plan-selection" "Select known layouts and refuse unsupported input")
     ("compiled-plans" "Static plans, record sizes and caller capacity")
@@ -872,10 +872,10 @@
   (:id "c/R12" :type :task :title "the per-record hash check is before the prefill: no_layout writes nothing"
    :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1128"
-    "internal/codegen/ctable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing"
+    "internal/codegen/ctable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing, which poisons with memset( back, 0x5A, sizeof( back ) ) and sweeps every byte"
     "merged into fixed-table-form at 741c0a15c5b865c93d3795b8d5f45c326e6b3150") :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "c/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -943,11 +943,11 @@
   (:id "go/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1124"
-    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningRefuseWritesNothing"
+    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningRefuseWritesNothing, which poisons 0x5A and compares every byte against the pre-load image"
     "merged into fixed-table-form at a55fa91bc0c5082ec503fdcad8a1240ee05b442c")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "go/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -981,11 +981,11 @@
   (:id "rust/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1151"
-    "internal/codegen/rusttable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing"
+    "internal/codegen/rusttable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing, which asserts every swept byte is still 0x5A"
     "merged into fixed-table-form at 1c5fbcf9cf1e78bc15fe7d7fa9da90bdcfd8b31f")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "rust/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -1019,11 +1019,11 @@
   (:id "java/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1140"
-    "internal/codegen/javatable/fixedversioning_refuse_writes_nothing_test.go"
+    "internal/codegen/javatable/fixedversioning_refuse_writes_nothing_test.go, which poisons 0x5A5A5A5A and sweeps v.x v.y v.z v.w and seq"
     "merged into fixed-table-form at 5e8a35ab2fbabb0fca8e85532616267702c59c25")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "java/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -1057,11 +1057,11 @@
   (:id "js/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1134"
-    "internal/codegen/jstable/fixedversioning_refuse_writes_nothing_test.go: TestJSFixedVersioningRefuseWritesNothing"
+    "internal/codegen/jstable/fixedversioning_refuse_writes_nothing_test.go: TestJSFixedVersioningRefuseWritesNothing, which fills the image 0x5A and fails on any byte that is not"
     "merged into fixed-table-form at 31a043a42148c21de6e8b86a5cc41b9b69238c32")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "js/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -1095,11 +1095,11 @@
   (:id "dart/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1147"
-    "internal/codegen/darttable/fixedversioning_refuse_writes_nothing_test.go"
+    "internal/codegen/darttable/fixedversioning_refuse_writes_nothing_test.go, which fillRange 0x5A over the image and checks every byte"
     "merged into fixed-table-form at 3f7c62ca30b2c13c0e2cccb4da78534cc8a6041e")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "dart/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -1131,13 +1131,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "elixir/R12" :type :task :title
-   "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1155"
-    "internal/codegen/elixirtable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing"
+   "the per-record hash check is before the prefill: no_layout writes nothing" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1155: the refusal half only — see :note. internal/codegen/elixirtable/fixedversioning_refuse_writes_nothing_test.go"
     "merged into fixed-table-form at 0255317373653ddd8a26249423ee49b7792785bf")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter 0, and caller storage poisoned 0x5A untouched, so the hash check ran before the prefill.")
+   "NOT reconciled. #1155 in :evidence proves the refusal half on elixir — tag :error, why :no_layout, malformed false, layout_hash untouched and every counter exactly 0 — but NOT the 'writes nothing' half that is the operative clause of this task. Its only destination check is check(fresh == fresh_value(), 'REFUSE wrote destination values'), where fresh is bound to fresh_value() and never passed into load/1: both sides are freshly built struct literals, so the comparison is true whether or not a prefill ran. There is no 0x5A poison anywhere in #1155, unlike the six legs that do sweep one. Either the clause is unprovable on an immutable leg or the probe owes the assertion; until one or the other, :unknown.")
   (:id "elixir/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -2660,12 +2659,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "cpp/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1131"
-    "internal/codegen/cpptable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount"
+    "internal/codegen/cpptable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, ONE lineage peer"
     "merged into fixed-table-form at d48673455c58311e275813ec76f87d7be72ed796") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/cpp" :type :work-set :children ("cpp/C1" "cpp/C2" "cpp/R11"))
   (:id "c/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "owed" :reported-source
@@ -2676,12 +2675,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "c/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1126"
-    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, with the runtime fix in internal/codegen/ctable/fixedruntime.go"
+    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, cRunVersionProbe with []string{older} — ONE peer; runtime fix in internal/codegen/ctable/fixedruntime.go"
     "merged into fixed-table-form at bcf51c859a91be64485776abbf4f55fdade6b5a1") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/c" :type :work-set :children ("c/C1" "c/C2" "c/R11"))
   (:id "cs/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2706,12 +2705,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "go/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1122"
-    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount"
+    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount, runVersionProbe with []string{older} — ONE peer"
     "merged into fixed-table-form at 60fd9156638e95ad6a332ff9a889cff8bcb86bca") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/go" :type :work-set :children ("go/C1" "go/C2" "go/R11"))
   (:id "rust/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "owed" :reported-source
@@ -2736,12 +2735,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "java/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1140"
-    "internal/codegen/javatable/fixedversioning_writer_bound_count_test.go, with the runtime fix in internal/codegen/javatable/fixedruntime.go"
+    "internal/codegen/javatable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow.schema} — ONE peer; runtime fix in internal/codegen/javatable/fixedruntime.go"
     "merged into fixed-table-form at 5e8a35ab2fbabb0fca8e85532616267702c59c25") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/java" :type :work-set :children ("java/C1" "java/C2" "java/R11"))
   (:id "js/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "implemented-asserted" :reported-source
@@ -2752,12 +2751,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "js/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1130"
-    "internal/codegen/jstable/fixedversioning_writer_bound_count_test.go"
+    "internal/codegen/jstable/fixedversioning_writer_bound_count_test.go, []string{older} — ONE peer"
     "merged into fixed-table-form at 7a6a2c707913e6a915170ca46972f33e1806f686") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/js" :type :work-set :children ("js/C1" "js/C2" "js/R11"))
   (:id "dart/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2768,12 +2767,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "dart/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1146"
-    "internal/codegen/darttable/fixedversioning_writer_bound_count_test.go"
+    "internal/codegen/darttable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow} — ONE peer"
     "merged into fixed-table-form at 3d0bcb2c1faed5c76efdd4931cfd691021494c80") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/dart" :type :work-set :children ("dart/C1" "dart/C2" "dart/R11"))
   (:id "elixir/C1" :type :task :title "count clamp v<0" :state :unknown :evidence nil :audit-item "C1"
    :reported-state "weak" :reported-source
@@ -2784,12 +2783,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "elixir/R11" :type :task :title
-   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
+   "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :unknown :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1148"
-    "internal/codegen/elixirtable/fixedversioning_writer_bound_count_test.go"
+    "internal/codegen/elixirtable/fixedversioning_writer_bound_count_test.go, []string{VOLD_array_bounded_grow} — ONE peer"
     "merged into fixed-table-form at da6cdc101ad6e390c578ff1621f3b935a4be78a9") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 4 writer_bound_count, whose assertions are exact (vals_count == 4, the WRITER bound the plan carries; clamped == 1, never >= 1).")
+   "Partly reconciled 2026-09-19. The merged row PR in :evidence proves the SECOND clause only — the hostile pass runs against the plan bounds: the forged count 7 lands vals_count == 4, the WRITER bound, with clamped == 1 exactly, never >= 1. The 'per plan' clause is NOT proved: every landed §5.8 row 4 probe puts exactly ONE lineage peer in front of the reader, so a runtime that held one writer bound globally rather than one per plan passes it unchanged. Stays :unknown until a probe holds two plans carrying two different writer bounds at once.")
   (:id "array-bounds/elixir" :type :work-set :children ("elixir/C1" "elixir/C2" "elixir/R11"))
   (:id "cpp/C3" :type :task :title "text length clamp" :state :unknown :evidence nil :audit-item "C3"
    :reported-state "owed" :reported-source
