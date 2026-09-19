@@ -15,6 +15,7 @@
         "tables-block-race-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
