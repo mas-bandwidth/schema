@@ -150,4 +150,4 @@ the building, testing and porting. Glenn owns every design decision. Every month
 [public ledger](https://github.com/mas-bandwidth/patreon#public-ledgers) shows
 where the AI collaborator's tokens went, by repository, and what they bought.
 
-If want to support this work you can **[become a supporter](https://www.patreon.com/MasBandwidth/membership)**
+If you'd like to support this work, you can **[become a supporter](https://www.patreon.com/MasBandwidth/membership)**
