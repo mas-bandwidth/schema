@@ -176,3 +176,28 @@ func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
 	fixedTypeLeaves(w, st, 0)
 	return fixedCoalesce(w.out)
 }
+
+// fixedFloatRangeOf answers a ranged float's bounds as Elixir float literals,
+// or ok=false where the field has no float range. A float32 field's ends are
+// narrowed to float32 first, so the comparison is against exactly the value
+// the reader's own declaration names and not a double a hair wider. The
+// literals go through fixedFloatLiteral, the same speller the defaults use.
+//
+// Which bound is the reader's own and not the writer's is schema#1164, ruled
+// statement B: a compressed float rides AS THE FLOAT in the fixed form, so its
+// min and max are definitions in the digest and the compiled plan carries no
+// range at all.
+func fixedFloatRangeOf(f *ir.Field) (string, string, bool) {
+	if f == nil || !f.HasFloatRange {
+		return "", "", false
+	}
+	lo, hi := f.FMin, f.FMax
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		lo, hi = float64(float32(lo)), float64(float32(hi))
+	case ir.TFloat64:
+	default:
+		return "", "", false
+	}
+	return fixedFloatLiteral(lo), fixedFloatLiteral(hi), true
+}
