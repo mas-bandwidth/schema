@@ -11,11 +11,12 @@ import (
 
 // union_unselected_arm (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag
-// did not select is UNSPECIFIED on separate-storage targets and INDETERMINATE
-// on overlaid ones; the selected arm and the tag are the whole of what a union
-// read promises. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES TO MAKE: it does
-// not compare pick.beta or pick.gamma. The Rust leg lands the declared default
-// in every unselected arm, and "unspecified" allows that, so it is lawful. A
+// did not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19:
+// "as designed it is 'undefined'"). A union read DEFINES the tag and the
+// SELECTED arm and nothing else. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES
+// TO MAKE: it does not compare pick.beta or pick.gamma. That the Rust leg
+// happens to land the declared default in every unselected arm is an OBSERVATION
+// AND NOT A GUARANTEE, and nothing may be relied on it. A
 // future reader who "completes" this test by asserting pick.gamma.p == 0 has
 // reversed a ruling and should read the issue first. The poison is carried for
 // uniformity with the other legs and cannot be observed on this leg's value

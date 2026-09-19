@@ -11,11 +11,12 @@ import (
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // ruled 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed
-// tag did not select is UNSPECIFIED on separate-storage targets. The tag and the
-// SELECTED arm are the whole of what a union read promises, so the row's whole
-// content is the assertion it REFUSES to make — this probe does NOT compare
-// pick.beta or pick.gamma. C# leaves the caller's bytes in an unselected arm,
-// and that is lawful. The poison is laid FIELD BY FIELD on the destination
+// tag did not select is UNDEFINED — one word, for every target (Glenn,
+// 2026-09-19: "as designed it is 'undefined'"). A union read DEFINES the tag and
+// the SELECTED arm and nothing else, so the row's whole content is the assertion
+// it REFUSES to make — this probe does NOT compare pick.beta or pick.gamma. That
+// C# happens to leave the caller's bytes in an unselected arm is an OBSERVATION
+// AND NOT A GUARANTEE, and nothing may be relied on it. The poison is laid FIELD BY FIELD on the destination
 // objects (the destination is a managed array and there is no memset over it),
 // on BOTH columns, and a future reader who "completes" this test by asserting
 // pick.gamma.p == 0 has reversed a ruling and should read the issue first.

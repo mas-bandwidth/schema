@@ -2,10 +2,12 @@ package javatable
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag did
-// not select is UNSPECIFIED on separate-storage targets. THE ROW'S CONTENT IS THE
-// ASSERTION IT REFUSES TO MAKE: this test asserts the tag, the SELECTED arm and
-// seq, and does NOT compare pick.beta or pick.gamma. Java leaves the caller's
-// bytes in an unselected arm, and that is lawful. A poison on this leg must be
+// not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19: "as
+// designed it is 'undefined'"). A union read DEFINES the tag and the SELECTED arm
+// and nothing else. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES TO MAKE: this
+// test asserts the tag, the SELECTED arm and seq, and does NOT compare pick.beta
+// or pick.gamma. That Java happens to leave the caller's bytes in an unselected
+// arm is an OBSERVATION AND NOT A GUARANTEE, and nothing may be relied on it. A poison on this leg must be
 // the TOTAL one: a nested value and a union arm are both emitted final, and the
 // shallow poison skips final fields, so it would poison nothing that matters —
 // that exact gap is what surfaced schema#1157. A reader who "completes" this by

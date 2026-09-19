@@ -2,12 +2,14 @@ package gotable
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag did
-// not select is UNSPECIFIED on separate-storage targets. The row's whole content
-// is the assertion it REFUSES to make: this probe does NOT compare pick.beta or
-// pick.gamma, and a reader who "completes" it by asserting pick.gamma.p == 0 has
-// reversed a ruling and should read the issue first. This leg lands the declared
-// default in every unselected arm, which "unspecified" allows and which is lawful
-// and not a defect. The 0x5A poison is carried for uniformity with the other legs
+// not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19: "as
+// designed it is 'undefined'"). A union read DEFINES the tag and the SELECTED arm
+// and nothing else. The row's whole content is the assertion it REFUSES to make:
+// this probe does NOT compare pick.beta or pick.gamma, and a reader who
+// "completes" it by asserting pick.gamma.p == 0 has reversed a ruling and should
+// read the issue first. That this leg happens to land the declared default in
+// every unselected arm is an OBSERVATION AND NOT A GUARANTEE, and nothing may be
+// relied on it. The 0x5A poison is carried for uniformity with the other legs
 // but cannot be observed here, because the prefill resets every unselected arm to
 // its default. (Named *_arm_row_test.go, not *_arm_test.go: a trailing _arm before
 // _test.go is a GOARCH build constraint that silently skips the file.)

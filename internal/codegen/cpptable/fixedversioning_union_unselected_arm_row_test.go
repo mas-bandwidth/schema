@@ -2,13 +2,13 @@ package cpptable
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag did
-// not select is UNSPECIFIED on separate-storage targets and INDETERMINATE on
-// overlaid ones. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES TO MAKE: it does
+// not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19: "as
+// designed it is 'undefined'"). A union read DEFINES the tag and the SELECTED arm
+// and nothing else. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES TO MAKE: it does
 // not compare pick.beta or pick.gamma; a reader who "completes" it by asserting
-// pick.gamma.p == 0 reversed a ruling and should read the issue first. This leg
-// OVERLAYS its arms — a real C union has no other arm to reset — so the question
-// the row asks cannot even be put to this leg, and INDETERMINATE is the ruling
-// word. Named *_arm_row_test.go, not *_arm_test.go: Go reads a trailing _arm
+// pick.gamma.p == 0 reversed a ruling and should read the issue first. That this
+// leg OVERLAYS its arms — a real C union has no other arm to reset — is an
+// OBSERVATION AND NOT A GUARANTEE, and nothing may be relied on it. Named *_arm_row_test.go, not *_arm_test.go: Go reads a trailing _arm
 // before _test.go as a GOARCH build constraint and silently skips the file.
 
 import (
