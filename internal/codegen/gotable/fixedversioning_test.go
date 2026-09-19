@@ -961,6 +961,77 @@ func manifestRow(line, file string) (map[string]uint64, bool) {
 	return out, true
 }
 
+// manifestFloatBits is the FLOAT half of the corpus oracle, and it exists
+// because `manifestRow` above cannot carry one: that function parses every
+// value as a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path by
+// construction — and every leg's compressed-float row therefore asserted a
+// HARDCODED literal rather than the reference's answer (schema#1164, measured
+// 2026-09-19 across all nine legs).
+//
+// The manifest spells a float as `<decimal>|0x<raw bits>`, and it is the BITS
+// this returns: a decimal comparison cannot tell 0.3 from the float32 next to
+// it, which is exactly what a reader that requantized onto its own grid would
+// produce. Glenn's rule for this family is "do whatever is needed to make sure
+// that a new reader can read an old writer", and bit-exact against an
+// INDEPENDENT oracle is what proving it takes.
+//
+// IT FAILS LOUDLY THREE WAYS — no manifest, no row, no such value — because a
+// float oracle that can degrade to "not checked" is the vacuity this repairs.
+//
+// SECTION is "values" or "forged". A forged line spells its key with the byte
+// offset attached — `forged=r0.aim@104=1.5|0x3FC00000` — so a key equal to
+// `path` OR beginning `path+"@"` is the one asked for, and the offset does not
+// have to be repeated in the test.
+func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<16), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		var values string
+		named := false
+		for field := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hex, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hex, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hex, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
 // hasField answers whether a row's ROOT declares a member by that name. It is
 // how the bracket check knows which rows carry §5.9 #32's `lead`/`trail` pair,
 // and it is read off the IR on purpose: a flag kept by hand beside each row
