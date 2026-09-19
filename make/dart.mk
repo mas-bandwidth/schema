@@ -52,6 +52,36 @@ packet-defaults-dart-negative-control: packet-defaults-dart
 
 test-dart: packet-defaults-dart packet-defaults-dart-negative-control
 
+# THE PAIRED UNIT, for bench/tables/dart — the FIXED FORM's leg in
+# `bench/paired` (bench/paired/main.go, bench/tables/dart/table_main.dart).
+# Bench.schema and FixedTable.schema are ONE unit, exactly as the C, C++, Go and
+# C# paired generations are: the fixed root reaches the packet type so the
+# compiler emits its table codec. The driver regenerates the same files itself,
+# so the two agree byte for byte or `generated-current` says so.
+generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/dart
+	./bin/schema generate --lang dart --out generated/bench/paired/dart bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
+# THE FIXED FORM'S PAIRED LEG, gated and not timed: the same no-clock `--gate`
+# the C++ and C legs answer in `tables-fixed-matched`, over the same corpus. The
+# clock lives in `go run ./bench/paired`, and a clock does not gate a build.
+#
+# The timed leg is the AOT executable, so this target builds the same way the
+# driver does — `dart compile exe` — and the format check is scoped to the fixed
+# form's libraries exactly as tables-dart-fixed-form scopes it.
+.PHONY: tables-dart-fixed-matched
+tables-dart-fixed-matched: generated/bench/paired/dart/.stamp
+	$(DART) analyze generated/bench/paired/dart bench/tables/dart/table_main.dart
+	$(DART) format --set-exit-if-changed --output=none \
+		bench/tables/dart/table_main.dart generated/bench/paired/dart/*Fixed.dart
+	@mkdir -p build/paired
+	$(DART) compile exe -o build/paired/table-dart bench/tables/dart/table_main.dart
+	./build/paired/table-dart --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
+test-dart: generated/bench/paired/dart/.stamp tables-dart-fixed-matched
+
 # the Dart target: generated libraries only, no wiring file at all —
 # generated Dart is self-contained (the bitpacker is inlined per issue #155),
 # so there is no runtime checkout and no pubspec; the test legs import the

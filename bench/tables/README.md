@@ -259,6 +259,21 @@ Stated so a reader knows what is not here, and why:
   is a leg whose rows are named `bench_fixed`. When a form-1 JavaScript wire
   lands, its `leg` lands with it.
 
+- **`bench/tables/dart` has a runner and NO `leg`**, for the reason the js and
+  rust entries above give: this page's leg measures the TOLERANT wire, and Dart
+  has no form-1 table wire (schema#514 — its backend carries form 3 and only
+  form 3), so there is nothing here for this pass to run and a command that
+  could only ever SKIP would put a row of noise on the board.
+  `bench/tables/dart/table_main.dart` is instead the FIXED form's leg for
+  [`bench/paired`](../paired/README.md), where it is a table-only language: it
+  names the same flags and emits the same CSV columns as the C++ reference, it
+  is gated by `make tables-dart-fixed-matched`, and its rows are named
+  `bench_fixed`. Unlike the js leg it has a BUILD PRODUCT — `dart compile exe`
+  compiles the generated libraries into one binary with the runner, which is the
+  form bench/dart/main.dart already measures the packet wire in — so its
+  `linkage` column is `aot`. When a form-1 Dart wire lands, its `leg` lands with
+  it.
+
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the
   type board's data-driven rows carry.
