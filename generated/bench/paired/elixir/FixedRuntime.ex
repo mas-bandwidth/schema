@@ -846,7 +846,7 @@ defmodule Bench.FixedRuntime do
   BEFORE coalescing, which is the number a cache has to remember.
   """
   def compile(theirs, mine, dst, capacity, report) do
-    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report)
+    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report, true)
     {entries, n} = acc
 
     if n > capacity do
@@ -893,7 +893,13 @@ defmodule Bench.FixedRuntime do
   defp present_wrap_entry(e, src), do: {:present, src, e}
 
   # match_children walks a TABLE's children on both sides, BY ID.
-  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  #
+  # The census flag is whether THIS entry is the FIRST time the peer's field is
+  # seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+  # ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
+  # peer field dropped from a [4]Item is counted four times and the report says
+  # 4 where the law says 1 (the versioning tests' 5.8 row 11).
+  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_children = children_at(theirs, ti)
     my_children = children_at(mine, mi)
 
@@ -904,7 +910,7 @@ defmodule Bench.FixedRuntime do
             {acc, report}
 
           {tc, toff} ->
-            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report)
+            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report, census)
         end
       end)
 
@@ -913,7 +919,7 @@ defmodule Bench.FixedRuntime do
     report =
       Enum.reduce(offsets(theirs, ti, their_children), report, fn tc, report ->
         case find_id(mine, mi, my_children, 0, id_at(theirs, tc)) do
-          nil -> bump(report, :unknown)
+          nil -> if census, do: bump(report, :unknown), else: report
           _ -> report
         end
       end)
@@ -962,7 +968,7 @@ defmodule Bench.FixedRuntime do
   # function's question.
   defp signed_kind?(kind), do: (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 24)
 
-  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
     row = elem(dst, mi)
@@ -990,7 +996,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
 
       their_kind != my_kind ->
@@ -1011,7 +1018,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
     end
   end
@@ -1052,7 +1060,8 @@ defmodule Bench.FixedRuntime do
          guard,
          tag,
          acc,
-         report
+         report,
+         census
        ) do
     case kind_at(mine, mi) do
       # the OPTIONAL wrapper: the present byte, then the payload WHOLE, present
@@ -1076,14 +1085,15 @@ defmodule Bench.FixedRuntime do
             guard,
             tag,
             acc,
-            report
+            report,
+            census
           )
 
         {wrap_new(acc, old_n, &present_wrap_entry(&1, their_at)), report}
 
       # a nested TABLE: match its fields
       13 ->
-        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report)
+        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report, census)
 
       # an ARRAY: the count, then min( their bound, my bound ) elements
       14 ->
@@ -1100,16 +1110,45 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
 
       # an ENUM-KEYED array: every slot, matched by the KEY's id
       16 ->
-        compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report)
+        compile_keyed(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          at,
+          row,
+          guard,
+          tag,
+          acc,
+          report,
+          census
+        )
 
       # a UNION: the tag, remapped, then each arm matched by id
       15 ->
-        compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, guard, tag, acc, report)
+        compile_union(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          at,
+          aux_at,
+          guard,
+          tag,
+          acc,
+          report,
+          census
+        )
 
       # an ENUM: the ordinal is the layout's POSITION, so it remaps
       30 ->
@@ -1154,7 +1193,8 @@ defmodule Bench.FixedRuntime do
          guard,
          tag,
          acc,
-         report
+         report,
+         census
        ) do
     their_elem = size_at(theirs, ti + 1)
     my_elem = size_at(mine, mi + 1)
@@ -1194,7 +1234,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census and i == 0
         )
 
       acc =
@@ -1208,7 +1249,21 @@ defmodule Bench.FixedRuntime do
     end)
   end
 
-  defp compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report) do
+  defp compile_keyed(
+         theirs,
+         ti,
+         their_at,
+         mine,
+         mi,
+         dst,
+         at,
+         row,
+         guard,
+         tag,
+         acc,
+         report,
+         census
+       ) do
     their_keys = children_at(theirs, ti + 1)
     my_keys = children_at(mine, mi + 1)
     their_elem_at = ti + 1 + sub(theirs, ti + 1)
@@ -1233,7 +1288,8 @@ defmodule Bench.FixedRuntime do
             guard,
             tag,
             acc,
-            report
+            report,
+            census and k == 0
           )
       end
     end)
@@ -1243,7 +1299,21 @@ defmodule Bench.FixedRuntime do
     Enum.find(0..(their_keys - 1)//1, fn j -> id_at(theirs, ti + 2 + j) == id end)
   end
 
-  defp compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, _guard, _tag, acc, report) do
+  defp compile_union(
+         theirs,
+         ti,
+         their_at,
+         mine,
+         mi,
+         dst,
+         at,
+         aux_at,
+         _guard,
+         _tag,
+         acc,
+         report,
+         census
+       ) do
     their_tag = tag_bytes(theirs, ti)
     my_tag = tag_bytes(mine, mi)
     their_arms = children_at(theirs, ti)
@@ -1276,7 +1346,8 @@ defmodule Bench.FixedRuntime do
               {their_at, argw},
               j + 1,
               acc,
-              report
+              report,
+              census
             )
         end
       end

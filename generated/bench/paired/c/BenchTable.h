@@ -690,7 +690,7 @@ enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 enum
 {
     kTableFixedCopy    = 0, /* move size bytes */
-    kTableFixedCount   = 1, /* a count: clamp it to the reader's own bound */
+    kTableFixedCount   = 1, /* a count: clamp it to the ENTRY's bound, which the compiled plan sets to the WRITER's (§5.3 step 11) */
     kTableFixedText    = 2, /* a length, then the units, then terminate */
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
@@ -1109,6 +1109,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
+            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
+               (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
+               identity plan's bounds pass does, so the SAME forged bytes land
+               the SAME clamped == 1 on either plan. The test is the WRITER's
+               top ordinal, table[0], and the pass that runs after this loop
+               tests THIS reader's own top value — which a remapped 0 never
+               trips, so the two never count the one event twice. */
+            else if ( raw != 0 ) { (*clamped)++; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }
@@ -1800,13 +1808,19 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_fills( TableFixedCompiler * c, int
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                     uint32_t guard, uint64_t arg );
+                                                     uint32_t guard, uint64_t arg, int census );
 
-/* table_fixed_match_children walks a TABLE's children on both sides. */
+/* table_fixed_match_children walks a TABLE's children on both sides.
+
+   The census flag is whether THIS entry is the FIRST time the peer's field is
+   seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+   ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
+   peer field dropped from a [4]Item is counted four times and the report says 4
+   where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11). */
 static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
                                                       const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
                                                       const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                      uint32_t guard, uint64_t arg )
+                                                      uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
     const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
@@ -1826,7 +1840,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
             const TableFixedLayoutEntry tc = table_fixed_entry_at( theirs, their_child );
             if ( tc.id == mc.id )
             {
-                table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
                 break;
             }
             their_off += tc.size;
@@ -1846,7 +1860,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
             if ( table_fixed_entry_at( mine, mc_at ).id == tc.id ) { named = 1; break; }
             mc_at += table_fixed_subtree( mine, mc_at );
         }
-        if ( !named && c->report != NULL ) { c->report->unknown++; }
+        if ( !named && census && c->report != NULL ) { c->report->unknown++; }
         tc_at += table_fixed_subtree( theirs, tc_at );
     }
 }
@@ -1854,7 +1868,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                     uint32_t guard, uint64_t arg )
+                                                     uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
     const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
@@ -1881,7 +1895,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg;
             e.op = kTableFixedPresent;
             table_fixed_push( c, e );
-            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         if ( te.kind != me.kind )
@@ -1907,12 +1921,12 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
                 table_fixed_push( c, e );
-                table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
+                table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
                 break;
             }
             case 13: /* a nested table: match its fields */
             {
-                table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
+                table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
                 break;
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
@@ -1925,17 +1939,24 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t their_base = their_at + head;
                 uint32_t n;
                 uint32_t i;
+                n = their_n < my_n ? their_n : my_n;
                 if ( d->counted )
                 {
+                    /* THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind
+                       14, §5.3 step 11: BOUNDS runs against the PLAN's bounds).
+                       The reader's own my_n is the wrong number: a forged 7 from
+                       a writer bounded at 4 must land 4 AND COUNT, not be
+                       admitted because THIS reader grew to 8. n is their_n held
+                       to this reader's storage, which is their_n itself on every
+                       legal widening. */
                     TableFixedEntry e = table_fixed_entry_zero();
-                    e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                    e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                     table_fixed_push( c, e );
                 }
-                n = their_n < my_n ? their_n : my_n;
                 for ( i = 0; i < n; ++i )
                 {
                     table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                                               mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                                               mine, mi + 1, dst, at + i * d->stride, guard, arg, census && i == 0 );
                 }
                 break;
             }
@@ -1955,7 +1976,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     {
                         if ( table_fixed_entry_at( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                         table_fixed_compile_entry( c, theirs, tel, their_at + j * tee.size,
-                                                   mine, mel, dst, at + k * d->stride, guard, arg );
+                                                   mine, mel, dst, at + k * d->stride, guard, arg, census && k == 0 );
                         break;
                     }
                 }
@@ -2008,7 +2029,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                             tag.argw = c->argw;
                             table_fixed_push( c, tag );
                             table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
-                                                       mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
+                                                       mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
                             break;
                         }
                         their_arm += table_fixed_subtree( theirs, their_arm );
@@ -2135,11 +2156,11 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     c.report = report;
     c.record = table_fixed_entry_at( theirs, 0 ).size;
     c.want_guarded = 0;
-    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
+    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 );
     plain = c.count;
     c.want_guarded = 1;
     c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
-    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
+    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0, 1 );
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; }
