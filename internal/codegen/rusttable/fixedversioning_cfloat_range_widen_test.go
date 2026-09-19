@@ -21,6 +21,13 @@ import (
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := versionCorpus(t)
+	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD
+	// CANNOT (schema#1164). `old_`'s is `values=r0.aim`, `hostile_`'s is the
+	// manifest's own `forged=r0.aim@104`. `past_`'s 0x40000000 stays a literal:
+	// the file carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0,
+	// which is the whole content of that column.
+	oldAim := versionManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
+	hostileAim := versionManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
 
 	tests := fmt.Sprintf(`
 /// §5.8 row cfloat_range_widen, NEW-READS-OLD across THREE corpus files. In the
@@ -36,7 +43,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 #[test]
 fn v_cfloat_range_widen_new_reads_old() {
     // old_cfloat_range_widen.bin: the OLD writer, aim = 0.5, on the old grid.
-    let old_data = std::fs::read(%q).expect("the reference's old_cfloat_range_widen.bin");
+    let old_data = std::fs::read(%[1]q).expect("the reference's old_cfloat_range_widen.bin");
     {
         let mut values = vec![ROWTYPE::default(); 8];
         let mut plan = vec![TableFixedEntry::default(); 4096];
@@ -54,7 +61,7 @@ fn v_cfloat_range_widen_new_reads_old() {
         assert!(!report.malformed, "old_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "old_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "old_: the trail bracket moved: trail={}", values[0].trail);
-        assert_eq!(values[0].aim.to_bits(), 0x3F000000, "old_: the reader lands the writer's 0.5 EXACTLY: aim={:#x}", values[0].aim.to_bits());
+        assert_eq!(values[0].aim.to_bits(), %[4]d, "old_: the reader lands the writer's own value BIT-EXACT, from the corpus manifest: aim={:#x}", values[0].aim.to_bits());
         assert_eq!(report.clamped, 0, "old_: 0.5 sits on the reader's grid, so clamped == 0: {:?}", report);
         assert!(
             report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
@@ -64,7 +71,7 @@ fn v_cfloat_range_widen_new_reads_old() {
 
     // hostile_cfloat_range_widen.bin: the old bytes with aim FORGED to 1.5,
     // outside the OLD writer's [-1,1], inside the NEW reader's [-2,2].
-    let hostile_data = std::fs::read(%q).expect("the reference's hostile_cfloat_range_widen.bin");
+    let hostile_data = std::fs::read(%[2]q).expect("the reference's hostile_cfloat_range_widen.bin");
     {
         let mut values = vec![ROWTYPE::default(); 8];
         let mut plan = vec![TableFixedEntry::default(); 4096];
@@ -82,7 +89,7 @@ fn v_cfloat_range_widen_new_reads_old() {
         assert!(!report.malformed, "hostile_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "hostile_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "hostile_: the trail bracket moved: trail={}", values[0].trail);
-        assert_eq!(values[0].aim.to_bits(), 0x3FC00000, "hostile_: a forged 1.5 inside the reader's range lands WHOLE: aim={:#x}", values[0].aim.to_bits());
+        assert_eq!(values[0].aim.to_bits(), %[5]d, "hostile_: the manifest's own forged value, inside the reader's range, lands WHOLE: aim={:#x}", values[0].aim.to_bits());
         assert_eq!(report.clamped, 0, "hostile_: 1.5 is inside the reader's [-2,2], so clamped == 0: {:?}", report);
         assert!(
             report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
@@ -92,7 +99,7 @@ fn v_cfloat_range_widen_new_reads_old() {
 
     // past_cfloat_range_widen.bin: the old bytes with aim FORGED to 5.0,
     // outside the NEW reader's [-2,2] too.
-    let past_data = std::fs::read(%q).expect("the reference's past_cfloat_range_widen.bin");
+    let past_data = std::fs::read(%[3]q).expect("the reference's past_cfloat_range_widen.bin");
     {
         let mut values = vec![ROWTYPE::default(); 8];
         let mut plan = vec![TableFixedEntry::default(); 4096];
@@ -110,7 +117,7 @@ fn v_cfloat_range_widen_new_reads_old() {
         assert!(!report.malformed, "past_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "past_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "past_: the trail bracket moved: trail={}", values[0].trail);
-        assert_eq!(values[0].aim.to_bits(), 0x40000000, "past_: a forged 5.0 past the reader's own max clamps to the reader's 2.0: aim={:#x}", values[0].aim.to_bits());
+        assert_eq!(values[0].aim.to_bits(), 0x40000000, "past_: a forged 5.0 past the reader's own max clamps to THIS READER'S OWN declared max 2.0 -- not a manifest value: aim={:#x}", values[0].aim.to_bits());
         assert_eq!(report.clamped, 1, "past_: 5.0 is past the reader's [-2,2], so it clamps to 2.0 and clamped == 1 EXACTLY: {:?}", report);
         assert!(
             report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
@@ -120,7 +127,7 @@ fn v_cfloat_range_widen_new_reads_old() {
 }
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"))
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim, hostileAim)
 
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

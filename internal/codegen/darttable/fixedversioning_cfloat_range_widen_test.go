@@ -1,7 +1,9 @@
 package darttable
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -22,6 +24,14 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	hostileFile := filepath.Join(corpus, "hostile_cfloat_range_widen.bin")
 	pastFile := filepath.Join(corpus, "past_cfloat_range_widen.bin")
 
+	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD
+	// CANNOT (schema#1164). `old_`'s is `values=r0.aim`, `hostile_`'s is the
+	// manifest's own `forged=r0.aim@104`. `past_`'s 0x40000000 stays a literal:
+	// the file carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0,
+	// which is the whole content of that column.
+	oldAim := fmt.Sprintf("0x%08X", versionManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"))
+	hostileAim := fmt.Sprintf("0x%08X", versionManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"))
+
 	bodyOld := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the old writer did not read one record: n=$n ${why(report)}');
@@ -30,13 +40,13 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(values[0].lead == 1 && values[0].trail == 2,
       'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
   final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
-  check(aimBits.getUint32(0, Endian.little) == 0x3F000000,
+  check(aimBits.getUint32(0, Endian.little) == @OLDAIM@,
       'aim is not the old writer 0.5: ${values[0].aim}');
   check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
       report.clamped == 0 && report.duplicate == 0,
       'counters moved on a clean backward read: ${why(report)}');`
 
-	out, err := runVersionProbe(t, dartBin, reader, older, 0, oldFile, bodyOld)
+	out, err := runVersionProbe(t, dartBin, reader, older, 0, oldFile, strings.ReplaceAll(bodyOld, "@OLDAIM@", oldAim))
 	if err != nil {
 		t.Fatalf("cfloat_range_widen old_: %v\n%s", err, out)
 	}
@@ -49,7 +59,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(values[0].lead == 1 && values[0].trail == 2,
       'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
   final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
-  check(aimBits.getUint32(0, Endian.little) == 0x3FC00000,
+  check(aimBits.getUint32(0, Endian.little) == @HOSTILEAIM@,
       'aim 1.5 inside the reader range must land whole, not clamp: ${values[0].aim}');
   check(report.clamped == 0,
       'a value inside the reader range is clamped exactly zero times: ${why(report)}');
@@ -57,7 +67,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
       report.duplicate == 0,
       'counters moved on a hostile read: ${why(report)}');`
 
-	out, err = runVersionProbe(t, dartBin, reader, older, 0, hostileFile, bodyHostile)
+	out, err = runVersionProbe(t, dartBin, reader, older, 0, hostileFile, strings.ReplaceAll(bodyHostile, "@HOSTILEAIM@", hostileAim))
 	if err != nil {
 		t.Fatalf("cfloat_range_widen hostile_: %v\n%s", err, out)
 	}

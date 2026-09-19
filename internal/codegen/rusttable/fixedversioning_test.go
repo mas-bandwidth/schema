@@ -845,6 +845,70 @@ func versionBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32,
 // The manifest is not tracked, so `ok` false is "the tree has no manifest" and
 // the caller falls back to the corpus bytes — but a manifest that IS there and
 // does not carry this file is a FAILURE BY NAME, never a silent fallback.
+// versionManifestFloatBits is the FLOAT half of the corpus oracle, and it exists because this
+// file's `...ManifestRow` cannot carry one: that function parses every value as
+// a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
+// CONSTRUCTION — and every leg's compressed-float row asserted a HARDCODED
+// literal instead of the reference's answer (schema#1164, measured 2026-09-19
+// across all nine legs; Glenn: "do whatever is needed to make sure that a new
+// reader can read an old writer").
+//
+// THIS LEG ALREADY COMPARED BITS, which is the right comparison and is why it
+// is one of the cheap three. What it did not do is take the number from the
+// REFERENCE: a literal in a test is an oracle written by the same hand as the
+// code under test, and it agrees with a requantizing reader the moment somebody
+// "fixes" it to match.
+//
+// SECTION is "values" or "forged"; a forged key carries its byte offset, so a
+// key equal to `path` or beginning `path+"@"` is the one asked for. It FAILS
+// LOUDLY three ways — no manifest, no row, no such value — because a float
+// oracle that can degrade to "not checked" is the vacuity this repairs.
+func versionManifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var values string
+		named := false
+		for _, field := range strings.Fields(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for _, pair := range strings.Split(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
 func versionManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
 	t.Helper()
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))

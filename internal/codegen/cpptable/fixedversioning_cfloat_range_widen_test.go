@@ -14,12 +14,22 @@ package cpptable
 // there is a pass at all.
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := cppFixedCorpus(t)
+	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD
+	// CANNOT (schema#1164). `old_`'s is `values=r0.aim`, `hostile_`'s is the
+	// manifest's own `forged=r0.aim@104` -- the value the reference wrote into
+	// those bytes. `past_`'s 0x40000000 stays a literal and says why: the file
+	// carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0, which is
+	// the whole content of that column.
+	oldAim := fmt.Sprintf("0x%08X", cppManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"))
+	hostileAim := fmt.Sprintf("0x%08X", cppManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"))
 
 	oldBody := `
     if ( n != 1 ) { printf( "cfloat_range_widen(old): n == %lld, not 1\n", (long long) n ); return 1; }
@@ -28,7 +38,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     {
         uint32_t bits = 0;
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
-        if ( bits != 0x3F000000u ) { printf( "cfloat_range_widen(old): aim did not land exactly as the old writer's 0.5 (0x3F000000): 0x%08X\n", (unsigned) bits ); return 1; }
+        if ( bits != @AIM@u ) { printf( "cfloat_range_widen(old): aim did not land BIT-EXACT: 0x%08X, the manifest says @AIM@\n", (unsigned) bits ); return 1; }
     }
     if ( r.clamped != 0 ) { printf( "cfloat_range_widen(old): clamped is not exactly 0: %d\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
@@ -36,7 +46,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(old): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
 `
 	out, err := cppRunVersionProbe(t, "cfloat_range_widen",
-		filepath.Join(corpus, "old_cfloat_range_widen.bin"), oldBody, "")
+		filepath.Join(corpus, "old_cfloat_range_widen.bin"), strings.ReplaceAll(oldBody, "@AIM@", oldAim), "")
 	if err != nil {
 		t.Fatalf("cfloat_range_widen(old): %v\n%s", err, out)
 	}
@@ -48,7 +58,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     {
         uint32_t bits = 0;
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
-        if ( bits != 0x3FC00000u ) { printf( "cfloat_range_widen(hostile): aim did not land whole as 1.5 (0x3FC00000): 0x%08X\n", (unsigned) bits ); return 1; }
+        if ( bits != @AIM@u ) { printf( "cfloat_range_widen(hostile): the manifest's own forged value did not land WHOLE: 0x%08X, want @AIM@\n", (unsigned) bits ); return 1; }
     }
     if ( r.clamped != 0 ) { printf( "cfloat_range_widen(hostile): clamped is not exactly 0: %d\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
@@ -56,7 +66,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     if ( r.malformed || r.refused ) { printf( "cfloat_range_widen(hostile): a clean read refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
 `
 	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
-		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"), hostileBody, "")
+		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"), strings.ReplaceAll(hostileBody, "@AIM@", hostileAim), "")
 	if err != nil {
 		t.Fatalf("cfloat_range_widen(hostile): %v\n%s", err, out)
 	}
@@ -68,7 +78,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     {
         uint32_t bits = 0;
         memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
-        if ( bits != 0x40000000u ) { printf( "cfloat_range_widen(past): aim did not clamp to the reader's max 2.0 (0x40000000): 0x%08X\n", (unsigned) bits ); return 1; }
+        if ( bits != 0x40000000u ) { printf( "cfloat_range_widen(past): aim did not clamp to THIS READER'S OWN declared max 2.0 (0x40000000, not a manifest value): 0x%08X\n", (unsigned) bits ); return 1; }
     }
     if ( r.clamped != 1 ) { printf( "cfloat_range_widen(past): clamped is not exactly 1: %d\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
