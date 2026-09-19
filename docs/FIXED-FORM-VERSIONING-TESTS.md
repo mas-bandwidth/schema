@@ -86,7 +86,8 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-36 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
+36 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the
+`union_unselected_arm` row that schema#1157 settled, the floor and hash
 tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
@@ -183,7 +184,17 @@ schema files by the `VOLD_`/`VNEW_` convention — naming the two files the conv
 the row needs, because the convention never runs `BASELINE`. **The day row 1 closes and the lineage comes from
 the lock, this row needs the explicit test-only entry**, and a leg says which of the two its probe used.
 
-## A union's UNSELECTED ARMS after a read that returns: NEEDS GLENN
+## A union's UNSELECTED ARMS after a read that returns: RULED LAWFUL AS IS (schema#1157)
+
+**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, and reversible by Glenn in one line.** After a read that
+RETURNS, an arm the landed tag did not select is **UNSPECIFIED** on separate-storage targets and
+INDETERMINATE on overlaid ones. The tag and the SELECTED arm are the whole of what a union read promises,
+and a consumer that reads any other arm has a bug whatever those bytes hold. Go and rust landing the
+declared default in every unselected arm is ALLOWED by "unspecified" and needs no change; java, dart, js
+and cs leaving the caller's bytes is equally allowed; c and cpp cannot state the question. **The row
+`union_unselected_arm` below is what this ruling lands, and its whole content is the assertion it REFUSES
+to make.** The rest of this section is the evidence the ruling was made on, kept because a reversal would
+need it.
 
 **How it surfaced.** The java probe's poison (§5.9 #35's form (iii), "the unit's own value surface, field by
 field ... every field set to the poison value its type can hold") skipped every Java `final` field, and a
@@ -233,24 +244,36 @@ old-value against new-value — so the unpoisoned older build's constructor zero
 build's `0x5A` reds it whatever the codec does. **`pick.gamma.p` is the honest half**: a NEW-only field
 compared against the probe's own `FRESH` dump, red because the read genuinely never writes it.
 
-**The ruling is NEEDS GLENN, and the lean is LAWFUL AS IS.** Lawful because the only statement the project has
-made on the subject says exactly this behaviour, names Java in the list, and this page declined to claim
-otherwise in the one cell where it would have. Needs Glenn because that statement is §4.8's, about the
-variable form, and §3.4 says §3.4 is the law here — and because nine ports written from prose have come out
-three ways, which is the exact condition §3.4 exists to end. It is cheap to close in one line and expensive
-to leave: a leg that "fixes" this on its own has guessed.
+**WHY IT WAS RULED LAWFUL.** The only statement the project has made on the subject says exactly this
+behaviour and names Java in the list; this page declined to claim otherwise in the one cell where it would
+have; and the C++ reference never reads `beta` or `gamma`. Ruling the other way would make the FIXED form
+the stricter of the two on exactly the path that exists to be the fast one, and it would cost a per-record,
+per-arm reset on the hot path in four legs — and could not be stated at all for c and cpp, where the arms
+overlay. The promise worth making is the one every leg can keep: the tag and the selected arm.
 
-**The proposed row line, for §5.8, if the answer is that it is lawful:**
+**THE ROW, AND IT IS SETTLED. Its whole content is the assertion it REFUSES to make** — a row that exists
+so that no leg writes the other one by accident, and so that a leg which "fixes" this on its own is seen to
+have guessed:
 
 | row | the rule | the oracle | which legs |
 |---|---|---|---|
 | `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNSPECIFIED** on separate-storage targets and INDETERMINATE on overlaid ones; the selected arm and the tag are the whole of what a union read promises. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
 
-**If Glenn rules it a defect instead**, the expectation is: *after a read that returns, every arm holds either
-the writer's value (selected) or the arm's own declared defaults (unselected)*, delivered in the scatter
-because the flat image provably cannot carry two arms' defaults at one byte (§5.9 #38). That is a scatter
-shape change in four legs, a per-record per-arm reset on the hot path, and unstatable for C and C++ — so the
-rule would have to be worded for separate-storage targets only, which is precisely what §4.8 already does in
-the other direction.
+**IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
+re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's
+own declared defaults (unselected)*, delivered in the scatter because the flat image provably cannot carry
+two arms' defaults at one byte (§5.9 #38). That is a scatter shape change in four legs, a per-record
+per-arm reset on the hot path, and unstatable for C and C++ — so the rule would have to be worded for
+separate-storage targets only, which is precisely what §4.8 already does in the other direction. The row
+above would then assert `pick.gamma.p == 0` on the separate-storage legs and the four that leave the
+caller's bytes would go red, which is the whole of what changes.
 
-**Named here rather than answered**, as row 9's multi-record question is.
+**THE PROBE'S TWO OBLIGATIONS, because a row made of an absence is one edit from being vacuous:**
+
+1. **The poison must be PROVED TO HAVE REACHED THE DESTINATION.** A poison computed and discarded asserts
+   nothing — that exact bug stood on the elixir leg until #1212. The probe's own negative control is to
+   demand `pick.alpha` be the POISON instead of the writer's value: it must go RED, and that red is the
+   receipt that the destination really was poisoned before the read.
+2. **BOTH COLUMNS are poisoned**, not just the `reads` one. The caution above is why: with only the reads
+   column poisoned, `beta` — a SHARED field — reds against the older build's constructor zero whatever the
+   codec does, and the row would be measuring the harness.
