@@ -591,6 +591,95 @@ func TestForgedOrdinal(t *testing.T) {
 	}
 }
 
+// §5.8 row 9, refuse_writes_nothing — the row that asks the refusal itself to have
+// written nothing. The header's hash is left alone so the reader selects the OLD
+// lineage entry and compiles its plan (a nonempty fill list for the appended nested
+// field) before step 11 compares the record's own hash; that record hash is inverted
+// so the comparison refuses `no_layout`. The destination is poisoned with 0x5A, not
+// zero, so a prefill that ran (Vec.w = 88, a nonzero default) is told apart from one
+// that did not: zero would hide the prefill, 0x5A exposes every byte the load touched.
+func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	corpus := fixedCorpus(t)
+	newer := readSchema(t, "VNEW_nested_append")
+	older := readSchema(t, "VOLD_nested_append")
+	table := fixedRootName(t, older)
+	src := fmt.Sprintf(`package probe
+
+import ("encoding/binary"; "os"; "testing"; "unsafe")
+
+func TestRefuseWritesNothing(t *testing.T) {
+	data, err := os.ReadFile(%[2]q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 24, 0, 0, 0}
+	at := -1
+	for i := 0; i+len(body) <= len(data); i++ {
+		eq := true
+		for j := range body {
+			if data[i+j] != body[j] {
+				eq = false
+				break
+			}
+		}
+		if eq {
+			if at != -1 {
+				t.Fatalf("the record body occurs more than once in the file")
+			}
+			at = i
+		}
+	}
+	if at == -1 {
+		t.Fatalf("the record body does not occur in the file")
+	}
+	if at != len(data)-len(body) {
+		t.Fatalf("the record body is not the tail of the file: at=%%d want %%d", at, len(data)-len(body))
+	}
+	headerHash := binary.LittleEndian.Uint64(data[8:16])
+	// the forge
+	for i := at - 8; i < at; i++ {
+		data[i] = ^data[i]
+	}
+	if binary.LittleEndian.Uint64(data[8:16]) != headerHash {
+		t.Fatalf("the forge touched the header's hash: 0x%%016x -> 0x%%016x", headerHash, binary.LittleEndian.Uint64(data[8:16]))
+	}
+	back := make([]%[1]s, 8)
+	poisoned := unsafe.Slice((*byte)(unsafe.Pointer(&back[0])), int(unsafe.Sizeof(back[0]))*len(back))
+	for i := range poisoned {
+		poisoned[i] = 0x5A
+	}
+	before := append([]byte(nil), poisoned...)
+	var r TableReport
+	plan := make([]TableFixedEntry, 4096)
+	n := %[1]sFixedLoad(back, data, plan, &r)
+	if n != -1 {
+		t.Fatalf("a record whose hash names no layout must refuse: n=%%d %%+v", n, r)
+	}
+	if r.Verdict != TableOpenRefused || r.Reason != "no_layout" {
+		t.Fatalf("the record hash refusal owes no_layout by name: %%+v", r)
+	}
+	if r.Malformed {
+		t.Fatal("a refusal by name never sets malformed too (§5.3, the joint answer)")
+	}
+	if r.LayoutHash != 0 {
+		t.Fatalf("no_layout must not publish a hash: 0x%%016x", r.LayoutHash)
+	}
+	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+		t.Fatalf("REFUSE is total: no counter moves: %%+v", r)
+	}
+	for i := range poisoned {
+		if poisoned[i] != before[i] {
+			t.Fatalf("REFUSE wrote destination byte %%d: 0x%%02x, want 0x5A", i, poisoned[i])
+		}
+	}
+}
+`, table, filepath.Join(corpus, "old_nested_append.bin"))
+	out, err := runVersionProbe(t, newer, []string{older}, src)
+	if err != nil {
+		t.Fatalf("refuse_writes_nothing: %v\n%s", err, out)
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func fixedCorpus(t *testing.T) string {
