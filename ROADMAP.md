@@ -88,7 +88,7 @@ a recorded scope change. Message Form and packet-wire work remain outside this a
 | Optional values and absent payloads | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Renaming, appending and deprecating fields | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Exact counters and report semantics | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Array counts and writer bounds | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Array counts and writer bounds | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Text lengths, code units and named refusals | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Scalar bounds and compressed floats | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Full-width enum and union ordinals | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -133,7 +133,7 @@ a recorded scope change. Message Form and packet-wire work remain outside this a
 | String, byte-buffer and flags defaults | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Save and load fixed-form files | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| complete | 22% | 17% | 28% | 5% | 26% | 26% | 38% | 42% | 19% |
+| complete | 24% | 19% | 29% | 7% | 28% | 28% | 40% | 43% | 21% |
 
 [Source data](docs/roadmap.sexp)
 
