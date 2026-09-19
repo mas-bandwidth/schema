@@ -630,11 +630,11 @@ c|cpp)
     : > "$REMARKS"
     if [ -n "$FLAGS_LINE" ]; then
         if [ "$LANG_ARG" = c ]; then
-            ${CC:-cc} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
+            ${CC:-cc} $FLAGS_LINE -ffp-contract=off -Rpass=inline -Rpass-missed=inline -g \
                 bench/c/bench_main.c "$SERIALIZE_C/serialize.c" \
                 -o "$VD/shadow" -lm 2> "$REMARKS" || true
         else
-            ${CXX:-c++} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
+            ${CXX:-c++} $FLAGS_LINE -ffp-contract=off -Rpass=inline -Rpass-missed=inline -g \
                 bench/cpp/bench_main.cpp -o "$VD/shadow" 2> "$REMARKS" || true
         fi
     else

@@ -271,7 +271,7 @@ DEBUG_FLAGS="-O0 -g -DSERIALIZE_DEBUG $COMMON_FLAGS"
 # generated code; bench/README.md says so where the numbers live.
 # -Igenerated/bench/c: the bench-corpus generated code (BenchWire.h), the
 # only generated unit this runner compiles.
-C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/bench/c -I$SERIALIZE_C"
+C_COMMON_FLAGS="-std=c99 -ffp-contract=off -Wall -Wextra -Werror -Igenerated/bench/c -I$SERIALIZE_C"
 # gcc (13.3 checked) additionally rejects the C runner's bounded strncpy of a
 # golden basename under -Werror (-Wstringop-truncation): the truncation is
 # deliberate (fixed-width name slot, terminator guaranteed by the zeroed
