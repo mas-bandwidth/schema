@@ -1594,7 +1594,15 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 1727;
-static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+// INLINE, not static: this blob is odr-used by the inline Announce()
+// below, and a static array in a header is a DIFFERENT entity in every
+// unit that includes it, which is the ODR violation [basic.def.odr] forbids
+// an inline function's definition to carry — and which GCC turns into a link
+// error by placing such an array in the referencing COMDAT group, where the
+// group the linker discards strands any surviving reference to it. One
+// entity, its own COMDAT, and every definition of it token-identical because
+// there is only one header that writes it.
+inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x01, 0x01, 0x09, 0x4e, 0x0a, 0x10, 0xd9, 0x0e, 0x0f, 0x49, 0x31, 0x02,
     0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
@@ -5059,7 +5067,11 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
 static const int32_t kTableRetainKnownIds = 155;
-static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
+// INLINE, not static: TableRetainNameable below is an inline function
+// and odr-uses this array, so it must name ONE entity across every unit
+// that includes this header rather than a per-unit copy - the same rule
+// the hoisted descriptor's tag lists and wide ranges take.
+inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x0117ad66e0fff227ull, 0x01986b0b27400fb2ull, 0x031ec0c4b7d28bf1ull, 0x04dc16aea8ff5276ull,
     0x0577780d86c4b0c3ull, 0x065ee827cf99fbb4ull, 0x08a60c07b54d8dc7ull, 0x09ae5613b0051271ull,
     0x0f8897557f37c021ull, 0x10bda981fe095518ull, 0x13cdc5ede73d2fd7ull, 0x14ec921cc2549d60ull,

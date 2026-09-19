@@ -1535,7 +1535,15 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 288;
-static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+// INLINE, not static: this blob is odr-used by the inline Announce()
+// below, and a static array in a header is a DIFFERENT entity in every
+// unit that includes it, which is the ODR violation [basic.def.odr] forbids
+// an inline function's definition to carry — and which GCC turns into a link
+// error by placing such an array in the referencing COMDAT group, where the
+// group the linker discards strands any surviving reference to it. One
+// entity, its own COMDAT, and every definition of it token-identical because
+// there is only one header that writes it.
+inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x01, 0x01, 0x09, 0xe9, 0xda, 0xee, 0xa6, 0x6b, 0x76, 0x68, 0xa4, 0x02,
     0x0e, 0xf8, 0x01, 0x06, 0xf5, 0x01, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c,
     0x8b, 0x53, 0x0d, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d,
