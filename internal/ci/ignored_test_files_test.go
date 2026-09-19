@@ -32,8 +32,8 @@ package ci
 // file, and neither can be the one host where the silence hides.
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -61,17 +61,16 @@ func TestNoTestFileIsExcludedByABuildConstraint(t *testing.T) {
 	args := append([]string{"list", "-json"}, ignoredScanRoots...)
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
-		var stderr string
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			stderr = string(ee.Stderr)
-		}
-		t.Fatalf("go list -json %s: %v\n%s", strings.Join(ignoredScanRoots, " "), err, stderr)
+	// Explicit buffers rather than Output(): the stderr of a failed `go list`
+	// names the package it could not load, and this gate is useless without it.
+	var out, stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("go list -json %s: %v\n%s", strings.Join(ignoredScanRoots, " "), err, stderr.String())
 	}
 
-	dec := json.NewDecoder(strings.NewReader(string(out)))
+	dec := json.NewDecoder(&out)
 	var offenders []string
 	packages := 0
 	for {
