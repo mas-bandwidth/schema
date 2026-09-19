@@ -206,9 +206,31 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
   check(report.malformed == false, "an equal hash is not a version: #{why(report)}")
   _ = values`
 			} else {
-				body = `  data = File.read!(file())
+				// THE DESTINATION CLAIM, AND ITS CONTROL (§5.8 row 9's form,
+				// repaired the way #1169 repaired `refuse_writes_nothing`).
+				// The line that stood here was
+				//
+				//     fresh = fresh_value()
+				//     ...
+				//     check(fresh == fresh_value(), "REFUSE wrote destination values")
+				//
+				// and it CANNOT FAIL: `fresh` never reaches `load/1`, and two
+				// calls of `def fresh_value, do: %Struct{}` are equal whatever
+				// the reader did. It is the same vacuous line #1155 carried and
+				// #1169 replaced; this file is where it came from.
+				//
+				// On the BEAM a read's destination is the value it RETURNS, so
+				// the honest claim is about the return's SECOND SLOT, and it is
+				// only a claim when paired with a read that fills that slot:
+				// the refusal puts the reason ATOM there and no list of values,
+				// and THE SAME OLD READER on ITS OWN GENERATION — `old_<row>.bin`,
+				// the file this reader was compiled for — puts a NONEMPTY LIST
+				// of built values in exactly that slot. Neither half alone says
+				// anything: `is_atom(why)` on its own is implied by the
+				// `why == :layout_newer` check above, and the control on its own
+				// is just a backward read. The PAIR is "REFUSE built nothing".
+				body = fmt.Sprintf(`  data = File.read!(file())
   <<_::binary-size(8), want::little-unsigned-64, _::binary>> = data
-  fresh = fresh_value()
   {tag, why, report} = load(data)
   check(tag == :error, "the older reader did not refuse the newer writer file: #{inspect(tag)}")
   check(why == :layout_newer, "a hash in no lineage entry owes layout_newer, not #{inspect(why)}")
@@ -222,10 +244,13 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
       report.clamped == 0 and report.duplicate == 0,
     "REFUSE is total: no counter moves: #{why(report)}"
   )
-  # THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE, compared as VALUES
-  # and never as a struct's slack (§5.9 #17): a BEAM struct has no slack, so the
-  # comparison is the value itself against a fresh one.
-  check(fresh == fresh_value(), "REFUSE wrote destination values")`
+  check(not is_list(why), "REFUSE built a destination value: #{inspect(why)}")
+  {ok_tag, ok_values, ok_report} = load(File.read!(%s))
+  check(ok_tag == :ok, "the control read of this reader's OWN generation refuses: #{inspect(ok_tag)} #{why(ok_report)}")
+  check(
+    is_list(ok_values) and ok_values != [],
+    "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
+  )`, elixirString(filepath.Join(corpus, "old_"+r.row+".bin")))
 			}
 			out, err := runVersionProbe(t, elixirBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
