@@ -150,7 +150,19 @@ var versionRows = []versionRow{
 	{row: "keyed_array_enum_append", check: `
   slot = Enum.at(v.slots, 3)
   check(slot.n == 7, "the slot the appended key opened is not the element default: #{inspect(slot)}")`},
-	{row: "nested_append"},
+	// A PREFILL ROW (§5.7, §5.9 #17), and it was not marked as one until it was
+	// MEASURED on 2026-09-19 at `c95bee90`. The edit appends `w int32 = 88`
+	// INSIDE the nested `Vec`; the old writer's file carries no byte for it, so
+	// the ONLY thing that can put 88 there is the prefill. With no `check` at
+	// all this row asserted the file read and no counter moved — and it stayed
+	// GREEN with the prefill replaced by `:binary.copy(<<0x5A>>, ...)` at the
+	// one line that hands it to `R.run`. It is now one of the rows that catch
+	// that mutation, and 88 is NONZERO on purpose: over a zeroed image a zero
+	// default passes whether the prefill ran or not.
+	{row: "nested_append", check: `
+  check(v.v.x == 1 and v.v.y == 2 and v.v.z == 3, "the old writer's nested values did not land: #{inspect(v.v)}")
+  check(v.seq == 24, "the scalar after the nested table moved: #{inspect(v.seq)}")
+  check(v.v.w == 88, "the field appended INSIDE the nested table is not its declared default: #{inspect(v.v.w)}")`},
 	{row: "optional_add"},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
@@ -159,7 +171,17 @@ var versionRows = []versionRow{
 	{row: "union_append"},
 	// `union_arm_payload_widen` IS NOT A WIDEN: it appends a field INSIDE an
 	// arm, so it owes `widened == 0` like every other append (§5.7).
-	{row: "union_arm_payload_widen"},
+	//
+	// AND IT IS A PREFILL ROW (§5.7, §5.9 #17), measured the same way and on the
+	// same day as `nested_append`: `y int32 = 55` is appended to the SELECTED
+	// arm's payload, the old writer's file carries no byte for it, and 55 is
+	// NONZERO, so only the prefill can put it there. With no `check` at all this
+	// row stayed GREEN with the prefill destroyed.
+	{row: "union_arm_payload_widen", check: `
+  check(v.pick.type == 1, "pick.type is the writer's alpha arm (1), not #{inspect(v.pick.type)}")
+  check(v.pick.alpha.x == 21, "the old writer's arm payload did not land: #{inspect(v.pick.alpha.x)}")
+  check(v.seq == 18, "the scalar after the union moved: #{inspect(v.seq)}")
+  check(v.pick.alpha.y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(v.pick.alpha.y)}")`},
 	{row: "wstring_grow"},
 }
 
