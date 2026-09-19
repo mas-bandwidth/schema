@@ -306,6 +306,25 @@ func TestFixedCFloatPastOldMaxLandsUnderTheWidenedRange(t *testing.T) {
 	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, bits, 0))
 }
 
+// ---- case 6b: PAST THE READER'S OWN MAX ----------------------------------
+//
+// Hypothesis (6b), and it is the OTHER HALF of case 6. If the bounds pass is
+// the reader's, then a value outside the READER's range must still be caught:
+// 50.0 in an old file, read by the [-10, 10] reader, lands the READER's max
+// 10.0 and counts exactly one clamp. Case 6 alone cannot say this — "lands
+// whole, uncounted" reads the same whether the pass is the reader's or there
+// is no pass at all. The pair is what pins schema#1164's statement B: 5.0
+// lands untouched because it is INSIDE [-10, 10]; 50.0 clamps because it is
+// not; neither number is ever the OLD writer's max of 1.
+
+func TestFixedCFloatPastTheReadersOwnMaxClampsAndCounts(t *testing.T) {
+	dir := t.TempDir()
+	const bits = 0x42480000 // 50.0, past the NEW reader's max of 10
+	const want = 0x41200000 // 10.0, the READER's own max — not the writer's 1.0
+	file := cfWrite(t, dir, "past", cfOld, writeOne(bits))
+	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, want, 1))
+}
+
 // ---- case 7: THE RESOLUTION IS IN THE FIXED LAYOUT HASH -------------------
 //
 // THE FINDING THAT MATTERED MOST, and it was not a value but an IDENTITY.
