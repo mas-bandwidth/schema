@@ -446,6 +446,16 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-accessor",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "targets": [
+        "tables-cs-accessor-negative-control",
+        "tables-cs-slot-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "rust",
       "when": "pull-request",
       "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
