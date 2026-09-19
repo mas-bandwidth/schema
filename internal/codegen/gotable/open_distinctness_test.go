@@ -53,20 +53,27 @@ func TestGoTableOpenDistinctnessVerdict(t *testing.T) {
 	}
 	src := strings.ReplaceAll(openDistinctnessVerdictTest, "COLLIDE_A", fmt.Sprint(collideA))
 	src = strings.ReplaceAll(src, "COLLIDE_B", fmt.Sprint(collideB))
-	runGenerated(t, "package probe\nfixed table Root { x uint32 }\n", src)
+	runGenerated(t, "package probe\ntable Root { x uint32 }\n", src)
 }
 
 const openDistinctnessVerdictTest = `package probe
-import ("encoding/binary"; "testing")
+import ("encoding/binary"; "testing"; "unsafe")
 
+// tableOpen's distinctness walk is form 1's, and form 1 is the VARIABLE wire
+// (#823): the region Load is the only reader that still reaches it, so the
+// probe hands its hand-built vocabulary to that one. A damaged file has no
+// measurable region, so the region is sized for the widest case the probe
+// builds and the verdict is read from the report, as before.
 func loadIds(ids []uint64) (ok bool, report TableReport) {
 	buf := []byte{1, 0}
 	for _, id := range ids {
 		buf = binary.LittleEndian.AppendUint64(buf, id)
 	}
 	buf = binary.LittleEndian.AppendUint64(buf, uint64(len(ids)))
-	var value Root
-	ok = RootLoad(&value, buf, &report)
+	raw := make([]byte, 1<<16)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 15
+	region := raw[off : off+(1<<15)]
+	ok = RootLoad(region, buf, &report) != nil
 	return
 }
 
