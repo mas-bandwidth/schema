@@ -34,7 +34,7 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	probes := []csVersionProbe{
 		{name: "cfloat_res_refine/new_reads_old", reader: "VNEW_cfloat_res_refine",
 			older: []string{"VOLD_cfloat_res_refine"}, file: "old_cfloat_res_refine.bin",
-			body: csVersionNewReadsOld(r)},
+			body: csVersionNewReadsOld(t, corpus, r)},
 		{name: "cfloat_res_refine/old_refuses_new", reader: "VOLD_cfloat_res_refine",
 			file: "new_cfloat_res_refine.bin", body: csVersionOldRefusesNew(r)},
 	}
