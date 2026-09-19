@@ -5603,7 +5603,14 @@ namespace Bench
                             uint their_base = their_at + head;
                             if (d.Counted != 0)
                             {
-                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, my_n, 0, guard, Count, arg, 0);
+                                // THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
+                                // §5.3 step 11: BOUNDS runs against the PLAN'S bounds). The
+                                // reader's own my_n is the wrong number -- a forged 7 from a
+                                // writer bounded at 4 must land 4 and COUNT, not be admitted
+                                // because this reader grew to 8. their_n held to this reader's
+                                // storage is their_n itself on every legal widening, which is
+                                // what go spells 'n' and rust spells 'their_n.min(my_n)'.
+                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                                 c.Push(e);
                             }
                             uint n = Math.Min(their_n, my_n);
