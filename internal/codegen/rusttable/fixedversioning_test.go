@@ -46,11 +46,14 @@ package rusttable
 // this file is for — and the per-row message says which it is.
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -320,9 +323,22 @@ type versionProbe struct {
 
 // versionProbeSet is every probe this file runs, and it is STATIC: the rows are
 // a table, the floor is three retire levels of one reader, and the hash cases
-// and lineage_merge are one crate each. Nothing here reads the corpus — only
-// names files in it — so the set can be built before the oracle is checked.
-func versionProbeSet(corpus string) []versionProbe {
+// and lineage_merge are one crate each.
+//
+// THE SHARED NEW-READS-OLD BODY ASSERTED NO LANDED VALUE FOR 18 OF 26 ROWS: it
+// proved the file read, refused nothing and moved no counter, but only eight
+// rows carried their own `check`, so a mislaid size that moved a neighbour
+// stayed green across the rest. Every row whose root declares the `lead`/`trail`
+// pair now asserts the bracket by name.
+//
+// THE ORACLE IS THE CORPUS MANIFEST (§5.9 #32), read PER FILE and in DECIMAL,
+// not from the bytes under test. The brackets are not constant across rows —
+// 30 files use lead=2863311530 / trail=3149642683 and 8 use lead=1 / trail=2 —
+// and the file name is the key, so the reader is keyed on the file, never the
+// row. The gate is derived from the IR and not from a flag beside the row: a
+// hand-kept list drifts the first time a schema gains or loses the pair, and
+// that drift fails as a row silently stopping its value assertion.
+func versionProbeSet(t *testing.T, corpus string) []versionProbe {
 	probes := make([]versionProbe, 0, 2*len(versionRows)+5)
 
 	for _, r := range versionRows {
@@ -340,6 +356,16 @@ func versionProbeSet(corpus string) []versionProbe {
     );`
 		if r.widens {
 			counters = `    assert!(report.widened != 0, "a WIDTH row moved no widened counter");`
+		}
+		root := versionRoot(t, versionUnit(t, versionSchema(t, "VOLD_"+r.row)))
+		lead, trail := versionBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+		bracket := ""
+		if versionHasField(root, "lead") && versionHasField(root, "trail") {
+			bracket = fmt.Sprintf(`
+    assert!(
+        values[0].lead == 0x%08X && values[0].trail == 0x%08X,
+        "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+    );`, lead, trail)
 		}
 		probes = append(probes, versionProbe{
 			name:   "probe_" + r.row + "_new_reads_old",
@@ -372,9 +398,10 @@ fn v_%[1]s_new_reads_old() {
         "counters moved on a clean backward read: {:?}", report
     );
 %[4]s
+%[6]s
 %[5]s
 }
-`, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), versionPoison(r.poison), counters, r.check)),
+`, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), versionPoison(r.poison), counters, r.check, bracket)),
 		})
 
 		// OLD-REFUSES-NEW: the older reader, no lineage beyond its own layout.
@@ -751,9 +778,9 @@ func versionUnit(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
-// versionRootName is the FILE's root: the one fixed table no other fixed table
-// of the unit names by value. A row whose change is NESTED declares two.
-func versionRootName(t *testing.T, u *ir.Unit) string {
+// versionRoot is the FILE's root: the one fixed table no other fixed table of
+// the unit names by value. A row whose change is NESTED declares two.
+func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 	t.Helper()
 	roots := ir.TableFixedRoots(u)
 	if len(roots) == 0 {
@@ -767,10 +794,138 @@ func versionRootName(t *testing.T, u *ir.Unit) string {
 	}
 	for _, st := range roots {
 		if !named[st.Name] {
-			return st.Name
+			return st
 		}
 	}
-	return roots[len(roots)-1].Name
+	return roots[len(roots)-1]
+}
+
+// versionRootName is versionRoot's name, the FILE's root.
+func versionRootName(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	return versionRoot(t, u).Name
+}
+
+// versionBrackets is §5.9 #32's value oracle: per row the `lead` and `trail`
+// the corpus brackets it with, so a mislaid size moves a neighbour and the row
+// says so by name. THE MANIFEST is read when the tree carries one
+// (`build/fixedform-corpus/manifest.txt`, §5.7 step 1's one line per row), and
+// where it does not the values the manifest would carry are taken FROM THE
+// CORPUS BYTES — which is where the manifest itself reads them: the lead is
+// the first four bytes of the first record's body and the trail the last four.
+func versionBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := versionManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// versionManifestBrackets reads ONE FILE'S row out of the corpus manifest, which
+// is the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead: it never fired and every row read its oracle
+// from the very .bin it was asserting.
+//
+// The manifest is not tracked, so `ok` false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+func versionManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := versionManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// versionManifestRow answers one line's `values=` map when its `file=` is the
+// one asked for. The values are `<path>=<number>` pairs separated by commas,
+// and a pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func versionManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// versionHasField answers whether a row's ROOT declares a member by that name.
+// It is how the bracket check knows which rows carry §5.9 #32's `lead`/`trail`
+// pair, and it is read off the IR on purpose: a flag kept by hand beside each
+// row would drift the first time a schema gained or lost the pair, and the
+// failure mode of that drift is a row that silently stops asserting a landed
+// value — which is exactly the vacuity being repaired here.
+func versionHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // versionResult is the one cargo run's answer, shared by every test in this
@@ -819,7 +974,7 @@ func versionBuildAndRun(t *testing.T, corpus string) versionResult {
 		t.Fatal(err)
 	}
 
-	probes := versionProbeSet(corpus)
+	probes := versionProbeSet(t, corpus)
 	members := make([]string, 0, len(probes))
 	for _, p := range probes {
 		versionWriteCrate(t, root, serialize, p)
