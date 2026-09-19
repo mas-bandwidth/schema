@@ -1119,6 +1119,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_fixed_apply( const
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
+            /* AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
+               (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
+               identity plan's bounds pass does, so the SAME forged bytes land
+               the SAME clamped == 1 on either plan. The test is the WRITER's
+               top ordinal, table[0], and the pass that runs after this loop
+               tests THIS reader's own top value — which a remapped 0 never
+               trips, so the two never count the one event twice. */
+            else if ( raw != 0 ) { (*clamped)++; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }

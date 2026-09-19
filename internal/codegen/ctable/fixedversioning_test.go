@@ -428,6 +428,77 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	}
 }
 
+// ---- forged_ordinal_both_plans (§5.8 row 12) --------------------------------
+//
+// THE SAME FORGED BYTES READ TWICE. `old_enum_append.bin`'s `r0.tier` is set to
+// 4 — past the WRITER's three variants, and a name only the NEW reader has — and
+// the file is then read by BOTH plans: once by the NEW build through the lineage
+// (a COMPILED plan, whose ordinal table is the WRITER's) and once by the OLD
+// build on its own hash (the IDENTITY plan). Both land `None` and never
+// `Platinum`, both leave `seq` at 9, and `clamped` is `== 1` on BOTH — the
+// equality of the two is the row's whole proof. `== 1` and not `>= 1`: a leg
+// that counts in the `ordinal` op AS WELL as in the bounds pass lands 2 and is
+// wrong (§5.4).
+//
+// The forge is located by NEEDLE and never by a hard-coded offset: the record
+// body is `03 09 00 00 00` (tier=Gold, seq=9), asserted to occur exactly once
+// and to BE the tail of the file, as the Go leg's row does (#1123).
+func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	corpus := cFixedCorpus(t)
+	newer := cReadSchema(t, "VNEW_enum_append")
+	older := cReadSchema(t, "VOLD_enum_append")
+	file := filepath.Join(corpus, "old_enum_append.bin")
+
+	pre := `
+    {
+        int seen = 0;
+        int64_t at;
+        int64_t found = -1;
+        for ( at = 0; at + 5 <= len; ++at )
+        {
+            if ( data[at] == 0x03 && data[at+1] == 0x09 && data[at+2] == 0x00 && data[at+3] == 0x00 && data[at+4] == 0x00 )
+            {
+                if ( seen ) { printf( "the record body (tier=Gold, seq=9) occurs more than once in the file\n" ); return 1; }
+                seen = 1;
+                found = at;
+            }
+        }
+        if ( !seen ) { printf( "the record body (tier=Gold, seq=9) is not in the file\n" ); return 1; }
+        if ( found != len - 5 ) { printf( "the record body is not the tail of the file: at=%lld len=%lld\n", (long long) found, (long long) len ); return 1; }
+        data[found] = 4; /* the forge */
+    }`
+
+	body := `
+    if ( n != 1 ) { printf( "forged_ordinal: the forged file reads one record, not %lld\n", (long long) n ); return 1; }
+    if ( r.refused || r.malformed || r.reason != 0 )
+        { printf( "forged_ordinal: the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, r.reason ); return 1; }
+    if ( back[0].tier != TIER_NONE ) { printf( "forged_ordinal: the forged ordinal lands None, not %s (%d)\n", enum_name_tier( back[0].tier ), (int) back[0].tier ); return 1; }
+    if ( back[0].seq != 9 ) { printf( "forged_ordinal: the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
+    if ( r.clamped != 1 ) { printf( "forged_ordinal: clamped is the bounds pass's count, once per field: %d\n", r.clamped ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "forged_ordinal: only clamped may move on a forged ordinal: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+`
+
+	// THE TWO COLUMNS ARE TWO PROBE BINARIES, as every row on this leg is: C has
+	// no namespace, so the two generations have no spelling inside one binary.
+	t.Run("compiled", func(t *testing.T) {
+		t.Parallel()
+		// the NEW build reads the OLD file through the lineage.
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, body, "", pre)
+		if err != nil {
+			t.Fatalf("forged_ordinal_both_plans, the compiled plan: %v\n%s", err, out)
+		}
+	})
+	t.Run("identity", func(t *testing.T) {
+		t.Parallel()
+		// the OLD build reads its own file on its own hash.
+		out, err := cRunVersionProbe(t, older, nil, 0, file, body, "", pre)
+		if err != nil {
+			t.Fatalf("forged_ordinal_both_plans, the identity plan: %v\n%s", err, out)
+		}
+	})
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func cFixedCorpus(t *testing.T) string {
