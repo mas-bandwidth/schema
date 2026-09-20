@@ -985,6 +985,160 @@ func TestOldArgLaneControl(t *testing.T) {
 `)
 }
 
+// TestFixedFormPlanPartition is W6 (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,
+// §5.9 item 42): THE PLAN IS PARTITIONED — every entry below `split` carries
+// NO guard, every entry above it carries one, and no run coalesces across the
+// split. The C++ reference holds it in test/tables/fixedform_main.cpp's
+// plan_partition_case; this is the same case in this leg's spelling.
+//
+// THE SPLIT ON THIS LEG IS READ OFF THE PLAN, not carried beside it: the plan
+// object is Entries+Count (tableFixedPlan), the run loop tests the guard per
+// entry — which item 42 allows outright — and the builders (tableFixedBuildPlan
+// for identity, tableFixedCompile for a peer's layout, both in the emitted
+// runtime) stable-partition unguarded-first before they hand the plan over. So
+// the split is the index of the first guarded entry, and a plan with no
+// guarded entry has its split at the END, not at zero. The case runs in the
+// generated probe package because that is where the plan symbols live.
+func TestFixedFormPlanPartition(t *testing.T) {
+	runGenerated(t, `package probe
+type ArmA { n int32 }
+type ArmB {
+    s string(8)
+    m int32
+}
+type ArmM { q int32 }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+union PickWide
+{
+    a ArmA
+    m ArmM
+    b ArmB
+}
+fixed table Writer {
+    head int32
+    pick Pick
+    tail int32
+}
+fixed table Flat {
+    x int32
+    y int32
+}
+fixed table Reader {
+    head int32
+    pick PickWide
+    tail int32
+    extra int32 = 5
+}
+`, `package probe
+import ("testing")
+
+// partitionSplit is the reference's partition_is_held: split is in range,
+// every entry below it carries NO guard, every entry above it carries one,
+// and the pair at the split was NOT coalesced across it. It returns the split.
+func partitionSplit(t *testing.T, who string, plan []TableFixedEntry, n int32) int32 {
+	t.Helper()
+	if n < 0 || int64(len(plan)) < int64(n) {
+		t.Fatalf("W6: %s — split is in range (n=%d)", who, n)
+	}
+	split := n
+	for i := int32(0); i < n; i++ {
+		if plan[i].Guard != tableFixedNoGuard {
+			split = i
+			break
+		}
+	}
+	for i := int32(0); i < n; i++ {
+		guarded := plan[i].Guard != tableFixedNoGuard
+		if i < split && guarded {
+			t.Fatalf("W6: %s — entry %d is below the split and carries a GUARD", who, i)
+		}
+		if i >= split && !guarded {
+			t.Fatalf("W6: %s — entry %d is above the split and carries NO guard", who, i)
+		}
+	}
+	// THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+	// below it and the entry at it would be one entry. They are two, and this
+	// says why they have to be.
+	if split > 0 && split < n {
+		a, b := plan[split-1], plan[split]
+		if a.Op == tableFixedCopy && b.Op == tableFixedCopy &&
+			a.Guard == b.Guard && a.Arg == b.Arg &&
+			a.Src+a.Size == b.Src && a.Dst+a.Size == b.Dst {
+			t.Fatalf("W6: %s — the pair at the split was coalesced across it", who)
+		}
+	}
+	return split
+}
+
+func TestPlanPartition(t *testing.T) {
+	// A PLAN WITH BOTH HALVES: Writer carries a union in the middle, so the
+	// arms' entries are guarded and the scalars around them — including the
+	// tail PAST the union — are not.
+	split := partitionSplit(t, "Writer identity plan", WriterFixedPlan.Entries, WriterFixedPlan.Count)
+	if split <= 0 || split >= WriterFixedPlan.Count {
+		t.Fatalf("W6: Writer's identity plan really has a guarded half (split=%d of %d), so the case is not vacuous", split, WriterFixedPlan.Count)
+	}
+
+	// A PLAN WITH NO GUARDED HALF AT ALL: the split is then the whole plan,
+	// and split being a count of UNGUARDED entries rather than of guarded
+	// ones is what makes that come out right.
+	flat := partitionSplit(t, "Flat identity plan", FlatFixedPlan.Entries, FlatFixedPlan.Count)
+	if FlatFixedPlan.Count <= 0 || flat != FlatFixedPlan.Count {
+		t.Fatalf("W6: a plan with no guarded entry has its split at the END, not at zero (split=%d of %d)", flat, FlatFixedPlan.Count)
+	}
+
+	// The reordered plan still READS: the partition moves entries, never
+	// their guards, so arm B and the tail past the union land together.
+	one := Writer{}
+	WriterReset(&one)
+	one.Head = 41
+	one.Pick.Type = PickTypeB
+	copy(one.Pick.B.S[:], "seven77")
+	one.Pick.B.SLength = 7
+	one.Pick.B.M = 1234
+	one.Tail = 99
+	buf := make([]byte, WriterFixedMeasure(1))
+	if n := WriterFixedSave([]Writer{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	got := make([]Writer, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 64)
+	if n := WriterFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("partitioned identity read n=%d %+v", n, r)
+	}
+	if got[0].Head != 41 || got[0].Pick.Type != PickTypeB || string(got[0].Pick.B.S[:got[0].Pick.B.SLength]) != "seven77" || got[0].Pick.B.M != 1234 || got[0].Tail != 99 {
+		t.Fatalf("partitioned identity read lost the record: %+v", got[0])
+	}
+
+	// AND A COMPILED PLAN, which is the half an identity plan cannot speak
+	// for: Reader inserts an arm in the middle (the string moves from arm 2
+	// to arm 3) and trails an extra field past the union, so the walk pushes
+	// guarded entries before unguarded ones. The caller never sees the split,
+	// so the property is read off the plan itself — once a guarded entry has
+	// been seen, no unguarded entry follows.
+	parsed, why := tableFixedParseLayout(WriterFixedLayout)
+	if why != "" {
+		t.Fatalf("writer layout does not parse: %s", why)
+	}
+	cplan := make([]TableFixedEntry, 256)
+	var cr TableReport
+	made := tableFixedCompile(parsed, ReaderFixedLayout, ReaderFixedDst, cplan, &cr)
+	if made <= 0 {
+		t.Fatalf("compile made %d %+v", made, cr)
+	}
+	csplit := partitionSplit(t, "compiled plan", cplan, made)
+	if csplit <= 0 || csplit >= made {
+		t.Fatalf("W6: the compiled plan really has guarded entries (split=%d of %d), so the case is not vacuous", csplit, made)
+	}
+}
+`)
+}
+
 func tableFile(files map[string][]byte) string {
 	body := ""
 	for name, data := range files {

@@ -196,6 +196,30 @@ func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	return v
 }
 
+// THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9
+// item 42): every UNGUARDED entry first, then every guarded one, and the
+// split — the NUMBER OF UNGUARDED ENTRIES, the index the second half starts
+// at, not a count of guarded ones — is a property of that order. The emitter
+// lays entries down in field order, so a field past a union would land an
+// unguarded entry behind a guarded one; the builders repair that here, each
+// in its own half, and never coalesce across the split. The run loop still
+// tests the guard per entry, which item 42 allows outright: what a leg may
+// not do is skip the partition. tableFixedPartition stable-partitions the
+// built entries in place and returns the split; a plan with no guarded entry
+// has its split at the END, not at zero.
+func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
+	split := int32(0)
+	for i := int32(0); i < n; i++ {
+		if plan[i].Guard == tableFixedNoGuard {
+			e := plan[i]
+			copy(plan[split+1:i+1], plan[split:i])
+			plan[split] = e
+			split++
+		}
+	}
+	return split
+}
+
 func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
 	raw := make([]TableFixedEntry, n)
 	written := emit(raw, 0, 0)
@@ -212,7 +236,9 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		raw[out] = raw[i]
 		out++
 	}
-	return tableFixedPlan{Entries: raw[:out], Count: int32(out)}
+	n = out
+	tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
 }
 
 func tableFixedPut8(b []byte, v uint8) { b[0] = v }
@@ -1063,6 +1089,12 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		plan[out] = plan[i]
 		out++
 	}
+	// THE PARTITION, same as the identity builder above: the walk pushes
+	// guarded and unguarded entries in field order, and a field past a union
+	// would land behind a guarded one. §5.9 item 42 owes the order on this
+	// path too, and the lineage plans below are compiled here, so they are
+	// partitioned by construction.
+	tableFixedPartition(plan, out)
 	return out
 }
 
