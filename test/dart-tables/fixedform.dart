@@ -2771,6 +2771,156 @@ void writeChecksDebugOnlyCase() {
 }
 
 // ---------------------------------------------------------------------------
+// W9: THE PREFILL WRITES THE UNWRITTEN RANGES AND NOTHING ELSE
+// (docs/FIXED-FORM-ALGORITHM.md §4.3). The plan compiler computes the
+// destination bytes no entry covers, and the read copies the declared-default
+// image into exactly those. The identity plan lands every value byte, so its
+// list is EMPTY and the identity read pays nothing (fix 15).
+//
+// THE MEASUREMENT. A plan is compiled for the OLDER writer's layout — FX2
+// reads an FX1 record, the direction §5 keeps — and its entry landings and its
+// fill list are read off the plan itself. The fill is asserted to be the cover
+// MINUS the landings: every value byte is landed or filled, never both and
+// never neither. Then the fill is RUN over an image poisoned with 0x5A: a byte
+// an entry lands must come back STILL POISON (the prefill did not write it)
+// and a hole must come back at the declared default (it did). A prefill that
+// covered the whole image would clobber the poison on the landings; one that
+// covered nothing would leave the holes poisoned. This case fails either way,
+// and the identity plan is run through the same check as the limit case the
+// rule admits.
+void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
+  // WHAT THE PLAN LANDS, read off its own entries. A COUNT lands its four
+  // length bytes and a TEXT lands its length word and its units; everything
+  // else lands `size` bytes. This is the doc's own list of landings, not the
+  // runtime's fill list, so the two can be compared.
+  final landed = List<bool>.filled(body, false);
+  final lands = Int32List(4);
+  for (var i = 0; i < plan.count; i++) {
+    fx2home.TableFixedCompiler.entryLands(
+      plan.entries,
+      i * fx2home.TableFixedLane.lanes,
+      lands,
+    );
+    for (var q = 0; q < 4; q += 2) {
+      for (var b = lands[q]; b < lands[q + 1]; b++) {
+        if (b >= 0 && b < body) {
+          landed[b] = true;
+        }
+      }
+    }
+  }
+  // the cover, which is the type's value bytes
+  final cover = List<bool>.filled(body, false);
+  for (var c = 0; c < fx2.fxRootFixedCoverCount; c++) {
+    final lo = fx2.fxRootFixedCover[c * 2];
+    final hi = lo + fx2.fxRootFixedCover[c * 2 + 1];
+    for (var b = lo; b < hi && b < body; b++) {
+      cover[b] = true;
+    }
+  }
+  // the plan's own fill list, packed (dst, size)
+  final fill = List<bool>.filled(body, false);
+  for (var i = 0; i < plan.fillCount; i++) {
+    final lo = plan.fill[i * 2];
+    final hi = lo + plan.fill[i * 2 + 1];
+    for (var b = lo; b < hi && b < body; b++) {
+      fill[b] = true;
+    }
+  }
+  for (var b = 0; b < body; b++) {
+    check(
+      cover[b] == (landed[b] || fill[b]),
+      'W9: $who byte $b: cover=${cover[b]} landed=${landed[b]} '
+      'filled=${fill[b]} — the fill is not the cover minus the landings',
+    );
+    check(
+      !(landed[b] && fill[b]),
+      'W9: $who byte $b is BOTH landed by an entry and prefilled',
+    );
+  }
+
+  // AND THE FILL RUN WRITES ONLY THE HOLES. Poison the image and run it: the
+  // landed bytes keep the poison, the holes take the declared default.
+  final image = Uint8List(body)..fillRange(0, body, 0x5A);
+  fx2home.tableFixedFillRun(
+    plan.fill,
+    plan.fillCount,
+    fx2.fxRootFixedPrefill,
+    image,
+  );
+  for (var b = 0; b < body; b++) {
+    if (landed[b]) {
+      check(
+        image[b] == 0x5A,
+        'W9: $who: the prefill wrote LANDED byte $b — the entry that owns it '
+        'would have its value overwritten before the loop runs',
+      );
+    } else if (cover[b]) {
+      check(
+        image[b] == fx2.fxRootFixedPrefill[b],
+        'W9: $who: hole $b was not prefilled with the declared default',
+      );
+    }
+  }
+}
+
+void w9PrefillUnwrittenOnly() {
+  final plan = fx2.fxRootFixedNewPlan();
+  check(
+    plan.theirs.parse(
+      ByteData.sublistView(fx1.fxRootFixedLayout),
+      0,
+      fx1.fxRootFixedLayout.length,
+    ),
+    'W9: the older writer\'s layout parses into the plan',
+  );
+  final r = fx2home.TableFixedReport();
+  final made = fx2home.TableFixedCompiler.compile(
+    plan,
+    fx2.fxRootFixedLayout,
+    ByteData.sublistView(fx2.fxRootFixedLayout),
+    fx2.fxRootFixedDst,
+    fx2.fxRootFixedCover,
+    fx2.fxRootFixedCoverCount,
+    r,
+  );
+  check(made > 0, 'W9: FX2 compiles a plan from FX1\'s layout (made $made)');
+  check(
+    plan.fillCount > 0,
+    'W9: the compiled plan leaves holes, so the case is not vacuous '
+    '(fillCount ${plan.fillCount})',
+  );
+  _w9Partition('compiled', plan, fx2.fxRootFixedBodyBytes);
+
+  // THE LIMIT CASE THE RULE ADMITS (§4.3): the identity plan lands every value
+  // byte, so its fill list is EMPTY and the fill run writes nothing.
+  final identity = fx2.fxRootFixedNewPlan();
+  check(
+    identity.theirs.parse(
+      ByteData.sublistView(fx2.fxRootFixedLayout),
+      0,
+      fx2.fxRootFixedLayout.length,
+    ),
+    'W9: this build\'s own layout parses into the identity plan',
+  );
+  final madeId = fx2home.TableFixedCompiler.compile(
+    identity,
+    fx2.fxRootFixedLayout,
+    ByteData.sublistView(fx2.fxRootFixedLayout),
+    fx2.fxRootFixedDst,
+    fx2.fxRootFixedCover,
+    fx2.fxRootFixedCoverCount,
+    fx2home.TableFixedReport(),
+  );
+  check(madeId > 0, 'W9: the identity compile wrote $madeId entries');
+  check(
+    identity.fillCount == 0,
+    'W9: the identity plan\'s fill list is EMPTY, not ${identity.fillCount}',
+  );
+  _w9Partition('identity', identity, fx2.fxRootFixedBodyBytes);
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -3836,6 +3986,7 @@ void main(List<String> args) {
   readSlackUnspecified();
   planPartitionCase();
   writeChecksDebugOnlyCase();
+  w9PrefillUnwrittenOnly();
   negativeControl();
   // F4: the sample lives behind the corpus reads, and it does not need them —
   // it is the reader's OWN header and a length that lies.
