@@ -391,6 +391,13 @@ jobs:
   # suites behave exactly as they do today: without build/fixedform-corpus and
   # without SCHEMA_REQUIRE_CORPUS=1 they skip themselves, and the leg gates
   # below are where they are made to run.
+  #
+  # TestFixedForm* IS DIFFERENT (schema#1376). Those tests shell out through
+  # runGenerated and skip without SCHEMA_SLOW; the go leg-gate that would run
+  # tables-go-fixedform is skipped below main, so a card adding one of them to
+  # a PR into fixed-table-form was green in every ci-fast job having run
+  # nothing. This job is the door that still opens below main, so when the
+  # packages include gotable it runs tables-go-fixedform itself.
   go-test-touched:
     needs: plan
     if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -490,6 +497,16 @@ jobs:
             # shellcheck disable=SC2086
             go test $PACKAGES
           fi
+          # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
+          # leg-gate is skipped on PRs below main. tables-go-fixedform is the
+          # existing make target that runs them under the slow gate; the
+          # hyphenated tables-go-fixed-form is the binary byte gate and does
+          # not.
+          case " $PACKAGES " in
+            *" ./internal/codegen/gotable "*|*" ./... "*)
+              make tables-go-fixedform
+              ;;
+          esac
 
   # THE TOUCHED LEG'S TWO GATES: the fixed form's bytes and §5's versioning
   # rows, one matrix row per leg so nine legs cost nine parallel jobs rather
