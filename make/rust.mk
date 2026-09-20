@@ -170,6 +170,17 @@ tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tabl
 		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
 		cargo +nightly miri run --quiet
 
+# THE RUST PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
+# target by name, so the expensive half lands by adding it here and nothing
+# else. The native forgery fuzzer is the PR-scale instrument `make test` does
+# not run at all; this is its long form at five times the shared N under a
+# second seed, beside the name-claim control it belongs with.
+.PHONY: tables-rust-release
+tables-rust-release:
+	$(MAKE) tables-rust-fuzz N=500000
+	$(MAKE) tables-rust-fuzz SEED=2 N=500000
+	$(MAKE) tables-rust-names-negative-control
+
 # THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
 # that a schema declaration may not lower onto one of the table runtime's Rust
 # CONSTANTS is a refusal, and a refusal that has never fired proves nothing —

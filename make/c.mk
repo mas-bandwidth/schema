@@ -306,6 +306,20 @@ tables-c-soak: build/schema_test_c_soak
 tables-c-fuzz: build/schema_test_c_fuzz
 	SEED=$(SEED) N=$(N) ./build/schema_test_c_fuzz
 
+# THE C PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
+# target by name, so the expensive half lands by adding it here and nothing
+# else: the hour soak `make test` runs at twenty seconds, the forged-block
+# fuzzer at five times the PR scale under a second seed, and each one's
+# planted control. The soak is the long form the issue names —
+# `tables-c-soak SOAK_SECONDS=3600`.
+.PHONY: tables-c-release
+tables-c-release:
+	$(MAKE) tables-c-soak SOAK_SECONDS=3600
+	$(MAKE) tables-c-soak-negative-control
+	$(MAKE) tables-c-fuzz N=500000
+	$(MAKE) tables-c-fuzz SEED=2 N=500000
+	$(MAKE) tables-c-fuzz-negative-control
+
 # THE C TABLES LEG, whole. Everything above, plus the conformance driver under
 # the sanitizers over every surface it answers.
 .PHONY: tables-c
