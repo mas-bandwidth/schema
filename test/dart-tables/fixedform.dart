@@ -1165,6 +1165,76 @@ void fuCase() {
   }
 }
 
+// 5b. AN ORDINAL OF WIDTH 8 IS READ THROUGH A 64-BIT TEMPORARY
+// (docs/FIXED-FORM-ALGORITHM.md §4.5's `ordinal` row, §5.8 row 7 — the GAP
+// this case closes). Its C++ twin is
+// `owed8_width8_ordinal_read_whole_case`, test/tables/fixedform_main.cpp:
+// 1089-1118, ported here for its REASONING and not its C++.
+//
+// The reference's OWN distinguishing fact is the CLAMPED COUNT and not the
+// landed value: a width-8 ordinal of 2^32 — one past the writer's single
+// variant — lands None either way. Read through a 32-bit temporary the low
+// four bytes are zero, so `raw` comes out 0, the entry lands None and counts
+// NOTHING; read whole, `raw` is 2^32 > n, so it lands None and COUNTS `clamped`.
+// The storage and the verdict agree; only the count disagrees. No schema in
+// the corpus declares an eight-byte enum or union ordinal, so the plan is laid
+// here by hand, exactly as the reference lays it.
+void ordinalWidth8Case() {
+  final plan = Int32List(fu1home.TableFixedLane.lanes);
+  const mapAt = 0;
+  final remap = Int32List.fromList(<int>[1, 1]); // n = 1, table[1] = 1
+
+  plan[fu1home.TableFixedLane.op] = fu1home.TableFixedOp.ordinal;
+  plan[fu1home.TableFixedLane.src] = 0;
+  plan[fu1home.TableFixedLane.dst] = 0;
+  plan[fu1home.TableFixedLane.size] = 8; // THE ORDINAL IS EIGHT BYTES WIDE
+  plan[fu1home.TableFixedLane.aux] = mapAt;
+  plan[fu1home.TableFixedLane.guard] = fu1home.tableFixedNoGuard;
+  plan[fu1home.TableFixedLane.meta] = 8; // the destination ordinal width
+  plan[fu1home.TableFixedLane.argW] = 1;
+
+  // 2^32, and ONLY the low four bytes are zero: that is the byte pattern a
+  // 32-bit temporary throws away.
+  final source = Uint8List.fromList(<int>[0, 0, 0, 0, 1, 0, 0, 0]);
+  final sourceView = ByteData.sublistView(source);
+  final image = Uint8List(8)..fillRange(0, 8, 0xAB);
+  final imageView = ByteData.sublistView(image);
+  final conv = ByteData(8);
+  final report = fu1home.TableFixedReport();
+
+  fu1home.tableFixedRun(
+    plan,
+    1,
+    source,
+    sourceView,
+    0,
+    image,
+    imageView,
+    remap,
+    conv,
+    report,
+  );
+
+  final landed = imageView.getUint64(0, Endian.little);
+  check(
+    landed == 0,
+    'ordinal width 8: 2^32 is past the writer\'s one variant and lands None',
+  );
+  check(
+    report.clamped >= 1,
+    'ordinal width 8: COUNT clamped — a 32-bit temporary would read 0 and '
+    'count nothing',
+  );
+  check(
+    !report.malformed && report.refused == 0,
+    'ordinal width 8: a hostile ordinal is None and counted, never a refusal',
+  );
+  print(
+    'ordinal width 8: 2^32 read whole through the 64-bit temporary, landed '
+    '$landed, clamped ${report.clamped}',
+  );
+}
+
 // 6. AN ENUM VARIANT AND A UNION ARM INSERTED IN THE MIDDLE, and a keyed
 // array whose keys slid — remapped BY NAME and never by position.
 void vCase() {
@@ -1955,6 +2025,7 @@ void main(List<String> args) {
     'FX1 FxRoot: body ${fx1.fxRootFixedBodyBytes}, layout ${fx1.fxRootFixedLayoutBytes}, '
     'identity plan ${fx1.fxRootFixedIdentityCount} entries',
   );
+  ordinalWidth8Case();
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
   // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
