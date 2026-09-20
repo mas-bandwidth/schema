@@ -1665,6 +1665,129 @@ void negativeControl() {
   }
 }
 
+// 9. THE BOUNDS PASS WALKS LIVE THINGS ONLY (docs/FIXED-FORM-ALGORITHM.md
+// §4.6). The pass that clamps ranged scalars and remaps ordinals runs over
+// STORAGE after the plan run, which is what lets ONE pass cover both plans —
+// and it walks only what a read can have written: a counted array's LIVE
+// elements and never its slack. The reason is a counter: the prefill's
+// defaults are in range by construction, so clamping storage nobody wrote
+// would count a clamp on every clean read.
+//
+// The pack coverage above reads a CONFORMING file, whose slack is ZEROS — and
+// zeros are in range, so a pass that walked the bound would count nothing
+// there and `clamped == 0` would still hold. That is detection, not assertion.
+// This case STAINs the slack THROUGH STORAGE, with the same out-of-range value
+// CONTROL 1 puts in a live element, and holds the read to `clamped == 0` — the
+// number only a pass that walks the LIVE COUNT can produce.
+void boundsCase() {
+  // a record with a PARTLY-FILLED counted array: reservesCount = 2, and the
+  // third ShipEntry is slack. Every LIVE value is in range, so a clean read
+  // counts nothing on its own; the stain then goes into the slack.
+  final one = demo.PackConfig();
+  one.version = 7;
+  one.global.tickRate = 120;
+  one.global.buildNote.setRange(0, 5, 'clean'.codeUnits);
+  one.global.buildNoteLength = 5;
+  for (var s = 0; s < 3; s++) {
+    one.ships[s].hardpointsCount = 1;
+    one.ships[s].hardpoints[0] = s + 1;
+  }
+  one.thresholds[0] = 100;
+  one.thresholds[1] = 200;
+  one.thresholds[2] = 300;
+  one.reservesCount = 2;
+  one.reserves[0].displayName.setRange(0, 5, 'live0'.codeUnits);
+  one.reserves[0].displayNameLength = 5;
+  one.reserves[0].hardpointsCount = 1;
+  one.reserves[0].hardpoints[0] = 1;
+  one.reserves[1].displayName.setRange(0, 5, 'live1'.codeUnits);
+  one.reserves[1].displayNameLength = 5;
+  one.reserves[1].hardpointsCount = 1;
+  one.reserves[1].hardpoints[0] = 2;
+
+  final w = Uint8List(pack.packConfigFixedMeasure(1));
+  check(
+    pack.packConfigFixedSave(<demo.PackConfig>[one], 1, w) == w.length,
+    'bounds: the record saves',
+  );
+
+  // THE STAIN IS LAID THROUGH STORAGE, never the wire: the offsets are the
+  // write template's, reserves sitting at body 383 with elements at +i*98 and
+  // a ShipEntry's hardpoints count at element+44, its first value at
+  // element+48 — the same numbers the identity plan's own entries carry (623
+  // and 627). The slack element's COUNT stays in range (the plan clamps
+  // counts, and that clamp would be the wrong thing to test); its first VALUE
+  // goes past the declared `max = 8`, which only the decode can answer for.
+  final body = pack.packConfigFixedHeaderBytes + 8;
+  final view = ByteData.sublistView(w);
+  view.setInt32(body + 623, 1, Endian.little);
+  view.setInt32(body + 627, 0x7F, Endian.little);
+
+  final back = <demo.PackConfig>[demo.PackConfig()];
+  final r = demo.TableFixedReport();
+  final n = pack.packConfigFixedLoad(
+    back,
+    1,
+    w,
+    w.length,
+    pack.packConfigFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'bounds: the stained record still reads (got $n)');
+  check(
+    back[0].reservesCount == 2 &&
+        back[0].reserves[0].hardpoints[0] == 1 &&
+        back[0].reserves[1].hardpoints[0] == 2,
+    'bounds: the two live elements land, and the slack\'s stain is never decoded',
+  );
+  check(
+    r.clamped == 0,
+    'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
+    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): clamping storage nobody wrote '
+    'would count a clamp on every clean read — the out-of-range value stained '
+    'into the slack counts no clamp (clamped=${r.clamped})',
+  );
+
+  // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
+  // out-of-range value clamps to max, counts EXACTLY one, and an in-range
+  // neighbour is untouched. Without this, a pass that never ran at all would
+  // also report `clamped == 0`.
+  final w2 = Uint8List(pack.packConfigFixedMeasure(1));
+  check(
+    pack.packConfigFixedSave(<demo.PackConfig>[one], 1, w2) == w2.length,
+    'bounds: control saves',
+  );
+  final view2 = ByteData.sublistView(w2);
+  view2.setInt32(body + 529, 0x7F, Endian.little); // reserves[1], LIVE
+  final back2 = <demo.PackConfig>[demo.PackConfig()];
+  final r2 = demo.TableFixedReport();
+  check(
+    pack.packConfigFixedLoad(
+          back2,
+          1,
+          w2,
+          w2.length,
+          pack.packConfigFixedNewPlan(),
+          r2,
+        ) ==
+        1,
+    'bounds: control reads',
+  );
+  check(
+    back2[0].reserves[1].hardpoints[0] == 8,
+    'CONTROL 1: a live element past max lands at max '
+    '(got ${back2[0].reserves[1].hardpoints[0]})',
+  );
+  check(
+    back2[0].reserves[0].hardpoints[0] == 1,
+    'CONTROL 1: an in-range neighbour is untouched',
+  );
+  check(
+    r2.clamped == 1,
+    'CONTROL 1: the live clamp is counted exactly once (clamped=${r2.clamped})',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
@@ -1972,6 +2095,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  boundsCase();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
