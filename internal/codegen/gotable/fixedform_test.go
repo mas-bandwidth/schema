@@ -211,6 +211,73 @@ func TestRoundTrip(t *testing.T) {
 `)
 }
 
+// TestFixedFormHashCheckedLast is the row "hash checked LAST" (docs/FIXED-FORM-
+// ALGORITHM.md §2's load order, §5.3 steps 3 to 5): the header's hash is TAKEN
+// AS GIVEN and never recomputed from the wire, AND the layout's own framing is
+// judged BEFORE the hash is looked up, so a file whose u32 layout length
+// overruns it answers `layout_malformed` even when its header hash is one this
+// reader has never locked. A reader that consulted the hash first would answer
+// `layout_newer` and bury the framing damage — the order is the property, not
+// the two individual names (§5.3: "The order is load-bearing").
+//
+// The reference states the same pair by hand: test/tables/fixedform_main.cpp's
+// negative_control() flips the header hash and demands `layout_newer`
+// (312-325), and layout_validation()'s residue builds a file whose length runs
+// past its bytes under an unlocked hash and demands `layout_malformed`
+// (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
+// taken-as-given half is also the generator's own §5.3 shape (fixedform.go:750).
+func TestFixedFormHashCheckedLast(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import ("encoding/binary"; "testing")
+
+func TestHashCheckedLast(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := PointFixedSave([]Point{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	plan := make([]TableFixedEntry, 64)
+	got := make([]Point, 1)
+	var r TableReport
+
+	// CONTROL 1 — THE RULE'S LEGITIMATE VALUE: the file's own, known hash. The
+	// same loader reads it, so the refusals below are the hash and the length
+	// and not the fixture.
+	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+		t.Fatalf("the file with its own hash reads: n=%d got=%+v report=%+v", n, got[0], r)
+	}
+
+	// THE HASH IS TAKEN AS GIVEN, NEVER RECOMPUTED. A hash no lineage entry
+	// holds is layout_newer, and the report carries THE FILE'S hash — the
+	// flipped value, not this build's. A reader that recomputed hash_of(layout)
+	// would find its own entry and read the file.
+	unknown := append([]byte(nil), buf...)
+	flipped := binary.LittleEndian.Uint64(unknown[TableFixedHashAt:]) ^ 0xFFFFFFFFFFFFFFFF
+	binary.LittleEndian.PutUint64(unknown[TableFixedHashAt:], flipped)
+	r = TableReport{}
+	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_newer" || r.LayoutHash != flipped || r.Malformed {
+		t.Fatalf("an unknown header hash is layout_newer carrying the file's hash: n=%d report=%+v", n, r)
+	}
+
+	// AND THE LAYOUT FRAMING IS JUDGED FIRST (§5.3 step 3 before steps 4-5): the
+	// u32 length at 16 overruns the file, so the answer is layout_malformed even
+	// though the header's hash is one this reader has never locked.
+	overrun := append([]byte(nil), unknown...)
+	binary.LittleEndian.PutUint32(overrun[TableFixedHeaderBytes:], uint32(len(overrun)))
+	r = TableReport{}
+	if n := PointFixedLoad(got, overrun, plan, &r); n != -1 || r.Reason != "layout_malformed" || r.Malformed {
+		t.Fatalf("the layout framing is checked BEFORE the hash: n=%d report=%+v", n, r)
+	}
+}
+`)
+}
+
 // RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
 // below read a file written under ANOTHER schema's layout WITHOUT that layout
 // being in the reader's lineage, and they assert the run-time walk of a
