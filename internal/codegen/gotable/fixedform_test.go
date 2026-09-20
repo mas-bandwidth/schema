@@ -2608,3 +2608,70 @@ func TestBytesRow(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormBoundsShiftFixedAndBits is C8 "fixed-point F-shift / bits(N)",
+// asserted BY NAME against its own clause (docs/FIXED-FORM-ALGORITHM.md §4.6):
+// "A fixed-point field's bounds are in VALUE UNITS and its storage is raw, so
+// both ends are shifted by F first; a `bits(N)` clamps to `2^N - 1`." The
+// emitter's numbers are ir.TableRawRange's — the declared whole-unit bounds
+// Lsh(F) — and the bits branch clamps at the N-bit mask, NOT at the storage
+// width. A poisoned raw rides the writer (the write side's bounds are
+// debug-only and a range is not one of them) and the read-side pass over
+// STORAGE is what holds it. The legitimate value the rule admits is the
+// CONTROL and must not move the counter.
+func TestFixedFormBoundsShiftFixedAndBits(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Probe {
+    tilt fixed(12, 4) | min = -8, max = 7
+    mask bits(12)
+}
+`, `package probe
+import ("testing")
+
+func oneRound(t *testing.T, in Probe) (Probe, TableReport) {
+	t.Helper()
+	need := ProbeFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := ProbeFixedSave([]Probe{in}, buf); n != need {
+		t.Fatalf("save %d want %d", n, need)
+	}
+	got := make([]Probe, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := ProbeFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("load %d %+v", n, r)
+	}
+	return got[0], r
+}
+
+func TestShiftAndBits(t *testing.T) {
+	// CONTROL 1 (not vacuous): the legitimate value the rule admits — the
+	// declared max shifted onto the raw scale (7<<4 = 112) and the bits mask
+	// (2^12-1 = 4095) — must NOT fire.
+	var ok Probe
+	ProbeReset(&ok)
+	ok.Tilt = 7 << 4
+	ok.Mask = 1<<12 - 1
+	clean, r := oneRound(t, ok)
+	if clean.Tilt != 112 || clean.Mask != 4095 || r.Clamped != 0 {
+		t.Fatalf("CONTROL: an admitted value moved: tilt=%d mask=%d clamped=%d", clean.Tilt, clean.Mask, r.Clamped)
+	}
+
+	// POISON: raw storage past both bounds, through the writer.
+	var bad Probe
+	ProbeReset(&bad)
+	bad.Tilt = 200  // raw > 112
+	bad.Mask = 5000 // raw > 4095
+	held, r := oneRound(t, bad)
+	if held.Tilt != 112 {
+		t.Fatalf("F-SHIFT: fixed tilt landed %d, want 112 = max 7 shifted by F=4", held.Tilt)
+	}
+	if held.Mask != 4095 {
+		t.Fatalf("BITS: mask landed %d, want 4095 = 2^12-1 (not the 32-bit storage top)", held.Mask)
+	}
+	if r.Clamped != 2 {
+		t.Fatalf("clamped=%d, want 2 (one per poisoned field)", r.Clamped)
+	}
+}
+`)
+}
