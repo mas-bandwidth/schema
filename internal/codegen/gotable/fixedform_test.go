@@ -1162,3 +1162,80 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
+// UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
+// so a peer that leaves garbage past a string's stated length or an array's
+// live count is a peer this reader reads correctly. NON-ZERO SLACK IS NOT
+// malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
+//
+// The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
+// reads a wire its OWN writer zeroed; the read half is exactly the tolerance
+// above. This is that half with the wire slack poisoned AFTER the write, which
+// is the only way to reach the read rule at all: the writer's zeros would make
+// the assertion vacuous. The poison is chosen out of the array's declared
+// [0,10] range so that a pass which walked the declared bound instead of the
+// live count would count it.
+func TestFixedFormReadSlackUnspecified(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Slack {
+    label string(8)
+    marks [..4]int32 | min = 0, max = 10
+    tail  int32 = 42
+}
+`, `package probe
+import ("testing"; "encoding/binary")
+
+func TestReadSlackUnspecified(t *testing.T) {
+	one := Slack{}
+	SlackReset(&one)
+	one.Label[0] = 'h'
+	one.Label[1] = 'i'
+	one.LabelLength = 2
+	one.MarksCount = 1
+	one.Marks[0] = 7
+	buf := make([]byte, SlackFixedMeasure(1))
+	if n := SlackFixedSave([]Slack{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save: n=%d want %d", n, len(buf))
+	}
+	if SlackFixedBodyBytes != 36 {
+		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", SlackFixedBodyBytes)
+	}
+	body := buf[len(buf)-SlackFixedRecordBytes+8:]
+	// the declared wire order: label length (4) + 8 label bytes, marks count
+	// (4) + four int32 elements (16), then tail (4).
+	const labelSlackAt = 4 + 2              // past the stated length of 2
+	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
+	// A PEER left garbage in the declared slack: a byte no clean record carries.
+	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
+	for i := 0; i < 3; i++ {
+		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
+	}
+	// NOT VACUOUS: the wire really carries non-zero garbage in the declared
+	// slack (the exact bytes are a control knob; the RULE is about non-zero).
+	if body[labelSlackAt] == 0 || binary.LittleEndian.Uint32(body[marksSlackAt:]) == 0 {
+		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	}
+
+	got := make([]Slack, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := SlackFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("a peer's garbage in the slack refused the record: n=%d %+v", n, r)
+	}
+	if r != (TableReport{}) {
+		t.Fatalf("a peer's garbage in the slack moved a counter or named a refusal: %+v", r)
+	}
+	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
+		t.Fatalf("the used text did not read: %+v", got[0])
+	}
+	if got[0].MarksCount != 1 || got[0].Marks[0] != 7 {
+		t.Fatalf("the live prefix did not read: %+v", got[0])
+	}
+	if got[0].Tail != 42 {
+		t.Fatalf("the field past the slack moved: %+v", got[0])
+	}
+}
+`)
+}
