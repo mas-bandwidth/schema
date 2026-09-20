@@ -1162,3 +1162,80 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormWriteSideBoundsAreDebugOnly names the rule that
+// TestFixedFormClampLiveCount only exercises. It writes an out-of-contract
+// count and length, and asserts the WRITE side does nothing: the save refuses
+// nothing and clamps nothing, so the caller's own bytes land on the wire. The
+// read side is what clamps, and only it (docs/FIXED-FORM-ALGORITHM.md §3.1:
+// "Write-side bound checks are DEBUG ONLY, by rule. `count <= Max` and
+// `length <= N` are a caller contract"). Go has no debug-only idiom (AGENTS.md
+// rule 4), so the fixed form's save path holds NO write-side bound check in
+// ANY build — this test asserts the rule's consequence by name: the write side
+// clamps nothing and refuses nothing, and a caller's bug rides the wire
+// unchanged rather than being silently clamped into a lawful record.
+func TestFixedFormWriteSideBoundsAreDebugOnly(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Host {
+    marks [..4]int32
+    name  string(8)
+    tail  int32 = 7
+}
+`, `package probe
+import ("testing")
+
+func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
+	if HostFixedBodyBytes != 36 {
+		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", HostFixedBodyBytes)
+	}
+
+	// THE NOT-VACUOUS CONTROL, first: a lawful count and length round-trip
+	// cleanly — the write side produces the record's own bytes and the read
+	// side clamps nothing, so this case is about the caller contract, not a
+	// broken save.
+	lawful := Host{Tail: 7}
+	HostReset(&lawful)
+	lawful.MarksCount = 2
+	lawful.Marks[0] = 11
+	lawful.Marks[1] = 22
+	lawful.NameLength = 3
+	copy(lawful.Name[:], "abc")
+	lb := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{lawful}, lb); n != int64(len(lb)) {
+		t.Fatalf("lawful save %d", n)
+	}
+	got := make([]Host, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := HostFixedLoad(got, lb, plan, &r); n != 1 {
+		t.Fatalf("lawful load %d %+v", n, r)
+	}
+	if got[0].MarksCount != 2 || got[0].NameLength != 3 || r.Clamped != 0 {
+		t.Fatalf("a lawful count and length must not clamp: %+v %+v", got[0], r)
+	}
+
+	// THE RULE, BY NAME. count <= Max and length <= N are a CALLER CONTRACT:
+	// 7 > 4 and 9 > 8 are the caller's bug, and the write side must refuse
+	// nothing and clamp nothing — the release path pays nothing.
+	one := Host{Tail: 7}
+	HostReset(&one)
+	one.MarksCount = 7
+	one.NameLength = 9
+	need := HostFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := HostFixedSave([]Host{one}, buf); n != need {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max and length <= N are a caller contract, not a wire defence — the release path must REFUSE NOTHING, but FixedSave returned %d, want %d", n, need)
+	}
+	body := buf[len(buf)-HostFixedRecordBytes+8:]
+	if got := tableFixedGet32(body[0:]); got != 7 {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max is a caller contract — the write side must CLAMP NOTHING, but marks count landed on the wire as %d, want the caller's 7", got)
+	}
+	if got := tableFixedGet32(body[20:]); got != 9 {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: length <= N is a caller contract — the write side must CLAMP NOTHING, but name length landed on the wire as %d, want the caller's 9", got)
+	}
+	if got := tableFixedGet32(body[32:]); got != 7 {
+		t.Fatalf("the field past the out-of-contract count and length moved: %d, want the writer's 7", got)
+	}
+}
+`)
+}
