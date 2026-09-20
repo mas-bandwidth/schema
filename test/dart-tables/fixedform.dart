@@ -1325,6 +1325,104 @@ void absentOptionalCase() {
   );
 }
 
+// W4: READ SLACK IS UNSPECIFIED (docs/FIXED-FORM-ALGORITHM.md §3.1). The rule,
+// by name: "Slack is UNSPECIFIED on read and not a refusal: a reader validates
+// the USED UNITS only, and non-zero slack is not `malformed`, not a refusal,
+// and moves no counter." `absentOptionalCase` above is the WRITE half of the
+// same rule; this is the read half, and the one that faces a STRANGER's bytes.
+//
+// THE STAIN IS ON THE WIRE, which is what separates this from every other slack
+// case in this file. A clean writer lays the template's zeros in the slack, so
+// reading a record THIS BUILD wrote cannot tell a reader that walks the USED
+// UNITS from one that walks the DECLARED BOUND. Here the slack of V1's
+// `items [..8]int32` (a RANGED element: | min = 0, max = 255) is stained AFTER
+// the write with four 0xFF bytes per unused slot — a value past the range — so
+// a decode that walked the bound would clamp seven times and a decode that
+// walks the live count clamps none. `clamped` is the observable, and the doc's
+// "moves no counter" is the claim.
+void readSlackUnspecified() {
+  // THE COUNT'S OFFSET IS FOUND, NOT SPELLED: two saves that differ only in the
+  // live count, and the first byte that differs is the count's own. A hardcoded
+  // offset here would quietly stop naming `items` the day a field moves.
+  Uint8List save(int count) {
+    final one = v1home.Cfg();
+    one.itemsCount = count;
+    one.items[0] = 7;
+    final w = Uint8List(v1.cfgFixedMeasure(1));
+    check(
+      v1.cfgFixedSave(<v1home.Cfg>[one], 1, w) == w.length,
+      'read slack: the count=$count record saves',
+    );
+    return w;
+  }
+
+  final live = save(1);
+  final twin = save(2);
+  final view = ByteData.sublistView(live);
+  var countAt = -1;
+  for (var i = v1.cfgFixedHeaderBytes + 8; i < live.length; i++) {
+    if (live[i] != twin[i]) {
+      countAt = i;
+      break;
+    }
+  }
+  check(
+    countAt >= 0,
+    'read slack: the count field is the one byte two saves differ in',
+  );
+  check(
+    view.getInt32(countAt, Endian.little) == 1,
+    'read slack: the wire count is the live 1, found by shape and not spelled',
+  );
+
+  // STAIN THE SLACK: every byte of the seven unused int32 slots, past the count
+  // word and the one live element, to the end of the declared eight.
+  final slackAt = countAt + 4 + 4;
+  final slackEnd = countAt + 4 + 8 * 4;
+  // ONE BYTE, SO CONTROL 1 IS ONE LINE: point it at the conforming zero a
+  // clean writer lays there and the case must stay green; 0xFF is the hostile
+  // value past the ranged element's bound that a bound-walker would clamp.
+  const stain = 0xFF;
+  for (var i = slackAt; i < slackEnd; i++) {
+    live[i] = stain;
+  }
+  var stained = 0;
+  for (var i = slackAt; i < slackEnd; i++) {
+    if (live[i] == stain) {
+      stained++;
+    }
+  }
+  check(
+    stained == slackEnd - slackAt,
+    'CONTROL: the wire slack really is stained, so the read below is not vacuous',
+  );
+
+  final back = <v1home.Cfg>[v1home.Cfg()];
+  final r = v1home.TableFixedReport();
+  final n = v1.cfgFixedLoad(
+    back,
+    1,
+    live,
+    live.length,
+    v1.cfgFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'read slack: the record reads (got $n)');
+  check(
+    !r.malformed && r.refused == 0,
+    'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
+  );
+  check(
+    back[0].itemsCount == 1 && back[0].items[0] == 7,
+    'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
+  );
+  check(
+    r.clamped == 0,
+    'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
+    'counter (clamped ${r.clamped})',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
@@ -1972,6 +2070,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  readSlackUnspecified();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
