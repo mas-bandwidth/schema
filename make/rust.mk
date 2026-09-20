@@ -251,13 +251,20 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
-# control, the big-endian check, the bench crates' compile gates, and the
-# packet tests — the corpus binaries in BOTH build modes (see below).
+# control, the FORGERY FUZZER the header above says rides every push, the
+# big-endian check, the bench crates' compile gates, and the packet tests —
+# the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
 test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
+	# THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the native leg, the
+	# one the header above records as the per-push cost — 409,746 mutants in
+	# 4.5 s at N=100000. It walks what it opened, and the both-bounds control
+	# that proves it load-bearing is tables-block-fuzz-extent-negative-control.
+	# The MIRI leg beside it stays a by-hand gate.
+	$(MAKE) tables-rust-fuzz
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.

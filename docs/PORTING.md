@@ -1036,7 +1036,7 @@ walk finding (or under ASan as a `heap-buffer-overflow` in C).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ❌ #413 (the oracle runs; the control removes one bound) | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` |
+| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ✅ `tables-rust-fuzz` | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ✅ `tables-dart-fuzz` `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` |
 
 ### I4 — Per-case absent
 
