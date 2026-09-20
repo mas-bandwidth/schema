@@ -277,6 +277,23 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
+# The cook example is pulled from docs/USAGE.md into a class that reads the
+# fixture cook and supplies the page's `use` hook, compiled with the generated
+# `tables/pointers` package under the consumer's `-Xlint:all -Werror`, and run.
+.PHONY: tables-java-usage
+tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/java-usage && mkdir -p build/java-usage
+	printf 'package graphdemo;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic final class Usage {\n    static int used;\n\n    static void use(int value) { used++; }\n\n    public static void main(String[] args) throws Exception {\n        byte[] bytes = Files.readAllBytes(Path.of(args[0]));\n\n' > build/java-usage/Usage.java
+	sed -n '/<!-- java-table-usage -->/,/<!-- \/java-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/java-usage/Usage.java
+	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> build/java-usage/Usage.java
+	grep -q 'SceneCook.open' build/java-usage/Usage.java || \
+		{ echo "MISSING: docs/USAGE.md carries no java-table-usage example"; exit 1; }
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-usage/classes \
+		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
+	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
@@ -291,6 +308,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 .PHONY: tables-java-release
 tables-java-release:
 	$(MAKE) tables-java-compile-all
+	$(MAKE) tables-java-usage
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control

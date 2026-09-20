@@ -272,12 +272,36 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 #   the ALLOCATION GATE at seven times the iterations, which is the one that
 #   matters most here: the floor it measures is a property of OPTIMIZED code,
 #   so a longer run is a run that has spent more of itself at the top tier.
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, JavaScript
+# side. The cook example in docs/USAGE.md is not a sketch beside the code: the
+# gate pulls the marked fragment out of the page, wraps it in a module that
+# reads the fixture cook off disk and supplies the one helper the page leaves to
+# the caller, and runs it under node against the generated `tables/pointers`
+# modules it imports — so the day the emitted surface moves, the page goes red
+# with it rather than a release later.
+.PHONY: tables-js-usage
+tables-js-usage: bin/schema build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/js-usage && mkdir -p build/js-usage
+	./bin/schema generate --lang js --out build/js-usage tables/pointers
+	printf 'import { readFileSync } from "node:fs";\n' > build/js-usage/usage.mjs
+	printf 'const bytes = new Uint8Array(readFileSync(process.argv[2]));\n' >> build/js-usage/usage.mjs
+	printf 'let used = 0;\n' >> build/js-usage/usage.mjs
+	printf 'function use(v) { used++; }\n' >> build/js-usage/usage.mjs
+	sed -n '/<!-- js-table-usage -->/,/<!-- \/js-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/js-usage/usage.mjs
+	printf 'if (used === 0) { throw new Error("the cook walk read no node"); }\n' >> build/js-usage/usage.mjs
+	printf 'console.log("usage: docs/USAGE.md JavaScript cook example opened the Scene cook and walked " + used + " node(s)");\n' >> build/js-usage/usage.mjs
+	grep -q 'SceneCook.Open' build/js-usage/usage.mjs || \
+		{ echo "MISSING: docs/USAGE.md carries no js-table-usage example"; exit 1; }
+	cd build/js-usage && $(NODE) usage.mjs $(CURDIR)/build/cook-open/Scene.cook
+
 .PHONY: tables-js-release
 tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	$(MAKE) tables-js-fuzz N=200000
 	$(MAKE) tables-js-alloc ITERS=2000000
 	$(MAKE) tables-js-alloc-negative-control
-	@echo "tables JS release gate: the fuzzer at depth, and the allocation floor at scale"
+	$(MAKE) tables-js-usage
+	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, and the page's example"
 
 .PHONY: tables-js-refuses-pointers
 tables-js-refuses-pointers: bin/schema
