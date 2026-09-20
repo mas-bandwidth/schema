@@ -1162,3 +1162,106 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// THE TEXT LENGTH CLAMP (roadmap go/C3, the task node whose title is quoted here
+// verbatim: "text length clamp"). docs/FIXED-FORM-ALGORITHM.md §4.5 states the
+// rule for the `text` op:
+//
+//	"the length (i32 LE) ... clamped into [0, cap], COUNT clamped if it fired"
+//
+// and §4.5's table gives the cap: "the payload's BYTE span, min(mine, theirs)",
+// so the cap is the span read in UNITS — `cap := size / unit`. The reader keeps
+// this check in every build, release included, and a clamp counts ONCE for the
+// field. The forged word is read as a SIGNED i32, so an all-ones word is -1 and
+// clamps UP to zero; a word past the cap clamps DOWN to it.
+//
+// THE THREE VALUES ARE THE THREE FACTS: exactly the bound is ADMITTED and counts
+// nothing (the case must not be vacuous), one past it clamps to the bound and
+// counts one, and the all-ones word clamps to zero and counts one. The forged
+// field is bracketed by `lead` and `trail`, so a clamp that mislaid the size
+// moves a neighbour and this says so.
+//
+// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size / unit`
+// then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
+// int32(capn); report.Clamped++ }`. DISABLING that `else if` leaves the forged
+// length standing and the counters silent — a silently WRONG REPORT, measured
+// in CONTROL 2 below.
+func TestFixedFormTextLengthClamp(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Text {
+    lead  uint32 = 1
+    label string(8)
+    trail uint32 = 2
+}
+`, `package probe
+import ("bytes"; "encoding/binary"; "testing")
+
+func TestTextLengthClamp(t *testing.T) {
+	one := Text{}
+	TextReset(&one)
+	one.Lead = 0xAAAAAAAA
+	copy(one.Label[:], "abcdefgh")
+	one.LabelLength = 8
+	one.Trail = 0xBBBBBBBB
+	need := TextFixedMeasure(1)
+	base := make([]byte, need)
+	if n := TextFixedSave([]Text{one}, base); n != need {
+		t.Fatalf("save %d want %d", n, need)
+	}
+	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00,
+		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'}
+	at := bytes.Index(base, needle)
+	if at < 0 {
+		t.Fatalf("text_length_clamp: the lead + length 8 + \"abcdefgh\" needle is not in the file")
+	}
+	if bytes.Index(base[at+1:], needle) >= 0 {
+		t.Fatalf("text_length_clamp: the needle occurs more than once, so the search is not a locator")
+	}
+	// base[at+4:] is the length word. The cap is the field's own bound, 8.
+	cases := []struct {
+		name        string
+		forge       uint32
+		want        uint32
+		wantClamped int32
+	}{
+		{"at the bound: admitted, no clamp", 8, 8, 0},
+		{"one past the bound: clamped down", 9, 8, 1},
+		{"all ones reads signed -1: clamped up to zero", 0xFFFFFFFF, 0, 1},
+	}
+	for _, c := range cases {
+		buf := append([]byte(nil), base...)
+		binary.LittleEndian.PutUint32(buf[at+4:], c.forge)
+		got := make([]Text, 1)
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		n := TextFixedLoad(got, buf, plan, &r)
+		if n != 1 {
+			t.Fatalf("%s: the forged file reads one record, n=%d %+v", c.name, n, r)
+		}
+		if got[0].LabelLength != int32(c.want) {
+			t.Fatalf("%s: the length landed %d, not %d (never the forged %d): %+v",
+				c.name, got[0].LabelLength, c.want, c.forge, got[0])
+		}
+		if c.want > 0 && string(got[0].Label[:c.want]) != "abcdefgh" {
+			t.Fatalf("%s: the used bytes landed %q, not \"abcdefgh\": %+v",
+				c.name, got[0].Label[:c.want], got[0])
+		}
+		if c.want == 0 && got[0].Label[0] != 0 {
+			t.Fatalf("%s: the terminator did not zero the used length: %+v", c.name, got[0])
+		}
+		if r.Clamped != c.wantClamped {
+			t.Fatalf("%s: Clamped=%d, want %d — once per field: %+v", c.name, r.Clamped, c.wantClamped, r)
+		}
+		if got[0].Lead != 0xAAAAAAAA || got[0].Trail != 0xBBBBBBBB {
+			t.Fatalf("%s: the clamp moved a neighbour: %+v", c.name, got[0])
+		}
+		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+			t.Fatalf("%s: a counter other than Clamped moved: %+v", c.name, r)
+		}
+		if r.Malformed || r.Verdict == TableOpenRefused || r.Reason != "" {
+			t.Fatalf("%s: a forged length reads clean, not a refusal: %+v", c.name, r)
+		}
+	}
+}
+`)
+}
