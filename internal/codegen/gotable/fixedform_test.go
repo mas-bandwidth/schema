@@ -211,6 +211,131 @@ func TestRoundTrip(t *testing.T) {
 `)
 }
 
+// P2: WRITE, READ, WRITE — THE BYTES ARE IDENTICAL (docs/FIXED-FORM-ALGORITHM.md
+// §7 item 1, "Read a file and save it back; the bytes must be identical - a
+// byte a port encodes differently is a byte that does not come back"). The
+// corpus and the tests beside it compare the leg's WRITE against bytes the C++
+// REFERENCE wrote; this one closes the loop on THIS leg's own writer: save
+// values, load them, save the loaded values again, and the two buffers must
+// match byte for byte — slack, template zeros, text spans and all. The sharp
+// values make the second write non-trivial (the exact set §7 item 1's fixtures
+// are built to catch): a PARTLY-USED text field, a PARTLY-FILLED counted array,
+// an ABSENT optional whose payload is stained in STORAGE, and a union on its
+// NARROWER arm. A buffer the caller pre-zeroed would hide a writer that did not
+// lay the whole template, so the second write lands on 0x5A — the doc's own
+// poison, the "on a POISONED destination it fails louder" of the slack rule.
+// If a byte differs, the failure names which field's span it falls in.
+func TestFixedFormWriteReadWriteIsByteIdentical(t *testing.T) {
+	runGenerated(t, `package probe
+union Pick
+{
+    a int32
+    b int64
+}
+fixed table Root {
+    note  string(12)
+    marks [..4]int32
+    opt   ?int64
+    u     Pick
+}
+`, `package probe
+import (
+	"bytes"
+	"fmt"
+	"testing"
+)
+
+func TestWriteReadWriteIsByteIdentical(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.NoteLength = 5
+	copy(one.Note[:], "hello")
+	one.MarksCount = 2
+	one.Marks[0] = 11
+	one.Marks[1] = -22
+	one.OptPresent = false
+	one.Opt = 0x5A5A5A5A5A5A5A5A
+	one.U.Type = PickTypeA
+	one.U.A = 4242
+
+	need := RootFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := RootFixedSave([]Root{one}, buf); n != need {
+		t.Fatalf("first save %d", n)
+	}
+	back := make([]Root, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := RootFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("load %d %+v", n, r)
+	}
+	again := make([]byte, need)
+	for i := range again {
+		again[i] = 0x5A
+	}
+	if n := RootFixedSave([]Root{back[0]}, again); n != need {
+		t.Fatalf("second save %d", n)
+	}
+	if !bytes.Equal(buf, again) {
+		t.Fatalf("WRITE-READ-WRITE IS NOT BYTE-IDENTICAL (docs/FIXED-FORM-ALGORITHM.md §7 item 1: read a file and save it back; the bytes must be identical - a byte a port encodes differently is a byte that does not come back): first write %x, second write %x, first differing byte: %s", buf, again, fixedDiffSpan(buf, again))
+	}
+}
+
+// fixedDiffSpan names the file region a byte difference falls in, so a
+// violation reports the field's span rather than an anonymous offset.
+func fixedDiffSpan(buf, again []byte) string {
+	off := 0
+	for off < len(buf) && off < len(again) && buf[off] == again[off] {
+		off++
+	}
+	if off >= len(buf) || off >= len(again) {
+		return fmt.Sprintf("length: %d bytes match, then %d vs %d", off, len(buf), len(again))
+	}
+	switch {
+	case off < TableFixedHeaderBytes:
+		return fmt.Sprintf("the header byte %d", off)
+	case off < TableFixedHeaderBytes+4:
+		return fmt.Sprintf("the layout length byte %d", off)
+	case off < TableFixedHeaderBytes+4+len(RootFixedLayout):
+		return fmt.Sprintf("the layout bytes, offset %d", off)
+	}
+	recordStart := TableFixedHeaderBytes + 4 + len(RootFixedLayout)
+	inRec := off - recordStart
+	rec := inRec / RootFixedRecordBytes
+	inRec %= RootFixedRecordBytes
+	if inRec < 8 {
+		return fmt.Sprintf("record %d's layout hash", rec)
+	}
+	bodyOff := inRec - 8
+	return fmt.Sprintf("record %d, the %s", rec, fixedBodySpan(bodyOff))
+}
+
+// fixedBodySpan walks the layout's top-level children — the record's fields in
+// declared order — and names the field whose body span holds the offset.
+func fixedBodySpan(off int) string {
+	view, _ := tableFixedParseLayout(RootFixedLayout)
+	root := tableFixedEntryAt(view, 0)
+	idx := int32(1)
+	at := 0
+	names := []string{"note", "marks", "opt", "u"}
+	for i := 0; i < int(root.Children); i++ {
+		e := tableFixedEntryAt(view, idx)
+		span := int(e.Size)
+		if off >= at && off < at+span {
+			name := fmt.Sprintf("field %d", i)
+			if i < len(names) {
+				name = names[i]
+			}
+			return fmt.Sprintf("%s field (body %d..%d), file offset %d", name, at, at+span, off+TableFixedHeaderBytes+4+len(RootFixedLayout)+8)
+		}
+		at += span
+		idx += tableFixedSubtree(view, idx)
+	}
+	return fmt.Sprintf("body offset %d", off)
+}
+`)
+}
+
 // RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
 // below read a file written under ANOTHER schema's layout WITHOUT that layout
 // being in the reader's lineage, and they assert the run-time walk of a
