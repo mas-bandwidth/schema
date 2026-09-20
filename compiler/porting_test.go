@@ -250,20 +250,45 @@ func makefileReach(texts []string, workflowRoots []string) (exists, reached map[
 	return exists, reached
 }
 
-// workflowMakeTargets reads every `make <target>` a workflow invokes by name.
+// workflowMakeTargets reads every `make <target>` a workflow invokes by name,
+// and every literal `target:` a `strategy.matrix` names. A job that runs
+// `make ${{ matrix.target }}` invokes each row's target by name exactly as if
+// it had typed it, so the rows are roots too: the big-endian leg's sharding
+// (issue #684) is that shape, and a reader that only saw the `make` would call
+// every row's target unreached.
 func workflowMakeTargets(workflows []string) []string {
 	var roots []string
 	for _, text := range workflows {
 		for line := range strings.SplitSeq(text, "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
 				continue
 			}
 			for _, m := range workflowMake.FindAllStringSubmatch(line, -1) {
 				roots = append(roots, makeTargetsAfter(m[1])...)
 			}
+			if name, ok := matrixTarget(trimmed); ok {
+				roots = append(roots, name)
+			}
 		}
 	}
 	return roots
+}
+
+// matrixTarget reads a literal matrix `target:` value: a make target name and
+// nothing else. An expression (`${{ ... }}`) names no target this reader can
+// resolve and is skipped, as is the `pull_request_target:` event key, which
+// does not start with `target:`.
+func matrixTarget(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(line, "target:")
+	if !ok {
+		return "", false
+	}
+	name := strings.TrimSpace(rest)
+	if name == "" || strings.ContainsAny(name, " \t$%{}\"'") {
+		return "", false
+	}
+	return name, true
 }
 
 // discoverDrivers reads the languages the conformance harness registers: one

@@ -2767,13 +2767,24 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	@mkdir -p build
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
-.PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+# THE LEG IS INDEPENDENT PIECES, AND EACH IS ITS OWN TARGET (issue #684).
+# `make tables-big-endian` still runs all of them, in the same order, off the
+# same parallel prerequisite build — that is what `make test`, certify.yml and a
+# workstation ask for and none of it changes. What the split adds is that CI can
+# ask for ONE of them: the pieces share nothing but bin/schema and the generated
+# tree, and one job made the run pay their SUM. The CI job is a matrix of one
+# row per piece, so the longest piece is the job instead of the sum.
+.PHONY: tables-big-endian-tables
+tables-big-endian-tables: build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	@echo "big-endian leg: the wire crosses the byte order"
+
+.PHONY: tables-big-endian-collections
+tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
 	$(BE_RUN) ./build/schema_test_arms_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
+	@echo "big-endian leg: a map's framing and its sorted entry array cross the byte order with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2787,6 +2798,15 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/s
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
+
+# The prerequisites stay HERE, on the umbrella, so one `make -j
+# tables-big-endian` still builds all nine binaries in parallel and only then
+# runs anything. The pieces are submakes because their prerequisites are
+# already standing by the time this recipe runs.
+.PHONY: tables-big-endian
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+	$(MAKE) tables-big-endian-tables
+	$(MAKE) tables-big-endian-collections
 	$(MAKE) tables-cook-endian
 	$(MAKE) tables-c-big-endian
 
@@ -2842,6 +2862,18 @@ tables-cook-endian: bin/schema
 # something else.
 .PHONY: tables-big-endian-negative-control
 tables-big-endian-negative-control: tables-big-endian
+	$(MAKE) tables-big-endian-control-only
+
+# THE CONTROL'S OWN RECIPE IS ITS OWN TARGET, `tables-big-endian-control-only`.
+# It shares nothing with the leg above but the tree it is cut from: it builds a
+# SABOTAGED compiler through the overlay, generates its OWN corpus into
+# build/tables-host-order, and compiles and runs that — none of the leg's nine
+# binaries appear in it. `tables-big-endian-negative-control` still runs the leg
+# and then the control, which is what `make test`, certify.yml and a workstation
+# ask for; CI asks for the control half in a job of its own, beside the job that
+# runs the leg, and the pair is the same pair.
+.PHONY: tables-big-endian-control-only
+tables-big-endian-control-only:
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
