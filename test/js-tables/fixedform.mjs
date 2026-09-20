@@ -113,6 +113,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   forgedCounts(check, bench, fixed, corpusDir);
   formHeaderProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
+  planPartition(check, ut1, ut1home, fx1, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -425,6 +426,99 @@ function guardComparedAtArgW(check, home) {
     "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
   check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
     "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+}
+
+// ---------------------------------------------------------------------------
+// W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §5.9 #42, §4.2, §4.4)
+// ---------------------------------------------------------------------------
+//
+// THE SPLIT IS A PROPERTY OF THE PLAN'S ORDER, OWED BY EVERY LEG. Every
+// UNGUARDED entry first, then every guarded one, and the plan states where the
+// second half starts — `split` is the NUMBER OF UNGUARDED ENTRIES and not a
+// count of guarded ones (§4.4). A leg whose run loop tests `guard != NONE` per
+// entry still owes it, because the partition is what makes COALESCING ACROSS
+// THE SPLIT ILLEGAL: two `copy` entries that merge while one is guarded and the
+// other is not produce a run that lands a guarded arm's bytes unconditionally.
+// The C++ reference holds the same property (test/tables/fixedform_main.cpp,
+// plan_partition_case); this is its twin.
+//
+// THE PLAN THIS LEG ACTUALLY BUILDS IS THE COMPILED ONE. On this leg identity's
+// plan is ONE COPY of the whole body (ut1/UT1Table.js, `UtRootFixedIdentity`), so
+// it has no guarded half to test and the partition is what the compiler owes the
+// lineage plans it lays down at module load. TableFixedCompile IS that compiler
+// and it is exported, so the case compiles a reader's own layout against itself
+// and reads the guard lane and `split` off the plan object — the same walk a
+// lineage entry takes.
+//
+// THE DESTINATION ROWS ARE NOT THE ASSERTION. `dst` carries the reader's landing
+// offsets, which place bytes and never choose a half; the partition is a fact of
+// the GUARD lane and `split` alone, so the rows are zero here. A plan entry is
+// nine int32 lanes (TableFixedLanes) and the guard is lane 5; TableFixedNoGuard
+// is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
+function partitionIsHeld(check, home, layout, bodyBytes, who) {
+  const LANES = 9, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
+  const NO_GUARD = -1, COPY = 0;
+
+  const theirs = new home.TableFixedLayoutView();
+  check(home.TableFixedParseLayout(layout, 0, layout.length, theirs),
+    `W6: ${who} — the layout parses`);
+  const dst = new Int32Array(theirs.count * 5);
+  const plan = new home.TableFixedPlan(256, bodyBytes, 4096);
+  const report = new home.TableFixedReport();
+  const made = home.TableFixedCompile(theirs, layout, dst, plan, report);
+  check(made >= 0 && made === plan.count,
+    `W6: ${who} — the plan compiled (${made})`);
+  if (made < 0) { return null; }
+
+  const e = plan.entries, count = plan.count, split = plan.split;
+  check(split >= 0 && split <= count, `W6: ${who} — split is in range`);
+  // EVERY ENTRY BELOW THE SPLIT CARRIES NO GUARD; EVERY ENTRY AT OR ABOVE IT
+  // CARRIES ONE — which is the same as saying split is the number of unguarded
+  // entries and not a count of guarded ones.
+  let unguarded = 0;
+  for (let i = 0; i < count; i++) {
+    const guarded = e[i * LANES + GUARD] !== NO_GUARD;
+    if (!guarded) { unguarded++; }
+    if (i < split && guarded) {
+      check(false, `W6: ${who} — entry ${i} is below the split and carries a GUARD`);
+    }
+    if (i >= split && !guarded) {
+      check(false, `W6: ${who} — entry ${i} is above the split and carries NO guard`);
+    }
+  }
+  check(unguarded === split,
+    `W6: ${who} — split is the count of UNGUARDED entries (split ${split}, unguarded ${unguarded})`);
+
+  // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+  // below it and the entry at it would be one entry. They are two, and this
+  // says why they have to be.
+  if (split > 0 && split < count) {
+    const a = (split - 1) * LANES, b = split * LANES;
+    const mergeable = e[a + OP] === COPY && e[b + OP] === COPY &&
+      e[a + GUARD] === e[b + GUARD] && e[a + ARG] === e[b + ARG] && e[a + ARGW] === e[b + ARGW] &&
+      e[a + SRC] + e[a + SIZE] === e[b + SRC] && e[a + DST] + e[a + SIZE] === e[b + DST];
+    check(!mergeable, `W6: ${who} — the pair at the split was not coalesced across it`);
+  }
+  return { count, split };
+}
+
+export function planPartition(check, ut1, ut1home, fx1, fx1home) {
+  // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
+  // guarded and the scalars around them are not.
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
+  if (u !== null) {
+    check(u.split > 0 && u.split < u.count,
+      `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
+  }
+
+  // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
+  // `split` being a count of UNGUARDED entries rather than of guarded ones is
+  // what makes that come out right.
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
+  if (f !== null) {
+    check(f.split === f.count,
+      `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);
+  }
 }
 
 // ---------------------------------------------------------------------------
