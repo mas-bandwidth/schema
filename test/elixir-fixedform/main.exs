@@ -1092,6 +1092,19 @@ Leg.check(
   {wrong.narrow, wrong.renamed_to} != {40000, 321}
 )
 
+# P4 IN THE DOC'S OWN WORDS (docs/FIXED-FORM-ALGORITHM.md §7 item 4): "the
+# wrong plan must go red". The check above proves the two fields the widen and
+# the rename move do not land; this one names the rule and holds the NESTED
+# offset to it too. A wrong plan's symptom is a wrong value that looks right —
+# the offsets are all arithmetic, so every field comes back a number, and a
+# reader that watched only `narrow` and `renamed_to` would miss a plan that
+# slid `nested` and nothing else. Naming the rule is the difference between
+# this case and a golden file that merely notices something moved.
+Leg.check(
+  "the wrong plan must go red: this build's identity plan over another schema's record",
+  {wrong.narrow, wrong.renamed_to, wrong.nested.a, wrong.nested.b} != {40000, 321, 111, 222}
+)
+
 # A FORM BYTE THIS BUILD DOES NOT CARRY, AND THE DIRECTION IT SITS IN. The
 # registry is ORDERED (§3), so one word for both directions was one word too
 # few: the VARIABLE form is older and a batch handed to a file reader is neither.
