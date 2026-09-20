@@ -1568,4 +1568,143 @@ Leg.check(
   loose.grade == 0 and loose_report.clamped == 0 and loose_count == 1
 )
 
+# ---------------------------------------------------------------------------
+# THE BYTE-FLIP SWEEP: EVERY BYTE OF THE FILE, ONE BIT AT A TIME, IS ANSWERED
+# ONE OF THREE WAYS AND NEVER A FOURTH
+# ---------------------------------------------------------------------------
+#
+# §7 item 5, IN THE DOC'S OWN WORDS: "a byte-flip fuzz over the whole file,
+# under a sanitizer, and it is not optional — every offset is arithmetic over
+# sizes a stranger wrote down, so every byte, one bit at a time, is answered one
+# of three ways and never a fourth: a refusal by name, a malformed read, or a
+# read that lands values".
+#
+# THIS LEG HAS NO SANITIZER, AND IT NEEDS NONE, AND THAT IS A FACT ABOUT THE
+# LEG RATHER THAN A GAP. The BEAM is memory-safe and every read here is a
+# binary match: a size past its buffer is a FAILED MATCH that falls to a named
+# clause, not a load past the end. So the sweep cannot prove an out-of-bounds
+# read away with an ASan report; what it proves is the closure itself, BY NAME —
+# every one of the flips lands in exactly one of the three buckets, and a raise,
+# a throw, an exit, or a shape outside the table is the FOURTH answer §7 item 5
+# forbids. That is weaker than ASan on lifetime and alignment and stronger on
+# nothing else; it is stated that way here on purpose.
+#
+# THE SITE (§5.3 step 1, `FixedRuntime.read_file_header`): the one length that
+# comes OFF THE WIRE and drives an offset on this leg is the four-byte LAYOUT
+# LENGTH at file offset 16 — `<<layout::binary-size(^len), records::binary>> =
+# rest`, admitted only by `when byte_size(rest) >= len`. Without that guard a
+# bumped length is a MatchError, which is the fourth answer. THE LAYOUT ITSELF
+# IS NEVER PARSED ON A READ: §5.3 step 7 compares its bytes against the lock's,
+# so a bent layout is the one named refusal `layout_malformed`; and every RECORD
+# offset is the BUILD's `record_bytes`, never the file's. So the wire arithmetic
+# this sweep attacks is the LENGTH word, and the records behind it are attacked
+# as values rather than as offsets — both stated, neither hidden.
+Leg.section("the byte-flip sweep: every byte, one bit at a time, answers three ways")
+
+sweep_clean = read.("fx1.bin")
+
+# CONTROL 1, THE BASELINE: the harness is not measuring itself. The UNTOUCHED
+# file must read CLEAN and LAND VALUES before a single bit is flipped — a sweep
+# whose baseline already refuses is a sweep of its own harness.
+{:ok, sweep_values, sweep_report} = Tblfx1.FX1Fixed.fx_root_fixed_load(sweep_clean)
+
+Leg.check(
+  "sweep CONTROL 1: the untouched fx1.bin reads clean and lands its values",
+  sweep_report.malformed == false and length(sweep_values) == 2 and
+    hd(sweep_values).keep == 4242
+)
+
+# THE CLASSIFICATION, BY NAME. §5.3's report is two answers and they are NEVER
+# both set: a named refusal carries `malformed` false, and `:malformed` is the
+# one error that sets the flag. A read that RETURNS carries `:malformed` only as
+# the damaged projection of a positional record, which is the second answer
+# here. Anything outside the table is the fourth.
+classify = fn
+  {:error, :malformed, %{malformed: true}} -> :malformed
+  {:error, name, %{malformed: false}} when name != :malformed -> {:refusal, name}
+  {:ok, _values, %{malformed: false}} -> :landed
+  {:ok, _values, %{malformed: true}} -> :malformed
+  other -> {:fourth, other}
+end
+
+# ONE BIT, FLIPPED. The XOR is `:binary.at/2` and a shift so the byte is read
+# and rebuilt in place; no offset is hard-coded and nothing outside the binary
+# is touched.
+flip_bit = fn data, at, bit ->
+  b = Bitwise.bxor(:binary.at(data, at), Bitwise.bsl(1, bit))
+
+  <<binary_part(data, 0, at)::binary, b,
+    binary_part(data, at + 1, byte_size(data) - at - 1)::binary>>
+end
+
+sweep = fn clean ->
+  size = byte_size(clean)
+
+  Enum.reduce(
+    0..(size - 1),
+    %{refusal: 0, malformed: 0, landed: 0, visited: 0, fourth: []},
+    fn at, acc ->
+      Enum.reduce(0..7, acc, fn bit, acc ->
+        hit = flip_bit.(clean, at, bit)
+
+        outcome =
+          try do
+            Tblfx1.FX1Fixed.fx_root_fixed_load(hit)
+          rescue
+            e -> {:raised, e}
+          catch
+            kind, v -> {:caught, kind, v}
+          end
+
+        case classify.(outcome) do
+          {:refusal, _name} ->
+            %{acc | refusal: acc.refusal + 1, visited: acc.visited + 1}
+
+          :malformed ->
+            %{acc | malformed: acc.malformed + 1, visited: acc.visited + 1}
+
+          :landed ->
+            %{acc | landed: acc.landed + 1, visited: acc.visited + 1}
+
+          {:fourth, what} ->
+            %{acc | visited: acc.visited + 1, fourth: [{at, bit, what} | acc.fourth]}
+        end
+      end)
+    end
+  )
+end
+
+sweep_size = byte_size(sweep_clean)
+sweep_counts = sweep.(sweep_clean)
+sweep_total = sweep_size * 8
+
+# WHAT RAN, BY COUNT: the sweep visited every byte, one bit at a time.
+Leg.eq(
+  "the sweep visited every byte of fx1.bin, one bit at a time (#{sweep_size} x 8)",
+  sweep_counts.visited,
+  sweep_total
+)
+
+# THE ASSERTION, AND IT NAMES THE RULE. The failure text below is the doc's own
+# three answers; a non-empty `fourth` is the one thing §7 item 5 forbids, and it
+# carries the offset, the bit and what came back instead.
+Leg.eq(
+  "a byte flip is answered a refusal by name, a malformed read, or a read that " <>
+    "lands values — never a fourth",
+  sweep_counts.fourth,
+  []
+)
+
+Leg.eq(
+  "every one of the #{sweep_total} flips is one of the three lawful answers",
+  sweep_counts.refusal + sweep_counts.malformed + sweep_counts.landed,
+  sweep_total
+)
+
+IO.puts(
+  "  fuzz: #{sweep_size} bytes x 8 bits — #{sweep_counts.refusal} refused by name, " <>
+    "#{sweep_counts.malformed} malformed, #{sweep_counts.landed} records read, " <>
+    "#{length(sweep_counts.fourth)} divergences"
+)
+
 Leg.verdict()
