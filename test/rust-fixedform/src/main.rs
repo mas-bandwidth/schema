@@ -2244,6 +2244,120 @@ fn the_write_slack() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// C8 — "fixed-point F-shift / bits(N)" (docs/FIXED-FORM-ALGORITHM.md §4.6):
+//
+//   "A fixed-point field's bounds are in VALUE UNITS and its storage is raw,
+//   so both ends are shifted by F first; a bits(N) clamps to 2^N - 1."
+//
+// The C++ reference carries no case by this name (grep "C8:" over
+// test/tables/fixedform_main.cpp and fixedform_properties.cpp is empty), so
+// the doc is the authority and this case asserts the doc's name.
+//
+// The bits(N) half is asserted here, against tabledemo::RangedWidths — the
+// table Ranges.schema built for exactly this: b12 and b48 are narrower than
+// the storage the wire gives them (u32/u64) and emit one clamp each, while
+// b32/b64 fill theirs and emit none. The fixed-point half is RECORDED, not
+// asserted: no fixed-point fixed table is linked into this binary (grep
+// "fixed(" over tables/examples and every schema in RUST_TABLE_UNITS is
+// empty), so there is no generated clamp body to execute — the emitter's
+// site (ir/tablekind.go TableRawRange, the Lsh by FracBits) stands quoted in
+// the card's RESULT.md instead of faked here.
+// ---------------------------------------------------------------------------
+
+fn the_bits_width_clamp() {
+    let mut one = tabledemo::RangedWidthsRow::default();
+    one.b8 = 10;
+    one.b16 = 1000;
+    one.b32 = 100000;
+    one.b64 = 100000;
+    one.b12 = 100;
+    one.b48 = 100;
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_widths_fixed_measure(1)];
+    check(
+        tabledemo::ranged_widths_fixed_save(&values, &mut file) == Some(file.len()),
+        "bits(N): the record writes",
+    );
+
+    // THE CLEAN READ FIRST, so the clamp below is the forgery and not the pass.
+    let mut back = [tabledemo::RangedWidthsRow::default(); 2];
+    let mut plan = [tabledemo::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tabledemo::TableFixedReport::default();
+    let n =
+        tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "bits(N): the clean record reads");
+    check(
+        back[0].b12 == 100 && back[0].b48 == 100 && report.clamped == 0,
+        "NEGATIVE CONTROL: values inside the width land untouched and clamp NOTHING",
+    );
+
+    // THE CEILING IS LEGITIMATE: 2^N - 1 is a value the declaration holds, so
+    // a record carrying exactly the ceiling must read with no clamp at all.
+    let mut one = tabledemo::RangedWidthsRow::default();
+    one.b12 = 4095; // 2^12 - 1
+    one.b48 = 281474976710655; // 2^48 - 1
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_widths_fixed_measure(1)];
+    check(
+        tabledemo::ranged_widths_fixed_save(&values, &mut file) == Some(file.len()),
+        "bits(N): the ceiling record writes",
+    );
+    let mut report = tabledemo::TableFixedReport::default();
+    let n =
+        tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "bits(N): the ceiling record reads");
+    check(
+        back[0].b12 == 4095 && back[0].b48 == 281474976710655 && report.clamped == 0,
+        "bits(N): 2^N - 1 lands untouched and counts NOTHING — the bound admits it",
+    );
+
+    // AND NOW THE FORGERY: b12 rides a u32 at body offset 20, so 5000 is a
+    // value the declaration says cannot exist.
+    let body = records_at(&file) + 8;
+    let mut forged = file.clone();
+    forged[body + 20..body + 24].copy_from_slice(&5000u32.to_le_bytes());
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_widths_fixed_load(
+        &mut back,
+        &forged,
+        &mut plan,
+        &mut remap,
+        &mut report,
+    );
+    check(n == Some(1), "bits(N): the forged record still reads");
+    check(
+        back[0].b12 == 4095,
+        "bits(N): a value past 2^12 - 1 lands AT 2^12 - 1",
+    );
+    check(
+        report.clamped == 1 && !report.malformed && !report.refused,
+        "bits(N): and counts ONE clamped — not damage, and not a refusal",
+    );
+
+    // the wide end: b48 rides a u64 at body offset 24.
+    let mut forged = file.clone();
+    forged[body + 24..body + 32].copy_from_slice(&u64::MAX.to_le_bytes());
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b48 == 281474976710655 && report.clamped == 1,
+        "bits(N): a value past 2^48 - 1 lands AT 2^48 - 1, and counts one",
+    );
+
+    // A WIDTH THAT IS THE STORAGE'S OWN IS NOT A BOUND: b32 fills its u32,
+    // so even all-ones is legal and clamps nothing.
+    let mut forged = file.clone();
+    forged[body + 8..body + 12].copy_from_slice(&u32::MAX.to_le_bytes());
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b32 == u32::MAX && report.clamped == 0,
+        "bits(N): a width ON the storage width's own limit clamps nothing",
+    );
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = match args.next() {
@@ -2277,6 +2391,7 @@ fn main() {
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
     the_declared_range();
+    the_bits_width_clamp();
     the_text_content_rule(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
