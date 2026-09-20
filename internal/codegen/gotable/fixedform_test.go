@@ -1162,3 +1162,73 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormLayoutMalformedTruncated is the row layout_malformed, truncated,
+// item F4 of schema#876: a GAP on this leg. A file whose header DECLARES a
+// layout LONGER than the bytes it carries is refused BY NAME — layout_malformed
+// — and is not the `malformed` residue its siblings answer with: F7 is a file
+// under the twenty-byte header, F8 a record region that is not whole records,
+// both of which set report.Malformed and leave Reason UNTOUCHED. The
+// declaration is the u32 at TableFixedHeaderBytes, and the law is
+// docs/FIXED-FORM-ALGORITHM.md §2's load table step 3: `L := LE(4, b+16)`; if
+// `20 + L > bytes`, `REFUSE layout_malformed`. The site is the step-3 guard
+// emitted at fixedform.go:745. The pointer is test/tables/fixedform_main.cpp's
+// residue case inside layout_validation() (lines 519-527): a twenty-byte file
+// whose length word names a hundred absent bytes is `layout_malformed`,
+// "NOTHING WAS DECODED AND NOTHING WAS COUNTED" (refuses(), lines 391-394).
+// The destination is filled with a sentinel Point and proved still the
+// sentinel, so "no byte is written" is observed rather than assumed; the whole
+// report is compared to TableReport{Verdict: TableOpenRefused, Reason:
+// "layout_malformed"} in one !=, pinning every counter, Malformed and any field
+// added later to its zero value at once. CONTROL 1 is the unbroken file reading
+// clean, so the refusals are the forged word and not the fixture. CONTROL 2
+// removes the step-3 guard and the row must go RED.
+func TestFixedFormLayoutMalformedTruncated(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import ("testing")
+
+func TestLayoutMalformedTruncated(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := PointFixedSave([]Point{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	got := make([]Point, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 64)
+
+	// CONTROL 1: the unbroken file reads clean.
+	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, got[0], r)
+	}
+
+	// THE REFERENCE'S FILE, byte for byte: twenty bytes of header, its u32
+	// length word naming 100 bytes the file does not carry.
+	ref := make([]byte, TableFixedHeaderBytes+4)
+	ref[0] = 3
+	tableFixedPut32(ref[TableFixedHeaderBytes:], 100)
+	got = []Point{{X: -1, Y: -1}}
+	r = TableReport{}
+	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
+	}
+
+	// AND A REAL FILE TRUNCATED, so its OWN declared layout no longer fits: the
+	// length word is correct and the bytes are withdrawn from under it. This is
+	// the same arm reached from the other side, and the case a leg cannot pass
+	// by comparing the layout to the lock's, because the word is this build's.
+	short := buf[:TableFixedHeaderBytes+4+int(tableFixedGet32(buf[TableFixedHeaderBytes:]))-1]
+	got = []Point{{X: -1, Y: -1}}
+	r = TableReport{}
+	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
+	}
+}
+`)
+}
