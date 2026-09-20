@@ -1,4 +1,11 @@
 ; Restricted work data. Implementation and acceptance are distinct; the roadmap is generated.
+;
+; WHAT :done MEANS HERE, ruled by Glenn Fiedler on 2026-09-19:
+;   "done means everything is tested and verified working. not done until tested."
+; A task is :done only when every clause of its own title has a test that proves
+; it, and the test is named in :evidence by file and function. A clause that is
+; unproved, unobservable or merely argued keeps the task :unknown, with that
+; clause named in the task's :note.
 (:schema 1 :root "schema/fixed-tables-goal" :inventory-status
  "Ordinary capabilities source-reconciled at e3e88a46; 27 named-form refusal leaves reconciled at e4b9147f; remaining original audit obligations still open"
  :source-audit "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5647865348" :scope-note
@@ -9,7 +16,7 @@
  :nodes
  ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "acceptance-gates" "integration"))
   (:id "fixed-tables" :type :roadmap :title "NEW Fixed Tables" :scope-revision 2 :source-revision
-   "202af6e84e5d92312ac49144d2fbe9fe020b3999" :rows
+   "095dc245e2f26556c93abb02794ad6eda0d8ba9f" :rows
    (("file-envelope" "File framing and layout announcements") ("batch-capacity" "Bounded batches")
     ("plan-selection" "Select known layouts and refuse unsupported input")
     ("compiled-plans" "Static plans, record sizes and caller capacity")
@@ -823,9 +830,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "cpp/R9/seven-corruptions" :type :task :title
-   "Seven known-hash corruption cases preserve destination and clear counters" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1002") :landed-revision
-   "85c1ef19694b5e3bb223fd2e53810b6a2d1da784")
+   "Seven known-hash corruption cases preserve destination and clear counters" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1002: the URL the node recorded — its diff contains no occurrence of corrupt or seven and it names no test for this node"
+    "test/tables/fixedform_main.cpp: layout_validation(), twelve refuses( f, tblfx1::layout_malformed, RULE: ... ) cases — clause one"
+    "test/tables/fixedform_main.cpp: the refuses() helper asserts unknown, kind_mismatch, widened and clamped all zero and malformed false — clause three"
+    "clause two, preserve destination, is asserted by no test: refuses() never inspects its destination after the load") :landed-revision
+   "85c1ef19694b5e3bb223fd2e53810b6a2d1da784" :note
+   "NOT reconciled, and THE CITATION WAS WRONG. The evidence recorded before this was the single URL #1002, whose diff contains no occurrence of corrupt or seven and which touches ci-fast.yml, internal/ci/fast_plan_test.go and test/tables/versioning_numbers.cpp. The real test exists and predates it: layout_validation() in test/tables/fixedform_main.cpp drives TWELVE cases of refuses( f, tblfx1::layout_malformed, 'RULE: ...' ) over a KNOWN hash whose layout bytes differ — the entry count, a zero count, a kind outside the closed set, a TABLE root, a constant size its kind does not admit, a table size that is not the sum of its fields, the tree running out of layout, the layout outlasting the tree, a record past 65536, a size that would overflow the sum, a depth past the walk bound, and a file shorter than a header — which covers clause one, the seven §1.1 breaks, and more. The refuses() helper also asserts r.unknown, r.kind_mismatch, r.widened and r.clamped are all zero with malformed false, which is clause three, CLEAR COUNTERS. CLAUSE TWO, PRESERVE DESTINATION, IS ASSERTED NOWHERE: refuses() constructs its own FxRoot, resets it, passes it to the load and never inspects it afterwards, so a refusal that half-wrote the destination would pass every one of the twelve cases. That is the damage the clause exists to prevent, and it is the one thing this row does not read. What would close it: poison the destination before the load and sweep it after, as §5.8 row 9 does on the six legs that carry it.")
   (:id "cpp/R9/remaining-boundaries" :type :task :title
    "Remaining known-hash length and byte-boundary acceptance" :state :unknown :evidence nil :note
    "The narrowed seven-case witness does not close every R9 boundary.")
@@ -1137,14 +1148,14 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "elixir/R12" :type :task :title
-   "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1169: §5.8 row 9 refuse_writes_nothing on elixir, a destination claim that can fail"
+   "the per-record hash check is before the prefill: no_layout writes nothing" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1169: §5.8 row 9 refuse_writes_nothing on elixir, a destination claim that can fail — it proves the SECOND clause of this title only"
     "internal/codegen/elixirtable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing"
     "merged into fixed-table-form at cce7d129535ebb3bb0ac3a4a780538fd3f2ef925"
     "#1155 (merged at 0255317373653ddd8a26249423ee49b7792785bf) shipped the file first with a check that could not fail; #1169 replaced it")
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against #1169 in :evidence, which replaced the tautology #1155 shipped. RESIDUAL, named rather than hidden, and found by a cold read of the note that preceded this one: the check is_atom(why) is DOMINATED by check(why == :no_layout) three lines above it — once that passes, why IS an atom, so is_atom cannot fail and carries nothing. What does carry this node on elixir is the control beside it: the SAME record, unforged, through the SAME reader returns {:ok, values, report} with exactly one value, while the forged read returns no value at all. That proves the refusal withholds a value this reader demonstrably builds. It does NOT prove the ORDERING half of this task title — that the hash check ran BEFORE the prefill — and on the BEAM that half may not be observable at all: there is no caller-owned destination, so a reader that built the value and discarded it is indistinguishable from one that never built it. The six legs that poison 0x5A and sweep bytes do prove the ordering; this leg does not.")
+   "NOT reconciled, under Glenn ruling of 2026-09-19: done means everything is tested and verified working; not done until tested. This task title has TWO clauses and only one is tested on this leg. The second, no_layout writes nothing, is carried by #1169 in :evidence: the refusal returns the reason atom and no value, while a control read of the SAME record unforged through the SAME reader returns {:ok, values, report} with exactly one value, so the refusal withholds a value this reader demonstrably builds. The FIRST clause — the per-record hash check is BEFORE the prefill — has NO test on this leg and may not be observable on the BEAM at all: there is no caller-owned destination, so a reader that built the value and discarded it is indistinguishable from one that never built it. The six legs that poison 0x5A and sweep every byte prove the ordering because an untouched poison rules out a prefill that ran; this leg has no such surface. Was :done with the residual named; the ruling says a named residual on a clause of the title is not done. What would close it: any observation on this leg that distinguishes a prefill that ran from one that did not.")
   (:id "elixir/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
    :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
@@ -2024,9 +2035,11 @@
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "retired-runtime/elixir" :type :work-set :children ("elixir/R10" "elixir/R15"))
   (:id "cpp/E3/fixed-array-element" :type :task :title
-   "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/994: the PR the node recorded, which names no test for this node"
+    "internal/codegen/cpptable/fixedversioning_test.go: the fixed_I_grow_element row, widens true, WITH NO CHECK BODY") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "NOT reconciled. The evidence recorded before this was a BARE PR URL (#994) naming no file and no test. The row exists on this leg — fixedversioning_test.go carries {row: fixed_I_grow_element, widens: true} — but it carries NO CHECK BODY, so clause one of this title, exact per-slot scaled values, is asserted NOWHERE: nothing compares the landed slots against the expected scaled values. Clause two, older-reader refusal, is not covered either: this leg has no OLD-REFUSES-NEW column, and the suite own comment says so — OLD-REFUSES-NEW is the second column and is not in this suite. The seven legs whose row carries a check body and an OLD-REFUSES-NEW column are :done. What would close it: a check body for this row and an OLD-REFUSES-NEW column on this leg.")
   (:id "cpp/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2057,8 +2070,11 @@
   (:id "numeric-evolution/cpp" :type :work-set :children ("cpp/E3" "cpp/C8" "cpp/R20" "cpp/R21" "cpp/R29"))
   (:id "c/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "c/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2088,8 +2104,11 @@
   (:id "numeric-evolution/c" :type :work-set :children ("c/E3" "c/C8" "c/R20" "c/R21" "c/R29"))
   (:id "cs/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/cstable/fixedversioning_test.go: TestFixedVersioning — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/cstable/fixedversioning_test.go: TestFixedVersioning (the OLD-REFUSES-NEW column, asserting layout_newer) — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "cs/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2119,8 +2138,11 @@
   (:id "numeric-evolution/cs" :type :work-set :children ("cs/E3" "cs/C8" "cs/R20" "cs/R21" "cs/R29"))
   (:id "go/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "go/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2150,8 +2172,11 @@
   (:id "numeric-evolution/go" :type :work-set :children ("go/E3" "go/C8" "go/R20" "go/R21" "go/R29"))
   (:id "rust/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/rusttable/fixedversioning_test.go: TestFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/rusttable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "rust/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2182,9 +2207,11 @@
   (:id "numeric-evolution/rust" :type :work-set :children
    ("rust/E3" "rust/C8" "rust/R20" "rust/R21" "rust/R29"))
   (:id "java/E3/fixed-array-element" :type :task :title
-   "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/994: the PR the node recorded, which names no test for this node"
+    "internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningRows, the fixed_I_grow_element row, widen true, WITH NO CHECK BODY") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "NOT reconciled. The evidence recorded before this was a BARE PR URL (#994) naming no file and no test. The row exists on this leg — fixedversioning_test.go carries {name: fixed_I_grow_element, widen: true} — but it carries NO CHECK BODY, so clause one of this title, exact per-slot scaled values, is asserted NOWHERE. Clause two, older-reader refusal, is carried by the leg layout_newer assertions. One clause of two, so not done. What would close it: a check body for this row asserting each slot raw scaled value, as the seven :done legs have.")
   (:id "java/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2216,8 +2243,11 @@
    ("java/E3" "java/C8" "java/R20" "java/R21" "java/R29"))
   (:id "js/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/jstable/fixedversioning_test.go: TestJSFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/jstable/fixedversioning_test.go: TestJSFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "js/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2247,8 +2277,11 @@
   (:id "numeric-evolution/js" :type :work-set :children ("js/E3" "js/C8" "js/R20" "js/R21" "js/R29"))
   (:id "dart/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/darttable/fixedversioning_test.go: TestFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/darttable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "dart/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2279,8 +2312,11 @@
    ("dart/E3" "dart/C8" "dart/R20" "dart/R21" "dart/R29"))
   (:id "elixir/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
-   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
+   ("https://github.com/mas-bandwidth/schema/pull/994: the landing PR the node recorded (retained, but it is not the test)"
+    "internal/codegen/elixirtable/fixedversioning_test.go: TestFixedVersioningNewReadsOld — the fixed_I_grow_element row and its check body, clause one"
+    "internal/codegen/elixirtable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew — clause two, layout_newer before any record") :tested-revision
+   "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was a BARE PR URL naming no file and no test, which under that rule cannot hold a node done; the real test was found in the tree and is named in :evidence. BOTH clauses of this title are tested. Clause one, exact per-slot scaled values: the fixed_I_grow_element row of the NEW-READS-OLD suite carries a check body asserting each slot landed its raw scaled value — on go the want list is -1, -128, 0, 112 — together with the bracket oracle that would catch a mislaid size moving a neighbour. Clause two, older-reader refusal: the OLD-REFUSES-NEW column gives the older reader the widened writer file and requires layout_newer BEFORE any record, reporting THE FILE hash, with malformed false, every counter zero and no destination byte written. NOTE ON THE CITATION: PR #994 is retained because the node recorded it, but it is the landing PR, not the test; the test is the row suite named here.")
   (:id "elixir/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
    :unknown :evidence nil :note
    "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
@@ -2766,14 +2802,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "cpp/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1131: §5.8 row 4 writer_bound_count on cpp"
+   ("https://github.com/mas-bandwidth/schema/pull/1131: §5.8 row 4 writer_bound_count on cpp, clause two"
     "internal/codegen/cpptable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at d48673455c58311e275813ec76f87d7be72ed796"
-    "https://github.com/mas-bandwidth/schema/pull/1178: §5.8 row 4 with TWO lineage peers on cpp, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1178: §5.8 row 4 with TWO lineage peers on cpp, clause one"
     "internal/codegen/cpptable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at 383b475944072018b90010d9a01a3603706feb56") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/cpp" :type :work-set :children ("cpp/C1" "cpp/C2" "cpp/R11"))
   (:id "c/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1237: the count_clamp_ends row on c, the NEGATIVE end (roadmap c/C1)"
@@ -2791,14 +2827,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "c/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1126: §5.8 row 4 writer_bound_count on c"
+   ("https://github.com/mas-bandwidth/schema/pull/1126: §5.8 row 4 writer_bound_count on c, clause two"
     "internal/codegen/ctable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at bcf51c859a91be64485776abbf4f55fdade6b5a1"
-    "https://github.com/mas-bandwidth/schema/pull/1206: §5.8 row 4 with TWO lineage peers on c, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1206: §5.8 row 4 with TWO lineage peers on c, clause one"
     "internal/codegen/ctable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at c1ea954a8e5265592789f3a079f8a5923791044e") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/c" :type :work-set :children ("c/C1" "c/C2" "c/R11"))
   (:id "cs/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1241: the count_clamp_ends row on cs, the NEGATIVE end (roadmap cs/C1)"
@@ -2816,14 +2852,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "cs/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1210: §5.8 row 4 writer_bound_count on cs"
+   ("https://github.com/mas-bandwidth/schema/pull/1210: §5.8 row 4 writer_bound_count on cs, clause two"
     "internal/codegen/cstable/fixedversioning_writer_bound_count_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at e628626c857ddfcc3b880ae3af5ddf07342d0728"
-    "https://github.com/mas-bandwidth/schema/pull/1219: §5.8 row 4 with TWO lineage peers on cs, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1219: §5.8 row 4 with TWO lineage peers on cs, clause one"
     "internal/codegen/cstable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at 8c73f7e4d31ebad3efa56a3d674560ba64da20dd") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/cs" :type :work-set :children ("cs/C1" "cs/C2" "cs/R11"))
   (:id "go/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1238: the count_clamp_ends row on go, the NEGATIVE end (roadmap go/C1)"
@@ -2841,14 +2877,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "go/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1122: §5.8 row 4 writer_bound_count on go"
+   ("https://github.com/mas-bandwidth/schema/pull/1122: §5.8 row 4 writer_bound_count on go, clause two"
     "internal/codegen/gotable/fixedversioning_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at 60fd9156638e95ad6a332ff9a889cff8bcb86bca"
-    "https://github.com/mas-bandwidth/schema/pull/1165: §5.8 row 4 with TWO lineage peers on go, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1165: §5.8 row 4 with TWO lineage peers on go, clause one"
     "internal/codegen/gotable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at 4d4102e08695146ae09de507f5fae477137a41ee") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/go" :type :work-set :children ("go/C1" "go/C2" "go/R11"))
   (:id "rust/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1244: the count_clamp_ends row on rust, the NEGATIVE end (roadmap rust/C1)"
@@ -2856,7 +2892,7 @@
     "merged into fixed-table-form at a830d793cf52c97e833908c7061bafabc489efea") :audit-item "C1"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. THE CLAUSE OF THIS TITLE IS TESTED. count_clamp_ends in :evidence forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 reaches neither end of the clamp: its forge of 7 sits between the writer 4 and the reader 8. What was previously recorded here as REDUNDANT COVER is NOT an untested clause and does not bear on this state: it records which of TWO runtime sites catches the negative count on this leg. Cutting either site alone leaves the row green; cutting BOTH turns it red, which the shift measured. The behaviour is tested and verified working, and it is guarded twice rather than once.")
   (:id "rust/C2" :type :task :title "count clamp v>Max" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1244: the count_clamp_ends row on rust, the PAST-THE-READER-MAX end (roadmap rust/C2)"
     "internal/codegen/rusttable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
@@ -2866,14 +2902,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "rust/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1214: §5.8 row 4 writer_bound_count on rust"
+   ("https://github.com/mas-bandwidth/schema/pull/1214: §5.8 row 4 writer_bound_count on rust, clause two"
     "internal/codegen/rusttable/fixedversioning_writer_bound_count_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at ff9691289511675dced27ff61b8d2211ee954471"
-    "https://github.com/mas-bandwidth/schema/pull/1220: §5.8 row 4 with TWO lineage peers on rust, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1220: §5.8 row 4 with TWO lineage peers on rust, clause one"
     "internal/codegen/rusttable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at 0c03d231316c47ba59b52b24d41db6601052e605") :audit-item "R11" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/rust" :type :work-set :children ("rust/C1" "rust/C2" "rust/R11"))
   (:id "java/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1243: the count_clamp_ends row on java, the NEGATIVE end (roadmap java/C1)"
@@ -2881,7 +2917,7 @@
     "merged into fixed-table-form at 6b4874da476b8ed18d1f160504b1b4182513aba5") :audit-item "C1"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. THE CLAUSE OF THIS TITLE IS TESTED. count_clamp_ends in :evidence forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 reaches neither end of the clamp: its forge of 7 sits between the writer 4 and the reader 8. What was previously recorded here as REDUNDANT COVER is NOT an untested clause and does not bear on this state: it records which of TWO runtime sites catches the negative count on this leg. Cutting either site alone leaves the row green; cutting BOTH turns it red, which the shift measured. The behaviour is tested and verified working, and it is guarded twice rather than once.")
   (:id "java/C2" :type :task :title "count clamp v>Max" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1243: the count_clamp_ends row on java, the PAST-THE-READER-MAX end (roadmap java/C2)"
     "internal/codegen/javatable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
@@ -2891,14 +2927,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "java/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1140: §5.8 row 4 writer_bound_count on java"
+   ("https://github.com/mas-bandwidth/schema/pull/1140: §5.8 row 4 writer_bound_count on java, clause two"
     "internal/codegen/javatable/fixedversioning_writer_bound_count_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at 5e8a35ab2fbabb0fca8e85532616267702c59c25"
-    "https://github.com/mas-bandwidth/schema/pull/1181: §5.8 row 4 with TWO lineage peers on java, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1181: §5.8 row 4 with TWO lineage peers on java, clause one"
     "internal/codegen/javatable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at d8e719a9c35296cfbf63b12552d4452909ef755b") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/java" :type :work-set :children ("java/C1" "java/C2" "java/R11"))
   (:id "js/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1242: the count_clamp_ends row on js, the NEGATIVE end (roadmap js/C1)"
@@ -2906,7 +2942,7 @@
     "merged into fixed-table-form at 8795d13fccbb94df7e1453d19f9775c714289524") :audit-item "C1"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. THE CLAUSE OF THIS TITLE IS TESTED. count_clamp_ends in :evidence forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 reaches neither end of the clamp: its forge of 7 sits between the writer 4 and the reader 8. What was previously recorded here as REDUNDANT COVER is NOT an untested clause and does not bear on this state: it records which of TWO runtime sites catches the negative count on this leg. Cutting either site alone leaves the row green; cutting BOTH turns it red, which the shift measured. The behaviour is tested and verified working, and it is guarded twice rather than once.")
   (:id "js/C2" :type :task :title "count clamp v>Max" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1242: the count_clamp_ends row on js, the PAST-THE-READER-MAX end (roadmap js/C2)"
     "internal/codegen/jstable/fixedversioning_count_clamp_ends_test.go: TestJSFixedVersioningCountClampEnds"
@@ -2916,14 +2952,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "js/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1130: §5.8 row 4 writer_bound_count on js"
+   ("https://github.com/mas-bandwidth/schema/pull/1130: §5.8 row 4 writer_bound_count on js, clause two"
     "internal/codegen/jstable/fixedversioning_writer_bound_count_test.go: TestJSFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at 7a6a2c707913e6a915170ca46972f33e1806f686"
-    "https://github.com/mas-bandwidth/schema/pull/1179: §5.8 row 4 with TWO lineage peers on js, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1179: §5.8 row 4 with TWO lineage peers on js, clause one"
     "internal/codegen/jstable/fixedversioning_writer_bound_count_two_peers_test.go: TestJSFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at 7d108876c9117486b77714baa984a18087892765") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/js" :type :work-set :children ("js/C1" "js/C2" "js/R11"))
   (:id "dart/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1235: the count_clamp_ends row on dart, the NEGATIVE end (roadmap dart/C1)"
@@ -2941,14 +2977,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "dart/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1146: §5.8 row 4 writer_bound_count on dart"
+   ("https://github.com/mas-bandwidth/schema/pull/1146: §5.8 row 4 writer_bound_count on dart, clause two"
     "internal/codegen/darttable/fixedversioning_writer_bound_count_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at 3d0bcb2c1faed5c76efdd4931cfd691021494c80"
-    "https://github.com/mas-bandwidth/schema/pull/1180: §5.8 row 4 with TWO lineage peers on dart, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1180: §5.8 row 4 with TWO lineage peers on dart, clause one"
     "internal/codegen/darttable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at ea34d45d9588c58ce5b201c50337f15baf258659") :audit-item "R11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/dart" :type :work-set :children ("dart/C1" "dart/C2" "dart/R11"))
   (:id "elixir/C1" :type :task :title "count clamp v<0" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1239: the count_clamp_ends row on elixir, the NEGATIVE end (roadmap elixir/C1)"
@@ -2956,7 +2992,7 @@
     "merged into fixed-table-form at b7383abcd828b06504f7011edb680a950fc20e68") :audit-item "C1"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1, because a leg that counts the clamp in the count op AND again in the bounds pass lands 2. This end was exercised by nothing before: §5.8 row 4 forges the count to 7, which sits between the writer 4 and the reader 8 and is neither negative nor past the reader max. The negative arm was measured on 2026-09-19 to be guarded by NOTHING on five legs (c, cs, dart, elixir and js) — deleted from their emitted runtimes, not one landed fixed-table test went red. REDUNDANT COVER on this leg, recorded rather than hidden: the assertion holds and would fail if the behaviour broke, but the negative count is caught twice in this runtime, so disabling one arm alone does not turn the row red — the shift measured it red only with BOTH paths disabled. That is a property of the runtime, not a weakness of the assertion.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. THE CLAUSE OF THIS TITLE IS TESTED. count_clamp_ends in :evidence forges the count word to 0xFFFFFFFF — -1 read as the little-endian int32 the wire carries — and asserts it clamps to ZERO: never -1, never the writer bound of 4, never the reader own 8, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 reaches neither end of the clamp: its forge of 7 sits between the writer 4 and the reader 8. What was previously recorded here as REDUNDANT COVER is NOT an untested clause and does not bear on this state: it records which of TWO runtime sites catches the negative count on this leg. Cutting either site alone leaves the row green; cutting BOTH turns it red, which the shift measured. The behaviour is tested and verified working, and it is guarded twice rather than once.")
   (:id "elixir/C2" :type :task :title "count clamp v>Max" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1239: the count_clamp_ends row on elixir, the PAST-THE-READER-MAX end (roadmap elixir/C2)"
     "internal/codegen/elixirtable/fixedversioning_count_clamp_ends_test.go: TestFixedVersioningCountClampEnds"
@@ -2966,14 +3002,14 @@
    "Reconciled 2026-09-19 against the count_clamp_ends row in :evidence, which forges the count word to 9 — PAST THE READER OWN BOUND of 8, not merely past the writer 4 — and asserts the count lands the WRITER bound of 4, never the reader 8 and never the forged 9, with clamped == 1 EXACTLY and never >= 1. §5.8 row 4 does not reach this end: its forge of 7 is under the reader own max, so a reader that clamped to its own bound would have passed it. This row separates the two.")
   (:id "elixir/R11" :type :task :title
    "the plan carries the WRITER's bounds, per plan; the hostile pass runs against the plan's bounds" :state :done :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/1148: §5.8 row 4 writer_bound_count on elixir"
+   ("https://github.com/mas-bandwidth/schema/pull/1148: §5.8 row 4 writer_bound_count on elixir, clause two"
     "internal/codegen/elixirtable/fixedversioning_writer_bound_count_test.go: TestFixedVersioningWriterBoundCount"
     "merged into fixed-table-form at da6cdc101ad6e390c578ff1621f3b935a4be78a9"
-    "https://github.com/mas-bandwidth/schema/pull/1182: §5.8 row 4 with TWO lineage peers on elixir, closing the per-plan clause"
+    "https://github.com/mas-bandwidth/schema/pull/1182: §5.8 row 4 with TWO lineage peers on elixir, clause one"
     "internal/codegen/elixirtable/fixedversioning_writer_bound_count_two_peers_test.go: TestFixedVersioningWriterBoundCountTwoPeers"
     "merged into fixed-table-form at b323313c64091e03fa8ee5ce4cccf218744daffd") :audit-item "R11" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Reconciled 2026-09-19 against the two merged row PRs in :evidence, BOTH clauses, and now on every one of the nine legs. §5.8 row 4 writer_bound_count forges the count from 4 to 7 and asserts the WRITER bound of 4 exactly, with clamped == 1, never >= 1. The two_peers form then closes the per plan clause: the reader is handed TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, a reader taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. (An earlier note on this task said such a reader lands 8; it lands 7, and that is corrected here.) NO RESIDUAL REMAINS: two_peers now stands on all nine legs.")
+   "Reconciled 2026-09-19, and re-read under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. BOTH CLAUSES OF THIS TITLE ARE TESTED, and each by a named row in :evidence. Clause one, the plan carries the WRITER bounds PER PLAN: the two_peers row hands the reader TWO lineage peers with DIFFERENT bounds — VOLD_array_bounded_grow at 4, which wrote the file, and VMID_array_bounded_grow at 6, the distractor, which did not — and the count still lands 4. A runtime holding one writer bound globally lands 6 and fails. Clause two, the hostile pass runs against the PLAN bounds: §5.8 row 4 forges the count to 7, past the plan bound of 4 but under the reader own 8, and the count lands 4 with clamped == 1 exactly. The three wrong answers are distinct: a reader clamping to its own bound of 8 admits the forged 7, one taking whichever peer it saw last lands 6, and only a plan carrying the WRITING peer bound lands 4. No clause of this title is unproved.")
   (:id "array-bounds/elixir" :type :work-set :children ("elixir/C1" "elixir/C2" "elixir/R11"))
   (:id "cpp/C3" :type :task :title "text length clamp" :state :unknown :evidence nil :audit-item "C3"
    :reported-state "owed" :reported-source
@@ -3281,10 +3317,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Partly reconciled 2026-09-19. Two of this task six clauses are now exercised on all nine legs by the rows in :evidence. cfloat_res_refine proves FINER WIDENS: a writer resolution refined by the reader is read whole and lawfully. cfloat_range_widen proves that the compressed float rides as the float through a bounds pass that is the READER own (schema#1164, ruled B): past_cfloat_range_widen.bin forges aim to 5.0, outside the reader [-2, 2] as well as the writer [-1, 1], and a correct leg lands 2.0 with clamped == 1. That row found a REAL DEFECT on four of the nine legs on its first outing — java, dart, js and elixir had no float clamp at all and landed 5.0 with clamped 0 (schema#1190), each fixed in the PR named here. STILL UNPROVEN, and why this task stays :unknown: COARSER REFUSES BY NAME is exercised by no landed row; the step being carried in the digest under tag Q is not asserted by these rows; DROPPING THE TRIPLE WIDENS is not exercised; and FP-CONTRACT OFF ON EVERY LEG is a build-flag claim no row here tests.")
   (:id "scalar-bounds/elixir" :type :work-set :children ("elixir/C7" "elixir/R30"))
-  (:id "cpp/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item
+  (:id "cpp/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1263: the union_tag_both_plans row on cpp, THE COMPILED HALF ONLY"
+    "internal/codegen/cpptable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at 85514c2f34717d32d4426da5c99c2c333d5d198a") :audit-item
    "C9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "NOT reconciled. The union_tag_both_plans row landed on this leg (#1263 in :evidence) but its own file says it HOLDS THE COMPILED HALF ONLY — cppRunVersionProbe takes no reader, so the IDENTITY plan is a named residual there. Under Glenn ruling of 2026-09-19, done means everything is tested and verified working, and half the read paths for this clause are untested on this leg. The other seven legs that landed the row assert the landing on both plans. What would close it: an identity-plan probe on cpp, which needs cppRunVersionProbe to take a reader.")
   (:id "cpp/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -3295,10 +3334,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/cpp" :type :work-set :children ("cpp/C9" "cpp/C10" "cpp/R31"))
-  (:id "c/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item "C9"
+  (:id "c/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1255: the union_tag_both_plans row on c, both plans"
+    "internal/codegen/ctable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at 68da39fca2d898f876587724b216530a19f955c7") :audit-item "C9"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "c/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -3309,10 +3351,12 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/c" :type :work-set :children ("c/C9" "c/C10" "c/R31"))
-  (:id "cs/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item "C9"
+  (:id "cs/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence
+   ("no union_tag_both_plans row has landed on cs: the eighth shift wrote it, gated it green and HELD it because control 3 came back green"
+    "the card is at schema8/cs_utbp_test.go.card") :audit-item "C9"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "NOT reconciled, and nothing landed. The eighth shift WROTE the union_tag_both_plans row for cs, gated it green and then HELD it rather than open it, because its decisive control came back GREEN: cutting the emitter union tag bound leaves 71 leaves and 0 red, and so does cutting the tag clamp in fixedbounds.go. The cs runtime case Const: passes the CONSTANT and never the file raw tag, so the bound cannot fire for the None case — possibly dead code. A row whose decisive control is green proves nothing, and the shift was right to report it rather than commit it. The card is at schema8/cs_utbp_test.go.card and is the next shift first job.")
   (:id "cs/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -3323,10 +3367,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/cs" :type :work-set :children ("cs/C9" "cs/C10" "cs/R31"))
-  (:id "go/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item "C9"
+  (:id "go/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1258: the union_tag_both_plans row on go, both plans"
+    "internal/codegen/gotable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at 81934cfe1452f63ee664a1460f1a86886ff65eb7") :audit-item "C9"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "go/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -3337,10 +3384,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/go" :type :work-set :children ("go/C9" "go/C10" "go/R31"))
-  (:id "rust/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item
+  (:id "rust/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1264: the union_tag_both_plans row on rust, both plans"
+    "internal/codegen/rusttable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at a2994b01682ba039b1efe0e845a44d7f43236903") :audit-item
    "C9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "rust/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -3351,10 +3401,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/rust" :type :work-set :children ("rust/C9" "rust/C10" "rust/R31"))
-  (:id "java/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item
+  (:id "java/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1262: the union_tag_both_plans row on java, both plans"
+    "internal/codegen/javatable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at cd25cdc34f9ae995649e72fc91041e0a98d60320") :audit-item
    "C9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "java/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -3365,10 +3418,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/java" :type :work-set :children ("java/C9" "java/C10" "java/R31"))
-  (:id "js/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item "C9"
+  (:id "js/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1259: the union_tag_both_plans row on js, both plans"
+    "internal/codegen/jstable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at 4dc30cee0742dbaf123443bd9f73b55755006785") :audit-item "C9"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "js/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -3379,10 +3435,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/js" :type :work-set :children ("js/C9" "js/C10" "js/R31"))
-  (:id "dart/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item
+  (:id "dart/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1257: the union_tag_both_plans row on dart, both plans"
+    "internal/codegen/darttable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at ad4be81799d4f9c40d7aba830d6e4c2ee980c691") :audit-item
    "C9" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "dart/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil :audit-item
    "C10" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -3393,10 +3452,13 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "ordinals/dart" :type :work-set :children ("dart/C9" "dart/C10" "dart/R31"))
-  (:id "elixir/C9" :type :task :title "union tag past arms → None" :state :unknown :evidence nil :audit-item
+  (:id "elixir/C9" :type :task :title "union tag past arms → None" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/1260: the union_tag_both_plans row on elixir, both plans"
+    "internal/codegen/elixirtable/fixedversioning_union_tag_both_plans_test.go: TestFixedVersioningUnionTagBothPlans"
+    "merged into fixed-table-form at 31185508ebbf90d65f6c0f504be961c77aaae4e1") :audit-item
    "C9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working. The single clause of this title — a union tag past the arm set lands None — is tested on BOTH read paths by the union_tag_both_plans row in :evidence. The forge sets the one-byte pick.type tag of old_union_append.bin to 9, past the OLD writer two arms and the NEW reader three, located by a nine-byte needle asserted to occur EXACTLY ONCE before the write, and the same bytes are then read by the COMPILED plan and by the IDENTITY plan; both must land None. This row was cut because the bound was guarded by NOTHING: the shift deleted the union tag bound from the emitter of all nine legs and not one landed fixed-table test went red. A separate question is OPEN and is NOT part of this clause: over the same bytes the two plans disagree about the clamped COUNTER on several legs (schema#1254). This task is about the LANDING, which both plans agree on.")
   (:id "elixir/C10" :type :task :title "enum ordinal past top → None" :state :unknown :evidence nil
    :audit-item "C10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -4237,34 +4299,55 @@
   (:id "shared/lock-rules" :type :work-set :children
    ("shared/LOCK-L1" "shared/LOCK-L2" "shared/LOCK-L3" "shared/LOCK-L4" "shared/LOCK-L5" "shared/LOCK-L6"
     "shared/LOCK-L7"))
-  (:id "shared/LOCK-L1" :type :task :title "Lock layout rule 1: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L2" :type :task :title "Lock layout rule 2: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L3" :type :task :title "Lock layout rule 3: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L4" :type :task :title "Lock layout rule 4: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L5" :type :task :title "Lock layout rule 5: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L6" :type :task :title "Lock layout rule 6: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
-  (:id "shared/LOCK-L7" :type :task :title "Lock layout rule 7: current and historical entries" :state :done
-   :evidence
-   ("https://github.com/mas-bandwidth/schema/pull/999" "https://github.com/mas-bandwidth/schema/pull/1000")
-   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675")
+  (:id "shared/LOCK-L1" :type :task :title "Lock layout rule 1: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule1CountMismatch, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L2" :type :task :title "Lock layout rule 2: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule2KindUnknown, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L3" :type :task :title "Lock layout rule 3: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule3SizeMismatch, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L4" :type :task :title "Lock layout rule 4: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule4KindInvalid, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L5" :type :task :title "Lock layout rule 5: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule5TreeUnclosed, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L6" :type :task :title "Lock layout rule 6: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule6RecordTooLarge, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
+  (:id "shared/LOCK-L7" :type :task :title "Lock layout rule 7: current and historical entries" :state :done :evidence
+   ("https://github.com/mas-bandwidth/schema/pull/999: lockfile — validate recorded lineage layouts against §1.1 layout rules, the landing PR"
+    "internal/lockfile/layout_test.go: TestRecordedLayoutRule7TooDeep, driven with targetHistorical BOTH true and false"
+    "internal/lockfile/layout_test.go: TestReviewerPublicCheckRejectsMalformedHistoricalLayout and TestRecordedLayoutValidControl"
+    "internal/lockfile/layout.go: ValidateLayout, applied to lineage entries at internal/lockfile/lineage.go")
+   :landed-revision "ae4e935ebfe88bb6b3ca715c209bb0236fde7675" :note
+   "Reconciled 2026-09-19 under Glenn ruling of the same day: done means everything is tested and verified working; not done until tested. The evidence recorded before this was TWO BARE PR URLS naming no file and no test, one of which (#1000) merged to a feature branch and is the subject of schema#1233; the real tests were found in the tree and are named in :evidence. BOTH clauses of this title are tested. The rule itself: internal/lockfile/layout_test.go carries one test per §1.1 rule, TestRecordedLayoutRule1CountMismatch through TestRecordedLayoutRule7TooDeep, each forging the break this rule names and requiring the lock to refuse it. CURRENT AND HISTORICAL ENTRIES, which is the second clause and the reason this node is worded as it is: every one of those tests drives testMalformedLayoutAtBoundary(t, badLayout, expectedReason, targetHistorical bool) with targetHistorical BOTH true and false, so the rule is proved on the recorded current entry and on the recorded historical entry separately. Beside them TestReviewerPublicCheckRejectsMalformedHistoricalLayout drives the public reviewer path over a historical entry whose hash and rollup were recomputed, and TestRecordedLayoutValidControl is the green control. ValidateLayout is applied to lineage entries at internal/lockfile/lineage.go as well as to the current layout.")
   (:id "acceptance-gates" :type :work-set :title "Existing acceptance gates outside capability percentages"
    :children ("gates/row-coverage" "gates/packet-read" "gates/reference-cost")
    :category "acceptance-gates" :scope-event "2026-09-13: expose previously retained gates; no new feature rows")
