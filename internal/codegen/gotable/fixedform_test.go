@@ -3132,3 +3132,111 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormZeroBehindNarrowerArm is item W3 of schema#876, "zero behind a
+// narrower arm", asserted BY NAME on this leg (docs/FIXED-FORM-ALGORITHM.md
+// §3.1: "**A union** writes the tag and the taken arm only, zero behind a
+// narrower one"; docs/SPEC-TABLES.md §3.4, the union row: "ZERO on write behind
+// a narrower arm, IGNORED on read, never a refusal"). The rule has no C++
+// reference case of its own — the reference's slack_case() is the TEXT and
+// ARRAY rows, and its absent_optional_case() is the `?T` row — so the case is
+// written from the two docs, and it names them.
+//
+// HOW THE SLACK IS MADE OBSERVABLE. The union's slot is a one-byte tag then the
+// WIDEST arm (WideArm, an int64), so NarrowArm's single byte is followed by
+// SEVEN bytes of declared slack. The Go writer supplies those seven bytes from
+// the template: `clear(at[8:8+RootFixedBodyBytes])` before `RootFixedWriteBody`
+// (internal/codegen/gotable/fixedform.go:710, emitted into every FixedSave).
+// The case stains the OUTPUT buffer 0x5A before the save, so a writer that left
+// the template uncleared would copy the stain onto the wire — the failure is a
+// WRONG WIRE CONTENT, not a crash and not a refusal. The same stain is in the
+// wide-arm half, whose slot is legitimately full, so the zero check is a fact
+// about the NARROW arm and not a buffer that is universally zero.
+func TestFixedFormZeroBehindNarrowerArm(t *testing.T) {
+	runGenerated(t, `package probe
+type NarrowArm { a int8 = 0 }
+type WideArm { b int64 = 0 }
+union Pick
+{
+    narrow NarrowArm
+    wide   WideArm
+}
+fixed table Root {
+    pick Pick
+    tail int32 = 7
+}
+`, `package probe
+import ("testing")
+
+// narrowLive is the narrow arm's LIVE byte. It is a named constant so the case
+// can be pointed at the legitimate value the rule admits (zero) with ONE edit.
+const narrowLive = 0x7E
+
+func TestZeroBehindNarrowerArm(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.Pick.Type = PickTypeNarrow
+	one.Pick.Narrow.A = narrowLive
+	one.Tail = 7
+
+	// the union slot is a one-byte tag, one byte of arm, SEVEN of slack
+	if RootFixedBodyBytes != 13 {
+		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", RootFixedBodyBytes)
+	}
+
+	buf := make([]byte, RootFixedMeasure(1))
+	// THE CANARY: the destination is stained before the save, so a writer that
+	// copies storage instead of zero-filling a template carries the stain.
+	for i := range buf {
+		buf[i] = 0x5A
+	}
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	body := buf[len(buf)-RootFixedRecordBytes+8:]
+	if body[0] != byte(PickTypeNarrow) {
+		t.Fatalf("the tag is %d, want the narrow arm %d", body[0], byte(PickTypeNarrow))
+	}
+	if body[1] != narrowLive {
+		t.Fatalf("the narrow arm's LIVE byte is %#x, not the %#x written", body[1], narrowLive)
+	}
+	for i := 2; i < 9; i++ {
+		if body[i] != 0 {
+			t.Fatalf("W3: the slack behind the narrow arm is not zero at body[%d]=%#x; the %#x template stain reached the wire", i, body[i], 0x5A)
+		}
+	}
+	if body[9] != 7 || body[10] != 0 || body[11] != 0 || body[12] != 0 {
+		t.Fatalf("the field past the union is not the writer's 7: %v", body[9:13])
+	}
+
+	// CONTROL 1 (not vacuous): the SAME slot written with the WIDEST arm fills
+	// the bytes that were zero above. So the zero check above is a fact about
+	// the NARROW arm and not a slot that is universally zero.
+	wide := Root{}
+	RootReset(&wide)
+	wide.Pick.Type = PickTypeWide
+	wide.Pick.Wide.B = 0x0102030405060708
+	wide.Tail = 7
+	wbuf := make([]byte, RootFixedMeasure(1))
+	for i := range wbuf {
+		wbuf[i] = 0x5A
+	}
+	if n := RootFixedSave([]Root{wide}, wbuf); n != int64(len(wbuf)) {
+		t.Fatalf("wide save %d", n)
+	}
+	wbody := wbuf[len(wbuf)-RootFixedRecordBytes+8:]
+	if wbody[0] != byte(PickTypeWide) {
+		t.Fatalf("the wide tag is %d", wbody[0])
+	}
+	live := false
+	for i := 1; i < 9; i++ {
+		if wbody[i] != 0 {
+			live = true
+		}
+	}
+	if !live {
+		t.Fatal("CONTROL 1 FAILED: the widest arm left its whole slot zero, so the narrow-arm zeros are vacuous")
+	}
+}
+`)
+}
