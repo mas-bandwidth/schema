@@ -113,6 +113,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   forgedCounts(check, bench, fixed, corpusDir);
   formHeaderProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
+  wideTextCodeUnits(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -425,6 +426,83 @@ function guardComparedAtArgW(check, home) {
     "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
   check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
     "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+}
+
+// ---------------------------------------------------------------------------
+// C5: WIDE TEXT CODE UNITS (schema#876; docs/FIXED-FORM-ALGORITHM.md §4.5's
+// text row, fix 7 — "wide code units over v, never 2N, an astral pair
+// counting two").
+// ---------------------------------------------------------------------------
+//
+// A `wstring(N)` rides this form as a length in CODE UNITS with 2N bytes
+// behind it, and the text op's WIDE flavour is what keeps the two apart:
+// `unit := (meta == wide) ? 2 : 1`, `cap := size / unit` — the cap a forged
+// length is clamped to is N UNITS, never the 2N bytes a byte counter would
+// admit. This leg's compiler refuses kind 33 in a table closure
+// (compiler/widetext.go: "the js table codec is a named follow-on"), so no
+// generated module ever carries the flavour; the flavour itself rides in
+// every module's runtime (internal/codegen/jstable/fixedruntime.go, the
+// TableFixedOpText case), and this case reaches it the way
+// guardComparedAtArgW reaches the guard test: a hand-built plan over
+// hand-built bytes, through TableFixedRun, the one loop identity and
+// compiled both take.
+//
+// The op and flavour constants are SPELLED OUT, exactly as the header
+// offsets at this file's head are: TableFixedOpText is 2 and
+// TableFixedTextWide is 2 (internal/codegen/jstable/fixedruntime.go) — a
+// driver that read them out of the code under test would agree with
+// whatever that code happened to say.
+export function wideTextCodeUnits(check, home) {
+  check(home.TableFixedLanes === 9,
+    `C5: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+
+  // op=TEXT src=0 dst=0 size=16 aux=4 guard=NONE(-1) arg=0 meta=WIDE(2)
+  // argw=1 — a wstring(8): the length word at the record's head, 2N = 16
+  // bytes of span behind it, and the same twenty bytes in the image.
+  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1];
+
+  const run = (length, units) => {
+    const src = new Uint8Array(20);
+    const sv = new DataView(src.buffer);
+    sv.setInt32(0, length, true);
+    for (let i = 0; i < units.length; i++) { sv.setUint16(4 + i * 2, units[i], true); }
+    const dst = new Uint8Array(20);
+    const dv = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    home.TableFixedRun(new Int32Array(plan), 1, src, sv, 0, dst, dv, null, r);
+    return { length: dv.getInt32(0, true), clamped: r.clamped, payload: dst.subarray(4) };
+  };
+
+  // THE POSITIVE CONTROL, and the row's name: five units of which an ASTRAL
+  // PAIR is two. A leg counting bytes reads ten and loses the text; a leg
+  // counting units lands five, and the pair's halves land as two units.
+  {
+    const got = run(5, [0xE000, 0xD83D, 0xDE00, 0xFFFF, 0x007A]);
+    check(got.length === 5 && got.clamped === 0,
+      `C5: an astral pair is TWO code units and the length counts both — five units land as five and no counter moves (got length ${got.length}, clamped ${got.clamped})`);
+    check(got.payload[2] === 0x3D && got.payload[3] === 0xD8 && got.payload[4] === 0x00 && got.payload[5] === 0xDE,
+      "C5: the pair's two halves land as two little-endian units behind the first");
+  }
+
+  // AT THE BOUND: eight units is a wstring(8)'s own declared cap, not a clamp.
+  {
+    const got = run(8, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68]);
+    check(got.length === 8 && got.clamped === 0,
+      `C5: eight units at the bound are not a clamp and move no counter (got length ${got.length}, clamped ${got.clamped})`);
+  }
+
+  // THE FORGED LENGTH — the discriminating case. Twelve units is past the
+  // field's eight, so it clamps to eight and counts once; a cap taken in
+  // BYTES is sixteen, admits the twelve, and hands the consumer a length
+  // past its own storage with nothing said — a silently wrong report, never
+  // a refusal. The ONE line carries the input and its expectation together,
+  // so the legitimacy control edits this line alone.
+  const forged = (input, wantLength, wantClamped) => {
+    const got = run(input, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68]);
+    check(got.length === wantLength && got.clamped === wantClamped,
+      `C5: a length of ${input} units over wstring(8) lands ${wantLength} with ${wantClamped} clamped — the cap is CODE UNITS, never the 2N bytes (got length ${got.length}, clamped ${got.clamped})`);
+  };
+  forged(12, 8, 1);
 }
 
 // ---------------------------------------------------------------------------
