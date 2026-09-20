@@ -211,6 +211,116 @@ func TestRoundTrip(t *testing.T) {
 `)
 }
 
+// TestHashIncludesTheCountWord pins §5 of docs/FIXED-FORM-ALGORITHM.md's WIRE
+// IDENTITY by name, where the golden corpus only makes the handed constants
+// AGREE: "the layout hash is fnv1a64 over the layout's bytes as written, the
+// 4-byte count included". Every leg holds its hash as a CONSTANT and the
+// runtime is right not to recompute it (§5.9 #47), so nothing on this leg
+// computes the hash from the bytes it seals — a leg whose hash function skipped
+// the count word would still pass every fixture it has, because it never
+// computes the hash at all. That is the `~`: the behaviour is exercised, the
+// rule is asserted by nothing.
+//
+// THIS CASE DOES COMPUTE IT, IN THE FIXTURE. It writes a file, lifts the layout
+// AS WRITTEN out of that file (the layout's own first four bytes ARE its entry
+// count), hashes those bytes with fnv1a64 written out LONGHAND — never borrowed
+// from the code under test, which would "agree with whatever that code happened
+// to do" — and asserts the header's OWN hash equals the number. It then drops
+// the 4-byte count and asserts the number MOVES. TWO tables, so the case is not
+// one lucky constant, and their hashes differ.
+//
+// The name is chosen to match `make tables-go-versioning`'s -run list, so the
+// gate that carries the fixed form actually runs it.
+func TestHashIncludesTheCountWord(t *testing.T) {
+	// The generated case is run with -v and its log RE-EMITTED, so a plain
+	// `go test -v -run TestHashIncludesTheCountWord` shows the inner
+	// `--- PASS` and not merely the outer wrapper: a case nobody can watch run
+	// is worth nothing.
+	out, err := runGeneratedResult(t, `package probe
+fixed table Point {
+    x int32
+    y int32
+}
+fixed table Quad {
+    a int32
+    b int32
+    c int32
+    d int32
+}
+`, `package probe
+
+import (
+	"encoding/binary"
+	"testing"
+)
+
+// fnv1a64 is §5's hash written out LONGHAND in the fixture: a driver that
+// hashed with the code it is checking "would agree with whatever that code
+// happened to do". Here it is the oracle, not an echo.
+func fnv1a64(b []byte) uint64 {
+	h := uint64(0xcbf29ce484222325)
+	for _, v := range b {
+		h ^= uint64(v)
+		h *= 0x100000001b3
+	}
+	return h
+}
+
+func TestHashIncludesTheCountWord(t *testing.T) {
+	cases := []struct {
+		name   string
+		layout []byte
+		hash   uint64
+		file   []byte
+	}{
+		{"Point", PointFixedLayout, PointFixedHash, func() []byte {
+			f := make([]byte, PointFixedMeasure(1))
+			PointFixedSave([]Point{{}}, f)
+			return f
+		}()},
+		{"Quad", QuadFixedLayout, QuadFixedHash, func() []byte {
+			f := make([]byte, QuadFixedMeasure(1))
+			QuadFixedSave([]Quad{{}}, f)
+			return f
+		}()},
+	}
+	for _, tc := range cases {
+		// THE FILE §2.1: form byte, seven reserved zeros, the layout hash at 8,
+		// the body at 16, then the layout behind its u32 length — so the layout
+		// starts at TableFixedHeaderBytes+4, and its OWN first four bytes are
+		// its entry count.
+		at := TableFixedHeaderBytes + 4
+		asWritten := tc.file[at : at+len(tc.layout)]
+		if got := binary.LittleEndian.Uint32(asWritten); got != uint32((len(tc.layout)-4)/17) {
+			t.Fatalf("%s: the layout as written does not open with its 4-byte entry count: %d", tc.name, got)
+		}
+		// THE HEADER'S OWN HASH, taken from the file, is this build's constant.
+		if onWire := binary.LittleEndian.Uint64(tc.file[TableFixedHashAt:]); onWire != tc.hash {
+			t.Fatalf("%s: the header's own hash 0x%016x is not this build's constant 0x%016x", tc.name, onWire, tc.hash)
+		}
+		// THE RULE, BY NAME: the layout hash is fnv1a64 over the layout's bytes
+		// as written, the 4-byte count included.
+		want := fnv1a64(asWritten)
+		if tc.hash != want {
+			t.Fatalf("%s: the layout hash is fnv1a64 over the layout's bytes as written, the 4-byte count included: constant 0x%016x, recomputed over the %d bytes as written 0x%016x", tc.name, tc.hash, len(asWritten), want)
+		}
+		// AND THE COUNT IS IN THE INPUT: dropping it must move the number, or
+		// "the count is included" is asserted by nothing.
+		if dropped := fnv1a64(asWritten[4:]); dropped == tc.hash {
+			t.Fatalf("%s: dropping the 4-byte count leaves the hash at 0x%016x, so the count is not in the input", tc.name, dropped)
+		}
+	}
+	if cases[0].hash == cases[1].hash {
+		t.Fatalf("two distinct layouts share the hash 0x%016x; the case is one lucky constant", cases[0].hash)
+	}
+}
+`, "-v")
+	if err != nil {
+		t.Fatalf("the layout hash must include the 4-byte count: %v\n%s", err, out)
+	}
+	t.Logf("the generated case ran:\n%s", out)
+}
+
 // RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
 // below read a file written under ANOTHER schema's layout WITHOUT that layout
 // being in the reader's lineage, and they assert the run-time walk of a
