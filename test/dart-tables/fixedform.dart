@@ -1326,6 +1326,160 @@ void absentOptionalCase() {
 }
 
 // ---------------------------------------------------------------------------
+
+// C3: THE TEXT LENGTH CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5 and §6, THE
+// TEXT OP). A text field's used length is four bytes a STRANGER wrote:
+// `v := SLE(4, record+src)` clamped into `[0, cap]` where `cap := size / unit`,
+// and `COUNT clamped` ONCE for the field. THE FORGERY IS IN THE BYTES and not
+// through the writer: the write side's bound checks are DEBUG ONLY by rule, so
+// a length of -1 or one past the cap is a thing only the wire can say, and the
+// read side has to answer for it.
+//
+// THE OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a number in
+// this file: FX1's identity plan carries exactly TWO text ops — `label`, the
+// utf8 one, and `blob`, the bytes one — so the utf8 row IS `label`, and its
+// `size` is then a REAL assertion: a text op's `size` is the reader's own CAP,
+// in bytes for the narrow flavour, which for `label string(8)` is eight.
+//
+// THE CASE ASSERTS THE LOOP'S OWN IMAGE, not only the decoded value. For a
+// direct text field the loop's text op and the generated decode clamp the SAME
+// length, so an assertion on the decoded value alone cannot tell a broken loop
+// from a working decode. Running `tableFixedRun` directly and reading the
+// length word it landed pins the loop; the full `fxRootFixedLoad` beside it is
+// the integration the two paths share.
+void textLengthClampCase() {
+  final v = fx1home.FxRoot();
+  fx1home.initFxRoot(v);
+  v.keep = 1234;
+  v.nested.a = 7;
+  // "abcdefgh": every unit of the buffer is well-formed, so a clamp to the cap
+  // does not trip a content rule and the number this case asserts is the
+  // length alone
+  for (var i = 0; i < 8; i++) {
+    v.label[i] = 0x61 + i;
+  }
+  v.labelLength = 3;
+  final file = Uint8List(fx1.fxRootFixedMeasure(1));
+  check(
+    fx1.fxRootFixedSave(<fx1home.FxRoot>[v], 1, file) == file.length,
+    'C3: the record saves',
+  );
+
+  var labelAt = -1;
+  var cap = -1;
+  var rows = 0;
+  for (var i = 0; i < fx1.fxRootFixedIdentityCount; i++) {
+    final b = i * fx1home.TableFixedLane.lanes;
+    final isText =
+        fx1.fxRootFixedIdentity[b + fx1home.TableFixedLane.op] ==
+        fx1home.TableFixedOp.text;
+    final isUtf8 =
+        fx1.fxRootFixedIdentity[b + fx1home.TableFixedLane.meta] ==
+        fx1home.TableFixedOp.textUtf8;
+    if (!isText || !isUtf8) {
+      continue;
+    }
+    rows++;
+    labelAt = fx1.fxRootFixedIdentity[b + fx1home.TableFixedLane.src];
+    cap = fx1.fxRootFixedIdentity[b + fx1home.TableFixedLane.size];
+  }
+  check(
+    rows == 1,
+    'C3: the identity plan carries exactly ONE utf8 text op, '
+    'so the row below is `label`\'s',
+  );
+  check(
+    labelAt >= 0 && cap == 8,
+    'C3: and its cap is EIGHT BYTES — `label string(8)`\'s own bound',
+  );
+  final body = fx1.fxRootFixedHeaderBytes + 8;
+  final fileView = ByteData.sublistView(file);
+  check(
+    fileView.getInt32(body + labelAt, Endian.little) == 3,
+    'C3: and the offset it names is where the live length really is',
+  );
+
+  // THE LOOP ALONE. Run the identity plan over the forged body and read the
+  // length word it LANDS in the reader's image, plus the one counter.
+  (int, int) loopRun(int forged) {
+    fileView.setInt32(body + labelAt, forged, Endian.little);
+    final plan = fx1.fxRootFixedNewPlan();
+    plan.image.setRange(0, fx1.fxRootFixedBodyBytes, fx1.fxRootFixedPrefill);
+    final r = fx1home.TableFixedReport();
+    fx1home.tableFixedRun(
+      fx1.fxRootFixedIdentity,
+      fx1.fxRootFixedIdentityCount,
+      file,
+      fileView,
+      body,
+      plan.image,
+      plan.imageView,
+      plan.remap,
+      plan.conv,
+      r,
+    );
+    return (plan.imageView.getInt32(labelAt, Endian.little), r.clamped);
+  }
+
+  // C3a: A LENGTH BELOW ZERO. Not a large number — zero, and one clamp.
+  {
+    final (landed, counted) = loopRun(-1);
+    check(landed == 0, 'C3a: the loop lands a length below zero as ZERO');
+    check(counted == 1, 'C3a: and the loop counts exactly one clamp');
+  }
+
+  // C3b: A LENGTH PAST THE READER'S OWN CAP, IN BYTES.
+  {
+    final (landed, counted) = loopRun(cap + 1);
+    check(
+      landed == cap,
+      'C3b: the loop lands a length past the cap AT the cap',
+    );
+    check(counted == 1, 'C3b: and the loop counts exactly one clamp');
+  }
+
+  // AND THE CONTROL: EVERY length the rule ADMITS is not a clamp. The cap
+  // itself, zero, and anything between both land WHOLE and count nothing; a
+  // clamp counted here would be a clamp on a clean read. This list is the one
+  // line CONTROL 1 edits: point the case at a legitimate value and it stays
+  // green, because an in-range length has nothing to fire.
+  for (final legit in <int>[0, 3, cap]) {
+    final (landed, counted) = loopRun(legit);
+    check(
+      landed == legit && counted == 0,
+      'CONTROL: a length of $legit is in range and counts NOTHING',
+    );
+  }
+
+  // THE FULL READ, the two paths together: a forged length still READS (a
+  // clamp is not a refusal), the decoded value is the clamped one, and the
+  // report carries the one clamp and no damage.
+  {
+    fileView.setInt32(body + labelAt, -1, Endian.little);
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    check(
+      fx1.fxRootFixedLoad(
+            back,
+            1,
+            file,
+            file.length,
+            fx1.fxRootFixedNewPlan(),
+            r,
+          ) ==
+          1,
+      'C3: a forged length of -1 still READS — a clamp is not a refusal',
+    );
+    check(back[0].labelLength == 0, 'C3: a length below zero clamps to ZERO');
+    check(r.clamped == 1, 'C3: and counts exactly one clamp');
+    check(
+      !r.malformed && r.refused == 0,
+      'C3: a clamp is neither malformed nor a refusal',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -1972,6 +2126,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  textLengthClampCase();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
