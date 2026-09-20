@@ -1162,3 +1162,94 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormAbsentOptionalSkipsStore is W2, asserted by name: an absent
+// optional writes flag 0 and SKIPS THE PAYLOAD STORE
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, fix 13). The payload rides WHOLE whether
+// or not it is present, and when the flag is 0 what rides is the TEMPLATE'S
+// ZEROS — an absent optional is a hole in the record and not a window into the
+// writer's memory. The C++ reference pins the same rule in
+// test/tables/fixedform_main.cpp:1401 `absent_optional_case`, and the C leg at
+// test/c-tables/fixedform_v1.c:123 `fixed_v1_absent_optional`.
+//
+// THE CONTROL IS THE STAIN, as it is for every other kind of slack: the payload
+// storage is filled with a byte a clean record carries nowhere (0x5A), the
+// test proves the stain IS in storage, then proves THE WIRE CARRIES NONE OF
+// IT, and then proves the SAME payload PRESENT does put those bytes on the
+// wire — so the check is about the flag and not about the writer never having
+// written a payload at all.
+func TestFixedFormAbsentOptionalSkipsStore(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Link
+{
+    value int32 = 0 | min = 0, max = 1000
+    tag   string(8)
+}
+
+fixed table Chain
+{
+    name string(16)
+    link ?Link
+}
+`, `package probe
+import ("bytes"; "testing")
+
+func TestAbsentOptionalSkipsStore(t *testing.T) {
+	one := Chain{}
+	ChainReset(&one)
+	copy(one.Name[:], "absent")
+	one.NameLength = 6
+	one.LinkPresent = false
+	one.Link.Value = 0x5A5A5A
+	for i := range one.Link.Tag {
+		one.Link.Tag[i] = 0x5A
+	}
+	if one.Link.Value != 0x5A5A5A || one.Link.Tag[0] != 0x5A {
+		t.Fatal("CONTROL: the absent payload really is stained in storage")
+	}
+
+	need := ChainFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := ChainFixedSave([]Chain{one}, buf); n != need {
+		t.Fatalf("absent optional: the record saves %d want %d", n, need)
+	}
+	body := buf[len(buf)-ChainFixedRecordBytes+8:]
+	if hits := bytes.Count(body, []byte{0x5A}); hits != 0 {
+		t.Fatalf("ABSENT OPTIONAL: %d bytes of the absent payload reached the wire", hits)
+	}
+
+	// and the reader reads what the flag says, with the payload at the
+	// template's zeros
+	back := make([]Chain, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := ChainFixedLoad(back, buf, plan, &r); n != 1 {
+		t.Fatalf("absent optional: the record reads %d %+v", n, r)
+	}
+	if back[0].LinkPresent {
+		t.Fatal("absent optional: the flag")
+	}
+	if back[0].Link.Value != 0 || back[0].Link.TagLength != 0 {
+		t.Fatalf("absent optional: the payload reads %d/%d, not the wire's zeros", back[0].Link.Value, back[0].Link.TagLength)
+	}
+	if r != (TableReport{}) {
+		t.Fatalf("absent optional: a clean read moves no counter: %+v", r)
+	}
+
+	// THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+	// the wire, so the check above is about the flag and not about the writer
+	// never having written a payload.
+	present := one
+	present.LinkPresent = true
+	present.Link.TagLength = 4
+	pbuf := make([]byte, ChainFixedMeasure(1))
+	if n := ChainFixedSave([]Chain{present}, pbuf); n != int64(len(pbuf)) {
+		t.Fatalf("absent optional: the present twin saves %d", n)
+	}
+	pbody := pbuf[len(pbuf)-ChainFixedRecordBytes+8:]
+	if bytes.IndexByte(pbody, 0x5A) < 0 {
+		t.Fatal("NEGATIVE CONTROL: the SAME payload PRESENT did NOT reach the wire")
+	}
+}
+`)
+}
