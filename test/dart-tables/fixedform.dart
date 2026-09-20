@@ -1326,6 +1326,115 @@ void absentOptionalCase() {
 }
 
 // ---------------------------------------------------------------------------
+// W5: THE WRITE-SIDE BOUND CHECKS ARE DEBUG ONLY
+// (docs/FIXED-FORM-ALGORITHM.md §3.1). "`count <= Max` and `length <= N` are a
+// caller contract; a release build removes them exactly as it removes
+// `assert`, pays nothing, and clamps nothing." A counted array's count and a
+// text field's length are the WRITER's own numbers, so the writer puts them on
+// the wire as the caller spelled them and does not clamp them the way a READER
+// must clamp a stranger's. The bound is therefore an `assert` — Dart's
+// debug-only idiom, compiled out of the AOT release twin exactly as `assert` is
+// — and this case holds that fact in BOTH configurations the gate runs: the
+// JIT checked twin (`dart --enable-asserts`, where the assert is live) and the
+// AOT release twin (where it is gone).
+// ---------------------------------------------------------------------------
+
+// asserts on = the JIT checked twin; off = the AOT release twin.
+final bool writeAssertsEnabled = () {
+  var on = false;
+  assert(on = true);
+  return on;
+}();
+
+// writeOutcome runs a writer-contract probe and names the FORM the failure
+// takes, or `none` when it did not fail at all. W5 is the assertion existing AND
+// being debug only, so the case reads the NAME and not merely "it failed
+// somehow": `assert` is Dart's debug-only construct, a `throw:` is the caller's
+// error escaping as an exception, and `none` is the release writer trusting.
+String writeOutcome(void Function() fn) {
+  try {
+    fn();
+    return 'none';
+  } on AssertionError {
+    return 'assert';
+  } on Object catch (e) {
+    return 'throw:${e.runtimeType}';
+  }
+}
+
+void writeChecksDebugOnlyCase() {
+  // THE LEGITIMATE VALUE THE RULE ADMITS, checked in every build: a count EQUAL
+  // to Max and a length EQUAL to N are in range and write cleanly. This is the
+  // non-vacuous control — the assertion must not fire on the value the rule
+  // admits, or the case would be asserting the bound itself and not its
+  // debug-only character.
+  final legal = fx1home.FxRoot();
+  legal.marksCount = 4;
+  legal.labelLength = 8;
+  final legalBuf = Uint8List(fx1.fxRootFixedMeasure(1));
+  check(
+    fx1.fxRootFixedSave(<fx1home.FxRoot>[legal], 1, legalBuf) ==
+        legalBuf.length,
+    'W5 CONTROL: a count EQUAL to Max and a length EQUAL to N write cleanly',
+  );
+
+  if (writeAssertsEnabled) {
+    // THE CHECKED TWIN: the bound is an ASSERT and it fires IFF the caller's
+    // number is out of bound — so the expectation is derived from the number
+    // itself, and pointing either probe at a legitimate value (CONTROL 1) keeps
+    // the case green because no assertion fires. The failure form is read: a
+    // name, not a plain throw, not a named refusal and not a clamp.
+    final over = fx1home.FxRoot();
+    over.marksCount = 5;
+    final wantCount = over.marksCount > 4 ? 'assert' : 'none';
+    final gotCount = writeOutcome(
+      () => fx1.fxRootFixedSave(
+        <fx1home.FxRoot>[over],
+        1,
+        Uint8List(fx1.fxRootFixedMeasure(1)),
+      ),
+    );
+    check(
+      gotCount == wantCount,
+      'W5: a count over Max asserts BY NAME (debug only) — got $gotCount, want $wantCount',
+    );
+
+    final long = fx1home.FxRoot();
+    long.labelLength = 9;
+    final wantLength = long.labelLength > 8 ? 'assert' : 'none';
+    final gotLength = writeOutcome(
+      () => fx1.fxRootFixedSave(
+        <fx1home.FxRoot>[long],
+        1,
+        Uint8List(fx1.fxRootFixedMeasure(1)),
+      ),
+    );
+    check(
+      gotLength == wantLength,
+      'W5: a length over N asserts BY NAME (debug only) — got $gotLength, want $wantLength',
+    );
+  } else {
+    // THE RELEASE TWIN: the bound is GONE and NOTHING is clamped. A count below
+    // zero rides the wire exactly as the caller spelled it and the writer
+    // reports success — the release writer trusts, it does not refuse, and it
+    // does not repair the caller's number either.
+    final under = fx1home.FxRoot();
+    under.marksCount = -1;
+    final buf = Uint8List(fx1.fxRootFixedMeasure(1));
+    check(
+      fx1.fxRootFixedSave(<fx1home.FxRoot>[under], 1, buf) == buf.length,
+      'W5 release: the removed bound does not refuse — the record writes',
+    );
+    final view = ByteData.sublistView(buf);
+    check(
+      view.getInt32(fx1.fxRootFixedHeaderBytes + 8 + 34, Endian.little) == -1,
+      'W5 release: and CLAMPS NOTHING — the out-of-range count is on the wire '
+      'exactly as the caller set it',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -1972,6 +2081,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  writeChecksDebugOnlyCase();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
