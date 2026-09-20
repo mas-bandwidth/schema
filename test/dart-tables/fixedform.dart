@@ -1022,6 +1022,94 @@ void fxCase() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 3b. THE DECLARED RANGE, CLAMPED ON LOAD AND COUNTED (docs/SPEC-TABLES.md §4;
+//     the C++ reference's `bounds_case`, test/tables/fixedform_main.cpp:1197).
+// ---------------------------------------------------------------------------
+//
+// A RANGED SCALAR holds a bound a caller can cross. The write side's own bounds
+// are DEBUG-ONLY by rule and a range is not one of them, so a caller CAN put an
+// out-of-range value on the wire; the READ side clamps it to the declared min
+// and max and counts each end once. This case writes its poison THROUGH THE
+// WRITER (never by poking bytes) and proves both ends on the identity plan, the
+// path this form reads through. The cross-version half is retired (§5.6): a
+// peer the lineage does not hold refuses by name before a plan exists.
+//
+// THE NEGATIVE HALF is the in-range value in the same two fields: it lands
+// whole and moves no counter, so the two clamps the hostile record counts are
+// the declared bound and not a pass that clamps everything.
+void rangedScalarClampCase() {
+  // ---- 1. THE IDENTITY PLAN: both ends, both counted ----
+  {
+    final one = fx1home.FxRoot();
+    one.keep = 1;
+    one.narrow = 2;
+    one.renamed = 5000; // declared | min = 0, max = 1000
+    one.gone = -7; // and the low end of the same declaration
+    one.nested.a = 111;
+    one.nested.b = 222;
+    final w = Uint8List(fx1.fxRootFixedMeasure(1));
+    check(
+      fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
+      'RANGE: the out-of-range record saves',
+    );
+
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      back,
+      1,
+      w,
+      w.length,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(n == 1, 'RANGE: the record reads');
+    check(back[0].renamed == 1000, 'RANGE: a value past max lands at max');
+    check(back[0].gone == 0, 'RANGE: a value under min lands at min');
+    check(r.clamped == 2, 'RANGE: two clamps, counted');
+    check(
+      back[0].nested.a == 111 && back[0].nested.b == 222,
+      'RANGE: an in-range neighbour is untouched',
+    );
+    check(
+      !r.malformed && r.refused == 0 && r.unknown == 0 && r.kindMismatch == 0,
+      'RANGE: nothing else fired',
+    );
+  }
+
+  // ---- 2. THE CONTROL: a legitimate value is not clamped, and counts nothing ----
+  {
+    final one = fx1home.FxRoot();
+    one.renamed = 321; // inside [0, 1000]
+    one.gone = 654; // inside [0, 1000]
+    final w = Uint8List(fx1.fxRootFixedMeasure(1));
+    check(
+      fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
+      'RANGE control: the in-range record saves',
+    );
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      back,
+      1,
+      w,
+      w.length,
+      fx1.fxRootFixedNewPlan(),
+      r,
+    );
+    check(n == 1, 'RANGE control: the record reads');
+    check(
+      back[0].renamed == 321 && back[0].gone == 654,
+      'RANGE control: an in-range value lands whole',
+    );
+    check(
+      r.clamped == 0,
+      'RANGE control: a value inside the declared range clamps nothing',
+    );
+  }
+}
+
 // TEXT UNDER AN ARM (docs/SPEC-TABLES.md §3.4, §15). FU1 writes a string(8)
 // in the union's SECOND arm; FU2 appends `extra` so a read of those bytes is
 // a COMPILED plan. Both reads go through fuRootFixedLoad — the same one-path
@@ -1972,6 +2060,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  rangedScalarClampCase();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
