@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
@@ -1161,4 +1162,198 @@ func TestLiveCount(t *testing.T) {
 	}
 }
 `)
+}
+
+// THE INSERTED-VARIANT-AND-ARM ROW (schema#876 E7, the §8 matrix's
+// "variant/arm inserted mid-list, keyed slots sliding, optional, moved kind"
+// over test/tables/V1 and V2). Its reference is the C++ case at
+// test/tables/fixedform_main.cpp:166-200: a V1 record whose `grade` is Gold
+// (ordinal 2) and whose `effect` is Ward (arm 2), read by V2, which inserts
+// Silver BETWEEN Bronze and Gold and Hex BETWEEN boost and ward. The values
+// must come back by NAME, not by position: positional decoding lands Silver and
+// Hex, one slot off, with nothing on the wire that could say so.
+//
+// The emitter is the site: tableFixedCompileEntry matches a union's arms and an
+// enum's variants by their wire id — the hash of the variant/arm NAME
+// (internal/codegen/gotable/fixedruntime.go, kind 15 at the `ta.Id == ma.Id`
+// arm walk and kind 30 at the `landed = uint16(k + 1)` remap table). This case
+// is the runtime proof of that match: disable the match and the record lands the
+// wrong variant.
+func TestFixedFormVariantOrArmInsertedMidList(t *testing.T) {
+	v1src, err := os.ReadFile("../../../test/tables/V1.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2src, err := os.ReadFile("../../../test/tables/V2.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	v1u := unitFrom(t, string(v1src))
+	v2u := unitFrom(t, string(v2src))
+
+	// THE READER IS HANDED THE WRITER'S LOCKED LAYOUT (§5.2): V2's build carries
+	// V1's layout as an older lineage entry, oldest first. Without it the file's
+	// hash is outside V2's lineage and the read is `layout_newer` before any
+	// record — a different refusal, not this row.
+	lineage := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(v1u) {
+		e, ok := FixedLineageOf(v1u, st.Name)
+		if !ok {
+			t.Fatalf("no lineage entry for %s", st.Name)
+		}
+		lineage[st.Name] = append(lineage[st.Name], e)
+	}
+	writeFixedUnit(t, filepath.Join(dir, "tblv1"), v1u, nil)
+	writeFixedUnit(t, filepath.Join(dir, "tblv2"), v2u, lineage)
+
+	// THE SIBLING RUNTIME. The generated unit's PACKET declarations live beside
+	// the table wire, and that half imports serialize.go. The fixed-form path
+	// crosses none of it, but the unit still has to compile, so a compile-only
+	// stub stands in for a checkout that is not in the sandbox. It is never
+	// called: every symbol below exists only so the packet codecs type-check.
+	serializeDir := filepath.Join(dir, "serialize")
+	if err := os.MkdirAll(serializeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(serializeDir, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go\n\ngo 1.26\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(serializeDir, "serialize.go"), []byte(`package serialize
+
+import "errors"
+
+var ErrValueOutOfRange = errors.New("value out of range")
+
+type WriteStream struct{}
+type ReadStream struct{}
+
+func (s *WriteStream) Err() error                       { return nil }
+func (s *ReadStream) Err() error                        { return nil }
+func (s *WriteStream) SerializeFloat32(v *float32)      {}
+func (s *ReadStream) SerializeFloat32(v *float32)       {}
+func (s *WriteStream) SerializeBits(v any, bits int)    {}
+func (s *ReadStream) SerializeBits(v any, bits int)     {}
+func (s *WriteStream) SerializeBits64(v *uint64, bits int) {}
+func (s *ReadStream) SerializeBits64(v *uint64, bits int)  {}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range []string{"tblv1", "tblv2"} {
+		mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => ../serialize\n", pkg)
+		if err := os.WriteFile(filepath.Join(dir, pkg, "go.mod"), []byte(mod), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	testDir := filepath.Join(dir, "test")
+	if err := os.MkdirAll(testDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mod := "module rows\n\ngo 1.26\n\nrequire (\n\ttblv1 v0.0.0\n\ttblv2 v0.0.0\n)\nreplace tblv1 => ../tblv1\nreplace tblv2 => ../tblv2\nreplace github.com/mas-bandwidth/serialize.go => ../serialize\n"
+	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := `package rows
+
+import (
+	"testing"
+
+	"tblv1"
+	"tblv2"
+)
+
+func TestVariantOrArmInsertedMidList(t *testing.T) {
+	one := tblv1.Cfg{}
+	tblv1.CfgReset(&one)
+	one.A = 42
+	copy(one.Name[:], "hello")
+	one.NameLength = 5
+	one.Grade = tblv1.GradeGold // V1 ordinal 2; V2 puts Silver at 2 and Gold at 3
+	one.Effect.Type = tblv1.EffectTypeWard
+	one.Effect.Ward.Charge = 0.75 // V1 arm 2; V2 puts Hex at 2 and Ward at 3
+	one.Tokens[int(tblv1.SlotAlpha)-1] = 21
+	one.Tokens[int(tblv1.SlotDelta)-1] = 24 // V2 slides Beta and keeps Delta
+	one.TierPresent = true
+	one.Tier = 77
+
+	wire := make([]byte, tblv1.CfgFixedMeasure(1))
+	if n := tblv1.CfgFixedSave([]tblv1.Cfg{one}, wire); n != int64(len(wire)) {
+		t.Fatalf("V1 save %d want %d", n, len(wire))
+	}
+
+	back := make([]tblv2.Cfg, 1)
+	var r tblv2.TableReport
+	plan := make([]tblv2.TableFixedEntry, 8192)
+	if n := tblv2.CfgFixedLoad(back, wire, plan, &r); n != 1 {
+		t.Fatalf("V2 reads V1: n=%d report=%+v", n, r)
+	}
+	if back[0].Grade != tblv2.GradeGold {
+		t.Fatalf("ENUM: V1's Gold (ordinal 2) read as ordinal %d, not V2's Gold (ordinal 3): an inserted variant was not remapped by NAME", back[0].Grade)
+	}
+	if back[0].Effect.Type != tblv2.EffectTypeWard {
+		t.Fatalf("UNION: V1's Ward (arm 2) read as arm %d, not V2's Ward (arm 3): an inserted arm was not remapped by NAME", back[0].Effect.Type)
+	}
+	if back[0].Effect.Ward.Charge != 0.75 {
+		t.Fatalf("UNION: the remapped arm's payload is %v, not the writer's 0.75", back[0].Effect.Ward.Charge)
+	}
+	if back[0].Tokens[int(tblv2.SlotAlpha)-1] != 21 || back[0].Tokens[int(tblv2.SlotDelta)-1] != 24 {
+		t.Fatalf("KEYED: a slid slot lost its value: alpha=%d delta=%d", back[0].Tokens[int(tblv2.SlotAlpha)-1], back[0].Tokens[int(tblv2.SlotDelta)-1])
+	}
+	if back[0].Tokens[int(tblv2.SlotSigma)-1] != 0 {
+		t.Fatalf("KEYED: a key the writer has no name for is %d, not its default 0", back[0].Tokens[int(tblv2.SlotSigma)-1])
+	}
+	if !back[0].TierPresent || back[0].Tier != 77 {
+		t.Fatalf("OPTIONAL: present=%v tier=%d, not the writer's 77", back[0].TierPresent, back[0].Tier)
+	}
+	if !back[0].C {
+		t.Fatalf("MISSING: V2's own c field did not take its declared default true")
+	}
+	if back[0].A != 5.0 {
+		t.Fatalf("KIND MOVED: int32 -> float32 landed %v, not the declared default 5.0", back[0].A)
+	}
+	if r.Malformed || r.Verdict != tblv2.TableOpenOk {
+		t.Fatalf("V2 reads V1: damage or refusal: %+v", r)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(testDir, "e7_test.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
+	cmd := exec.Command("go", "test", "-mod=mod", "-count=1", ".")
+	cmd.Dir = testDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("variant/arm inserted mid-list:\n%s", out)
+	}
+}
+
+// writeFixedUnit writes one generated unit — the PACKET declarations and the
+// table wire — into its own module directory. GenerateLineage is the only
+// difference from writeUnit: the reader's unit carries the writer's locked
+// layouts (§5.2), which is what makes an older file readable in a self-contained
+// test.
+func writeFixedUnit(t *testing.T, out string, u *ir.Unit, lineage map[string][]FixedLineageEntry) {
+	t.Helper()
+	packet, err := golang.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateLineage(u, lineage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range packet {
+		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, data := range tables {
+		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
