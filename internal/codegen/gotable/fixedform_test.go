@@ -1162,3 +1162,74 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormDuplicateNeverRaised pins E9 (schema#876): the fixed form's §4
+// counter set is `unknown`, `kind_mismatch`, `widened`, `clamped`, `malformed`
+// — "this form raises all but `duplicate`" (docs/FIXED-FORM-ALGORITHM.md §4,
+// and §29: "`duplicate` is the TEXT form's — the fixed wire never raises it").
+// `duplicate` is the TEXT form's counter for a repeated map key; the fixed form
+// refuses a map field outright (ir.TableFixedSupported) and its only keyed
+// structure, the enum-keyed array, is slot-indexed by variant with no key on the
+// wire — so a fixed read must leave `Duplicate` at zero. The Go TableReport
+// carries a `Duplicate` member (shared across forms, gotable.go), so this
+// fixture asserts the counters that EXIST on this leg's report, by name, on
+// both the identity plan and the compiled plan path.
+func TestFixedFormDuplicateNeverRaised(t *testing.T) {
+	runGenerated(t, `package probe
+enum Key { a, b, c }
+fixed table Child {
+    n int32 = 0
+}
+fixed table Root {
+    slots [Key]Child
+    seq   int32 = 7
+}
+`, `package probe
+import ("testing"; "unsafe")
+
+func TestDuplicateStaysZero(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.Slots[0].N = 11
+	one.Slots[1].N = 22
+	one.Slots[2].N = 33
+	one.Seq = 44
+	buf := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+
+	// IDENTITY PATH: the plan the emitter laid down.
+	got := make([]Root, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := RootFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("identity n=%d %+v", n, r)
+	}
+	if got[0].Slots[0].N != 11 || got[0].Slots[2].N != 33 || got[0].Seq != 44 {
+		t.Fatalf("identity keyed array did not land: %+v", got[0])
+	}
+	if r.Duplicate != 0 {
+		t.Fatalf("duplicate raised on the identity fixed read: %d (the fixed form raises all §4 counters but duplicate)", r.Duplicate)
+	}
+
+	// COMPILED PLAN PATH: the plan tableFixedCompile builds from the layout.
+	parsed, why := tableFixedParseLayout(RootFixedLayout)
+	if why != "" {
+		t.Fatalf("my own layout does not parse: %s", why)
+	}
+	var rr TableReport
+	made := tableFixedCompile(parsed, RootFixedLayout, RootFixedDst, plan, &rr)
+	if made <= 0 {
+		t.Fatalf("compile made %d", made)
+	}
+	var v Root
+	RootReset(&v)
+	record := buf[len(buf)-RootFixedRecordBytes:]
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &rr)
+	if rr.Duplicate != 0 {
+		t.Fatalf("duplicate raised on the compiled fixed read: %d (the fixed form raises all §4 counters but duplicate)", rr.Duplicate)
+	}
+}
+`)
+}
