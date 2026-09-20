@@ -111,6 +111,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  fixedPointShiftBits(check, bench, fixed);
   formHeaderProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
@@ -228,6 +229,117 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const r = read(bytes);
     check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
       "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// C8 — A FIXED-POINT FIELD'S BOUND IS IN VALUE UNITS AND ITS STORAGE IS RAW;
+// A bits(N) CLAMPS TO 2^N - 1
+// ---------------------------------------------------------------------------
+//
+// docs/FIXED-FORM-ALGORITHM.md §4.6: "A fixed-point field's bounds are in VALUE
+// UNITS and its storage is raw, so both ends are shifted by F first; a bits(N)
+// clamps to 2^N - 1." The C++ reference asserts the fixed-point half in
+// test/tables/fixedform_properties.cpp `probe_clamp_op` (a value past the
+// reader's max lands at max<<F and counts one); this is its twin on the JS leg.
+//
+// The record is written by THIS BUILD's own writer, so the reader takes the
+// identity plan, and the forged raw is the only thing that differs from bytes
+// already known good. The bounds pass is §4.6's, and it runs AFTER the plan on
+// BOTH paths (internal/codegen/jstable/fixedjs.go `emitDecodeBounds`), which is
+// why the identity path is the honest place to pin it — a fix there must move
+// this.
+const C8_SERVER_TIME = 48;   // BenchMixed.server_time fixed(24,8) | max 65535
+const C8_PING = 1221;        // BenchMixed.ping ufixed(8,8)        | max 250
+const C8_CRC_HINT = 1223;    // BenchMixed.crc_hint bits(24)
+
+export function fixedPointShiftBits(check, bench, fixed) {
+  const head = LAYOUT_AT + fixed.FixedTableFixedLayoutBytes;
+  const BODY = head + 8; // the first (only) record's body, past its hash
+
+  const oneRecord = () => {
+    const values = [new bench.FixedTable()];
+    const bytes = new Uint8Array(fixed.FixedTableFixedMeasure(1));
+    fixed.FixedTableFixedSave(values, 1, bytes);
+    return bytes;
+  };
+  const read = (bytes) => {
+    const values = [new bench.FixedTable()];
+    const report = new bench.TableFixedReport();
+    const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
+      fixed.FixedTableFixedNewPlan(), report);
+    return { n, report, v: values[0].Value };
+  };
+
+  // THE POSITIVE CONTROL FIRST: untouched storage is in range and moves
+  // nothing. A pass that fired on every record would read as a pass below.
+  {
+    const r = read(oneRecord());
+    check(r.n === 1 && r.report.clamped === 0,
+      "C8 F-SHIFT: an untouched record clamps nothing");
+  }
+
+  // A FIXED FIELD'S DECLARED MAX IS IN VALUE UNITS, so a raw past
+  // 65535<<8 = 16776960 lands at 16776960 and counts one. F is 8, and the
+  // whole number 16776960 is unreachable without the shift.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + C8_SERVER_TIME, 16777000, true);
+    const r = read(bytes);
+    check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
+      "C8 F-SHIFT: a fixed(24,8) raw past max<<F is a clamp, not a refusal");
+    check(r.v.ServerTime === 16776960,
+      `C8 F-SHIFT: fixed(24,8) past max 65535 lands at 65535<<8 (got ${r.v.ServerTime})`);
+    check(r.report.clamped === 1,
+      `C8 F-SHIFT: and it counts exactly one clamp (got ${r.report.clamped})`);
+  }
+  // AND THE CONTROL: a raw AT max<<F is in range and moves no counter.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + C8_SERVER_TIME, 16776960, true);
+    const r = read(bytes);
+    check(r.n === 1 && r.v.ServerTime === 16776960 && r.report.clamped === 0,
+      "C8 F-SHIFT: a raw AT max<<F is in range and counts nothing");
+  }
+
+  // THE UNSIGNED FIXED TWIN, so the shift is proved on both signednesses:
+  // ping ufixed(8,8) | max = 250 -> 250<<8 = 64000.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint16(BODY + C8_PING, 65000, true);
+    const r = read(bytes);
+    check(r.v.Ping === 64000,
+      `C8 F-SHIFT: ufixed(8,8) past max 250 lands at 250<<8 (got ${r.v.Ping})`);
+    check(r.report.clamped === 1,
+      `C8 F-SHIFT: and the unsigned fixed clamp counts one (got ${r.report.clamped})`);
+  }
+  // AND ITS CONTROL.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint16(BODY + C8_PING, 64000, true);
+    const r = read(bytes);
+    check(r.v.Ping === 64000 && r.report.clamped === 0,
+      "C8 F-SHIFT: a ufixed(8,8) raw AT max<<F counts nothing");
+  }
+
+  // A bits(N) CLAMPS TO 2^N - 1: crc_hint bits(24) rides in a 32-bit lane, so
+  // the WIDTH is the bound and the top byte is what the clamp drops.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 0x01000000, true);
+    const r = read(bytes);
+    check(r.v.CrcHint === 16777215,
+      `C8 BITS: bits(24) past 2^24-1 lands at 2^24-1 (got ${r.v.CrcHint})`);
+    check(r.report.clamped === 1,
+      `C8 BITS: and it counts exactly one clamp (got ${r.report.clamped})`);
+  }
+  // AND THE CONTROL: 2^24-1 itself is in width and moves nothing.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 16777215, true);
+    const r = read(bytes);
+    check(r.v.CrcHint === 16777215 && r.report.clamped === 0,
+      "C8 BITS: a bits(24) value AT 2^24-1 is in width and counts nothing");
   }
 }
 
