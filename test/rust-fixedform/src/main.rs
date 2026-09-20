@@ -2017,6 +2017,114 @@ fn the_text_content_rule(dir: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// P3 — HOSTILE BYTES, SWEEP + SANITIZER (docs/FIXED-FORM-ALGORITHM.md §7 item 5).
+//
+// "a byte-flip fuzz over the whole file, under a sanitizer, and it is not
+// optional — every offset is arithmetic over sizes a stranger wrote down, so
+// every byte, one bit at a time, is answered one of three ways and never a
+// fourth: a refusal by name, a `malformed` read, or a read that lands values".
+// The port of the C++ reference's `P3: mutate every record byte, both paths`
+// (test/tables/fixedform_properties.cpp:522, poison set :170-171); this leg
+// sweeps the WHOLE file — header, layout and both records — because the doc's
+// item 5 says the fuzz is over the whole file, not one record. The sanitizer
+// half is the build itself: this binary runs under BOTH `cargo run` AND
+// `cargo run --release` (make/rust.mk `tables-rust-fixedform`), so every
+// out-of-bounds slice is a checked panic in either mode, and a panic anywhere
+// in the sweep aborts the run — the fourth answer never arrives quietly.
+//
+// THE SITE is the generated load's guards (internal/codegen/rusttable/fixedform.go:
+// the empty/short/reserved checks at :1090-1106, the length-held block slice at
+// :1110-1112, the byte-compared layout at :1141, the ragged-tail
+// `is_multiple_of` at :1187) and the runtime's bounds-checked run
+// (internal/codegen/rusttable/fixedruntime.go:418 `table_fixed_run`, every op
+// through `.get()` answering `malformed`), with the scatter clamping every
+// stranger-held count, length, tag and ordinal to the reader's bound and the
+// refusal contract at fixedruntime.go:254 (`refuse`: nothing decoded, no
+// counter moves, `malformed` does not fire).
+// ---------------------------------------------------------------------------
+
+fn the_hostile_sweep(dir: &str) {
+    // THE CLEAN READ FIRST, so what follows is the forgery and not the pass:
+    // the legitimate value the rule admits must NOT fire.
+    let golden = slurp(dir, "fx1.bin");
+    let mut values = [tblfx1::FxRootRow::default(); 8];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+    check(
+        n == Some(2) && report == tblfx1::TableFixedReport::default(),
+        "P3 hostile sweep: the untouched file loads clean, so every refusal below is the forgery",
+    );
+
+    // THE SWEEP: the reference's own poison set, every offset of the whole file.
+    const POISON: [u8; 6] = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
+    let mut refused: u32 = 0;
+    let mut damaged: u32 = 0;
+    let mut landed: u32 = 0;
+    for at in 0..golden.len() {
+        for &p in &POISON {
+            let mut hit = golden.clone();
+            hit[at] = p;
+            let mut report = tblfx1::TableFixedReport::default();
+            let n = tblfx1::fx_root_fixed_load(&mut values, &hit, &mut plan, &mut remap, &mut report);
+            // THREE ANSWERS NEVER A FOURTH. A panic is the fourth: it unwinds
+            // out of the load and fails the whole binary, so reaching here IS
+            // the sanitizer's verdict for this mutation.
+            let named = n.is_none()
+                && report.refused
+                && report.reason != tblfx1::TableFixedReason::None
+                && !report.malformed;
+            let hurt = report.malformed && !report.refused;
+            let clean = n.is_some() && !report.refused && !report.malformed;
+            if named {
+                refused += 1;
+            } else if hurt {
+                damaged += 1;
+            } else if clean {
+                landed += 1;
+            } else {
+                check(
+                    false,
+                    &format!(
+                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a fourth answer (n={n:?} refused={} malformed={})",
+                        report.refused, report.malformed,
+                    ),
+                );
+            }
+        }
+    }
+    let total = (golden.len() * POISON.len()) as u32;
+    check(
+        refused + damaged + landed == total,
+        &format!(
+            "P3 hostile sweep: all {total} mutations answered, none a fourth (refused={refused} malformed={damaged} landed={landed})",
+        ),
+    );
+    check(
+        refused > 0 && damaged > 0 && landed > 0,
+        &format!(
+            "P3 hostile sweep: all three answers fired, never only one (refused={refused} malformed={damaged} landed={landed})",
+        ),
+    );
+
+    // AND THE LENGTH IS STRANGER-CONTROLLED TOO: one byte off the end is a
+    // ragged tail — `malformed`, never a silent short read.
+    let mut short = golden.clone();
+    short.pop();
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut values, &short, &mut plan, &mut remap, &mut report);
+    check(
+        n.is_none() && report.malformed && !report.refused,
+        "P3 hostile sweep: a one-byte-short file is DAMAGE, not a short read",
+    );
+    println!(
+        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",
+        golden.len(),
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE.
@@ -2278,6 +2386,7 @@ fn main() {
     the_guard_is_the_whole_tag();
     the_declared_range();
     the_text_content_rule(&dir);
+    the_hostile_sweep(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");
