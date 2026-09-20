@@ -111,6 +111,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  duplicateNeverRaised(check, bench, fixed);
   formHeaderProbes(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
@@ -228,6 +229,66 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const r = read(bytes);
     check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
       "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// E9: `duplicate` NEVER RAISED
+// ---------------------------------------------------------------------------
+//
+// §0 states the closed counter set in the form's own words — "The §4 counters
+// are `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and
+// `malformed`; this form raises all but `duplicate`" — and footnote 29 states
+// what the fixture owes: "`duplicate` is the TEXT form's — the fixed wire never
+// raises it — so a leg whose report has no such member is not missing one, and
+// a fixture asserts the counters that EXIST on that leg's report, all of them,
+// by name."
+//
+// THE REPORT HAS THE MEMBER: fixedruntime.go's TableFixedReport carries
+// `duplicate` because a caller has one report type and not two, exactly as the
+// C++ report says. So E9 owes an assertion BY NAME, not a composite that folds
+// it in beside the counters that can move. §5.5 is why there is no path to it
+// here: the only wire event that raises `duplicate` is a MAP's repeated key
+// (SPEC-TABLES.md §16.2), and "a pointer, map or unbounded array" in a fixed
+// table's closure "is a compile refusal". This case holds the counter at zero
+// on this build's own record read back, and again on a record that DOES move
+// another counter, so it cannot pass by reading a report that is silent for
+// every reason.
+export function duplicateNeverRaised(check, bench, fixed) {
+  const count = 1;
+  const out = new Uint8Array(fixed.FixedTableFixedMeasure(count));
+  const values = [new bench.FixedTable()];
+  check(fixed.FixedTableFixedSave(values, count, out) === out.length,
+    "E9 duplicate: the fixture's own record saves to a full file");
+
+  // the first record's body, past the file header, the layout and its hash, and
+  // the entities offset forgedCounts already plants counts at
+  const body = LAYOUT_AT + fixed.FixedTableFixedLayoutBytes + 8;
+  const atEntities = 52; // entities [1..8]MixedEntity
+
+  const read = (bytes) => {
+    const v = [new bench.FixedTable()];
+    const report = new bench.TableFixedReport();
+    const n = fixed.FixedTableFixedLoad(v, 1, bytes, bytes.length,
+      fixed.FixedTableFixedNewPlan(), report);
+    return { n, report };
+  };
+
+  // THE CLEAN READ: the form's own writer, read back, raises no duplicate.
+  {
+    const r = read(out);
+    check(r.n === 1 && r.report.duplicate === 0,
+      `E9 duplicate: a clean fixed read raises no duplicate (got ${r.report.duplicate})`);
+  }
+
+  // NOT VACUOUS: the SAME member on a read that moves another counter — a
+  // forged count clamps — with `duplicate` still at zero.
+  {
+    const forged = Uint8Array.from(out);
+    new DataView(forged.buffer).setInt32(body + atEntities, 9999, true);
+    const r = read(forged);
+    check(r.report.clamped === 1 && r.report.duplicate === 0,
+      `E9 duplicate: a forged count moves clamped and NOT duplicate (clamped ${r.report.clamped}, duplicate ${r.report.duplicate})`);
   }
 }
 
