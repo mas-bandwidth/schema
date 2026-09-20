@@ -1326,6 +1326,174 @@ void absentOptionalCase() {
 }
 
 // ---------------------------------------------------------------------------
+
+// 9. WRITE SLACK IS THE TEMPLATE'S ZEROS (docs/FIXED-FORM-ALGORITHM.md fix 1,
+// docs/SPEC-TABLES.md §3.4). A `string(8)` used to two units, a `[..4]int32`
+// with one live slot and a `bytes(6)` used to two bytes are DECLARED bytes
+// carrying no value; what rides in the slack behind them is the ZEROS the
+// template laid down, never this writer's own storage past the used length or
+// the live count.
+//
+// THE ROUND TRIP CANNOT SEE THIS: a read lands the WIRE's zeros in the slack,
+// so saving it back is byte-identical whether or not the writer copies whole
+// spans. The stain has to be put in the WRITER's storage, which is what this
+// case does. The reference's own slack_case (test/tables/fixedform_main.cpp)
+// and the Rust, C, C# and JS legs hold the same case.
+//
+// THE CONTROL IS THE STAIN, as it is for every other kind of slack: the
+// storage past the used length and the live count is filled with a byte a
+// clean record carries nowhere. The case first proves the stain IS in the
+// storage (or it is checking nothing), then proves the WIRE carries none of
+// it, and then proves a whole-span copy of the same storage WOULD have
+// carried it — the wrong behaviour, watched failing.
+void writeSlackCase() {
+  final v = fx1home.FxRoot();
+  v.keep = 11;
+  v.narrow = 22;
+  v.renamed = 33;
+  v.gone = 44;
+  v.nested.a = 55;
+  v.nested.b = 66;
+  v.label.fillRange(0, 8, 0xAA);
+  v.label[0] = 0x68; // 'h'
+  v.label[1] = 0x69; // 'i'
+  v.labelLength = 2;
+  v.marks.fillRange(0, 4, 0x5A5A5A5A);
+  v.marks[0] = 7;
+  v.marksCount = 1;
+  v.blob.fillRange(0, 6, 0x11);
+  v.blob[0] = 0xDE;
+  v.blob[1] = 0xAD;
+  v.blobLength = 2;
+
+  // the stain is really in the storage, so nothing below is vacuous
+  check(
+    v.label[2] == 0xAA,
+    'W1 CONTROL: the text slack really is stained in storage',
+  );
+  check(
+    v.marks[1] == 0x5A5A5A5A,
+    'W1 CONTROL: the array slack really is stained in storage',
+  );
+  check(
+    v.blob[2] == 0x11,
+    'W1 CONTROL: the bytes slack really is stained in storage',
+  );
+
+  final w = Uint8List(fx1.fxRootFixedMeasure(1));
+  check(
+    fx1.fxRootFixedSave(<fx1home.FxRoot>[v], 1, w) == w.length,
+    'W1 slack: the record saves',
+  );
+  // the record's BODY, past the sixteen-byte header, the layout and the
+  // record's own eight-byte hash. THE OFFSETS ARE FX1's OWN LAYOUT
+  // (test/tables/FX1.schema): label's length at 22 and its 8 content bytes at
+  // 26, marks' count at 34 and its four int32 slots at 38, blob's length at 54
+  // and its 6 content bytes at 58 — the same body offsets absentOptionalCase
+  // reads.
+  final at = fx1.fxRootFixedHeaderBytes + 8;
+  final body = w.sublist(at, at + fx1.fxRootFixedBodyBytes);
+  final wire = ByteData.sublistView(body);
+  // THE SCAN IS OVER THE SLACK AND NOT THE WHOLE BODY, and the wire's OWN
+  // length and count say where the live extent ends. A legitimate FULLY-LIVE
+  // value puts the storage's bytes there, so a whole-body marker scan would
+  // fire on a value the rule admits — the wrong question. The slack is the
+  // bytes past the live extent, and only those; a fully-live value leaves the
+  // range empty.
+  bool slackClean(int from, int to, int stain) {
+    for (var i = from; i < to; i++) {
+      if (body[i] == stain) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  check(
+    slackClean(26 + wire.getInt32(22, Endian.little), 34, 0xAA),
+    'WRITE SLACK IS TEMPLATE ZEROS: not one stained TEXT byte reached the wire',
+  );
+  check(
+    slackClean(38 + wire.getInt32(34, Endian.little) * 4, 54, 0x5A),
+    'WRITE SLACK IS TEMPLATE ZEROS: not one stained ARRAY byte reached the wire',
+  );
+  check(
+    slackClean(58 + wire.getInt32(54, Endian.little), 64, 0x11),
+    'WRITE SLACK IS TEMPLATE ZEROS: not one stained BYTES byte reached the wire',
+  );
+
+  // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+  // writer did before fix 1 — carries the stain, so the checks above
+  // discriminate and are not passing for some other reason.
+  check(
+    v.label.sublist(2).contains(0xAA),
+    'W1 NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain',
+  );
+  check(
+    v.marks[3] == 0x5A5A5A5A,
+    'W1 NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain',
+  );
+  check(
+    v.blob[5] == 0x11,
+    'W1 NEGATIVE CONTROL: a whole-span copy WOULD have carried the bytes stain',
+  );
+
+  // and the record still reads back as itself: the used length and the live
+  // count are what the reader validates, and both are inside the bound, so
+  // nothing clamps. THE EXPECTATIONS ARE THE VALUE'S OWN, so pointing the case
+  // at the rule's other admitted value — a fully-live extent, or none at all —
+  // is one change to the lengths above and nothing else.
+  final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+  final r = fx1home.TableFixedReport();
+  final n = fx1.fxRootFixedLoad(
+    back,
+    1,
+    w,
+    w.length,
+    fx1.fxRootFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'W1 slack: the record reads');
+  check(
+    back[0].labelLength == v.labelLength &&
+        text(back[0].label, v.labelLength) == text(v.label, v.labelLength),
+    'W1 slack: the used length reads, and the content with it',
+  );
+  check(back[0].marksCount == v.marksCount, 'W1 slack: the live count reads');
+  for (var i = 0; i < v.marksCount; i++) {
+    check(back[0].marks[i] == v.marks[i], 'W1 slack: live slot $i reads');
+  }
+  check(
+    back[0].blobLength == v.blobLength,
+    'W1 slack: the live bytes length reads',
+  );
+  for (var i = 0; i < v.blobLength; i++) {
+    check(back[0].blob[i] == v.blob[i], 'W1 slack: live byte $i reads');
+  }
+  // and the slack the record did not use lands as the wire's zero, never as
+  // this writer's leftover
+  for (var i = v.labelLength; i < 8; i++) {
+    check(
+      back[0].label[i] == 0,
+      'W1 slack: unused text byte $i lands as the wire\'s zero',
+    );
+  }
+  for (var i = v.marksCount; i < 4; i++) {
+    check(
+      back[0].marks[i] == 0,
+      'W1 slack: an unused slot lands as the wire\'s zero and not as some writer\'s leftover',
+    );
+  }
+  for (var i = v.blobLength; i < 6; i++) {
+    check(
+      back[0].blob[i] == 0,
+      'W1 slack: unused bytes land as the wire\'s zero',
+    );
+  }
+  quiet(r, 'W1 slack');
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -1972,6 +2140,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  writeSlackCase();
   negativeControl();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
