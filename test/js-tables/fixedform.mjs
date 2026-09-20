@@ -117,6 +117,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
   liveCountSlack(check, fx1, fx1home);
+  hostileByteSweep(check, fx1, fx1home);
   holePrefillIdentity(check, fx1, fx1home);
   retired("holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
   retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -1431,6 +1432,117 @@ function liveCountSlack(check, fx1, fx1home) {
     `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].Marks[1]}, ${back[0].Marks[2]}, ${back[0].Marks[3]}]`);
   check(r.clamped === 0,
     `live-count: clamped counts 0 not 3 (got ${r.clamped})`);
+}
+
+// ---------------------------------------------------------------------------
+// P3 — HOSTILE BYTES, THE SWEEP (docs/FIXED-FORM-ALGORITHM.md §7 item 5, the
+// coverage matrix row "byte-flip fuzz, sanitizer, three answers never a fourth";
+// docs/SPEC-TABLES.md §3.4). THE REFERENCE IS test/tables/fixedform_main.cpp's
+// `fuzz_case` (lines 642-694) and test/tables/fixedform_properties.cpp's P3
+// (lines 522-638); the C leg's port is test/c-tables/fixedform_main.c:94-113.
+//
+// A FIXED RECORD CARRIES NO LENGTHS AND NO TERMINATORS, so every offset this
+// reader uses is arithmetic over sizes a stranger wrote down: a count, a length,
+// a union tag, a nested body's position. Every byte of a form-3 file is flipped
+// to a hostile value here, handed to THIS build's identity reader, and the
+// answer must be one of exactly three and never a fourth — a refusal by name, a
+// `malformed` read, or a read that lands values — where "lands values" means
+// every landed field is inside the bound the schema declares for it. A throw, a
+// negative read that is neither a refusal nor malformed, or an out-of-bound
+// field is the fourth answer, which is what this refuses.
+//
+// THE SANITIZER HALF of §7 item 5 is what the C++ reference gets from ASan+UBSan
+// (test/tables/fixedform_properties.cpp:1-16). JavaScript cannot step outside a
+// Uint8Array: an in-range DataView offset is always a value and an out-of-range
+// one throws a RangeError, which this catches and reports as the fourth answer.
+// The RANGED clamp (`emitDecodeBounds`) and the count/length clamps
+// (`emitDecodeCount`) are the pass the identity path owes, and a hostile value
+// that reaches a consumer unclamped is the silently WRONG REPORT this watches
+// for.
+//
+// Exported so a sandbox without the C++ reference corpus can run this case
+// directly; checkFixedForm also calls it, which is what the gate runs.
+function fx1HostileIssue(v) {
+  if (!(v.Renamed >= 0 && v.Renamed <= 1000)) { return `renamed ${v.Renamed}`; }
+  if (!(v.Gone >= 0 && v.Gone <= 1000)) { return `gone ${v.Gone}`; }
+  if (!(v.Nested.A >= 0 && v.Nested.A <= 1000)) { return `nested.a ${v.Nested.A}`; }
+  if (!(v.Nested.B >= 0 && v.Nested.B <= 1000)) { return `nested.b ${v.Nested.B}`; }
+  if (!(v.LabelLength >= 0 && v.LabelLength <= 8)) { return `label_length ${v.LabelLength}`; }
+  if (!(v.MarksCount >= 0 && v.MarksCount <= 4)) { return `marks_count ${v.MarksCount}`; }
+  if (!(v.BlobLength >= 0 && v.BlobLength <= 6)) { return `blob_length ${v.BlobLength}`; }
+  return null;
+}
+
+export function hostileByteSweep(check, fx1, fx1home) {
+  const clean = new fx1home.FxRoot();
+  clean.Keep = 4242; clean.Narrow = 40000; clean.Renamed = 321; clean.Gone = 654;
+  clean.Nested.A = 111; clean.Nested.B = 222;
+  clean.LabelLength = setText(clean.Label, "fx1");
+  clean.Marks[0] = 101; clean.Marks[1] = 202; clean.MarksCount = 2;
+  clean.Blob[0] = 0xDE; clean.Blob[1] = 0xAD; clean.Blob[2] = 0xBE; clean.Blob[3] = 0xEF;
+  clean.BlobLength = 4;
+  const file = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([clean], 1, file) === file.length,
+    "P3 hostile bytes: the lawful record saves");
+
+  // CONTROL 1's positive half, and it is the rule's own legitimate value: the
+  // UNFLIPPED record must land, in bound, with no counter moved. A sweep whose
+  // assertions fired on this would be testing something else entirely.
+  {
+    const back = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(back, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed && r.refused === 0 && r.clamped === 0,
+      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, malformed ${r.malformed}, clamped ${r.clamped})`);
+    check(fx1HostileIssue(back[0]) === null,
+      `P3 hostile bytes: the lawful record lands every field in bound (${fx1HostileIssue(back[0])})`);
+  }
+
+  const POISON = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
+  let refused = 0, malformed = 0, landed = 0, corrected = 0, threw = 0, divergences = 0;
+  for (let at = 0; at < file.length; at++) {
+    for (const p of POISON) {
+      if (file[at] === p) { continue; } // not a flip; the clean byte is already this
+      const hit = Uint8Array.from(file);
+      hit[at] = p;
+      const back = [new fx1home.FxRoot()];
+      const r = new fx1home.TableFixedReport();
+      let n;
+      try {
+        n = fx1.FxRootFixedLoad(back, 1, hit, hit.length, fx1.FxRootFixedNewPlan(), r);
+      } catch (e) {
+        threw++; divergences++;
+        check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} THREW ${e.name}: ${e.message}`);
+        continue;
+      }
+      if (n < 0) {
+        if (r.refused !== 0 && !r.malformed) { refused++; }
+        else if (r.malformed && r.refused === 0) { malformed++; }
+        else {
+          divergences++;
+          check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} answered a FOURTH way: n ${n}, refused ${r.refused}, malformed ${r.malformed}`);
+        }
+        continue;
+      }
+      landed++;
+      if (r.clamped > 0) { corrected++; }
+      const issue = fx1HostileIssue(back[0]);
+      if (issue !== null) {
+        divergences++;
+        check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} landed OUT OF BOUND: ${issue}`);
+      }
+    }
+  }
+  // NOT VACUOUS: each of the three answers must actually have been SEEN. A
+  // sweep that never refused, or never malformed, or never landed, is a sweep
+  // over the wrong file.
+  check(refused > 0, `P3 hostile bytes: the sweep saw a named refusal (${refused})`);
+  check(malformed > 0, `P3 hostile bytes: the sweep saw a malformed read (${malformed})`);
+  check(landed > 0, `P3 hostile bytes: the sweep saw reads that landed values (${landed})`);
+  check(corrected > 0, `P3 hostile bytes: the sweep exercised a correction that moved a counter (${corrected})`);
+  check(divergences === 0, `P3 hostile bytes: ${divergences} divergences`);
+  console.log(`P3 hostile bytes: ${file.length} bytes x ${POISON.length} poisons — ${refused} refused by name, ` +
+    `${malformed} malformed, ${landed} records read (${corrected} with a correction), ${threw} throws, ${divergences} divergences`);
 }
 
 // HOLE PREFILL, THE IDENTITY HALF: §5.3 step 8's own text, "identity's hole list
