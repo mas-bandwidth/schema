@@ -3026,3 +3026,109 @@ func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormIdentityEqualsCompiled is the row P1 of schema#876:
+// IDENTITY == COMPILED, FIELDS AND COUNTERS. The reference is
+// test/tables/fixedform_properties.cpp:459 -- "P1: identity == compiled,
+// fields and counters" -- and the rule it asserts is
+// docs/FIXED-FORM-ALGORITHM.md §5.7: "test/tables/fixedform_properties.cpp
+// runs its save / load / compare properties over every fixture -- `P1` among
+// them". The identity plan is the baked XFixedPlan; the compiled plan is
+// tableFixedCompile over THIS BUILD'S OWN LAYOUT bytes. They are two
+// independent constructions of the same read, and the row is that a lawful
+// record lands the same fields and moves the same counters through both.
+//
+// The identity read is XFixedLoad over a file carrying this build's own hash,
+// which selects the baked plan. The compiled read parses XFixedLayout back into
+// a layout view and compiles it against XFixedDst, then runs the plan. The
+// record is LAWFUL: every value in bound, the ordinal in set, the text valid
+// UTF-8, the optional present -- so the whole comparison is an equality of the
+// two values AND of the two reports, and no counter is a repair.
+//
+// The compiled plan is run with RootReset first (the destination image the
+// emitted prefill copies from) and RootFixedClamp after the run (the same
+// storage pass the generated load calls), because the schema declares a bound.
+// A lawful record clamps nothing, so both reports stay zero: the equality is
+// not two copies of one shared counter bug.
+//
+// CONTROL 2 sabotages tableFixedCompileEntry's copy op for a same-width field
+// and this row must go RED. Measured on this leg: the failure is a SILENTLY
+// WRONG REPORT -- the read still returns one record and raises no refusal, and
+// the two landed values differ (and the counters move), which is exactly what
+// the row exists to catch.
+func TestFixedFormIdentityEqualsCompiled(t *testing.T) {
+	runGenerated(t, `package probe
+enum Grade { Bronze, Gold }
+fixed table Root {
+    n     int32 = 5 | min = 0, max = 1000
+    on    bool
+    grade Grade
+    xs    [..4]int32
+    note  ?int32
+    label string(8)
+    tail  int32 = 7
+}
+`, `package probe
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestIdentityEqualsCompiled(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.N = 424
+	one.On = true
+	one.Grade = GradeGold
+	one.XsCount = 2
+	one.Xs[0] = 11
+	one.Xs[1] = 22
+	one.NotePresent = true
+	one.Note = -3
+	copy(one.Label[:], "p1")
+	one.LabelLength = 2
+	one.Tail = 99
+
+	buf := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("P1: save wrote %d, want %d", n, len(buf))
+	}
+
+	// THE IDENTITY PATH: this build's own hash selects the baked RootFixedPlan.
+	id := make([]Root, 1)
+	var ri TableReport
+	iplan := make([]TableFixedEntry, 4096)
+	if n := RootFixedLoad(id, buf, iplan, &ri); n != 1 {
+		t.Fatalf("P1: the identity read returned %d (%+v), want one record", n, ri)
+	}
+	if ri != (TableReport{}) {
+		t.Fatalf("P1: a lawful record moved the identity counters: %+v", ri)
+	}
+
+	// THE COMPILED PATH: THE SAME layout bytes, compiled by tableFixedCompile.
+	parsed, why := tableFixedParseLayout(RootFixedLayout)
+	if why != "" {
+		t.Fatalf("P1: this build's own layout does not parse: %s", why)
+	}
+	cplan := make([]TableFixedEntry, 4096)
+	var rc TableReport
+	made := tableFixedCompile(parsed, RootFixedLayout, RootFixedDst, cplan, &rc)
+	if made <= 0 {
+		t.Fatalf("P1: tableFixedCompile made %d (%+v)", made, rc)
+	}
+	co := Root{}
+	RootReset(&co)
+	rc = TableReport{}
+	record := buf[len(buf)-RootFixedRecordBytes:]
+	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
+	RootFixedClamp(&co, &rc)
+
+	if co != id[0] {
+		t.Fatalf("P1: identity and compiled landed different fields:\n identity %+v\n compiled %+v", id[0], co)
+	}
+	if ri != rc {
+		t.Fatalf("P1: identity and compiled moved different counters: identity %+v compiled %+v", ri, rc)
+	}
+}
+`)
+}
