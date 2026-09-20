@@ -1530,6 +1530,16 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
     `[${ident[0].Blob[0]}, ${ident[0].Blob[1]}, ${ident[0].Blob[2]}, ${ident[0].Blob[3]}], want [222, 173, 190, 239]`);
   check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0,
     "bytes(N) identity: the slack behind the used length is zero");
+  // W11 ASSERTION: bytes(N) is layout kind 14 (Array), not kind 12 (String),
+  // and it takes the ARRAY's plan row (count at aux, not at dst).
+  // Entry 11 is blob, Entry 12 is its element (u8).
+  const LAYOUT_AT = 20; const ENTRY_BYTES = 17; const KIND_AT = 8;
+  const blobEntryAt = LAYOUT_AT + 4 + 17 * 11;
+  const elemEntryAt = LAYOUT_AT + 4 + 17 * 12;
+  check(w1[blobEntryAt + KIND_AT] === 14,
+    `bytes(N) is layout kind 14 (Array), not kind 12 (String): got ${w1[blobEntryAt + KIND_AT]}`);
+  check(w1[elemEntryAt + KIND_AT] === 6,
+    `bytes(N) element is kind 6 (u8): got ${w1[elemEntryAt + KIND_AT]}`);
 }
 
 // RETIRED BY §5.6: every assertion below the first save reads a record through
