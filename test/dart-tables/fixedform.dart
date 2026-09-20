@@ -1888,6 +1888,247 @@ void textLengthClampCase() {
 }
 
 // ---------------------------------------------------------------------------
+// 3b. P3: THE HOSTILE-BYTES SWEEP (docs/FIXED-FORM-ALGORITHM.md §7 item 5)
+// ---------------------------------------------------------------------------
+//
+// The reference is test/tables/fixedform_properties.cpp:522-638, "mutate every
+// record byte, both paths": every byte of a lawful record — the eight-byte
+// layout hash and the whole body — is set to each value of {00,01,02,7f,80,ff}
+// and read back. Every mutant is answered one of THREE ways and never a fourth:
+// a refusal BY NAME, a `malformed` read, or a read that LANDS.
+//
+// THIS LEG OWES THE THIRD, SANITIZER-SHAPED CLAUSE the reference gets from its
+// ASan+UBSan twin (Makefile's tables-fixed-properties). On Dart the runtime
+// bounds-check IS the sanitizer — an index past a Uint8List is a RangeError —
+// and a reader that RAISES on hostile bytes is not one that refuses them, so
+// nothing below may throw. And a read that lands is held to its declared bound:
+// the clamp the read loop performs is the only thing between a forged count and
+// an index a consumer will use.
+const List<int> p3Poison = <int>[0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
+
+int p3Mutants = 0;
+int p3Threw = 0;
+
+void p3Sweep(
+  String name,
+  Uint8List file,
+  int recordAt,
+  int recordBytes,
+  void Function(Uint8List mutant, int at, int poison) read,
+) {
+  for (var i = 0; i < recordBytes; i++) {
+    for (final poison in p3Poison) {
+      final mutant = Uint8List.fromList(file);
+      mutant[recordAt + i] = poison;
+      p3Mutants++;
+      try {
+        read(mutant, i, poison);
+      } catch (e) {
+        p3Threw++;
+        check(
+          false,
+          'P3 $name byte $i poison 0x${poison.toRadixString(16)}: '
+          'an exception ESCAPED the reader: $e',
+        );
+      }
+    }
+  }
+}
+
+// THE IDENTITY PATH, on FX1: a text length, a counted array, a byte length and
+// four ranged integers. The count is the one value a landed read may NOT leave
+// out of bounds, because the decode trusts it to size its own element loop.
+void p3Fx1() {
+  final one = fx1home.FxRoot();
+  one.keep = 4242;
+  one.narrow = 40000;
+  one.renamed = 321;
+  one.gone = 654;
+  one.nested.a = 111;
+  one.nested.b = 222;
+  one.label.setRange(0, 3, 'fx1'.codeUnits);
+  one.labelLength = 3;
+  one.marks[0] = 101;
+  one.marks[1] = 202;
+  one.marksCount = 2;
+  one.blob.setRange(0, 4, <int>[0xDE, 0xAD, 0xBE, 0xEF]);
+  one.blobLength = 4;
+  final file = Uint8List(fx1.fxRootFixedMeasure(1));
+  check(
+    fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, file) == file.length,
+    'P3 fx1: the lawful record saves',
+  );
+
+  p3Sweep('fx1', file, fx1.fxRootFixedHeaderBytes, fx1.fxRootFixedRecordBytes, (
+    mutant,
+    at,
+    poison,
+  ) {
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final report = fx1home.TableFixedReport();
+    final n = fx1.fxRootFixedLoad(
+      back,
+      1,
+      mutant,
+      mutant.length,
+      fx1.fxRootFixedNewPlan(),
+      report,
+    );
+    final what = 'P3 fx1 byte $at poison 0x${poison.toRadixString(16)}';
+    if (n < 0) {
+      check(
+        report.refused != 0 || report.malformed,
+        '$what: a negative read is a named refusal or malformed',
+      );
+      return;
+    }
+    check(n == 1, '$what: a one-record file answers one record (got $n)');
+    final v = back[0];
+    check(v.renamed >= 0 && v.renamed <= 1000, '$what: renamed in bound');
+    check(v.gone >= 0 && v.gone <= 1000, '$what: gone in bound');
+    check(v.nested.a >= 0 && v.nested.a <= 1000, '$what: nested.a in bound');
+    check(v.nested.b >= 0 && v.nested.b <= 1000, '$what: nested.b in bound');
+    check(
+      v.labelLength >= 0 && v.labelLength <= 8,
+      '$what: label length in bound',
+    );
+    check(
+      v.marksCount >= 0 && v.marksCount <= 4,
+      '$what: marks count CLAMPED to the declared bound',
+    );
+    check(
+      v.blobLength >= 0 && v.blobLength <= 6,
+      '$what: blob length in bound',
+    );
+  });
+}
+
+// THE SECOND WIRE BYTE A FIXED READER NORMALISES, swept where it lives: P3's
+// Chain carries an OPTIONAL, so byte 20 of the body is its PRESENT flag — `0`
+// or `1` on the wire and nothing else. A forged `2` must land as the language's
+// own true, never verbatim (§4.5). This sweep drives the text length and the
+// ranged payload beside it too.
+void p3Optional() {
+  final one = p3home.Chain();
+  one.name.setRange(0, 5, 'dirty'.codeUnits);
+  one.nameLength = 5;
+  one.linkPresent = true;
+  one.link.value = 777;
+  one.link.tag.setRange(0, 5, 'stale'.codeUnits);
+  one.link.tagLength = 5;
+  final file = Uint8List(p3.chainFixedMeasure(1));
+  check(
+    p3.chainFixedSave(<p3home.Chain>[one], 1, file) == file.length,
+    'P3 p3: the lawful record saves',
+  );
+
+  p3Sweep('p3', file, p3.chainFixedHeaderBytes, p3.chainFixedRecordBytes, (
+    mutant,
+    at,
+    poison,
+  ) {
+    final back = <p3home.Chain>[p3home.Chain()];
+    final report = p3home.TableFixedReport();
+    final n = p3.chainFixedLoad(
+      back,
+      1,
+      mutant,
+      mutant.length,
+      p3.chainFixedNewPlan(),
+      report,
+    );
+    final what = 'P3 p3 byte $at poison 0x${poison.toRadixString(16)}';
+    if (n < 0) {
+      check(
+        report.refused != 0 || report.malformed,
+        '$what: a negative read is a named refusal or malformed',
+      );
+      return;
+    }
+    check(n == 1, '$what: a one-record file answers one record (got $n)');
+    final v = back[0];
+    check(
+      v.nameLength >= 0 && v.nameLength <= 16,
+      '$what: name length in bound',
+    );
+    check(
+      v.link.value >= 0 && v.link.value <= 1000,
+      '$what: link value in bound',
+    );
+    check(
+      v.link.tagLength >= 0 && v.link.tagLength <= 8,
+      '$what: link tag length in bound',
+    );
+  });
+}
+
+// THE COMPILED PATH, which P3's "both paths" names: an OLD P1 record read by
+// the P3 loader finds a hash that is not its own and runs a plan the emitter
+// compiled from P1's layout. The SAME read loop with the SAME clamps, so a
+// mutant must answer the same three ways.
+void p3Compiled() {
+  final one = p1home.Chain();
+  one.name.setRange(0, 5, 'chain'.codeUnits);
+  one.nameLength = 5;
+  one.link.value = 500;
+  one.link.tag.setRange(0, 3, 'tag'.codeUnits);
+  one.link.tagLength = 3;
+  final file = Uint8List(p1.chainFixedMeasure(1));
+  check(
+    p1.chainFixedSave(<p1home.Chain>[one], 1, file) == file.length,
+    'P3 p1->p3: the lawful record saves',
+  );
+
+  p3Sweep('p1->p3', file, p1.chainFixedHeaderBytes, p1.chainFixedRecordBytes, (
+    mutant,
+    at,
+    poison,
+  ) {
+    final back = <p3home.Chain>[p3home.Chain()];
+    final report = p3home.TableFixedReport();
+    final n = p3.chainFixedLoad(
+      back,
+      1,
+      mutant,
+      mutant.length,
+      p3.chainFixedNewPlan(),
+      report,
+    );
+    final what = 'P3 p1->p3 byte $at poison 0x${poison.toRadixString(16)}';
+    if (n < 0) {
+      check(
+        report.refused != 0 || report.malformed,
+        '$what: a negative read is a named refusal or malformed',
+      );
+      return;
+    }
+    check(n == 1, '$what: a one-record file answers one record (got $n)');
+    final v = back[0];
+    check(
+      v.nameLength >= 0 && v.nameLength <= 16,
+      '$what: name length in bound',
+    );
+    check(
+      v.link.value >= 0 && v.link.value <= 1000,
+      '$what: link value in bound',
+    );
+    check(
+      v.link.tagLength >= 0 && v.link.tagLength <= 8,
+      '$what: link tag length in bound',
+    );
+  });
+}
+
+void hostileBytesCase() {
+  p3Mutants = 0;
+  p3Threw = 0;
+  p3Fx1();
+  p3Optional();
+  p3Compiled();
+  print('P3 hostile bytes: $p3Mutants mutants swept, $p3Threw threw');
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -2947,6 +3188,7 @@ void main(List<String> args) {
   boundsCase();
   textLengthClampCase();
   rangedScalarClampCase();
+  hostileBytesCase();
   negativeControl();
   // F4: the sample lives behind the corpus reads, and it does not need them —
   // it is the reader's OWN header and a length that lies.
