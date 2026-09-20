@@ -1109,6 +1109,149 @@ fn the_layout_validation() {
 }
 
 // ---------------------------------------------------------------------------
+// W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+// (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). The plan's source offsets are
+// arithmetic over sizes a WRITER wrote down, so a layout that passes every
+// rule of §1.1 and still names a byte past `root.size` is refused WHOLE and
+// never partly compiled, under `layout_record_too_large`.
+//
+// THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
+// field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
+// never parses a stranger — unknown hash is `layout_newer` — so the bound is
+// asserted on `table_fixed_compile` directly, which is the path a known older
+// writer still takes. A Load of the same bytes still refuses, and sets nothing.
+//
+// WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+// `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+// of no elements — and the compiler takes the head from the READER's own row
+// (`counted`), so a reader whose field carries a live count subtracts four
+// from zero. The elements then land at `their_at + 4`, past a record that
+// ends at four.
+fn the_record_bound() {
+    // the ids are READ OUT of this build's own layout rather than spelled as
+    // hashes, so the case does not quietly stop naming the fields it means
+    let mine = tblfx1::TableFixedBlock::parse(&tblfx1::FX_ROOT_FIXED_BLOCK)
+        .expect("my own block parses");
+    let root_id = mine.entry(0).id;
+    let mut keep_id = 0u64;
+    let mut blob_id = 0u64;
+    let mut blob_elem_id = 0u64;
+    let mut label_id = 0u64;
+    for i in 1..mine.count() {
+        let e = mine.entry(i);
+        if e.kind == 8 && e.size == 4 && keep_id == 0 {
+            keep_id = e.id; // `keep`, a uint32
+        }
+        if e.kind == 12 && label_id == 0 {
+            label_id = e.id; // `label`, a string(8)
+        }
+        if e.kind == 14 && i + 1 < mine.count() {
+            // `blob`, bytes(6): an array of u8
+            let el = mine.entry(i + 1);
+            if el.kind == 6 && el.size == 1 {
+                blob_id = e.id;
+                blob_elem_id = el.id;
+            }
+        }
+    }
+    check(
+        root_id != 0 && keep_id != 0 && blob_id != 0 && label_id != 0,
+        "W10: the ids this case names are the ids this build's own layout carries",
+    );
+
+    // 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`
+    {
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, 4);
+        put_entry(&mut layout, root_id, 13, 4, 2); // a record body of FOUR bytes
+        put_entry(&mut layout, keep_id, 8, 4, 0); // the four bytes, at 0
+        put_entry(&mut layout, blob_id, 14, 0, 1); // an array of NO bytes, at 4
+        put_entry(&mut layout, blob_elem_id, 6, 1, 0);
+        let theirs = tblfx1::TableFixedBlock::parse(&layout);
+        check(
+            theirs.is_ok(),
+            "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND",
+        );
+        let theirs = theirs.expect("the hostile layout parses");
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        let made = tblfx1::table_fixed_compile(
+            &theirs,
+            &mine,
+            &tblfx1::FX_ROOT_FIXED_COUNTED,
+            &mut plan,
+            &mut remap,
+            &mut report,
+        );
+        check(
+            made.is_none(),
+            "W10: COMPILE answers None (hostile) for an entry past the writer's record size",
+        );
+        check(
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutRecordTooLarge,
+            "W10: COMPILE names layout_record_too_large for an entry past the writer's record size",
+        );
+        let f = file_of(&layout);
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        values[0].keep = 7; // the destination's BEFORE state, which a refusal must not touch
+        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, &f, &mut plan, &mut remap, &mut report);
+        check(
+            n.is_none() && report.refused,
+            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)",
+        );
+        check(
+            report.unknown == 0
+                && report.kind_mismatch == 0
+                && report.widened == 0
+                && report.clamped == 0
+                && !report.malformed,
+            "W10: the refusal sets nothing and counts nothing",
+        );
+        check(
+            values[0].keep == 7 && values[0].blob_length == 0,
+            "W10: NOT PARTLY COMPILED — no entry of the plan ran",
+        );
+    }
+
+    // 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
+    //    overrun — a text entry whose length word and payload END EXACTLY at
+    //    `root.size` — is a layout with nothing wrong with it, and a bound that
+    //    refused it would be a bound that refuses the wire.
+    {
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, 3);
+        put_entry(&mut layout, root_id, 13, 16, 2); // four bytes, then a string(8)'s twelve
+        put_entry(&mut layout, keep_id, 8, 4, 0);
+        put_entry(&mut layout, label_id, 12, 12, 0); // src 4, +4 the length word, 12 bytes to 16
+        let theirs = tblfx1::TableFixedBlock::parse(&layout);
+        check(
+            theirs.is_ok(),
+            "W10: the boundary layout passes all seven rules of §1.1",
+        );
+        let theirs = theirs.expect("the boundary layout parses");
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        let made = tblfx1::table_fixed_compile(
+            &theirs,
+            &mine,
+            &tblfx1::FX_ROOT_FIXED_COUNTED,
+            &mut plan,
+            &mut remap,
+            &mut report,
+        );
+        check(
+            made.is_some() && !report.refused && !report.malformed,
+            "W10: a text entry ending EXACTLY at root.size is not a refusal",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // THE UNION, ON THE REFERENCE'S OWN BENCH CORPUS (docs/SPEC-TABLES.md §15)
 //
 // bench/paired/corpus/bench_fixed.bin is 64 records of BenchMixed written by
@@ -2274,6 +2417,7 @@ fn main() {
     the_negative_controls(&dir);
     the_form_header_probes(&dir);
     the_layout_validation();
+    the_record_bound();
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
     the_declared_range();
