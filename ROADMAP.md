@@ -108,6 +108,12 @@ Fixed tables provide versioning such that a new reader can always read an old wr
 
 Future capabilities we are thinking about, in particular around more advanced variable and recursive table definitions and cooking data to efficient binary formats.
 
+The eleven columns after the nine are the languages a game team has around it:
+Swift, TypeScript, Lua, Clojure, Python, Ruby, Kotlin, GDScript, Zig, Odin and
+Haxe. Each arrives the way the nine did — the packet wire bit-identical to the
+corpus first, then every table row, then its scorecard — and they are tracked
+on [issue #381](https://github.com/mas-bandwidth/schema/issues/381).
+
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | fixed class on the table wire | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
