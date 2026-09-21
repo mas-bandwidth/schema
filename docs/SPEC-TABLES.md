@@ -410,7 +410,11 @@ does.
 **GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
 the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
 (the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). Two spellings are Go's own and the reason is at each site:
+generic text walk). The unit's shared runtime is emitted ONCE, into the
+package's home `<Package>Table.go` — the file named for the package when one
+exists, else a file emitted for the unit — named by the PACKAGE so an
+earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
 per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
