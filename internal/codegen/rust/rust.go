@@ -34,11 +34,15 @@ import (
 // unit, plus the lib.rs that stitches the crate together. Modules glob
 // re-export into the crate root, so schema references stay order-free across
 // files exactly as in Go.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+// Generate is GenerateMode with the default (best) codec. The stream mode is a
+// variadic explicit request: it disables the flat word codec (flat.go) so
+// every item takes the per-field runtime form, wire-identical by construction.
+func Generate(u *ir.Unit, stream ...bool) (map[string][]byte, error) {
 	// fixed(I, F), int128 and uint128: serialize.rs carries the full surface
 	// (serialize_int128/serialize_u128 over native i128/u128, serialize_fixed
 	// over FixedPointStorage) — storage is native, wire calls mirror the C++
 	// macros.
+	streamOnly := len(stream) > 0 && stream[0]
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	deps := ir.FileDeps(u)
@@ -61,7 +65,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f}
+		g := &gen{unit: u, file: f, stream: streamOnly}
 		g.emitFile(f.Base == home)
 		g.needsCrate = g.needsCrate || len(deps[f.Base]) > 0 || (g.needsStreams && f.Base != home)
 		out[strings.ToLower(f.Base)+".rs"] = g.assemble()
@@ -155,6 +159,11 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 type gen struct {
 	unit *ir.Unit
 	file *ir.File
+
+	// stream disables the flat word codec (flat.go): every statically-sized
+	// item takes the per-field runtime form instead, the hand-writer idiom
+	// --codec=stream exists to profile. Wire-identical by construction.
+	stream bool
 
 	body             strings.Builder
 	bulkBytes        map[*ir.Field]bool // fixed [N]u8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)

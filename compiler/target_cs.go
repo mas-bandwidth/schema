@@ -15,7 +15,7 @@ type csTarget struct{}
 
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
-func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (csTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	// Wide text and declared value defaults are carried on both wires.
 	if err := refuseWideText(u, "cs"); err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseValueDefaults(u, "cs"); err != nil {
 		return nil, err
 	}
-	files, err := csharp.Generate(u)
+	files, err := csharp.Generate(u, streamOnly(opts))
 	if err != nil {
 		return nil, err
 	}

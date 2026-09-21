@@ -15,7 +15,7 @@ type goTarget struct{}
 
 func (goTarget) Names() []string { return []string{"go"} }
 
-func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (goTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseUnported(u, "go"); err != nil {
 		return nil, err
 	}
-	files, err := golang.Generate(u)
+	files, err := golang.Generate(u, streamOnly(opts))
 	if err != nil {
 		return nil, err
 	}

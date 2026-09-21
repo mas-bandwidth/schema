@@ -2651,7 +2651,7 @@ Go, zero third-party dependencies, one static binary: `schema`.
 ```
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
 schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust]
-                  [--out <dir>] [--verbose] [dir|files...]
+                  [--codec best|stream] [--out <dir>] [--verbose] [dir|files...]
 schema id         [dir|files...]               // print the protocol id
 schema projection [dir|files...]               // print the wire shape projection (§3.1)
 schema build-version [--facts] [dir|files...]  // the cook/block id, and the text it digests (SPEC-TABLES.md §20)
@@ -2674,6 +2674,20 @@ schema help
 serve the type wire this document specifies; the other seven belong to the
 table wire and are specified in SPEC-TABLES.md, because one binary reads one
 set of declarations and both wires are declared in it.
+
+**`--codec` chooses which calls an emitter writes, never which bits.** `best`,
+the default, is each language's ruled fastest correct form — the flat or
+self-contained codec where that is sanctioned, the runtime's per-field stream
+calls where that is already the fastest form. `stream` is the PER-FIELD
+hand-writer idiom: the plain stream calls each serialize library's own docs
+teach, with no flat folding and no batch, so every platform's runtime stream
+path can be profiled with uniform, compiler-emitted code. Both modes are
+gated by the same goldens, so the mode changes the calls and not the wire; the
+stream mode is expected to be slower wherever a flat form is the best one, and
+that gap is a measurement, not a failure. A target that carries no stream path
+yet — the self-contained `java`, `dart` and `elixir` emitters, which would need
+a pinned serialize runtime — refuses `stream` by name rather than silently
+emitting `best`; an unknown spelling is refused for every target.
 
 Success is silent. Commands whose printed output is their answer (`id`,
 `projection`, `build-version`, `version`) print it; everything else prints
