@@ -68,6 +68,21 @@ jobs:
   # off the pull-request path (a PR macOS job pushed during those minutes
   # queued 1:34 before starting, measured, run 32830268855) and no argument at
   # all against running it here.
+  #
+  # NOTE, 2026-09-18: EVERY NIGHTLY SINCE 2026-09-07 READS `cancelled`, AND
+  # NOBODY CANCELLED THEM. `make test` no longer fits the hour on a hosted
+  # runner, and GitHub records a job killed by `timeout-minutes` as CANCELLED
+  # rather than failed — one timed-out leg then colours the whole run, which is
+  # why the verdict looks like an interruption and not the timeout it is. The
+  # concurrency group above is not involved: it carries
+  # cancel-in-progress: false. MEASURED — the last green certification, run
+  # 34117629952 on 2026-09-07, spent 51:55 in this job on ubuntu, already inside
+  # the cap by eight minutes; run 35329874611 on 2026-09-18 was cut at 60:00
+  # with `make test` still running, and so were four inline-gate legs and
+  # release-gates (tables-go-release). The suite grew into the cap, which is the
+  # same growth issue #1025 measures in `go test ./...` (0:37 -> 5:34..9:10), so
+  # the remedy is the suite's cost or a bench we own — NOT a larger number on
+  # this line. A cap raised to fit a growing suite stops meaning anything.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -402,7 +417,8 @@ jobs:
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
   # The same job rides every pull request in ci.yml, deliberately: neither
-  # trigger substitutes for the other.
+  # trigger substitutes for the other. It rides there under `make vuln` and
+  # here under `make vuln-strict`; the block on the step says why.
   vuln:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -412,12 +428,25 @@ jobs:
         with:
           go-version: stable
           cache: false
-      # PINNED to a govulncheck release, bumped by hand. What has to change
-      # on its own is the VULNERABILITY DATABASE, which the tool fetches at run
-      # time — so the pin costs this gate nothing, and a red run can no longer
-      # mean the scanner moved under us rather than a new CVE landing.
+      # THE PIN AND THE RETRIES LIVE IN THE TREE, NOT IN THIS FILE. `make
+      # vuln-strict` runs tools/vuln/govulncheck.sh, which carries the
+      # scanner's pin (the Makefile's GOVULNCHECK_VERSION, bumped by hand),
+      # three attempts 15 s then 45 s apart, and the classifier that decides
+      # whether a red one is this tree's fault — held to its fixtures by
+      # `make test`, in tools/vuln/testdata/cases.txt.
+      #
+      # The pull-request gate in ci.yml runs `make vuln`: the same pin, DIRECT
+      # with no retry and no classifier, so an unreachable database is RED
+      # there too. A CERTIFICATE CANNOT forgive: it is a full run at an exact
+      # SHA, and an unreachable database certifies nothing, so this gate goes
+      # RED after three attempts where the direct PR scan cannot even retry a
+      # transient blip.
+      #
+      # INSIDE THE 10-MINUTE CAP with room to spare: 3 x 35 s of scan plus the
+      # 15 s and 45 s sleeps is 2:45 worst case; the cap remains for a scan that
+      # hangs instead of failing.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+        run: make vuln-strict
 
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and

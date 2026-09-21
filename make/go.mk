@@ -348,6 +348,57 @@ tables-go-containers-negative-controls:
 
 test-go: tables-go-containers tables-go-containers-negative-controls
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the Go half of the JavaScript J1
+# technique (docs/PORTING.md, schema#421): the generated accessor and the
+# generated descriptor are two independent derivations of one layout, so the
+# leg reads every field of a block and of a cook both ways and requires
+# agreement — including a pointer's SLOT, whose position is what a
+# self-relative delta is relative to (§6.3). The two controls move one
+# derivation — a generated block scalar four bytes, a cook pointer slot eight —
+# and each must turn the gate red, or the accessor half could be reading the
+# descriptors twice and nobody would know.
+.PHONY: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+tables-go-accessor-descriptor-agreement:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreement$$' -count=1
+tables-go-accessor-negative-control:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementScalarNegativeControl$$' -count=1
+tables-go-slot-negative-control:
+	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementSlotNegativeControl$$' -count=1
+test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+
+# THE RUNTIME HOME GATE, the Go half of the C# J2 technique (docs/PORTING.md,
+# schema#422): a unit's shared table runtime lives in <Package>Table.go, named
+# by the PACKAGE and never by the file that happens to sort first, so a schema
+# file that sorts earlier relocates nothing. The gate adds exactly such a file
+# (Aaa.schema, ahead of Guarded.schema) to a COPY of tables/examples and
+# requires the home not to move. The negative control puts the file-order rule
+# back — through `go build -overlay`, so no tracked file is written — and
+# requires the home to move.
+.PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
+tables-go-runtime-home:
+	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+tables-go-runtime-home-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/gotable/gotable.go > build/goruntime-fileorder.gotext
+	@grep -q SABOTAGED build/goruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/gotable/gotable.go":"%s/build/goruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/goruntime-overlay.json
+	@go build -overlay=build/goruntime-overlay.json -o build/schema-goruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-go && mkdir -p build/runtime-home-go/src
+	@cp tables/examples/*.schema build/runtime-home-go/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-go/src/Aaa.schema
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/base-sabotage tables/examples
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/added-sabotage build/runtime-home-go/src
+	@base=$$(cd build/runtime-home-go/base-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 added=$$(cd build/runtime-home-go/added-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Go): the file-order rule moves the runtime from $$base to $$added"
+test-go: tables-go-runtime-home tables-go-runtime-home-negative-control
+
 # The disjoint fill is held under Go's thread sanitizer. Its control makes
 # every worker fill the whole array; byte identity alone cannot see that race.
 .PHONY: tables-go-block-build tables-go-block-race-negative-control tables-go-block-fill-refuser tables-go-block-fill-refuser-negative-control

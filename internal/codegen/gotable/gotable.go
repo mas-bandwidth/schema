@@ -155,6 +155,43 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+// runtimeHome is the basename of the file that carries a unit's shared Go table
+// runtime — TableReport, the reflection descriptors, the wire and message
+// runtimes, the text walk's home, the region machinery when the unit is
+// variable. IT IS THE PACKAGE, and nothing else.
+//
+// A Go package is one namespace across its files, so a shared runtime need only
+// be emitted ONCE, ANYWHERE — and "anywhere" wants a name that does not move.
+// Any rule that picks a FILE picks it off the file order, and relocates the
+// runtime the day the unit gains a file that sorts earlier: correct output, and
+// a diff nobody can read (#347). The package names one home per unit and never
+// moves. A unit whose own <Package>.schema exists carries the runtime in that
+// file's generated output — same name, one file, no collision; every other unit
+// gets the file emitted FOR it, which is what makes the home unconditional.
+//
+// A file basename that differs from the package ONLY BY CASE is the same file
+// name on a case-insensitive filesystem and two on a case-sensitive one, so the
+// match is case-insensitive and the FILE's spelling wins.
+func runtimeHome(u *ir.Unit) string {
+	home := ir.GoExportName(u.Package)
+	for _, f := range u.Files {
+		if strings.EqualFold(f.Base, home) {
+			return f.Base
+		}
+	}
+	return home
+}
+
+// unitHasFile reports whether a schema file's basename is base.
+func unitHasFile(u *ir.Unit, base string) bool {
+	for _, f := range u.Files {
+		if f.Base == base {
+			return true
+		}
+	}
+	return false
+}
+
 // Generate returns <Base>Table.go (plus the accelerators) for every file of a
 // unit that declares tables, and nothing when it declares none — a table-free
 // unit's generated tree is byte-identical with or without this package.
@@ -176,7 +213,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	regional := len(variableTableNames(u)) > 0
 
 	closure := ir.TableClosure(u)
-	home := ir.ProtocolIdHome(u)
+	home := runtimeHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	// the identity pair of an enum is emitted ONCE per unit, by the file that
 	// declares it: a Go package is one namespace across its files, so a second
@@ -185,41 +222,50 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
 	idOrdinal := wireIdOrdinals(u)
-	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal}
-		members := fileMembers(f, closure)
-		if g.home {
-			g.needsMath = true
-			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
-			g.pf("%s", tableCookWriteSource(u))
-			if regional {
-				g.emitRegionRuntime(blocks)
-				g.emitRetainRuntime()
-			}
-			if anyKeyed {
-				g.pf("%s", tableKeyedAccessor)
-			}
-			if len(armSlots) > 0 {
-				g.pf("// One descriptor per union declaration, initialized after package data.\n")
-				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
-				if !regional {
-					for _, file := range u.Files {
-						for _, decl := range file.Decls {
-							if un, ok := decl.(*ir.Union); ok {
-								if _, used := armSlots[un.Name]; used {
-									g.emitUnionRow(un)
-								}
-							}
-						}
-						for _, un := range file.TableUnions {
+	// the shared runtime is emitted ONCE, into the package's own home file,
+	// whether or not a schema file names the package (docs/SPEC-TABLES.md
+	// §19.2). Extracted so the synthesized home and a file that happens to be
+	// named for the package emit the same bytes.
+	emitRuntime := func(g *tableGen) {
+		g.needsMath = true
+		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
+		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+		g.pf("%s", tableCookWriteSource(u))
+		if regional {
+			g.emitRegionRuntime(blocks)
+			g.emitRetainRuntime()
+		}
+		if anyKeyed {
+			g.pf("%s", tableKeyedAccessor)
+		}
+		if len(armSlots) > 0 {
+			g.pf("// One descriptor per union declaration, initialized after package data.\n")
+			g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
+			if !regional {
+				for _, file := range u.Files {
+					for _, decl := range file.Decls {
+						if un, ok := decl.(*ir.Union); ok {
 							if _, used := armSlots[un.Name]; used {
 								g.emitUnionRow(un)
 							}
 						}
 					}
+					for _, un := range file.TableUnions {
+						if _, used := armSlots[un.Name]; used {
+							g.emitUnionRow(un)
+						}
+					}
 				}
 			}
+		}
+	}
+	runtimeWritten := false
+	for _, f := range u.Files {
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal}
+		members := fileMembers(f, closure)
+		if g.home {
+			emitRuntime(g)
+			runtimeWritten = true
 		}
 		for _, un := range f.TableUnions {
 			g.emitTableUnion(un)
@@ -272,6 +318,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+"Table.go"] = src
 	}
+	// No file of the unit is named for the package, so the home is emitted FOR
+	// the unit rather than for a file. The runtime lands in <Package>Table.go
+	// either way — that is the whole rule, and it is what keeps an
+	// earlier-sorting file from moving it (§19.2).
+	if !runtimeWritten {
+		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal}
+		emitRuntime(g)
+		src, err := g.assemble()
+		if err != nil {
+			return nil, err
+		}
+		out[home+"Table.go"] = src
+	}
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
 	// descriptors, in its own file so a project that never reads or writes a
@@ -304,7 +363,13 @@ func fileMembers(f *ir.File, closure map[string]bool) []*ir.Struct {
 
 func (g *tableGen) assemble() ([]byte, error) {
 	var h strings.Builder
-	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
+	// a home the unit has no file for is generated FOR THE UNIT, and says so —
+	// there is no <Base>.schema to name
+	if g.file != nil {
+		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
+	} else {
+		fmt.Fprintf(&h, "// Code generated by the schema compiler for package %s. DO NOT EDIT.\n", g.unit.Package)
+	}
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
@@ -345,7 +410,11 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString(g.body.String())
 	src, err := format.Source([]byte(h.String()))
 	if err != nil {
-		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
+		base := runtimeHome(g.unit)
+		if g.file != nil {
+			base = g.file.Base
+		}
+		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", base, err)
 	}
 	return src, nil
 }
@@ -467,9 +536,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // tableRuntime is the unit's shared table runtime, emitted into ONE file per
-// unit (the protocol-id home). C++ emits it into every header behind an
-// include guard; a Go package is one namespace across its files, so a second
-// copy would be a redeclaration error instead.
+// unit (<Package>Table.go, the package's home). C++ emits it into every header
+// behind an include guard; a Go package is one namespace across its files, so a
+// second copy would be a redeclaration error instead.
 func tableRuntime() string {
 	return `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema

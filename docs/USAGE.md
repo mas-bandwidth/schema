@@ -1203,19 +1203,25 @@ An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
 nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
 VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
 refusal live; the refusal is an assert plus an abort and it stands in every
-build, exactly as C++'s accessor refuses:
+build, exactly as C++'s accessor refuses. This fragment is compiled and run
+against the `tables/examples` unit by `make tables-c-usage`:
 
+<!-- c-table-usage -->
 ```c
-SCHEMA_TABLE_KEYED_AT( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
+KeyedConfig config;
+keyed_config_reset( &config );
+
+SCHEMA_TABLE_KEYED_AT( config.hulls, HULL_GUNSHIP, HULL_MAX ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
-for ( key = 1; key <= SHIP_TYPE_MAX; key++ )
+for ( key = 1; key <= HULL_MAX; key++ )
 {
-    ShipConfig * ship = &SCHEMA_TABLE_KEYED_AT( fleet.ships, key );
-    ship->health *= 2.0f;
+    HullConfig * hull = &SCHEMA_TABLE_KEYED_AT( config.hulls, key, HULL_MAX );
+    hull->health *= 2.0f;
 }
 ```
+<!-- /c-table-usage -->
 
 A `?T` is the value beside a `<name>_present` byte, a `string(N)` a
 `char[N + 1]` beside an `int32_t <name>_length`, a `bytes(N)` a `uint8_t[N]`
@@ -1470,8 +1476,8 @@ marks the cells.
 **What Elixir does with the two forms it has, and it is the language rather
 than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
 a producer could write. It OPENS one another build wrote and reads every slot
-at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
-`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+at its offset — `Blockdemo.RenderBlock.block_open_render_frame(bytes)` and
+`Graphdemo.GraphCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
 the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
 the packet emitter's own reader verdict, and refuse a forged image rather than
 raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
@@ -3802,6 +3808,35 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
 end
 ```
 
+The same two accelerator readers as above, reached through the names the
+emitter writes — the package namespace, the file base and the form: a block is
+`Blockdemo.RenderBlock.block_open_render_frame(bytes)`, a cook is
+`Graphdemo.GraphCook.cook_open_scene(bytes)`. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-elixir-usage`:
+
+<!-- elixir-table-usage -->
+```elixir
+# open the cook another build wrote; :error is a foreign build, a corrupt
+# file or the other byte order — fall back to the tolerant wire
+case Graphdemo.GraphCook.cook_open_scene(bytes) do
+  {:ok, cook} ->
+    walk = fn walk, at ->
+      case at do
+        :null -> :ok
+        :error -> raise "the cook's head reference leaves the region"
+        {:ok, node} ->
+          IO.puts(Graphdemo.GraphCook.list_node_node_value(cook.region, node))
+          walk.(walk, Graphdemo.GraphCook.list_node_node_next(cook.region, node))
+      end
+    end
+
+    walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
+  :error ->
+    raise "the Scene cook did not open — fall back to the tolerant wire"
+end
+```
+<!-- /elixir-table-usage -->
+
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
 `VarHandle` little-endian word access and `java.util.Arrays`, never a runtime
@@ -3832,6 +3867,26 @@ if (!ok) {
 }
 ```
 
+The Java accelerators read the same two forms, as members of the generated
+`<Table>Block` and `<Root>Cook` types. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-java-usage`:
+
+<!-- java-table-usage -->
+```java
+// open the cook another build wrote; a null is a foreign build, a corrupt
+// file or the other byte order — fall back to the tolerant wire
+SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
+if (cook != null) {
+    int root = cook.root();
+    int at = cook.at(SceneRow.headSlot(root), ListNodeRow.size);
+    while (at >= 0) {            // -1 is null AND a delta whose record does not fit
+        use(ListNodeRow.value(cook.data(), at));
+        at = cook.at(ListNodeRow.nextSlot(at), ListNodeRow.size);
+    }
+}
+```
+<!-- /java-table-usage -->
+
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
 and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
 `<name>_save`, `<name>_load` and their bodies index caller-owned slices and
@@ -3858,7 +3913,36 @@ all — the Rust analogue of C++'s "include the header only if you use the form"
 compiled. `--features cook` and `--features block` take one without the other.
 What stays either way is the wire, the text form, the reflection descriptors
 and the blittable `<Name>Row` records — a cooked record IS the blittable row,
-so the record family belongs to neither feature.
+so the record family belongs to neither feature. This fragment is compiled and
+run against the `tables/pointers` unit by `make tables-rust-usage`:
+
+<!-- rust-table-usage -->
+```rust
+use graphdemo::*;
+
+// open the cook another build wrote and walk its node chain. The bytes stay
+// put for as long as the handle is used; nothing here copies and nothing here
+// pins. A `None` is a foreign build, a corrupt file or the other byte order —
+// the caller falls back to the tolerant wire, which carries every version.
+pub fn usage(bytes: &[u8]) -> bool {
+    let Some(cook) = (unsafe { SceneCook::open(bytes.as_ptr(), bytes.len() as u64) }) else {
+        return false;
+    };
+    unsafe {
+        // a reference is one add through <name>_at, which takes the SLOT — the
+        // delta is relative to the slot's own address — and null is a null
+        // pointer
+        let scene = cook.root();
+        let mut node = list_node_at(&(*scene).head);
+        while !node.is_null() {
+            println!("  {}", (*node).value);
+            node = list_node_at(&(*node).next);
+        }
+    }
+    true
+}
+```
+<!-- /rust-table-usage -->
 
 **JavaScript** — ES modules, zero dependencies, Number storage for widths of
 32 bits or fewer, BigInt for 64 and 128. Two codecs are generated over the
@@ -3940,8 +4024,10 @@ A cook reads the same way, with one addition: a reference is an eight-byte
 SIGNED SELF-RELATIVE delta, so `At` takes the SLOT's own offset and answers the
 target's — `null` for a null reference. A delta that leaves the region throws a
 `RangeError` naming the cook as corrupt, because a cook is trusted input and
-that is a file `schema cook-check` refuses:
+that is a file `schema cook-check` refuses. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-js-usage`:
 
+<!-- js-table-usage -->
 ```js
 import { SceneCook, SceneRow, ListNodeRow } from "./GraphCook.js";
 
@@ -3956,6 +4042,7 @@ if (cook !== null) {
   }
 }
 ```
+<!-- /js-table-usage -->
 
 The casing you meet is one rule, the packet emitter's, because a table's
 closure decodes into the classes that emitter wrote: types, functions,
