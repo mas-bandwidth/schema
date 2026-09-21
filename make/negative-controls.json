@@ -20,7 +20,9 @@
         "tables-wasrows-negative-control",
         "toolchain-negative-control",
         "tables-flat-wire-negative-control",
-        "tables-keyed-shift-negative-control"
+        "tables-keyed-shift-negative-control",
+        "tables-c-runtime-home-negative-control",
+        "tables-cpp-runtime-home-negative-control"
       ]
     },
     {
@@ -31,10 +33,12 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
@@ -109,6 +113,7 @@
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
@@ -453,7 +458,7 @@
     {
       "name": "ports-js-java-rust",
       "when": "pull-request",
-      "why": "The JavaScript, Java and Rust ports' controls in one job, PACKED 2026-09-13: 46, 44 and 33 s as three jobs on run 34780754076, of which about 25 s each was the setup and the build; their three toolchain steps together cost less than the two builds the pack removes. It carries what those rows carried: the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "The JavaScript, Java and Rust ports' controls in one job, PACKED 2026-09-13: 46, 44 and 33 s as three jobs on run 34780754076, of which about 25 s each was the setup and the build; their three toolchain steps together cost less than the two builds the pack removes. It carries what those rows carried: the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Java port's controls and its four packet families: eight controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. | the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
@@ -476,7 +481,8 @@
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
-        "tables-rust-names-negative-control"
+        "tables-rust-names-negative-control",
+        "tables-java-runtime-home-negative-control"
       ],
       "node": "26",
       "java": "21",
@@ -498,7 +504,11 @@
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
         "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fuzz-negative-control"
+        "tables-elixir-fuzz-negative-control",
+        "tables-dart-allocator-runtime-negative-control",
+        "tables-dart-runtime-home-negative-control",
+        "tables-elixir-accessor-negative-control",
+        "tables-elixir-slot-negative-control"
       ],
       "dart": "3.13.2",
       "otp": "29.0.5",
@@ -526,7 +536,8 @@
         "tables-go-allocator-runtime-negative-control",
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control",
-        "tables-go-measure-negative-controls"
+        "tables-go-measure-negative-controls",
+        "tables-go-runtime-home-negative-control"
       ]
     }
   ],

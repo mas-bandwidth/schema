@@ -174,3 +174,36 @@ func TestAMessageRowRefusesShortByName(t *testing.T) {
 		t.Fatalf("the full row did not load as a message row at full capacity: %+v", m.Retains)
 	}
 }
+
+// §6.6 NAMES THE RETENTION ARM'S ROSTER (schema#682). The arm runs the
+// VARIABLE-CLASS FILE roots and nothing else: a fixed-class root's LoadRetain
+// is refused by name, and a form-2 SaveRetain refuses by name (§3.3). After
+// #679 the form-2 retaining READ exists, so the reason §4.2 gave no longer
+// forces the exclusion — the scope is a choice. Where the register's cell
+// reader looks is §6.6's own fuzzer paragraph, so the page states it there.
+// This bound holds the page to the harness: RED if the paragraph stops naming
+// the roster, and RED if the arm admits a message root.
+func TestSpec66NamesTheRetentionArmAsFileRootsOnly(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(conformanceRoot(t), "docs", "SPEC-TABLES.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	const anchor = "The wire fuzzer runs with retention OFF"
+	at := strings.Index(text, anchor)
+	if at < 0 {
+		t.Fatalf("docs/SPEC-TABLES.md §6.6 no longer carries its fuzzer paragraph, anchored at %q", anchor)
+	}
+	para := text[at:]
+	if cut := strings.Index(para, "\n\n"); cut >= 0 {
+		para = para[:cut]
+	}
+	if !strings.Contains(strings.ToLower(para), "file roots") {
+		t.Fatalf("docs/SPEC-TABLES.md §6.6's fuzzer paragraph does not name the retention arm's roster as file roots only (schema#682):\n%s", para)
+	}
+
+	_, _, u := corpus(t)
+	if _, err := newWireRoot(u, "blobdemo", "Catalog", true, true); err == nil {
+		t.Fatal("the retention arm admitted a message root (schema#682)")
+	}
+}

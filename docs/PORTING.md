@@ -332,7 +332,7 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ✅ `internal/codegen/elixirtable/block.go:173` (`<F>_count`/`<F>_at`, and a lazy `Stream` walk) `TestElixirBlockRowsAreReachedWithoutAllocatingTheArray` |
 
 ### M8 — The cook opens in O(1)
 
@@ -559,7 +559,14 @@ shared by `emitNumber`, `emitPackMeasure` and `emitPack`; the tool's walk is
 `internal/tablewire/nodes.go:112` (`visitEdges`).
 
 **Proven in.** C++ (#433 — found by #429's wire fuzzer at the `stream_parts`
-seed's id pass, where dropping one field separated the two orders).
+seed's id pass, where dropping one field separated the two orders). **An
+OPTIONAL over a variable-length value is the same walk's presence gate**
+(schema#526): the walk skips a field whose presence companion is false before
+it descends, so an absent optional's table is not an edge and a pointer left in
+its slots costs no record. `test/tables/G1.schema`'s `optional_absent_no_edge`
+and `optional_present_edge` are the corpus and the tool-written pins; the C
+port's `internal/codegen/ctable/graph.go` `emitGraphEdge` gates the same way.
+The remaining ports' walker row is schema#366.
 
 **Measured effect.** Structural: on `stream_arm_first`, the corpus value whose
 numbering differs between the two orders, the numbering, the region layout and
@@ -1073,13 +1080,16 @@ name — a base-alignment check that is never exercised is dead code as far as
 any gate is concerned, and unaligned reads succeed on every host this repo
 builds on, so the fuzz oracle alone cannot see the check go missing. The cook's
 lead is held for every port by the harness's `cook_lead_1..63` forgery rows;
-the block's is not (#387), so a port holds it itself.
+the block's is held by `block_base_unaligned` (#387), one image one byte past an
+aligned base, so the reference holds the check and a port still holds it itself.
 
-**Reference.** `test/conformance/elixir/driver_impl.ex:740-741`
+**Reference.** `testdata/conformance/tables/MANIFEST.txt`
+(`block_base_unaligned`); `test/conformance/cpp/main.cpp` (the pointer column
+of the block forgery battery); `test/conformance/elixir/driver_impl.ex:740-741`
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
 reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 
-**Proven in.** Elixir (#369).
+**Proven in.** Elixir (#369); the reference row in every leg (#387).
 
 **Measured effect.** 2 block images × 65 leads — 0 and 64 open, 1..63 refuse.
 
@@ -1087,11 +1097,11 @@ reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 the residue check to `lead < 0` in the emitter and requires "block_render at
 lead 1 answered open, wanted refuse".
 
-**Targets:** block-lead
+**Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| ✅ `block_base_unaligned` (`testdata/conformance/tables/MANIFEST.txt`) and `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `block_base_unaligned` and `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ✅ `block_base_unaligned` (`test/conformance/rust/src/main.rs`) | ✅ `block_base_unaligned` and `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `block_base_unaligned` (`test/conformance/cs/src/Program.cs`) and `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ✅ `block_base_unaligned` (`test/conformance/java/src/Driver.java`, `openBlock` takes the lead) | ✅ `block_base_unaligned` (`test/conformance/js/main.mjs`, `openBlock` takes the lead) | ✅ `block_base_unaligned` (`test/conformance/dart/main.dart`) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
 
 ### I6 — Claimed names, both ways, with a control
 
@@ -1409,7 +1419,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
 
 ### J3 — The release tier
 
