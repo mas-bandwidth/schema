@@ -2310,3 +2310,139 @@ func TestRead(t *testing.T) {
 		t.Fatalf("the ?T reader failed its read: %v\n%s", err, out)
 	}
 }
+
+// P4, "THE WRONG PLAN MUST GO RED" (docs/FIXED-FORM-ALGORITHM.md §7 item 4).
+// The reference's negative_control() (test/tables/fixedform_main.cpp:234-260)
+// runs FX1's identity plan over an FX2 record and requires it NOT reproduce
+// the record, because FX2 inserts `added` and widens `narrow`, so every offset
+// past them has moved. This leg's versioning suite reads older and newer
+// records through the RIGHT plan and refuses a hash it does not lock, but
+// nothing here ever watched the wrong plan fail — and a check that never
+// watched the wrong plan fail never checked the right one. This case is the Go
+// twin of the reference's: FxOld is the old shape, FxNew the new one, the SAME
+// nested table under both.
+//
+// Two answers are asserted by name: (1) FxOld's identity plan run straight
+// over FxNew's record body — the path select-by-hash exists to prevent — must
+// NOT reproduce the record; (2) the loader refuses the file whose hash it does
+// not lock with `layout_newer` and moves no counter. The legitimate value the
+// rule admits (FxOld reading FxOld) is asserted too, so neither half can pass
+// vacuously.
+//
+// The name matches the `tables-go-versioning` gate's own `-run` pattern
+// (make/go.mk:557), which is the half of `make tables-go-fixed-form
+// tables-go-versioning` that runs this package; a `TestFixedForm...` name here
+// would not be reached by that target at all.
+func TestFixedVersioningWrongPlanGoesRed(t *testing.T) {
+	runGenerated(t, `package probe
+
+fixed table FxNested
+{
+    a int32 = 1
+    b int32 = 2
+}
+
+fixed table FxExtra
+{
+    x int32 = 0
+    y int32 = 0
+}
+
+// THE OLD SHAPE, FX1's: a narrow field, and no field between renamed and
+// the nested table.
+fixed table FxOld
+{
+    keep    uint32 = 7
+    narrow  uint16 = 3
+    renamed int32 = 5
+    gone    int32 = 9
+    nested  FxNested
+}
+
+// THE NEW SHAPE, FX2's: narrow widened, added inserted before the nested
+// table, and a whole nested TYPE FxOld has no name for.
+fixed table FxNew
+{
+    keep       uint32 = 7
+    narrow     uint32 = 3
+    renamed_to int32 = 5
+    added      int32 = 11
+    nested     FxNested
+    extra      FxExtra
+}
+`, `package probe
+
+import (
+    "testing"
+    "unsafe"
+)
+
+func TestWrongPlanGoesRed(t *testing.T) {
+    two := FxNew{}
+    FxNewReset(&two)
+    two.Keep = 5150
+    two.Narrow = 70000
+    two.RenamedTo = 808
+    two.Added = 909
+    two.Nested.A = 33
+    two.Nested.B = 44
+    w2 := make([]byte, FxNewFixedMeasure(1))
+    if n := FxNewFixedSave([]FxNew{two}, w2); n != int64(len(w2)) {
+        t.Fatalf("FxNew save %d", n)
+    }
+
+    // (2) THE LOADER REFUSES. FxNew's record carries FxNew's hash in the
+    // header at offset 8; FxOld's lock holds only FxOld's hash, so FxOld's
+    // plan is never entered and the file is layout_newer.
+    plan := make([]TableFixedEntry, 1024)
+    var r TableReport
+    old := make([]FxOld, 1)
+    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_newer" {
+        t.Fatalf("the loader did not refuse a file under another layout: n=%d %+v", n, r)
+    }
+    if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Malformed {
+        t.Fatalf("layout_newer is a refusal and moves no counter: %+v", r)
+    }
+
+    // (1) THE WRONG PLAN IS WRONG. FxOld's identity plan over FxNew's record
+    // body: renamed and the nested table sit at moved offsets, so the values
+    // cannot survive. This is the same run the reference's negative_control()
+    // makes with FX1's plan over an FX2 body.
+    body := w2[len(w2)-FxNewFixedRecordBytes:]
+    if int32(len(body)) != FxNewFixedRecordBytes {
+        t.Fatalf("record body is %d bytes, want %d", len(body), FxNewFixedRecordBytes)
+    }
+    wrong := FxOld{}
+    FxOldReset(&wrong)
+    var rr TableReport
+    tableFixedRun(FxOldFixedPlan.Entries, FxOldFixedPlan.Count, body[8:],
+        tableFixedOverlay(unsafe.Pointer(&wrong), unsafe.Sizeof(wrong)), &rr)
+    intact := wrong.Renamed == two.RenamedTo &&
+        wrong.Nested.A == two.Nested.A && wrong.Nested.B == two.Nested.B
+    if intact {
+        t.Fatalf("NEGATIVE CONTROL FAILED: FxOld's identity plan reproduced an FxNew record: %+v", wrong)
+    }
+
+    // THE LEGITIMATE VALUE THE RULE ADMITS: FxOld's own record reads back
+    // whole under FxOld's own hash, so neither half above is vacuous.
+    one := FxOld{}
+    FxOldReset(&one)
+    one.Keep = 4242
+    one.Narrow = 40000
+    one.Renamed = 321
+    one.Gone = 654
+    one.Nested.A = 111
+    one.Nested.B = 222
+    w1 := make([]byte, FxOldFixedMeasure(1))
+    if n := FxOldFixedSave([]FxOld{one}, w1); n != int64(len(w1)) {
+        t.Fatalf("FxOld save %d", n)
+    }
+    back := make([]FxOld, 1)
+    r = TableReport{}
+    if n := FxOldFixedLoad(back, w1, plan, &r); n != 1 ||
+        back[0].Renamed != 321 || back[0].Nested.A != 111 || r != (TableReport{}) {
+        t.Fatalf("the right plan must reproduce its own record: n=%d %+v %+v", n, back[0], r)
+    }
+}
+`)
+}
