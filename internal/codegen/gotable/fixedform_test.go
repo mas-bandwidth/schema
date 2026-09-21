@@ -5,10 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -1784,6 +1786,118 @@ func TestLiveCount(t *testing.T) {
 	}
 }
 `)
+}
+
+// TestGoFixedFormLayoutAndHashAreIrsByteForByte is this leg's §7 item 1 gate —
+// the "dump identity of bytes" cell of §8: the emitted layout block and the
+// hash over it, byte for byte and number for number, against the compiler's own
+// walk, ir.TableFixedLayoutBytes and ir.TableFixedLayoutHash. ir is the one law
+// every port renders (C++ included) and it produces BYTES, so it is the oracle,
+// never a second backend.
+//
+// The Go backend does not consume ir.TableFixedWalkRoot; it re-derives the walk
+// in fixedWalkRoot, serialises it through fixedLayoutBytes and hashes the
+// result with ir.TableFixedLayoutHash. Two layouts that differ anywhere are two
+// ports that never read each other's records — silently, as `no_layout`. A
+// round trip proves only that this leg agrees with itself; this test holds the
+// emitted XxxFixedLayout and XxxFixedHash constants against ir's answer, per
+// root, so the Go leg's layout can never drift from the reference's.
+func TestGoFixedFormLayoutAndHashAreIrsByteForByte(t *testing.T) {
+	src := `package probe
+fixed table Point {
+    x int32
+    y int32
+}
+fixed table Vector {
+    a int64
+    b float32
+    name string(8)
+    tags [4]int16
+}
+`
+	u := unitFrom(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	goLayout, goHash := goFixedLayouts(tableFile(files))
+	if len(goLayout) == 0 {
+		t.Fatal("the Go backend emitted no fixed-form layout at all for a unit of fixed tables — the emitter, not the fixture, is what broke")
+	}
+
+	want := map[string]string{}
+	wantHash := map[string]string{}
+	var order []string
+	for _, st := range ir.TableFixedRoots(u) {
+		if !ir.TableFixedEmitted(u, st) {
+			continue
+		}
+		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		want[st.Name] = byteSpell(layout)
+		wantHash[st.Name] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, st))
+		order = append(order, st.Name)
+	}
+	if len(want) == 0 {
+		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")
+	}
+
+	compared := 0
+	for _, name := range order {
+		got, ok := goLayout[name]
+		if !ok {
+			t.Errorf("ir names %s a fixed root and the Go backend emits no layout for it", name)
+			continue
+		}
+		compared++
+		if want[name] != got {
+			t.Errorf("%s's emitted layout differs from the compiler's own walk — the block-equals-the-C++-reference test (docs/FIXED-FORM-ALGORITHM.md §7 item 1, §8 \"dump identity of bytes\"): this leg's emitted layout AND its hash must equal the reference byte for byte and number for number\n  ir %s\n  go %s", name, want[name], got)
+		}
+		if wantHash[name] != goHash[name] {
+			t.Errorf("%s's fixed-form hash differs from ir's: ir %s, go %s — a record written against the law is `no_layout` to this port", name, wantHash[name], goHash[name])
+		}
+	}
+	for name := range goLayout {
+		if _, ok := want[name]; !ok {
+			t.Errorf("the Go backend emits a fixed-form layout for %s and ir does not name it a fixed root — a port may carry fewer shapes than the law, never more", name)
+		}
+	}
+	if compared == 0 {
+		t.Fatal("no root was compared against ir at all")
+	}
+
+	// CONTROL 1 — not vacuous: two distinct roots must produce two distinct
+	// layout blocks. A byte-for-byte test that passes against one file only is
+	// a golden file with extra steps.
+	if len(order) >= 2 && want[order[0]] == want[order[1]] {
+		t.Fatalf("two distinct roots (%s, %s) emitted the same layout block; the fixture does not distinguish the roots", order[0], order[1])
+	}
+}
+
+var (
+	goFixedLayoutRe = regexp.MustCompile(`(?s)var (\w+)FixedLayout = \[\]byte\{(.*?)\}`)
+	goFixedHashRe   = regexp.MustCompile(`const (\w+)FixedHash = (0x[0-9a-f]+)`)
+	fixedHexByteRe  = regexp.MustCompile(`0x[0-9a-f]{2}`)
+)
+
+// goFixedLayouts keys on the Go root's own spelling (st.Name), which is what
+// the emitted XxxFixedLayout and XxxFixedHash constants carry.
+func goFixedLayouts(text string) (map[string]string, map[string]string) {
+	layouts, hashes := map[string]string{}, map[string]string{}
+	for _, m := range goFixedLayoutRe.FindAllStringSubmatch(text, -1) {
+		layouts[m[1]] = strings.Join(fixedHexByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range goFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	return layouts, hashes
+}
+
+func byteSpell(b []byte) string {
+	hex := make([]string, 0, len(b))
+	for _, v := range b {
+		hex = append(hex, fmt.Sprintf("0x%02x", v))
+	}
+	return strings.Join(hex, " ")
 }
 
 // TestFixedFormWideTextCodeUnits is item C5 of schema#876: a `wstring(N)`'s
