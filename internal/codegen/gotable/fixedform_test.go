@@ -1341,3 +1341,161 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormWideTextCodeUnits is item C5 of schema#876: a `wstring(N)`'s
+// length rides the fixed form in UTF-16 CODE UNITS, so the read-side cap is
+// `span / 2` and never `span`, and an astral pair counts TWO. The contract
+// states it twice and in the same words (docs/FIXED-FORM-ALGORITHM.md §4.5's
+// text row): "unit := (meta == wide) ? 2 : 1; cap := size / unit ... wide code
+// units over v, never 2N, an astral pair counting two (fix 7)"; and the TEXT
+// op's full form repeats it with "COPY(the WHOLE SPAN, never v * unit)" and a
+// terminator of ONE UNIT at the used length.
+//
+// THE HOUSE FIXTURE IS test/tables/FXW.schema, and the C++ reference writes
+// its oracle bytes at test/tables/fixedform_dump.cpp:581-609 (`fxw_file`), the
+// ONE place a wide text payload is pinned: "a leg that counted bytes where it
+// owed units comes out wrong here and nowhere else". The Dart leg reads those
+// bytes at test/dart-tables/fixedform.dart:349-386 and is the ported reasoning
+// this case follows: `caption_length is in units` (7), the narrow
+// `label_length is in bytes` (6), `inner.text`'s wide flavour at a NESTED
+// offset, and record 1's astral pair counting BOTH halves (5).
+//
+// This asserts the property where it BITES, not a self-agreeing round trip: a
+// length that is legal in BYTES (16, the entry's whole span) but past the
+// code-unit cap (8) must CLAMP to 8 and count once. Disabling the unit at
+// internal/codegen/gotable/fixedruntime.go:306 (`unit = 2` -> `1`) leaves that
+// forged read GREEN with length 16, so the case measures the unit and nothing
+// else. The legal record reads back whole with `clamped == 0`, so it is not
+// vacuous.
+func TestFixedFormWideTextCodeUnits(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table FxCaption {
+    text wstring(4)
+}
+fixed table FxWide {
+    caption wstring(8)
+    label   string(8)
+    inner   FxCaption
+    seq     uint32 = 1 | min = 0, max = 1000
+}
+`, `package probe
+import ("encoding/binary"; "testing")
+
+func wideTextRecord(t *testing.T) []byte {
+	t.Helper()
+	one := FxWide{}
+	FxWideReset(&one)
+	// seven BASIC-PLANE code units, one short of the bound (FXW record 0)
+	caption0 := []uint16{0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x21}
+	copy(one.Caption[:], caption0)
+	one.CaptionLength = 7
+	copy(one.Label[:], "narrow")
+	one.LabelLength = 6
+	inner0 := []uint16{0x61, 0x62, 0x63, 0x64}
+	copy(one.Inner.Text[:], inner0)
+	one.Inner.TextLength = 4
+	one.Seq = 41
+
+	two := FxWide{}
+	FxWideReset(&two)
+	// AN ASTRAL PAIR AND THE TWO BASIC-PLANE ENDS OF THE RANGE (FXW record 1):
+	// a surrogate pair is TWO code units and the length counts both.
+	caption1 := []uint16{0xE000, 0xD83D, 0xDE00, 0xFFFF, 0x7A}
+	copy(two.Caption[:], caption1)
+	two.CaptionLength = 5
+	two.Seq = 1000
+
+	buf := make([]byte, FxWideFixedMeasure(2))
+	if n := FxWideFixedSave([]FxWide{one, two}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	return buf
+}
+
+// wideCaptionEntry is the identity plan's wide text row, and it asserts the
+// entry's SIZE is 2N BYTES while its cap is N UNITS — the two numbers the
+// contract says a port gets wrong one at a time.
+func wideCaptionEntry(t *testing.T) TableFixedEntry {
+	t.Helper()
+	for i := range FxWideFixedPlan.Entries {
+		e := FxWideFixedPlan.Entries[i]
+		if e.Op == tableFixedText && e.Meta == tableFixedTextWide {
+			if e.Size != 16 {
+				t.Fatalf("a wstring(8) entry spans 2N bytes, got %d", e.Size)
+			}
+			return e
+		}
+	}
+	t.Fatal("the identity plan carries no WIDE text entry")
+	return TableFixedEntry{}
+}
+
+func TestWideText(t *testing.T) {
+	buf := wideTextRecord(t)
+	wide := wideCaptionEntry(t)
+	if wide.Src != 0 {
+		t.Fatalf("the caption leads the body, got Src=%d", wide.Src)
+	}
+	rec := int(FxWideFixedRecordBytes)
+	r0 := buf[len(buf)-2*rec+8:]
+	r1 := buf[len(buf)-rec+8:]
+	// THE WIRE LENGTH IS IN CODE UNITS, never bytes: 7 for seven units, and 5
+	// for the four basic-plane ends plus the pair.
+	if got := binary.LittleEndian.Uint32(r0[wide.Src:]); got != 7 {
+		t.Fatalf("WIRE LENGTH IS BYTES: seven code units wrote %d, want 7", got)
+	}
+	if got := binary.LittleEndian.Uint32(r1[wide.Src:]); got != 5 {
+		t.Fatalf("the astral pair counts TWO: five code units wrote %d, want 5", got)
+	}
+	// and each unit is two bytes, little-endian (0xE000 the pair's halves etc.)
+	want := []byte{0x00, 0xE0, 0x3D, 0xD8, 0x00, 0xDE, 0xFF, 0xFF, 0x7A, 0x00}
+	at := int(wide.Src) + 4
+	for i, b := range want {
+		if r1[at+i] != b {
+			t.Fatalf("unit byte %d = %#x, want %#x", i, r1[at+i], b)
+		}
+	}
+
+	got := make([]FxWide, 2)
+	var rep TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := FxWideFixedLoad(got, buf, plan, &rep); n != 2 {
+		t.Fatalf("load %d %+v", n, rep)
+	}
+	if rep != (TableReport{}) {
+		t.Fatalf("a clean wide read moves a counter: %+v", rep)
+	}
+	if got[0].CaptionLength != 7 || got[0].LabelLength != 6 || got[0].Inner.TextLength != 4 || got[0].Seq != 41 {
+		t.Fatalf("record 0: %+v", got[0])
+	}
+	for i, u := range []uint16{0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x21} {
+		if got[0].Caption[i] != u {
+			t.Fatalf("record 0 caption unit %d = %#x", i, got[0].Caption[i])
+		}
+	}
+	if got[1].CaptionLength != 5 || got[1].LabelLength != 0 || got[1].Inner.TextLength != 0 || got[1].Seq != 1000 {
+		t.Fatalf("record 1: %+v", got[1])
+	}
+	for i, u := range []uint16{0xE000, 0xD83D, 0xDE00, 0xFFFF, 0x7A} {
+		if got[1].Caption[i] != u {
+			t.Fatalf("record 1 caption unit %d = %#x, want %#x", i, got[1].Caption[i], u)
+		}
+	}
+
+	// THE FORGE: a length legal in BYTES (16 == the whole span) but past the
+	// code-unit cap (8). A leg counting bytes admits it and lands 16; the unit
+	// cap clamps to 8 and counts exactly once.
+	forged := append([]byte(nil), buf...)
+	f1 := forged[len(forged)-rec+8:]
+	binary.LittleEndian.PutUint32(f1[wide.Src:], 16)
+	got = make([]FxWide, 2)
+	rep = TableReport{}
+	if n := FxWideFixedLoad(got, forged, plan, &rep); n != 2 {
+		t.Fatalf("forged load %d %+v", n, rep)
+	}
+	if got[1].CaptionLength != 8 || rep.Clamped != 1 {
+		t.Fatalf("CODE UNITS: a byte-legal length 16 on wstring(8) landed length %d, clamped=%d; want 8 and exactly one clamp", got[1].CaptionLength, rep.Clamped)
+	}
+}
+`)
+}
