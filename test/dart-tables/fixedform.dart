@@ -821,6 +821,117 @@ void pairedCorpus(String dir) {
 }
 
 // ---------------------------------------------------------------------------
+// 2b. THE DECLARED BOUNDS ON THE RAW SCALE (§4.6) — C8, fixed-point F-shift
+// ---------------------------------------------------------------------------
+//
+// A FIXED-POINT FIELD'S DECLARED BOUNDS ARE IN VALUE UNITS AND ITS STORAGE IS
+// RAW (docs/FIXED-FORM-ALGORITHM.md §4.6, docs/SPEC-TABLES.md §4): the reader
+// shifts both ends by F before comparing, so `BenchMixed.server_time`
+// `fixed(24, 8) | min = 0, max = 65535` is held to the RAW range
+// [0, 65535 << 8] = [0, 16776960] and NOTHING here divides by 2^F. A `bits(N)`
+// is the older half of the same pass and clamps to 2^N - 1, written only where
+// N is narrower than the storage the form gives it.
+//
+// The reference is test/tables/fixedform_properties.cpp:1279 (`probe_clamp_op`):
+// `w.position = 2000LL * 65536` is inside the OLDER writer's range and past the
+// newer reader's `1000`, and the newer read lands `1000LL * 65536` and counts
+// ONE `clamped`. This port forges the same one raw step past the shifted end,
+// on the identity plan, and holds the value AND the count.
+//
+// THE SITE IS internal/codegen/darttable/fixeddart.go:969 `emitClamp` (with
+// `fixedClampEnds` at :888 reading `ir.TableRawRange`'s F-shifted ends and
+// `fixedBitsClamp` at :899 answering 2^N - 1). THE POINT OF THIS CASE IS THAT
+// THE PASS RUNS AT ALL: a clean record already proves it cannot fire on a
+// legitimate value, and the forged record proves it fires and counts.
+void fixedBoundsCase() {
+  final layoutBytes = bench.fixedTableFixedLayoutBytes;
+  final body =
+      layoutAt + layoutBytes + 8; // the 8-byte record hash, then values
+
+  // A LEGITIMATE RECORD. Every value is inside its declaration, so the pass
+  // writes nothing at all — a bound test that clamps a clean value is a test
+  // of something else.
+  final one = benchHome.FixedTable();
+  one.value.serverTime = 100; // raw Q24.8, inside [0, 16776960]
+  one.value.frameTick = 7;
+  one.value.sequence = 9;
+  final clean = Uint8List(bench.fixedTableFixedMeasure(1));
+  check(
+    bench.fixedTableFixedSave(<benchHome.FixedTable>[one], 1, clean) ==
+        clean.length,
+    'C8 bounds: save',
+  );
+
+  {
+    final back = <benchHome.FixedTable>[benchHome.FixedTable()];
+    final r = benchHome.TableFixedReport();
+    final n = bench.fixedTableFixedLoad(
+      back,
+      1,
+      clean,
+      clean.length,
+      bench.fixedTableFixedNewPlan(),
+      r,
+    );
+    check(n == 1, 'C8 bounds: the legitimate record reads');
+    check(
+      back[0].value.serverTime == 100,
+      'C8 bounds: the raw Q24.8 value lands exact',
+    );
+    check(
+      r.clamped == 0,
+      'C8 bounds: a value inside the declaration moves no clamp '
+      '(the pass is not vacuous)',
+    );
+    check(
+      !r.malformed && r.refused == 0,
+      'C8 bounds: a clean read is not damage',
+    );
+  }
+
+  // THE FORGED RECORD. One raw step past the SHIFTED maximum (65535 << 8) and
+  // one past the width end of each bits field; the record's hash and layout are
+  // untouched, so this is the identity plan and the pass is the reader's own.
+  final v = ByteData.sublistView(clean);
+  v.setInt32(body + 48, 16776961, Endian.little); // server_time, one past max
+  v.setUint64(body + 40, 281474976710656, Endian.little); // frame_tick, 2^48
+  v.setUint32(body + 0, 65536, Endian.little); // sequence, 2^16
+
+  final r = benchHome.TableFixedReport();
+  final back = <benchHome.FixedTable>[benchHome.FixedTable()];
+  final n = bench.fixedTableFixedLoad(
+    back,
+    1,
+    clean,
+    clean.length,
+    bench.fixedTableFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'C8 bounds: the forged record still reads');
+  check(
+    back[0].value.serverTime == 65535 * 256,
+    'C8 bounds: the SHIFTED maximum holds a raw past it '
+    '(got ${back[0].value.serverTime}, want ${65535 * 256})',
+  );
+  check(
+    back[0].value.frameTick == 281474976710655,
+    'C8 bounds: bits(48) clamps to 2^48 - 1',
+  );
+  check(
+    back[0].value.sequence == 65535,
+    'C8 bounds: bits(16) clamps to 2^16 - 1',
+  );
+  check(
+    r.clamped == 3,
+    'C8 bounds: each clamp counts exactly once (got ${r.clamped})',
+  );
+  check(
+    !r.malformed && r.refused == 0,
+    'C8 bounds: damage in a VALUE is not framing damage',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 3. THE VERSIONING CONFORMANCE — the twin of test/tables/fixedform_main.cpp
 // ---------------------------------------------------------------------------
 
@@ -1251,6 +1362,115 @@ void fuCase() {
       'text under an arm: compiled, a clean read moves no counter',
     );
   }
+}
+
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/FIXED-FORM-ALGORITHM.md §4.1
+// fix 12; docs/SPEC-TABLES.md §3.4). A plan entry carries the ordinal a union
+// arm's GUARD byte must hold for the entry to run AND the argument the entry's
+// OWN op takes — for a text entry, its flavour. They must be two lanes: one
+// shared lane gives whichever fact was written last, so a `string(N)` under a
+// union arm reads with the wrong flavour or under the wrong arm, and neither is
+// visible to this build's own records; only to a peer's. FU1 puts a string(8)
+// under the union's SECOND arm, so the arm ordinal (2) and the flavour (1) are
+// different numbers and a collision is caught by NAME. This is the dart leg's
+// twin of the C++ reference's union_text_case (test/tables/fixedform_main.cpp,
+// its UT1 half at :885-887) ported into this file's idiom: the plan is the
+// build's own static data (fuRootFixedIdentity), so the two facts are read out
+// of their lanes directly rather than through C++'s plan array.
+void twoLanesCase() {
+  const lanes = fu1home.TableFixedLane.lanes;
+  final plan = fu1.fuRootFixedIdentity;
+
+  // THE TEXT ENTRY UNDER THE ARM. FU1 declares exactly one string, so the
+  // identity plan carries exactly one text entry, and it is guarded.
+  var found = -1;
+  var texts = 0;
+  for (var i = 0; i < fu1.fuRootFixedIdentityCount; i++) {
+    if (plan[i * lanes + fu1home.TableFixedLane.op] ==
+        fu1home.TableFixedOp.text) {
+      found = i;
+      texts++;
+    }
+  }
+  check(
+    texts == 1,
+    'two lanes: the identity plan carries exactly one text entry (got $texts)',
+  );
+  check(
+    found >= 0,
+    "two lanes: the identity plan carries the arm's text entry",
+  );
+  if (found < 0) {
+    return;
+  }
+  final b = found * lanes;
+  final guard = plan[b + fu1home.TableFixedLane.guard];
+  final arg = plan[b + fu1home.TableFixedLane.arg];
+  final meta = plan[b + fu1home.TableFixedLane.meta];
+
+  check(
+    guard != fu1home.tableFixedNoGuard,
+    "two lanes: the text entry is guarded by the arm's tag byte",
+  );
+  check(arg == 2, "two lanes: arg is the SECOND arm's ordinal (got $arg)");
+  check(
+    meta == fu1home.TableFixedOp.textUtf8,
+    'two lanes: meta is the utf8 flavour (got $meta)',
+  );
+  // THE WHOLE POINT: the ordinal and the flavour are DIFFERENT facts. If one
+  // lane carried both, the guard's ordinal 2 would be the flavour (wide, 2)
+  // and this entry's string would read as WIDE — or the guard would test the
+  // tag against the flavour 1 and the entry would never run.
+  check(
+    arg != meta,
+    'two lanes: the guard ordinal and the op flavour are DIFFERENT facts in '
+    'different lanes (arg $arg, meta $meta)',
+  );
+  check(
+    plan[b + fu1home.TableFixedLane.argW] == 1,
+    "two lanes: the guard's width rides in its own lane",
+  );
+
+  // AND THE TWO LANES ARE USED. A record whose SECOND arm carries "seven77"
+  // round-trips whole: an entry guarded by the wrong ordinal never runs (the
+  // text is lost) and an entry whose flavour is the arm ordinal halves the
+  // bound and terminates two bytes at a time. Both are silent; the value is
+  // what says so.
+  final one = fu1home.FuRoot();
+  one.pick.type = fu1decl.PickType.labelled; // the SECOND arm
+  one.pick.labelled.lead = 101;
+  one.pick.labelled.label.setRange(0, 7, 'seven77'.codeUnits);
+  one.pick.labelled.labelLength = 7;
+  one.pick.labelled.trail = 202;
+  final w = Uint8List(fu1.fuRootFixedMeasure(1));
+  check(
+    fu1.fuRootFixedSave(<fu1home.FuRoot>[one], 1, w) == w.length,
+    'two lanes: save',
+  );
+  final back = <fu1home.FuRoot>[fu1home.FuRoot()];
+  final r = fu1home.TableFixedReport();
+  check(
+    fu1.fuRootFixedLoad(back, 1, w, w.length, fu1.fuRootFixedNewPlan(), r) == 1,
+    'two lanes: the record reads',
+  );
+  check(
+    back[0].pick.labelled.labelLength == 7 &&
+        text(back[0].pick.labelled.label, back[0].pick.labelled.labelLength) ==
+            'seven77',
+    "two lanes: the arm's string(8), whole",
+  );
+  check(
+    back[0].pick.labelled.lead == 101 && back[0].pick.labelled.trail == 202,
+    'two lanes: the scalars around the text land',
+  );
+  quiet(r, 'two lanes');
+  // A PROOF THE CASE RAN: the file's other cases only speak on failure, and
+  // this one is called before the reference corpus is read so its line is
+  // visible even where the corpus cannot be built.
+  print(
+    'two lanes: arg=$arg and meta=$meta ride in their own lanes, and the arm\'s '
+    'string reads whole',
+  );
 }
 
 // 6. AN ENUM VARIANT AND A UNION ARM INSERTED IN THE MIDDLE, and a keyed
@@ -1753,6 +1973,129 @@ void negativeControl() {
   }
 }
 
+// 9. THE BOUNDS PASS WALKS LIVE THINGS ONLY (docs/FIXED-FORM-ALGORITHM.md
+// §4.6). The pass that clamps ranged scalars and remaps ordinals runs over
+// STORAGE after the plan run, which is what lets ONE pass cover both plans —
+// and it walks only what a read can have written: a counted array's LIVE
+// elements and never its slack. The reason is a counter: the prefill's
+// defaults are in range by construction, so clamping storage nobody wrote
+// would count a clamp on every clean read.
+//
+// The pack coverage above reads a CONFORMING file, whose slack is ZEROS — and
+// zeros are in range, so a pass that walked the bound would count nothing
+// there and `clamped == 0` would still hold. That is detection, not assertion.
+// This case STAINs the slack THROUGH STORAGE, with the same out-of-range value
+// CONTROL 1 puts in a live element, and holds the read to `clamped == 0` — the
+// number only a pass that walks the LIVE COUNT can produce.
+void boundsCase() {
+  // a record with a PARTLY-FILLED counted array: reservesCount = 2, and the
+  // third ShipEntry is slack. Every LIVE value is in range, so a clean read
+  // counts nothing on its own; the stain then goes into the slack.
+  final one = demo.PackConfig();
+  one.version = 7;
+  one.global.tickRate = 120;
+  one.global.buildNote.setRange(0, 5, 'clean'.codeUnits);
+  one.global.buildNoteLength = 5;
+  for (var s = 0; s < 3; s++) {
+    one.ships[s].hardpointsCount = 1;
+    one.ships[s].hardpoints[0] = s + 1;
+  }
+  one.thresholds[0] = 100;
+  one.thresholds[1] = 200;
+  one.thresholds[2] = 300;
+  one.reservesCount = 2;
+  one.reserves[0].displayName.setRange(0, 5, 'live0'.codeUnits);
+  one.reserves[0].displayNameLength = 5;
+  one.reserves[0].hardpointsCount = 1;
+  one.reserves[0].hardpoints[0] = 1;
+  one.reserves[1].displayName.setRange(0, 5, 'live1'.codeUnits);
+  one.reserves[1].displayNameLength = 5;
+  one.reserves[1].hardpointsCount = 1;
+  one.reserves[1].hardpoints[0] = 2;
+
+  final w = Uint8List(pack.packConfigFixedMeasure(1));
+  check(
+    pack.packConfigFixedSave(<demo.PackConfig>[one], 1, w) == w.length,
+    'bounds: the record saves',
+  );
+
+  // THE STAIN IS LAID THROUGH STORAGE, never the wire: the offsets are the
+  // write template's, reserves sitting at body 383 with elements at +i*98 and
+  // a ShipEntry's hardpoints count at element+44, its first value at
+  // element+48 — the same numbers the identity plan's own entries carry (623
+  // and 627). The slack element's COUNT stays in range (the plan clamps
+  // counts, and that clamp would be the wrong thing to test); its first VALUE
+  // goes past the declared `max = 8`, which only the decode can answer for.
+  final body = pack.packConfigFixedHeaderBytes + 8;
+  final view = ByteData.sublistView(w);
+  view.setInt32(body + 623, 1, Endian.little);
+  view.setInt32(body + 627, 0x7F, Endian.little);
+
+  final back = <demo.PackConfig>[demo.PackConfig()];
+  final r = demo.TableFixedReport();
+  final n = pack.packConfigFixedLoad(
+    back,
+    1,
+    w,
+    w.length,
+    pack.packConfigFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'bounds: the stained record still reads (got $n)');
+  check(
+    back[0].reservesCount == 2 &&
+        back[0].reserves[0].hardpoints[0] == 1 &&
+        back[0].reserves[1].hardpoints[0] == 2,
+    'bounds: the two live elements land, and the slack\'s stain is never decoded',
+  );
+  check(
+    r.clamped == 0,
+    'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
+    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): clamping storage nobody wrote '
+    'would count a clamp on every clean read — the out-of-range value stained '
+    'into the slack counts no clamp (clamped=${r.clamped})',
+  );
+
+  // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
+  // out-of-range value clamps to max, counts EXACTLY one, and an in-range
+  // neighbour is untouched. Without this, a pass that never ran at all would
+  // also report `clamped == 0`.
+  final w2 = Uint8List(pack.packConfigFixedMeasure(1));
+  check(
+    pack.packConfigFixedSave(<demo.PackConfig>[one], 1, w2) == w2.length,
+    'bounds: control saves',
+  );
+  final view2 = ByteData.sublistView(w2);
+  view2.setInt32(body + 529, 0x7F, Endian.little); // reserves[1], LIVE
+  final back2 = <demo.PackConfig>[demo.PackConfig()];
+  final r2 = demo.TableFixedReport();
+  check(
+    pack.packConfigFixedLoad(
+          back2,
+          1,
+          w2,
+          w2.length,
+          pack.packConfigFixedNewPlan(),
+          r2,
+        ) ==
+        1,
+    'bounds: control reads',
+  );
+  check(
+    back2[0].reserves[1].hardpoints[0] == 8,
+    'CONTROL 1: a live element past max lands at max '
+    '(got ${back2[0].reserves[1].hardpoints[0]})',
+  );
+  check(
+    back2[0].reserves[0].hardpoints[0] == 1,
+    'CONTROL 1: an in-range neighbour is untouched',
+  );
+  check(
+    r2.clamped == 1,
+    'CONTROL 1: the live clamp is counted exactly once (clamped=${r2.clamped})',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
@@ -2032,6 +2375,31 @@ void layoutValidation() {
 }
 
 // ---------------------------------------------------------------------------
+// F4: A LAYOUT LENGTH THAT RUNS PAST THE FILE (docs/FIXED-FORM-ALGORITHM.md
+// §1.1 step 3, §5.3 step 3: `20 + L > bytes` REFUSE `layout_malformed`)
+// ---------------------------------------------------------------------------
+//
+// THIS IS FRAMING, NOT ONE OF §1.1'S SEVEN RULES. §5.3 retired the run-time
+// WALK of a stranger layout, but this check runs BEFORE the hash is ever
+// selected, so it did not retire with the walk and is asserted live here. A
+// twenty-four-byte file stating a layout of one hundred would make a reader
+// that trusted the length step past the bytes it was handed before a hash could
+// name a plan. THE CHECK FIRES FIRST, so the header's hash is left zero and
+// selects nothing — which is why the name is `layout_malformed` and not
+// `layout_newer`.
+void layoutTruncatedCase() {
+  final f = Uint8List(layoutAt + 4); // the header and four bytes of "layout"
+  f[0] = 3; // this form
+  // L = 100: 20 + 100 = 120 runs past the file's twenty-four bytes.
+  ByteData.sublistView(f).setUint32(layoutLengthAt, 100, Endian.little);
+  refuses(
+    f,
+    fx1home.TableFixedRefusal.layoutMalformed,
+    'RULE: a layout length that runs past the file is layout_malformed',
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 void main(List<String> args) {
   final corpus = args.isNotEmpty ? args[0] : 'build/fixedform-corpus';
@@ -2043,8 +2411,15 @@ void main(List<String> args) {
     'FX1 FxRoot: body ${fx1.fxRootFixedBodyBytes}, layout ${fx1.fxRootFixedLayoutBytes}, '
     'identity plan ${fx1.fxRootFixedIdentityCount} entries',
   );
+  // W7, THE TWO LANES (docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). It reads
+  // only the build's own static plan and a record it writes itself, so it is
+  // called BEFORE the reference corpus is opened: its line is then visible
+  // even where the C++ oracle is absent, which is the one thing this file's
+  // other cases cannot say for themselves.
+  twoLanesCase();
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
+  fixedBoundsCase();
   // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
   // a layout THE FILE carried and read FORWARD, and under §5 a fixed table
   // reads BACKWARD only — a peer the lineage does not hold is `layout_newer`
@@ -2061,7 +2436,11 @@ void main(List<String> args) {
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
   rangedScalarClampCase();
+  boundsCase();
   negativeControl();
+  // F4: the sample lives behind the corpus reads, and it does not need them —
+  // it is the reader's OWN header and a length that lies.
+  layoutTruncatedCase();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
   // name, `layout_malformed`. The coverage is owed by the LOCK's validation of
