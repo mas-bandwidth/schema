@@ -14,6 +14,7 @@
 //	schema cook-check <file.cook>                    validate an untrusted cook, offline
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
+//	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -565,6 +566,23 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
+	case "new-leg", "newleg":
+		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
+		// files, makefile, harness, one passing fixture. Not a codec. The
+		// writer is this command; fmt remains the only command that writes a
+		// .schema file. Flags may sit before or after the language name so
+		// `schema new-leg lua --verbose` is the same command as flags-first.
+		lang, root, verbose, err := parseNewLegArgs(os.Args[2:])
+		if err != nil {
+			fail(err)
+		}
+		files, err := compiler.NewLeg(lang)
+		if err != nil {
+			fail(err)
+		}
+		if err := writeNewLeg(root, files, verbose); err != nil {
+			fail(err)
+		}
 	default:
 		usage()
 		os.Exit(2)
@@ -698,6 +716,7 @@ func usage() {
   schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
+  schema new-leg    <lang> [--root .] [--verbose]
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3

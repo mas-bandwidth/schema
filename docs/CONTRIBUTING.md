@@ -263,6 +263,13 @@ to somebody, so it needs to be worth it.
 
 ## Adding a language
 
+`schema new-leg lua` writes the skeleton: `compiler/target_lua.go` (behind
+the `schema_leg_lua` build tag, so the default nine stay the live `--lang`
+set), `internal/codegen/lua/` with one passing `go test` fixture,
+`make/lua.mk`, the conformance driver and the tables-bench `leg`. It is
+not a Lua emitter. `make test-lua` is the fixture; drop the build tag when
+the packet surface has claims and the port joins the builtins.
+
 A backend is a Go package under `internal/codegen/` that walks the same IR the
 existing nine consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface

@@ -5639,7 +5639,9 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # declares each; every DISCOVERED port (make/<lang>.mk, the registry) is run
 # over it and either generates the unit — it carries the kinds, and the
 # conformance matrix holds it to the corpus — or stops with the diagnostic that
-# names the fields and the follow-on. Nothing here lists a language.
+# names the fields and the follow-on. A `schema new-leg` skeleton has
+# make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
+# Nothing here lists a language.
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
@@ -5649,6 +5651,10 @@ tables-ports-refuse-wide-scalars: bin/schema
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
+		fi; \
+		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log; then \
+			echo "tables wide-scalar: $$lang has no --lang yet (schema new-leg skeleton)"; \
+			continue; \
 		fi; \
 		grep -q "does not carry the fixed-point and 128-bit table-wire kinds yet" build/tables-wide-refusal/$$lang.log || \
 			{ echo "REFUSAL GATE FAILED: the $$lang backend stopped for another reason:"; cat build/tables-wide-refusal/$$lang.log; exit 1; }; \
