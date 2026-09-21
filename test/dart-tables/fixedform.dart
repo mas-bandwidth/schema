@@ -2387,6 +2387,259 @@ void layoutValidation() {
 }
 
 // ---------------------------------------------------------------------------
+// W14: THE PLAN'S DESTINATIONS ARE THIS BUILD'S OWN OFFSETS, AND THEY FIT THE
+// BODY (docs/FIXED-FORM-ALGORITHM.md §7). The contract says it in one line:
+//
+//   "Every port owes that test, and the build-time assertion that the plan's
+//    destinations equal its own `offsetof` and `sizeof`."
+//
+// The C++ reference emits that assertion as generated `static_assert` lines
+// comparing the numbers the plan is built from against the compiler's own
+// `offsetof`/`sizeof` (internal/codegen/cpptable/fixedform.go,
+// emitFixedLayoutAsserts). Dart has no struct ABI to take an `offsetof` of, so
+// THIS leg's offsets are its own storage walk: the five-lane `FixedDst` rows,
+// resolved through the pre-order layout into absolute body offsets, and
+// `FixedBodyBytes` for the sizeof. The assertion below is named: every
+// destination the identity plan lands must be one of those offsets and must
+// lie inside that size. A plan that drifts from the storage the writer and the
+// decoder use is caught HERE, at build time, and never on the wire.
+// ---------------------------------------------------------------------------
+
+// w14Offsets resolves the five-lane `FixedDst` rows — dst, stride, aux,
+// counted, arg — into the set of absolute byte offsets this build's storage
+// walk declares. The layout is a u32 count then 17-byte entries (id u64, kind
+// u8, size u32, children u32), pre-order: each entry's dst and aux are measured
+// from its PARENT, so the walk carries the parent's absolute offset down.
+Set<int> w14Offsets(Uint8List layout, Int32List dstRows) {
+  final view = ByteData.sublistView(layout);
+  final rows = dstRows.length ~/ 5;
+  final offsets = <int>{};
+  var index = 0;
+  void walk(int parent) {
+    if (index >= rows) {
+      return;
+    }
+    final row = index * 5;
+    final at = parent + dstRows[row];
+    offsets.add(at);
+    // a text row's aux is the buffer, a counted array's aux is the count, an
+    // optional's aux is the present flag: each is an offset the plan may name
+    if (dstRows[row + 2] != 0) {
+      offsets.add(parent + dstRows[row + 2]);
+    }
+    final children = view.getUint32(17 + index * 17, Endian.little);
+    index++;
+    for (var c = 0; c < children; c++) {
+      walk(at);
+    }
+  }
+
+  walk(0);
+  return offsets;
+}
+
+// w14Check is W14 for ONE root: the sizeof, then every destination the identity
+// plan lands against the offsets the storage walk declares.
+void w14Check(
+  String who,
+  Uint8List layout,
+  Int32List dstRows,
+  Int32List plan,
+  int planCount,
+  int bodyBytes,
+) {
+  final offsets = w14Offsets(layout, dstRows);
+  final view = ByteData.sublistView(layout);
+  check(
+    view.getUint32(13, Endian.little) == bodyBytes,
+    'W14: $who — the root layout entry states $bodyBytes bytes (the sizeof)',
+  );
+  for (var i = 0; i < planCount; i++) {
+    final base = i * 9;
+    final op = plan[base];
+    final dst = plan[base + 2];
+    final size = plan[base + 3];
+    final aux = plan[base + 4];
+    check(
+      dst >= 0 && dst < bodyBytes,
+      'W14: $who entry $i dst $dst inside the body $bodyBytes',
+    );
+    check(
+      offsets.contains(dst),
+      'W14: $who entry $i dst $dst is a storage offset of this build',
+    );
+    if (op == 1) {
+      // a COUNT lands the four bytes of the count itself
+      check(
+        dst + 4 <= bodyBytes,
+        'W14: $who entry $i count lands inside the body',
+      );
+    } else if (op == 2) {
+      // a TEXT lands its four-byte length at dst and its units at aux
+      check(
+        offsets.contains(aux),
+        'W14: $who entry $i aux $aux is a storage offset of this build',
+      );
+      check(
+        dst + 4 <= bodyBytes && aux + size <= bodyBytes,
+        'W14: $who entry $i text lands inside the body',
+      );
+    } else {
+      check(
+        dst + size <= bodyBytes,
+        'W14: $who entry $i copy lands inside the body',
+      );
+    }
+  }
+}
+
+void planDstCase() {
+  w14Check(
+    'fx1.fxRoot',
+    fx1.fxRootFixedLayout,
+    fx1.fxRootFixedDst,
+    fx1.fxRootFixedIdentity,
+    fx1.fxRootFixedIdentityCount,
+    fx1.fxRootFixedBodyBytes,
+  );
+  w14Check(
+    'fx2.fxRoot',
+    fx2.fxRootFixedLayout,
+    fx2.fxRootFixedDst,
+    fx2.fxRootFixedIdentity,
+    fx2.fxRootFixedIdentityCount,
+    fx2.fxRootFixedBodyBytes,
+  );
+  w14Check(
+    'p1.link',
+    p1.linkFixedLayout,
+    p1.linkFixedDst,
+    p1.linkFixedIdentity,
+    p1.linkFixedIdentityCount,
+    p1.linkFixedBodyBytes,
+  );
+  w14Check(
+    'p1.chain',
+    p1.chainFixedLayout,
+    p1.chainFixedDst,
+    p1.chainFixedIdentity,
+    p1.chainFixedIdentityCount,
+    p1.chainFixedBodyBytes,
+  );
+  w14Check(
+    'p3.chain',
+    p3.chainFixedLayout,
+    p3.chainFixedDst,
+    p3.chainFixedIdentity,
+    p3.chainFixedIdentityCount,
+    p3.chainFixedBodyBytes,
+  );
+  w14Check(
+    'fu1.fuRoot',
+    fu1.fuRootFixedLayout,
+    fu1.fuRootFixedDst,
+    fu1.fuRootFixedIdentity,
+    fu1.fuRootFixedIdentityCount,
+    fu1.fuRootFixedBodyBytes,
+  );
+  w14Check(
+    'fu2.fuRoot',
+    fu2.fuRootFixedLayout,
+    fu2.fuRootFixedDst,
+    fu2.fuRootFixedIdentity,
+    fu2.fuRootFixedIdentityCount,
+    fu2.fuRootFixedBodyBytes,
+  );
+  w14Check(
+    'fxw.fxWide',
+    fxw.fxWideFixedLayout,
+    fxw.fxWideFixedDst,
+    fxw.fxWideFixedIdentity,
+    fxw.fxWideFixedIdentityCount,
+    fxw.fxWideFixedBodyBytes,
+  );
+  w14Check(
+    'fxw.fxCaption',
+    fxw.fxCaptionFixedLayout,
+    fxw.fxCaptionFixedDst,
+    fxw.fxCaptionFixedIdentity,
+    fxw.fxCaptionFixedIdentityCount,
+    fxw.fxCaptionFixedBodyBytes,
+  );
+  w14Check(
+    'pack.globalSettings',
+    pack.globalSettingsFixedLayout,
+    pack.globalSettingsFixedDst,
+    pack.globalSettingsFixedIdentity,
+    pack.globalSettingsFixedIdentityCount,
+    pack.globalSettingsFixedBodyBytes,
+  );
+  w14Check(
+    'pack.gunnerSettings',
+    pack.gunnerSettingsFixedLayout,
+    pack.gunnerSettingsFixedDst,
+    pack.gunnerSettingsFixedIdentity,
+    pack.gunnerSettingsFixedIdentityCount,
+    pack.gunnerSettingsFixedBodyBytes,
+  );
+  w14Check(
+    'pack.shipEntry',
+    pack.shipEntryFixedLayout,
+    pack.shipEntryFixedDst,
+    pack.shipEntryFixedIdentity,
+    pack.shipEntryFixedIdentityCount,
+    pack.shipEntryFixedBodyBytes,
+  );
+  w14Check(
+    'keyed.teamConfig',
+    keyed.teamConfigFixedLayout,
+    keyed.teamConfigFixedDst,
+    keyed.teamConfigFixedIdentity,
+    keyed.teamConfigFixedIdentityCount,
+    keyed.teamConfigFixedBodyBytes,
+  );
+  w14Check(
+    'keyed.gunnerConfig',
+    keyed.gunnerConfigFixedLayout,
+    keyed.gunnerConfigFixedDst,
+    keyed.gunnerConfigFixedIdentity,
+    keyed.gunnerConfigFixedIdentityCount,
+    keyed.gunnerConfigFixedBodyBytes,
+  );
+  w14Check(
+    'keyed.turretConfig',
+    keyed.turretConfigFixedLayout,
+    keyed.turretConfigFixedDst,
+    keyed.turretConfigFixedIdentity,
+    keyed.turretConfigFixedIdentityCount,
+    keyed.turretConfigFixedBodyBytes,
+  );
+  w14Check(
+    'bench.fixedTable',
+    bench.fixedTableFixedLayout,
+    bench.fixedTableFixedDst,
+    bench.fixedTableFixedIdentity,
+    bench.fixedTableFixedIdentityCount,
+    bench.fixedTableFixedBodyBytes,
+  );
+
+  // THE NEGATIVE, so the case is not vacuous: the SAME question asked of a
+  // destination one byte off answers NO. If a drifted destination still read
+  // as a storage offset the case above would prove nothing.
+  final offsets = w14Offsets(fx1.fxRootFixedLayout, fx1.fxRootFixedDst);
+  final drifted = Int32List.fromList(fx1.fxRootFixedIdentity);
+  drifted[2] += 1; // entry 0's dst
+  check(
+    !offsets.contains(drifted[2]),
+    'W14 NEGATIVE CONTROL: a drifted destination is not a storage offset',
+  );
+  print(
+    'W14: 16 roots — every identity-plan destination is the build\'s own '
+    'storage offset and lands inside FixedBodyBytes (the sizeof)',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // F4: A LAYOUT LENGTH THAT RUNS PAST THE FILE (docs/FIXED-FORM-ALGORITHM.md
 // §1.1 step 3, §5.3 step 3: `20 + L > bytes` REFUSE `layout_malformed`)
 // ---------------------------------------------------------------------------
@@ -2423,6 +2676,7 @@ void main(List<String> args) {
     'FX1 FxRoot: body ${fx1.fxRootFixedBodyBytes}, layout ${fx1.fxRootFixedLayoutBytes}, '
     'identity plan ${fx1.fxRootFixedIdentityCount} entries',
   );
+  planDstCase();
   // W7, THE TWO LANES (docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). It reads
   // only the build's own static plan and a record it writes itself, so it is
   // called BEFORE the reference corpus is opened: its line is then visible
