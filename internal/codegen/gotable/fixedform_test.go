@@ -5,10 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -209,6 +211,116 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 `)
+}
+
+// TestHashIncludesTheCountWord pins §5 of docs/FIXED-FORM-ALGORITHM.md's WIRE
+// IDENTITY by name, where the golden corpus only makes the handed constants
+// AGREE: "the layout hash is fnv1a64 over the layout's bytes as written, the
+// 4-byte count included". Every leg holds its hash as a CONSTANT and the
+// runtime is right not to recompute it (§5.9 #47), so nothing on this leg
+// computes the hash from the bytes it seals — a leg whose hash function skipped
+// the count word would still pass every fixture it has, because it never
+// computes the hash at all. That is the `~`: the behaviour is exercised, the
+// rule is asserted by nothing.
+//
+// THIS CASE DOES COMPUTE IT, IN THE FIXTURE. It writes a file, lifts the layout
+// AS WRITTEN out of that file (the layout's own first four bytes ARE its entry
+// count), hashes those bytes with fnv1a64 written out LONGHAND — never borrowed
+// from the code under test, which would "agree with whatever that code happened
+// to do" — and asserts the header's OWN hash equals the number. It then drops
+// the 4-byte count and asserts the number MOVES. TWO tables, so the case is not
+// one lucky constant, and their hashes differ.
+//
+// The name is chosen to match `make tables-go-versioning`'s -run list, so the
+// gate that carries the fixed form actually runs it.
+func TestHashIncludesTheCountWord(t *testing.T) {
+	// The generated case is run with -v and its log RE-EMITTED, so a plain
+	// `go test -v -run TestHashIncludesTheCountWord` shows the inner
+	// `--- PASS` and not merely the outer wrapper: a case nobody can watch run
+	// is worth nothing.
+	out, err := runGeneratedResult(t, `package probe
+fixed table Point {
+    x int32
+    y int32
+}
+fixed table Quad {
+    a int32
+    b int32
+    c int32
+    d int32
+}
+`, `package probe
+
+import (
+	"encoding/binary"
+	"testing"
+)
+
+// fnv1a64 is §5's hash written out LONGHAND in the fixture: a driver that
+// hashed with the code it is checking "would agree with whatever that code
+// happened to do". Here it is the oracle, not an echo.
+func fnv1a64(b []byte) uint64 {
+	h := uint64(0xcbf29ce484222325)
+	for _, v := range b {
+		h ^= uint64(v)
+		h *= 0x100000001b3
+	}
+	return h
+}
+
+func TestHashIncludesTheCountWord(t *testing.T) {
+	cases := []struct {
+		name   string
+		layout []byte
+		hash   uint64
+		file   []byte
+	}{
+		{"Point", PointFixedLayout, PointFixedHash, func() []byte {
+			f := make([]byte, PointFixedMeasure(1))
+			PointFixedSave([]Point{{}}, f)
+			return f
+		}()},
+		{"Quad", QuadFixedLayout, QuadFixedHash, func() []byte {
+			f := make([]byte, QuadFixedMeasure(1))
+			QuadFixedSave([]Quad{{}}, f)
+			return f
+		}()},
+	}
+	for _, tc := range cases {
+		// THE FILE §2.1: form byte, seven reserved zeros, the layout hash at 8,
+		// the body at 16, then the layout behind its u32 length — so the layout
+		// starts at TableFixedHeaderBytes+4, and its OWN first four bytes are
+		// its entry count.
+		at := TableFixedHeaderBytes + 4
+		asWritten := tc.file[at : at+len(tc.layout)]
+		if got := binary.LittleEndian.Uint32(asWritten); got != uint32((len(tc.layout)-4)/17) {
+			t.Fatalf("%s: the layout as written does not open with its 4-byte entry count: %d", tc.name, got)
+		}
+		// THE HEADER'S OWN HASH, taken from the file, is this build's constant.
+		if onWire := binary.LittleEndian.Uint64(tc.file[TableFixedHashAt:]); onWire != tc.hash {
+			t.Fatalf("%s: the header's own hash 0x%016x is not this build's constant 0x%016x", tc.name, onWire, tc.hash)
+		}
+		// THE RULE, BY NAME: the layout hash is fnv1a64 over the layout's bytes
+		// as written, the 4-byte count included.
+		want := fnv1a64(asWritten)
+		if tc.hash != want {
+			t.Fatalf("%s: the layout hash is fnv1a64 over the layout's bytes as written, the 4-byte count included: constant 0x%016x, recomputed over the %d bytes as written 0x%016x", tc.name, tc.hash, len(asWritten), want)
+		}
+		// AND THE COUNT IS IN THE INPUT: dropping it must move the number, or
+		// "the count is included" is asserted by nothing.
+		if dropped := fnv1a64(asWritten[4:]); dropped == tc.hash {
+			t.Fatalf("%s: dropping the 4-byte count leaves the hash at 0x%016x, so the count is not in the input", tc.name, dropped)
+		}
+	}
+	if cases[0].hash == cases[1].hash {
+		t.Fatalf("two distinct layouts share the hash 0x%016x; the case is one lucky constant", cases[0].hash)
+	}
+}
+`, "-v")
+	if err != nil {
+		t.Fatalf("the layout hash must include the 4-byte count: %v\n%s", err, out)
+	}
+	t.Logf("the generated case ran:\n%s", out)
 }
 
 // P2: WRITE, READ, WRITE — THE BYTES ARE IDENTICAL (docs/FIXED-FORM-ALGORITHM.md
@@ -970,6 +1082,179 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 `)
 }
 
+// TestFixedFormHostileByteSweep is P3 on the Go leg: the C++ reference's
+// record-byte sweep (test/tables/fixedform_properties.cpp:522-638, "mutate
+// every record byte, both paths") and its whole-file control's law
+// (test/tables/fixedform_main.cpp:642-694): every byte of a form-3 record is
+// poisoned six ways and the reader answers ONE OF THREE ways and never a
+// fourth — a refusal by name, a malformed read, or a read that lands values.
+// The fourth answer, at the heart of docs/FIXED-FORM-ALGORITHM.md §7 item 5
+// ("a byte-flip fuzz over the whole file, under a sanitizer"), is a read that
+// returns records while a ranged field rode past its declared bound. Go's
+// slice indexing is the sanitizer here: an out-of-bounds step is a panic, and
+// a wrong-but-in-bounds step is what this case fails on by name.
+//
+// THE SITE IS THE READ-SIDE BOUNDS PASS (docs/SPEC-TABLES.md §3.4), emitted as
+// <T>FixedClamp straight-line over the storage the one read loop just wrote,
+// and it is that pass — not the loop, which moves bytes and holds no bound
+// ("NO PLAN OP CLAMPS") — that keeps a hostile byte in bound. Host declares no
+// version lineage, so the eight-byte layout hash always names the baked
+// identity plan and that plan's read is the path swept below; a poisoned hash
+// byte is a named refusal before any record. The pass runs for whichever plan
+// won, so it is one function over storage and either plan is held by it.
+// CONTROL 2, below, disconnects the pass from the loop to prove it — and not
+// some other check — is what holds the value back.
+func TestFixedFormHostileByteSweep(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Host {
+    small int32 = 5 | min = 0, max = 1000
+    marks [..4]int32 | min = 0, max = 1000
+    note ?int32 | min = 0, max = 1000
+    tail int32 = 7
+}
+`, `package probe
+import (
+	"encoding/binary"
+	"fmt"
+	"testing"
+	"unsafe"
+)
+
+// The six poisons the C++ reference sweeps (fixedform_properties.cpp:170).
+var sweepPoison = [6]byte{0x00, 0x01, 0x02, 0x7f, 0x80, 0xff}
+
+func sweepClean(t *testing.T) []byte {
+	t.Helper()
+	v := Host{}
+	HostReset(&v)
+	v.Small = 5
+	v.MarksCount = 2
+	v.Marks[0] = 10
+	v.Marks[1] = 20
+	v.NotePresent = true
+	v.Note = 30
+	v.Tail = 7
+	buf := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{v}, buf); n != int64(len(buf)) {
+		t.Fatalf("save wrote %d of %d", n, len(buf))
+	}
+	return buf
+}
+
+// sweepInBound is the property: a read that RETURNED values landed every
+// ranged value inside its declared bound. A value past the bound here is the
+// fourth answer, and the message says so.
+func sweepInBound(t *testing.T, what string, v Host, r TableReport) {
+	t.Helper()
+	if v.Small < 0 || v.Small > 1000 {
+		t.Fatalf("%s: a read REPORTED SUCCESS with small=%d out of bound, report %+v", what, v.Small, r)
+	}
+	if v.MarksCount < 0 || v.MarksCount > 4 {
+		t.Fatalf("%s: a read REPORTED SUCCESS with marks_count=%d out of bound, report %+v", what, v.MarksCount, r)
+	}
+	for i := int64(0); i < int64(v.MarksCount); i++ {
+		if v.Marks[i] < 0 || v.Marks[i] > 1000 {
+			t.Fatalf("%s: a read REPORTED SUCCESS with marks[%d]=%d out of bound, report %+v", what, i, v.Marks[i], r)
+		}
+	}
+	if v.NotePresent && (v.Note < 0 || v.Note > 1000) {
+		t.Fatalf("%s: a read REPORTED SUCCESS with note=%d out of bound, report %+v", what, v.Note, r)
+	}
+}
+
+func TestHostileByteSweep(t *testing.T) {
+	clean := sweepClean(t)
+
+	// CONTROL 1, in the case: the legitimate value the rule admits does not
+	// fire. A clean file clamps nothing, refuses nothing and lands in bound.
+	{
+		got := make([]Host, 1)
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		if n := HostFixedLoad(got, clean, plan, &r); n != 1 {
+			t.Fatalf("clean read n=%d %+v", n, r)
+		}
+		if r.Verdict != TableOpenOk || r.Reason != "" || r.Malformed || r.Clamped != 0 {
+			t.Fatalf("clean read fired: %+v", r)
+		}
+		sweepInBound(t, "clean", got[0], r)
+	}
+
+	// THE SWEEP: every byte of the record — the eight-byte layout hash and the
+	// body behind it — poisoned six ways through HostFixedLoad, the production
+	// entrypoint. Host carries no lineage, so a poisoned hash byte meets a
+	// named refusal and a poisoned body byte is read by the baked identity plan
+	// and then held to its bound by the one pass that runs for whichever plan.
+	for at := 0; at < HostFixedRecordBytes; at++ {
+		for p := 0; p < len(sweepPoison); p++ {
+			hit := append([]byte(nil), clean...)
+			hit[len(hit)-HostFixedRecordBytes+at] = sweepPoison[p]
+			got := make([]Host, 1)
+			var r TableReport
+			plan := make([]TableFixedEntry, 256)
+			n := HostFixedLoad(got, hit, plan, &r)
+			what := fmt.Sprintf("record byte %d poison 0x%02x", at, sweepPoison[p])
+			if n < 0 {
+				named := r.Verdict == TableOpenRefused && r.Reason != ""
+				if !named && !r.Malformed {
+					t.Fatalf("%s: a negative read is NEITHER a named refusal NOR malformed: %+v", what, r)
+				}
+				if named && r.Malformed {
+					t.Fatalf("%s: a refusal is also damage: %+v", what, r)
+				}
+				continue
+			}
+			if r.Verdict != TableOpenOk || r.Reason != "" || r.Malformed {
+				t.Fatalf("%s: a read that returned records carried a refusal or damage: %+v", what, r)
+			}
+			sweepInBound(t, what, got[0], r)
+		}
+	}
+
+	// CONTROL 2, the negative control that compiles: revert the CALLER and keep
+	// the HELPER. The loop a plan drives is tableFixedRun and its copy op lands
+	// small verbatim — NO PLAN OP CLAMPS (§3.4). Plant the top of int32 where
+	// small lives, run only the identity plan's loop, and the value lands
+	// raw: the fourth answer the sweep above proves never closes a real read.
+	// Then run the helper the caller runs after the loop — HostFixedClamp —
+	// and the SAME value is one clamp back inside its declared bound.
+	{
+		if HostFixedPlan.Count <= 0 {
+			t.Fatal("CONTROL 2 FAILED: no identity plan")
+		}
+		plan := make([]TableFixedEntry, HostFixedPlan.Count)
+		copy(plan, HostFixedPlan.Entries[:HostFixedPlan.Count])
+		var v Host
+		HostReset(&v)
+		smallDst := unsafe.Offsetof(v.Small)
+		small := -1
+		for i := range plan {
+			if plan[i].Op == tableFixedCopy && plan[i].Size == 4 && plan[i].Dst == uint32(smallDst) {
+				small = i
+				break
+			}
+		}
+		if small < 0 {
+			t.Fatalf("CONTROL 2 FAILED: the identity plan carries no copy of small at dst %d", smallDst)
+		}
+		poisoned := append([]byte(nil), clean...)
+		body := poisoned[len(poisoned)-HostFixedRecordBytes+8:]
+		binary.LittleEndian.PutUint32(body[plan[small].Src:], 2147483647)
+		dst := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+		var r TableReport
+		tableFixedRun(plan, int32(len(plan)), body, dst, &r)
+		if v.Small != 2147483647 {
+			t.Fatalf("CONTROL 2 FAILED: the loop alone landed small=%d, not the planted out-of-bound value", v.Small)
+		}
+		HostFixedClamp(&v, &r)
+		if v.Small != 1000 || r.Clamped < 1 {
+			t.Fatalf("CONTROL 2 FAILED: the bounds pass did not bring small back to bound: small=%d clamped=%d", v.Small, r.Clamped)
+		}
+	}
+}
+`)
+}
+
 // TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (Rowan,
 // Java #833 read): a string(8) under a union's SECOND arm. Write on the
 // identity path, read with a compiled plan from a different layout. If Arg
@@ -1501,6 +1786,118 @@ func TestLiveCount(t *testing.T) {
 	}
 }
 `)
+}
+
+// TestGoFixedFormLayoutAndHashAreIrsByteForByte is this leg's §7 item 1 gate —
+// the "dump identity of bytes" cell of §8: the emitted layout block and the
+// hash over it, byte for byte and number for number, against the compiler's own
+// walk, ir.TableFixedLayoutBytes and ir.TableFixedLayoutHash. ir is the one law
+// every port renders (C++ included) and it produces BYTES, so it is the oracle,
+// never a second backend.
+//
+// The Go backend does not consume ir.TableFixedWalkRoot; it re-derives the walk
+// in fixedWalkRoot, serialises it through fixedLayoutBytes and hashes the
+// result with ir.TableFixedLayoutHash. Two layouts that differ anywhere are two
+// ports that never read each other's records — silently, as `no_layout`. A
+// round trip proves only that this leg agrees with itself; this test holds the
+// emitted XxxFixedLayout and XxxFixedHash constants against ir's answer, per
+// root, so the Go leg's layout can never drift from the reference's.
+func TestGoFixedFormLayoutAndHashAreIrsByteForByte(t *testing.T) {
+	src := `package probe
+fixed table Point {
+    x int32
+    y int32
+}
+fixed table Vector {
+    a int64
+    b float32
+    name string(8)
+    tags [4]int16
+}
+`
+	u := unitFrom(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	goLayout, goHash := goFixedLayouts(tableFile(files))
+	if len(goLayout) == 0 {
+		t.Fatal("the Go backend emitted no fixed-form layout at all for a unit of fixed tables — the emitter, not the fixture, is what broke")
+	}
+
+	want := map[string]string{}
+	wantHash := map[string]string{}
+	var order []string
+	for _, st := range ir.TableFixedRoots(u) {
+		if !ir.TableFixedEmitted(u, st) {
+			continue
+		}
+		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		want[st.Name] = byteSpell(layout)
+		wantHash[st.Name] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, st))
+		order = append(order, st.Name)
+	}
+	if len(want) == 0 {
+		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")
+	}
+
+	compared := 0
+	for _, name := range order {
+		got, ok := goLayout[name]
+		if !ok {
+			t.Errorf("ir names %s a fixed root and the Go backend emits no layout for it", name)
+			continue
+		}
+		compared++
+		if want[name] != got {
+			t.Errorf("%s's emitted layout differs from the compiler's own walk — the block-equals-the-C++-reference test (docs/FIXED-FORM-ALGORITHM.md §7 item 1, §8 \"dump identity of bytes\"): this leg's emitted layout AND its hash must equal the reference byte for byte and number for number\n  ir %s\n  go %s", name, want[name], got)
+		}
+		if wantHash[name] != goHash[name] {
+			t.Errorf("%s's fixed-form hash differs from ir's: ir %s, go %s — a record written against the law is `no_layout` to this port", name, wantHash[name], goHash[name])
+		}
+	}
+	for name := range goLayout {
+		if _, ok := want[name]; !ok {
+			t.Errorf("the Go backend emits a fixed-form layout for %s and ir does not name it a fixed root — a port may carry fewer shapes than the law, never more", name)
+		}
+	}
+	if compared == 0 {
+		t.Fatal("no root was compared against ir at all")
+	}
+
+	// CONTROL 1 — not vacuous: two distinct roots must produce two distinct
+	// layout blocks. A byte-for-byte test that passes against one file only is
+	// a golden file with extra steps.
+	if len(order) >= 2 && want[order[0]] == want[order[1]] {
+		t.Fatalf("two distinct roots (%s, %s) emitted the same layout block; the fixture does not distinguish the roots", order[0], order[1])
+	}
+}
+
+var (
+	goFixedLayoutRe = regexp.MustCompile(`(?s)var (\w+)FixedLayout = \[\]byte\{(.*?)\}`)
+	goFixedHashRe   = regexp.MustCompile(`const (\w+)FixedHash = (0x[0-9a-f]+)`)
+	fixedHexByteRe  = regexp.MustCompile(`0x[0-9a-f]{2}`)
+)
+
+// goFixedLayouts keys on the Go root's own spelling (st.Name), which is what
+// the emitted XxxFixedLayout and XxxFixedHash constants carry.
+func goFixedLayouts(text string) (map[string]string, map[string]string) {
+	layouts, hashes := map[string]string{}, map[string]string{}
+	for _, m := range goFixedLayoutRe.FindAllStringSubmatch(text, -1) {
+		layouts[m[1]] = strings.Join(fixedHexByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range goFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	return layouts, hashes
+}
+
+func byteSpell(b []byte) string {
+	hex := make([]string, 0, len(b))
+	for _, v := range b {
+		hex = append(hex, fmt.Sprintf("0x%02x", v))
+	}
+	return strings.Join(hex, " ")
 }
 
 // TestFixedFormWideTextCodeUnits is item C5 of schema#876: a `wstring(N)`'s
