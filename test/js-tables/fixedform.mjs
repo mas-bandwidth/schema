@@ -137,6 +137,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
       fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
     };
     optionalBytes(check, o, optionalDir);
+    rangedScalarClamp(check, o);
     retired("optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
     retired("optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
   }
@@ -2105,6 +2106,72 @@ function optionalVersioning(check, o, dir) {
     check(back[0].Link.Value === 0,
       "P1 reads P3: the nested value keeps its declared default rather than reading the flag as a payload byte");
   }
+}
+
+// ---------------------------------------------------------------------------
+// C7 — THE RANGED SCALAR CLAMP, the hostile half (docs/FIXED-FORM-ALGORITHM.md
+// §4.6; the reference's bounds_case, item 1, test/tables/fixedform_main.cpp).
+// ---------------------------------------------------------------------------
+//
+// A fixed record is a positional image and the one read loop moves bytes: it
+// asks nothing about what they mean. The min and max a `plain int32 | min, max`
+// declares are therefore held by the DECODE and by nothing else — no plan op
+// clamps, and the identity plan is ONE copy of the whole body. A record under
+// this build's own hash still arrives from a writer this reader cannot vouch
+// for, so an out-of-range value lands at this reader's declared end and moves
+// `clamped` exactly ONCE, as §4.6's event and never a refusal: the record still
+// reads. `plain` is `int32 = 5 | min = 0, max = 1000`.
+//
+// THE POISON GOES THROUGH THE WRITER, the way the reference forges it: the
+// write side's checks are debug-only by rule and a range is not one of them, so
+// a caller can put 5000 on the wire and the reader is what answers for it.
+//
+// The COMPILED half — a plan carrying an OLD writer's bound — is a stranger's
+// layout and is owed on the lineage harness, where the lock hands the plan its
+// bound; only the identity half runs here.
+export function rangedScalarClamp(check, o) {
+  const { fo1, fo1home } = o;
+
+  // One record, written by THIS build's own writer with `planted` in `plain`,
+  // then read back through the identity plan. `tail` rides behind the ranged
+  // field so a clamp that ran off the end of its own field is visible.
+  const read = (planted) => {
+    const one = new fo1home.OptRoot();
+    one.Plain = planted;
+    one.Tail = 203;
+    const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
+    check(fo1.OptRootFixedSave([one], 1, w) === w.length,
+      "C7 RANGED: the record saves");
+    const back = [new fo1home.OptRoot()];
+    const r = new fo1home.TableFixedReport();
+    const n = fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r);
+    return { n, v: back[0], r };
+  };
+
+  // `want` and `wantClamped` are THE DECLARATION'S OWN ANSWER and not the
+  // site's: an in-range value stands and moves no counter, an out-of-range one
+  // lands at the end it passed and moves it once. A site that clamped a
+  // legitimate value, or left a forged one standing, is exactly what reds.
+  const probe = (planted) => {
+    const { n, v, r } = read(planted);
+    const want = planted < 0 ? 0 : planted > 1000 ? 1000 : planted;
+    const wantClamped = planted < 0 || planted > 1000 ? 1 : 0;
+    check(n === 1 && v.Plain === want,
+      `C7 RANGED: a value of ${planted} lands at ${want} (got ${v.Plain})`);
+    check(r.clamped === wantClamped,
+      `C7 RANGED: a value of ${planted} moves clamped ${wantClamped} (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      `C7 RANGED: a value of ${planted} is an event and not a refusal — the record still reads`);
+    check(v.Tail === 203,
+      `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.Tail})`);
+  };
+
+  probe(5000);  // past max
+  probe(-7);    // under min
+  // THE POSITIVE CONTROL: both legitimate ends stand and move no counter, so a
+  // clamp that fired on a legal value would be visible.
+  probe(1000);  // the legitimate max
+  probe(0);     // the legitimate min
 }
 
 // ---------------------------------------------------------------------------
