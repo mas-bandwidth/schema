@@ -821,6 +821,117 @@ void pairedCorpus(String dir) {
 }
 
 // ---------------------------------------------------------------------------
+// 2b. THE DECLARED BOUNDS ON THE RAW SCALE (§4.6) — C8, fixed-point F-shift
+// ---------------------------------------------------------------------------
+//
+// A FIXED-POINT FIELD'S DECLARED BOUNDS ARE IN VALUE UNITS AND ITS STORAGE IS
+// RAW (docs/FIXED-FORM-ALGORITHM.md §4.6, docs/SPEC-TABLES.md §4): the reader
+// shifts both ends by F before comparing, so `BenchMixed.server_time`
+// `fixed(24, 8) | min = 0, max = 65535` is held to the RAW range
+// [0, 65535 << 8] = [0, 16776960] and NOTHING here divides by 2^F. A `bits(N)`
+// is the older half of the same pass and clamps to 2^N - 1, written only where
+// N is narrower than the storage the form gives it.
+//
+// The reference is test/tables/fixedform_properties.cpp:1279 (`probe_clamp_op`):
+// `w.position = 2000LL * 65536` is inside the OLDER writer's range and past the
+// newer reader's `1000`, and the newer read lands `1000LL * 65536` and counts
+// ONE `clamped`. This port forges the same one raw step past the shifted end,
+// on the identity plan, and holds the value AND the count.
+//
+// THE SITE IS internal/codegen/darttable/fixeddart.go:969 `emitClamp` (with
+// `fixedClampEnds` at :888 reading `ir.TableRawRange`'s F-shifted ends and
+// `fixedBitsClamp` at :899 answering 2^N - 1). THE POINT OF THIS CASE IS THAT
+// THE PASS RUNS AT ALL: a clean record already proves it cannot fire on a
+// legitimate value, and the forged record proves it fires and counts.
+void fixedBoundsCase() {
+  final layoutBytes = bench.fixedTableFixedLayoutBytes;
+  final body =
+      layoutAt + layoutBytes + 8; // the 8-byte record hash, then values
+
+  // A LEGITIMATE RECORD. Every value is inside its declaration, so the pass
+  // writes nothing at all — a bound test that clamps a clean value is a test
+  // of something else.
+  final one = benchHome.FixedTable();
+  one.value.serverTime = 100; // raw Q24.8, inside [0, 16776960]
+  one.value.frameTick = 7;
+  one.value.sequence = 9;
+  final clean = Uint8List(bench.fixedTableFixedMeasure(1));
+  check(
+    bench.fixedTableFixedSave(<benchHome.FixedTable>[one], 1, clean) ==
+        clean.length,
+    'C8 bounds: save',
+  );
+
+  {
+    final back = <benchHome.FixedTable>[benchHome.FixedTable()];
+    final r = benchHome.TableFixedReport();
+    final n = bench.fixedTableFixedLoad(
+      back,
+      1,
+      clean,
+      clean.length,
+      bench.fixedTableFixedNewPlan(),
+      r,
+    );
+    check(n == 1, 'C8 bounds: the legitimate record reads');
+    check(
+      back[0].value.serverTime == 100,
+      'C8 bounds: the raw Q24.8 value lands exact',
+    );
+    check(
+      r.clamped == 0,
+      'C8 bounds: a value inside the declaration moves no clamp '
+      '(the pass is not vacuous)',
+    );
+    check(
+      !r.malformed && r.refused == 0,
+      'C8 bounds: a clean read is not damage',
+    );
+  }
+
+  // THE FORGED RECORD. One raw step past the SHIFTED maximum (65535 << 8) and
+  // one past the width end of each bits field; the record's hash and layout are
+  // untouched, so this is the identity plan and the pass is the reader's own.
+  final v = ByteData.sublistView(clean);
+  v.setInt32(body + 48, 16776961, Endian.little); // server_time, one past max
+  v.setUint64(body + 40, 281474976710656, Endian.little); // frame_tick, 2^48
+  v.setUint32(body + 0, 65536, Endian.little); // sequence, 2^16
+
+  final r = benchHome.TableFixedReport();
+  final back = <benchHome.FixedTable>[benchHome.FixedTable()];
+  final n = bench.fixedTableFixedLoad(
+    back,
+    1,
+    clean,
+    clean.length,
+    bench.fixedTableFixedNewPlan(),
+    r,
+  );
+  check(n == 1, 'C8 bounds: the forged record still reads');
+  check(
+    back[0].value.serverTime == 65535 * 256,
+    'C8 bounds: the SHIFTED maximum holds a raw past it '
+    '(got ${back[0].value.serverTime}, want ${65535 * 256})',
+  );
+  check(
+    back[0].value.frameTick == 281474976710655,
+    'C8 bounds: bits(48) clamps to 2^48 - 1',
+  );
+  check(
+    back[0].value.sequence == 65535,
+    'C8 bounds: bits(16) clamps to 2^16 - 1',
+  );
+  check(
+    r.clamped == 3,
+    'C8 bounds: each clamp counts exactly once (got ${r.clamped})',
+  );
+  check(
+    !r.malformed && r.refused == 0,
+    'C8 bounds: damage in a VALUE is not framing damage',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 3. THE VERSIONING CONFORMANCE — the twin of test/tables/fixedform_main.cpp
 // ---------------------------------------------------------------------------
 
@@ -2220,6 +2331,7 @@ void main(List<String> args) {
   twoLanesCase();
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
+  fixedBoundsCase();
   // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
   // a layout THE FILE carried and read FORWARD, and under §5 a fixed table
   // reads BACKWARD only — a peer the lineage does not hold is `layout_newer`
