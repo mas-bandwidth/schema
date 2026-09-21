@@ -445,6 +445,24 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
 	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
+# technique (docs/PORTING.md, schema#421): the generated accessor and the
+# generated descriptor are two independent derivations of one layout, so the
+# leg reads every field of a block and of a cook both ways and requires
+# agreement — including a pointer's SLOT, whose position is what a
+# self-relative delta is relative to (§6.3). The two controls move one
+# derivation — a generated block projection scalar four bytes, a cook pointer
+# slot eight — and each must turn the gate red, or the accessor half could be
+# reading the descriptors twice and nobody would know. The C++ half generates,
+# compiles and runs a probe of the reference emitter.
+.PHONY: tables-accessor-descriptor-agreement tables-accessor-negative-control tables-slot-negative-control
+tables-accessor-descriptor-agreement:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
+tables-accessor-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
+tables-slot-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
+
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -3241,6 +3259,13 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-message-form-negative-control
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
+	# THE ACCESSOR/DESCRIPTOR AGREEMENT (docs/PORTING.md J1, schema#421): the
+	# generated accessor and the generated descriptor are two independent
+	# derivations of one layout, read both ways on a block and a cook, with a
+	# scalar and a pointer-slot control that must each go red.
+	$(MAKE) tables-accessor-descriptor-agreement
+	$(MAKE) tables-accessor-negative-control
+	$(MAKE) tables-slot-negative-control
 	$(MAKE) tables-maps
 	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
