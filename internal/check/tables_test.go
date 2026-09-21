@@ -615,6 +615,48 @@ type Board
 	}
 }
 
+// TestTypeHeldEnumExtentArrayRidesKeyed: schema#606's ruling: on the TABLE
+// wire an enum-extent array rides KEYED wherever it is declared, so the
+// positional spelling `[E.Max]T` (or `[N]T` under a `const N` that folds from
+// an enum) inside a `type` a table holds carries the same kind `16` the keyed
+// spelling `[E]T` carries there, and the closed class §4.1 counts stays closed
+// one body away (docs/SPEC-TABLES.md §2.4, §11). The packet wire is unmoved:
+// the same field is positional there and the two spellings share one protocol
+// id, held by TestKeyedSpellingIsTheSameTypeWire.
+func TestTypeHeldEnumExtentArrayRidesKeyed(t *testing.T) {
+	const src = `package probe
+
+enum Kind { Alpha, Beta, Gamma }
+
+const SlotCount = Kind.Max
+
+type Inner
+{
+    direct [Kind.Max]int32
+    named  [SlotCount]int32
+    keyed  [Kind]int32
+}
+
+fixed table Root
+{
+    inner Inner
+}
+`
+	u := buildUnit(t, src)
+	inner := u.Structs["Inner"]
+	if inner == nil || len(inner.Fields) != 3 {
+		t.Fatalf("Inner did not resolve: %+v", inner)
+	}
+	for _, f := range inner.Fields {
+		if f.ArrayBound != 3 {
+			t.Errorf("Inner.%s: bound %d, want 3 (Kind.Max)", f.Name, f.ArrayBound)
+		}
+		if ir.TableWireFieldKind(f) != ir.TableKindKeyed {
+			t.Errorf("Inner.%s: table-wire kind %d, want keyed (16); a type-held enum-extent array rides keyed wherever it is declared (schema#606)", f.Name, ir.TableWireFieldKind(f))
+		}
+	}
+}
+
 // TestTablesMoveNoProtocolId is the independence requirement: packets and
 // tables version independently, so ADDING a table (and everything in its
 // closure that was already there) moves neither the projection nor the id —
@@ -1629,7 +1671,8 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		// THE CONTROLS HOLD THE OTHER EDGE (§2.4): the packet wire is
 		// untouched, a bound that folds from no enum stands wherever it is
 		// spelled, and the `type`-held case schema#606 rules on keeps the
-		// spelling.
+		// spelling: it compiles, and its table body keys the array
+		// (TestTypeHeldEnumExtentArrayRidesKeyed).
 		{file: "ControlPacket.schema"},
 		{file: "ControlPlain.schema"},
 		{file: "ControlTypeHeld.schema"},
