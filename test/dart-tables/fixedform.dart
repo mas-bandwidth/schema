@@ -2067,6 +2067,31 @@ void layoutValidation() {
 }
 
 // ---------------------------------------------------------------------------
+// F4: A LAYOUT LENGTH THAT RUNS PAST THE FILE (docs/FIXED-FORM-ALGORITHM.md
+// §1.1 step 3, §5.3 step 3: `20 + L > bytes` REFUSE `layout_malformed`)
+// ---------------------------------------------------------------------------
+//
+// THIS IS FRAMING, NOT ONE OF §1.1'S SEVEN RULES. §5.3 retired the run-time
+// WALK of a stranger layout, but this check runs BEFORE the hash is ever
+// selected, so it did not retire with the walk and is asserted live here. A
+// twenty-four-byte file stating a layout of one hundred would make a reader
+// that trusted the length step past the bytes it was handed before a hash could
+// name a plan. THE CHECK FIRES FIRST, so the header's hash is left zero and
+// selects nothing — which is why the name is `layout_malformed` and not
+// `layout_newer`.
+void layoutTruncatedCase() {
+  final f = Uint8List(layoutAt + 4); // the header and four bytes of "layout"
+  f[0] = 3; // this form
+  // L = 100: 20 + 100 = 120 runs past the file's twenty-four bytes.
+  ByteData.sublistView(f).setUint32(layoutLengthAt, 100, Endian.little);
+  refuses(
+    f,
+    fx1home.TableFixedRefusal.layoutMalformed,
+    'RULE: a layout length that runs past the file is layout_malformed',
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 void main(List<String> args) {
   final corpus = args.isNotEmpty ? args[0] : 'build/fixedform-corpus';
@@ -2097,6 +2122,9 @@ void main(List<String> args) {
   absentOptionalCase();
   boundsCase();
   negativeControl();
+  // F4: the sample lives behind the corpus reads, and it does not need them —
+  // it is the reader's OWN header and a length that lies.
+  layoutTruncatedCase();
   // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
   // on the wire is never walked, so a malformation under a KNOWN hash is ONE
   // name, `layout_malformed`. The coverage is owed by the LOCK's validation of
