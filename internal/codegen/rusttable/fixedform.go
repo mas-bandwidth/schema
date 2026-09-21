@@ -1033,7 +1033,10 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("                out.unknown[i] = census.unknown;\n")
 		g.pf("                out.kind_mismatch[i] = census.kind_mismatch;\n")
 		g.pf("            }\n")
-		g.pf("            None => out.reason[i] = TableFixedReason::PlanTooLarge,\n")
+		g.pf("            // A compile that refused BY NAME keeps its name: an entry past\n")
+		g.pf("            // the writer's record is layout_record_too_large, and only a plan\n")
+		g.pf("            // that did not fit is plan_too_large.\n")
+		g.pf("            None => out.reason[i] = if census.refused { census.reason } else { TableFixedReason::PlanTooLarge },\n")
 		g.pf("        }\n    }\n    out\n});\n\n")
 	}
 
