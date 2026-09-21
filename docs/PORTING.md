@@ -1080,13 +1080,16 @@ name — a base-alignment check that is never exercised is dead code as far as
 any gate is concerned, and unaligned reads succeed on every host this repo
 builds on, so the fuzz oracle alone cannot see the check go missing. The cook's
 lead is held for every port by the harness's `cook_lead_1..63` forgery rows;
-the block's is not (#387), so a port holds it itself.
+the block's is held by `block_base_unaligned` (#387), one image one byte past an
+aligned base, so the reference holds the check and a port still holds it itself.
 
-**Reference.** `test/conformance/elixir/driver_impl.ex:740-741`
+**Reference.** `testdata/conformance/tables/MANIFEST.txt`
+(`block_base_unaligned`); `test/conformance/cpp/main.cpp` (the pointer column
+of the block forgery battery); `test/conformance/elixir/driver_impl.ex:740-741`
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
 reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 
-**Proven in.** Elixir (#369).
+**Proven in.** Elixir (#369); the reference row in every leg (#387).
 
 **Measured effect.** 2 block images × 65 leads — 0 and 64 open, 1..63 refuse.
 
@@ -1094,11 +1097,11 @@ reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 the residue check to `lead < 0` in the emitter and requires "block_render at
 lead 1 answered open, wanted refuse".
 
-**Targets:** block-lead
+**Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| ✅ `block_base_unaligned` (`testdata/conformance/tables/MANIFEST.txt`) and `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `block_base_unaligned` and `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ✅ `block_base_unaligned` (`test/conformance/rust/src/main.rs`) | ✅ `block_base_unaligned` and `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `block_base_unaligned` (`test/conformance/cs/src/Program.cs`) and `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ✅ `block_base_unaligned` (`test/conformance/java/src/Driver.java`, `openBlock` takes the lead) | ✅ `block_base_unaligned` (`test/conformance/js/main.mjs`, `openBlock` takes the lead) | ✅ `block_base_unaligned` (`test/conformance/dart/main.dart`) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
 
 ### I6 — Claimed names, both ways, with a control
 
