@@ -2116,6 +2116,90 @@ fn the_declared_range() {
 }
 
 // ---------------------------------------------------------------------------
+// THE LAST BOUND: bits(N) IS HELD BY ITS OWN WIDTH (docs/SPEC-TABLES.md §3.4,
+// §4; docs/FIXED-FORM-ALGORITHM.md §5.4).
+//
+// A `bits(N)` whose N is narrower than the four- or eight-byte lane it rides
+// in holds no declared min/max — its range is its WIDTH — so the bounds pass
+// clamps it to 2^N - 1. A `bits(N)` that fills its lane exactly emits no
+// comparison at all, because every value the lane holds is in range. The
+// C++ twin wrote this case as a `-fsyntax-only` compile (`tables-clamp-limits`)
+// rather than a runtime read; this leg already had the table in tabledemo
+// (tables/examples/Ranges.schema) and pins the value, not just the emission.
+// ---------------------------------------------------------------------------
+
+fn the_declared_width() {
+    let mut one = tabledemo::RangedWidthsRow::default();
+    one.b12 = 3000; // well inside bits(12)'s 0..=4095
+    one.b48 = 0x1234_5678_9ABC; // well inside bits(48)'s 0..=2^48-1
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_widths_fixed_measure(1)];
+    check(
+        tabledemo::ranged_widths_fixed_save(&values, &mut file) == Some(file.len()),
+        "the width: the record writes",
+    );
+
+    // THE CLEAN READ FIRST, so the clamp below is the forgery and not the pass.
+    let mut back = [tabledemo::RangedWidthsRow::default(); 2];
+    let mut plan = [tabledemo::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the width: the clean record reads");
+    check(
+        back[0].b12 == 3000 && back[0].b48 == 0x1234_5678_9ABC && report.clamped == 0,
+        "NEGATIVE CONTROL: a value inside bits(N)'s width lands untouched and clamps NOTHING",
+    );
+
+    // AND NOW THE FORGERY: `b12` is bits(12) and sits at body offset 20 (its
+    // siblings b8, b16, b32, b64 ride at 0, 4, 8 and 12), so 4096 is a value
+    // the declaration says cannot exist.
+    let body = records_at(&file) + 8;
+    let mut forged = file.clone();
+    forged[body + 20] = 0x00;
+    forged[body + 21] = 0x10; // 4096 = 0x1000 little-endian, one past 4095
+    forged[body + 22] = 0x00;
+    forged[body + 23] = 0x00;
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the width: the forged record still reads");
+    check(
+        back[0].b12 == 4095,
+        "the width: a value past 2^N-1 lands AT 2^N-1",
+    );
+    check(
+        report.clamped == 1 && !report.malformed && !report.refused,
+        "the width: and counts ONE clamped — not damage, and not a refusal",
+    );
+
+    // the other width: bits(48)'s top is 2^48-1, and b48 sits at body offset 24.
+    let mut forged = file.clone();
+    for i in 0..8 {
+        forged[body + 24 + i] = 0xFF; // a u64 past 2^48-1
+    }
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b48 == 0xFFFF_FFFF_FFFF && report.clamped == 1,
+        "the width: bits(48) past its top lands AT 2^48-1 and counts one",
+    );
+
+    // A SPAN THAT IS THE LANE'S OWN IS NOT A BOUND, and no comparison is
+    // emitted for it: `b32` is bits(32) in a 4-byte lane and `b64` is bits(64)
+    // in an 8-byte one, so every value the lane holds is in range.
+    let mut forged = file.clone();
+    for i in 0..4 {
+        forged[body + 8 + i] = 0xFF; // b32 = 0xFFFFFFFF, and legal
+    }
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b32 == 0xFFFF_FFFF && report.clamped == 0,
+        "the width: a bits(N) that fills its lane clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4).
 //
 // A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them. A
@@ -2570,6 +2654,7 @@ fn main() {
     the_guard_is_the_whole_tag();
     the_width8_ordinal_read_whole();
     the_declared_range();
+    the_declared_width();
     the_text_content_rule(&dir);
     the_hostile_sweep(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
