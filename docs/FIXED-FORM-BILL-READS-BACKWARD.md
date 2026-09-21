@@ -48,7 +48,7 @@ The table's own law, additions and deprecation only, extends to every definition
 | a range or constraint | absent on the writer where the reader has none, or inside the reader's | ADDED where none was (old values would clamp); a constraint added to a text field |
 | a text kind (`string`, `wstring`, `bytes`) | the same | any change between the three (old bytes stop being valid under the new content rules) |
 | an array's shape (`[N]`, `[..N]`, `[Enum]`) and its key enum | the same shape and key | a shape change or a swapped key; an element type follows the widening ladder, an element narrowed is refused |
-| a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so |
+| a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so. **RESERVED: no table spelling of one exists yet** — the digest's `'L'` row is empty (ALGORITHM §5.2, pinned by `TestTableFixedDefinitionsDigestLReservedUntilALimitExists`), and `--fixed-record-limit` is a flag |
 | a deprecated field | still written, still in its place, read on every plan | leaving the layout (that is a removal); undeprecating (one way, §12.3) |
 | a rename | through `was` | without it (the baseline's identity is by name, the fixed wire's by position) |
 
@@ -78,17 +78,18 @@ variable kinds); the bill makes them the law and the lock records the closure.
 ## 3. What the reader does with an older file
 
 - a field the reader added since: the reader's declared default;
-- a field the reader deprecated since: dropped, counted once under `unknown` per plan (the reader chose not
-  to need it; the count is information, not a fault);
+- a field the reader deprecated since: READ into its slot by every plan, identity included, and ignored by
+  the application; no counter moves for it (§12.3 — one answer for one field on every version);
 - a narrower int or float: widened, `COUNT widened` as today;
 - everything else: copied, the plan being the identity plan whenever the hashes agree.
 
 ## 4. What the reader does with a newer file
 
-Refuse, at plan time, by name. Proposed name: **`layout_newer`**. "Loudly" means the refusal carries what
-the reader could not hold: the first offending entry, as the reader can name it (a field name, a bound pair,
-a variant hash), through the report's reason where the language has one and through the reason's text where
-it has text. No counter moves; REFUSE stays total.
+Refuse, at plan time, by name. Proposed name: **`layout_newer`**. "Loudly" means the refusal carries THE FILE'S
+LAYOUT HASH AND NOTHING ELSE (§12.4): a stranger's layout is never parsed, so the reader has no field, bound
+or variant to name — the hash is what the operator looks the writer up by, in the lock's lineage. It rides
+the report beside the reason (`layout_hash` where the language has a field for it, the reason's text where it
+has text). No counter moves; REFUSE stays total.
 
 `layout_newer` sits beside `newer_form` (a form byte past the reader's) and the seven layout refusals of
 §1.1, which are for a layout that is not a layout. `layout_newer` is for a layout that is a layout and is
@@ -102,7 +103,8 @@ Everything that existed to read a newer file with an older struct:
   is `layout_newer`, so the clamp can never fire on a legal peer);
 - the ranged-scalar clamp across versions (same reason);
 - the remap of a variant the reader lacks to `None` (it is `layout_newer`);
-- the drop-and-count of a field the reader lacks (it is `layout_newer`; deprecated fields keep the drop).
+- the drop-and-count of a field the reader lacks (it is `layout_newer`; a field the READER deprecated is not
+  dropped either — it keeps its slot and every plan lands it, §12.3).
 
 What stays, unchanged: every hostile check. A forged count past the WRITER'S OWN bound, an ordinal past the
 writer's own variant count, a tag past the writer's own arm count, a bool byte that is not 0 or 1: those
@@ -200,7 +202,8 @@ table when the old one has grown past sense, and retire it when nothing live spe
 
 ## 8. What changes on the board (#876)
 
-- E1 (unknown field): becomes `layout_newer`; the deprecated-field drop is its own item.
+- E1 (unknown field): becomes `layout_newer`; the deprecated-field drop is RETIRED rather than carded — the
+  slot is read by every plan and counts nothing (§12.3).
 - C1/C2 (count clamp): hostile half stays (forged past the writer's own bound); the cross-version half goes.
 - C7 (ranged scalar clamp): hostile half stays; cross-version half goes.
 - C9/C10 (tag/ordinal past top): hostile only, as today.
@@ -241,12 +244,14 @@ Adding but never removing?" Three.
 - The floor's syntax: on the table (`fixed table Foo | floor = 3`?), in the lock, or a compiler flag per project.
 - Whether §6b (build-time plans from the lineage, no runtime plan compiler) is the shape, which retires §1.1's
   seven refusals as runtime code (they stay as the lock's own validation of what it records).
-
-- Whether a deprecated field on the reader should count under `unknown` at all, or be silent.
-- Whether `layout_newer` should carry the offending entry as an index into the writer's layout (portable,
-  one integer) or as text (readable, per language).
 - Whether a writer's *deprecated* field (older writer, still writing it) needs any rule: the reader is newer
-  and has the name, so it reads or drops by the reader's own deprecation; it seems to need none.
+  and has the name, so the slot is read like any other and the application ignores it (§12.3); it seems to
+  need none.
+
+**Closed since, by the rulings below.** Whether a deprecated field counts under `unknown`: it does not, and
+it is READ on every plan (§12.3). Whether `layout_newer` carries the offending entry as an index or as text:
+neither — it carries the hash and nothing else, because the walk that could have named an entry is gone
+(§12.4).
 
 ## 10. The variable table: HELD, for a separate decision (Glenn: "I don't know yet. Hold this for later.")
 
@@ -277,11 +282,14 @@ ruling below is a default, recorded on #898, and his to reverse.
    must widen EACH parent under §2 by NAME (§8a.1), and each parent's list must be a subsequence of the
    merged list (append-only per branch, any interleaving). §5.1's "prefix by (name, position)" is
    corrected to that. `schema lock` at a merge commit takes both parents' locks as `old`.
-4. **The floor is the set of retired entries, not an index.** `schema lock --retire Table@<hash>` marks a
-   lineage entry retired (a permitted non-append edit, recorded with a reason); COMPILE emits the retired
-   hashes beside the supported ones (8 bytes each) so LOAD can say `layout_unsupported` rather than
-   `layout_newer`; a retired entry stays in the lineage forever. A layout that never shipped is retired the
-   same way. The two names point the operator in opposite directions (ship the reader, or upgrade the
+4. **Retiring an entry retires every entry below it, and the floor stays ONE NUMBER.** `schema lock --retire
+   Table@<hash>` marks a lineage entry retired (a permitted non-append edit, recorded with a reason), and the
+   floor a build carries is `1 +` the highest retired index — an INDEX CUT into a lineage that is already in
+   order, oldest first. A retired entry stays in the lineage forever, so LOAD still finds its hash and still
+   answers `layout_unsupported` rather than `layout_newer`: the hash is in the lineage, below the floor. There
+   is no retired-hash array to emit beside the supported ones, which is what §6b bought — ONE NUMBER PER
+   TABLE, and the supported set an interval decided by one comparison. A layout that never shipped is retired
+   the same way. The two names point the operator in opposite directions (ship the reader, or upgrade the
    client) and both stay.
 5. **A table is retired, never removed, until nothing live speaks it.** `schema lock --retire Table` marks
    the whole table retired; its lineage stays; the schema may then drop the declaration, and §5.1's
