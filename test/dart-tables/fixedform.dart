@@ -46,6 +46,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../build/dart-fixed/bench/Bench.dart' as benchDecl;
 import '../../build/dart-fixed/bench/BenchFixed.dart' as benchHome;
 import '../../build/dart-fixed/bench/FixedTableFixed.dart' as bench;
 import '../../build/dart-fixed/examples/KeyedFixed.dart' as keyed;
@@ -1545,6 +1546,105 @@ void absentOptionalCase() {
   );
 }
 
+// 9. THE UNION'S SLACK (docs/FIXED-FORM-ALGORITHM.md §3.1): "A union writes the
+// tag and the taken arm only, zero behind a narrower one." The byte gate above
+// DETECTS a stray byte behind a short arm without ever naming the rule, and it
+// only covers the one arm pair the corpus happens to hold, so this case names
+// the rule and drives it directly.
+//
+// THE UNION IS `game_event` of the bench's BenchMixed, the live one on this
+// leg. Its tag is one byte at body offset 1108 and its WIDEST arm is `hit`,
+// 4 + 4 + 4 + 1 = 13 bytes, so the arm field runs to body[1122]. `chat` and
+// `pickup` are 8 bytes (4 + 4 each), which leaves FIVE bytes of slack behind
+// them. The offsets are constants of the generated writer
+// (build/dart-fixed/bench/BenchFixed.dart, benchMixedFixedWriteBody) exactly as
+// the body's 1236 bytes are a constant this file already pins.
+void unionSlackCase() {
+  const tagAt = 1108; // BenchMixed body offset of the union tag
+  const widestArm = 13; // MixedHitEvent: 4 + 4 + 4 + 1
+  const narrowArm = 8; // MixedChatEvent: 4 + 4
+  const slack = widestArm - narrowArm;
+
+  // THE RECORD'S BODY sits eight bytes past the record's own hash.
+  final bodyAt = bench.fixedTableFixedHeaderBytes + 8;
+  final armAt = bodyAt + tagAt + 1; // the arm starts past the one-byte tag
+
+  final w = Uint8List(bench.fixedTableFixedMeasure(1));
+
+  // A WIDE-ARM RECORD IS LAID DOWN FIRST, so the whole arm region is DIRTY
+  // with a payload before the narrow arm is written over it. A case that wrote
+  // onto a clean buffer would pass whether or not the writer zeroed, which is
+  // the vacuous case CONTROL 1 exists to rule out.
+  final wide = benchHome.FixedTable();
+  wide.value.gameEvent.type = benchDecl.MixedEventType.hit; // the WIDEST arm
+  wide.value.gameEvent.hit.targetId = 0x0abc;
+  wide.value.gameEvent.hit.damage = 0x0def;
+  wide.value.gameEvent.hit.hitKind = 7;
+  wide.value.gameEvent.hit.crit = true;
+  check(
+    bench.fixedTableFixedSave(<benchHome.FixedTable>[wide], 1, w) == w.length,
+    'union slack: the wide arm saves',
+  );
+
+  // THE NARROW ARM OVER THE REGION THE WIDE ONE DIRTIED.
+  final narrow = benchHome.FixedTable();
+  narrow.value.gameEvent.type = benchDecl.MixedEventType.chat; // a NARROWER arm
+  narrow.value.gameEvent.chat.channel = 3;
+  narrow.value.gameEvent.chat.speaker = 0x0abc;
+  check(
+    bench.fixedTableFixedSave(<benchHome.FixedTable>[narrow], 1, w) == w.length,
+    'union slack: the narrow arm saves',
+  );
+
+  // THE TAG AND THE TAKEN ARM LAND, so the case cannot pass on an empty record.
+  final view = ByteData.sublistView(w);
+  check(
+    w[bodyAt + tagAt] == benchDecl.MixedEventType.chat,
+    'UNION TAG: the wire names the arm the value names',
+  );
+  check(
+    view.getInt32(armAt, Endian.little) == 3 &&
+        view.getUint32(armAt + 4, Endian.little) == 0x0abc,
+    'UNION ARM: the taken arm\'s payload lands, and only it',
+  );
+
+  // THE RULE, BY NAME: from the end of the taken arm to the end of the WIDEST
+  // arm, every byte is ZERO. This is the words the write section uses.
+  var rubbish = 0;
+  for (var i = armAt + narrowArm; i < armAt + widestArm; i++) {
+    if (w[i] != 0) {
+      rubbish++;
+    }
+  }
+  check(
+    rubbish == 0,
+    'UNION SLACK: a union writes the tag and the taken arm only, and ZERO '
+    'behind a narrower one (docs/FIXED-FORM-ALGORITHM.md §3.1) — the '
+    '$widestArm-byte widest arm leaves $slack bytes behind `chat`, and '
+    '$rubbish of them are non-zero',
+  );
+
+  // THE WIDEST ARM HAS NO SLACK BEHIND IT: the same scan reads an empty range
+  // and cannot fire. This is CONTROL 1 pointed at the widest arm.
+  final widest = benchHome.FixedTable();
+  widest.value.gameEvent.type = benchDecl.MixedEventType.hit;
+  check(
+    bench.fixedTableFixedSave(<benchHome.FixedTable>[widest], 1, w) == w.length,
+    'union slack: the widest arm saves',
+  );
+  var behindWidest = 0;
+  for (var i = armAt + widestArm; i < armAt + widestArm; i++) {
+    if (w[i] != 0) {
+      behindWidest++;
+    }
+  }
+  check(
+    behindWidest == 0,
+    'UNION SLACK: there is no arm wider than the widest, so there is no '
+    'slack behind it',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
@@ -2347,6 +2447,7 @@ void main(List<String> args) {
   retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
   retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
+  unionSlackCase();
   boundsCase();
   negativeControl();
   // F4: the sample lives behind the corpus reads, and it does not need them —
