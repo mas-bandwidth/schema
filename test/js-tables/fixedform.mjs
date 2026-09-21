@@ -113,6 +113,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   forgedCounts(check, bench, fixed, corpusDir);
   fixedPointShiftBits(check, bench, fixed);
   formHeaderProbes(check, fx1, fx1home);
+  refuseTotalProbe(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
   wideTextCodeUnits(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
@@ -825,6 +826,68 @@ function formHeaderProbes(check, fx1, fx1home) {
     bad[3] = 1;
     malformedFile("reserved byte 3 set nonzero", bad);
   }
+}
+
+// ---------------------------------------------------------------------------
+// REFUSE IS TOTAL — the per-record hash refusal (W15, docs §5.8 row 9)
+// ---------------------------------------------------------------------------
+//
+// `refuse_writes_nothing` ON THIS DRIVER'S OWN READER: the one refusal the
+// prefill bug broke. §5.3 holds that a record whose hash names no layout this
+// reader holds answers `no_layout`, and REFUSE is total — no counter moves,
+// nothing is decoded, and not one destination byte is written, the prefill
+// included. The reference USED to prefill before the per-record hash check, so
+// a refused read had already written the caller's storage; the fix made the
+// hash check first. A golden file that would change if the refusal broke is
+// detection, not assertion: here the destination is PRE-POISONED with a
+// sentinel (0x5A) and compared byte for byte AFTER the refusal, and every
+// counter is asserted zero at the same time, in one case, by the rule's name.
+function refuseTotalProbe(check, fx1, fx1home) {
+  const R = fx1home.TableFixedRefusal;
+
+  // a valid form-3 file of this leg's own FX1, to forge the record's hash in
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
+    "refuse total: the valid form-3 fixture saves its own length");
+
+  // the record's own hash, inverted: the header still names this build's own
+  // layout, but record 0 now names none this reader holds — no_layout.
+  const bad = Uint8Array.from(w1);
+  bad[LAYOUT_AT + fx1.FxRootFixedLayoutBytes] ^= 0xff;
+
+  // THE DESTINATION IS POISONED, NOT RESET. A read that wrote a default would
+  // look exactly like a read that wrote nothing if the destination started at
+  // its construction values, so every byte of the caller's image takes a
+  // sentinel a lawful read never lands (0x5A), the decoded value takes one
+  // too, and the whole surface is compared after the refusal.
+  const plan = fx1.FxRootFixedNewPlan();
+  plan.image.fill(0x5A);
+  const values = [new fx1home.FxRoot()];
+  const v = values[0];
+  v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
+  v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
+  v.Label.fill(0x5A); v.LabelLength = 0x5A;
+  v.Marks.fill(0x5A); v.MarksCount = 0x5A;
+  v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+
+  const r = new fx1home.TableFixedReport();
+  const n = fx1.FxRootFixedLoad(values, 1, bad, bad.length, plan, r);
+
+  check(n === -1 && r.refused === R.NoLayout && !r.malformed,
+    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and malformed does not fire");
+  check(r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && r.widened === 0 && r.duplicate === 0,
+    "REFUSE is total: no counter moves");
+  check(plan.image.every((b) => b === 0x5A),
+    "REFUSE is total: not one destination byte is written, the prefill included");
+  check(v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
+    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
+    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
+    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
+    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A,
+    "REFUSE is total: nothing is decoded");
 }
 
 // ---------------------------------------------------------------------------
