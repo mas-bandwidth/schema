@@ -2537,3 +2537,74 @@ func TestAbsentOptionalSkipsStore(t *testing.T) {
 }
 `)
 }
+
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S (docs/FIXED-FORM-ALGORITHM.md §4.1,
+// docs/SPEC-TABLES.md §3.4). `bytes(N)` rides this form as an array of u8, so
+// the plan compiler lands it through the ARRAY case: the count goes to the
+// row's aux and the elements to the row's dst. A text field's row is the other
+// way round — dst the length, aux the buffer — and under that convention a
+// `bytes(N)` gets a count destination that is the BUFFER'S FIRST FOUR BYTES and
+// an element destination that is the LENGTH FIELD. Identity lands the field
+// with one TEXT op and reads neither column, so only the compiled path ever saw
+// it. This is the Go port of the C++ reference's bytes_row_case
+// (test/tables/fixedform_main.cpp:781-854), whose negative control is the OLD
+// row: the two columns swapped on a copy of this build's own rows.
+func TestFixedFormBytesNTakesTheArrayRow(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Probe
+{
+    label string(8)
+    blob  bytes(6)
+    marks [..4]int32
+}
+`, `package probe
+import ("testing";"unsafe")
+
+func TestBytesRow(t *testing.T) {
+    one := Probe{}
+    ProbeReset(&one)
+    copy(one.Label[:], []byte("abc")); one.LabelLength = 3
+    one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF
+    one.BlobLength = 4
+    one.Marks[0] = 11; one.Marks[1] = 22; one.MarksCount = 2
+    w := make([]byte, ProbeFixedMeasure(1))
+    if n := ProbeFixedSave([]Probe{one}, w); n != int64(len(w)) { t.Fatalf("save %d", n) }
+
+    theirs, why := tableFixedParseLayout(ProbeFixedLayout)
+    if why != "" { t.Fatalf("layout: %s", why) }
+
+    // THE ROW IS FOUND BY ITS SHAPE and not by its index — stride one and a
+    // live count is a bytes(N) and nothing else — so the control does not
+    // quietly stop pointing at it the day a field moves.
+    swapped := append([]TableFixedDst(nil), ProbeFixedDst...)
+    found := -1
+    for i := range swapped {
+        if swapped[i].Stride == 1 && swapped[i].Counted != 0 { found = i; break }
+    }
+    if found < 0 { t.Fatal("bytes row: no row with stride one and a live count") }
+    d := swapped[found].Dst
+    swapped[found].Dst = swapped[found].Aux // the TEXT convention, as it was
+    swapped[found].Aux = d
+
+    body := w[TableFixedHeaderBytes+4+len(ProbeFixedLayout)+8:]
+    for pass := 0; pass < 2; pass++ {
+        rowset := ProbeFixedDst
+        if pass == 1 { rowset = swapped }
+        plan := make([]TableFixedEntry, 256)
+        var c TableReport
+        made := tableFixedCompile(theirs, ProbeFixedLayout, rowset, plan, &c)
+        if made <= 0 { t.Fatalf("bytes row: the plan compiles either way, made %d %+v", made, c) }
+        var back Probe
+        ProbeReset(&back)
+        r := TableReport{}
+        tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&back), unsafe.Sizeof(back)), &r)
+        right := back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF
+        if pass == 0 {
+            if !right { t.Fatalf("BYTES(N): the array row must land the buffer in the buffer and the length in the length: %+v", back) }
+        } else if right {
+            t.Fatal("NEGATIVE CONTROL: the text row still landed the bytes; the old row was not the control")
+        }
+    }
+}
+`)
+}
