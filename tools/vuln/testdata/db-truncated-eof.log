@@ -1,0 +1,1 @@
+govulncheck: fetching vulnerabilities: Get "https://vuln.go.dev/index/modules.json.gz": unexpected EOF

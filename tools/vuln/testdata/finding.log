@@ -1,0 +1,16 @@
+Scanning your code and 412 packages across 39 dependent modules for known vulnerabilities...
+
+=== Symbol Results ===
+
+Vulnerability #1: GO-2026-4177
+    Unbounded allocation when parsing a malformed archive in archive/zip
+  More info: https://pkg.go.dev/vuln/GO-2026-4177
+    Standard library
+      Found in: archive/zip@go1.26.5
+      Fixed in: archive/zip@go1.26.6
+      Example traces found:
+        #1: internal/pack/reader.go:118:21: pack.Open calls zip.NewReader
+
+Your code is affected by 1 vulnerability from the Go standard library.
+This scan found no other vulnerabilities in packages you import or modules you
+require.

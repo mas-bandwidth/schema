@@ -158,6 +158,34 @@ define go_table_module
 @printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
+# THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
+# `tables-js-standalone` and `tables-dart-standalone` (docs/PORTING.md): a
+# generated <Package>Table.go carries the unit's table runtime — its cursor,
+# its readers and its writers — INSIDE the file rather than importing it from
+# a sibling runtime module, so what the unit reaches for a table codec is the
+# platform's own library. The one external spelling the form admits is the
+# 128-bit scalar TYPE the sibling runtime owns (`serialize.Int128`,
+# `serialize.Uint128`, `serialize.Int128From64`), named only by a unit whose
+# closure declares a 128-bit field; any other symbol of that module marks the
+# unit as dependent and is refused. The scan runs over the CODE, with every
+# // comment stripped first, on the same terms as the C++ zero-cost and
+# view-containment gates: the banner's "serialize.go storage" is prose, not a
+# dependency.
+.PHONY: tables-go-standalone
+tables-go-standalone: build/tables-generated-go/.stamp
+	@n=$$(ls build/tables-generated-go/*/*Table.go 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
+		fi
+	@for f in build/tables-generated-go/*/*Table.go; do \
+		bad=$$(sed -E 's://.*$$::' $$f | grep -oE 'serialize\.[A-Za-z0-9_]+' | sort -u | grep -vxE 'serialize\.(Int128|Uint128|Int128From64|go)'); \
+		if [ -n "$$bad" ]; then \
+			echo "STANDALONE GATE FAILED: the sibling runtime leaked into $$f beyond its 128-bit scalar type:"; \
+			echo "$$bad"; exit 1; \
+		fi; \
+	done
+	@echo "tables Go standalone gate: generated Table sources carry the runtime inline, naming the sibling only for its 128-bit scalar type"
+
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
@@ -284,13 +312,14 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 # THE GO LEG of `make test-full`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and two seconds
-# of the soak; the hour is `make tables-go-soak` — the bench units' compile
-# gates, and the packet tests.
+# of the soak; the hour is `make tables-go-soak` — the standalone gate, the
+# bench units' compile gates, and the packet tests.
 .PHONY: test-go
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) tables-go-json-walk
+	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
@@ -365,6 +394,39 @@ tables-go-accessor-negative-control:
 tables-go-slot-negative-control:
 	go test ./internal/codegen/gotable -run '^TestAccessorDescriptorAgreementSlotNegativeControl$$' -count=1
 test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-control tables-go-slot-negative-control
+
+# THE RUNTIME HOME GATE, the Go half of the C# J2 technique (docs/PORTING.md,
+# schema#422): a unit's shared table runtime lives in <Package>Table.go, named
+# by the PACKAGE and never by the file that happens to sort first, so a schema
+# file that sorts earlier relocates nothing. The gate adds exactly such a file
+# (Aaa.schema, ahead of Guarded.schema) to a COPY of tables/examples and
+# requires the home not to move. The negative control puts the file-order rule
+# back — through `go build -overlay`, so no tracked file is written — and
+# requires the home to move.
+.PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
+tables-go-runtime-home:
+	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+tables-go-runtime-home-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/gotable/gotable.go > build/goruntime-fileorder.gotext
+	@grep -q SABOTAGED build/goruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/gotable/gotable.go":"%s/build/goruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/goruntime-overlay.json
+	@go build -overlay=build/goruntime-overlay.json -o build/schema-goruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-go && mkdir -p build/runtime-home-go/src
+	@cp tables/examples/*.schema build/runtime-home-go/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-go/src/Aaa.schema
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/base-sabotage tables/examples
+	@./build/schema-goruntime-sabotaged generate --lang go --out build/runtime-home-go/added-sabotage build/runtime-home-go/src
+	@base=$$(cd build/runtime-home-go/base-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 added=$$(cd build/runtime-home-go/added-sabotage && grep -l "type TableTypeInfo struct" *Table.go); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Go): the file-order rule moves the runtime from $$base to $$added"
+test-go: tables-go-runtime-home tables-go-runtime-home-negative-control
 
 # The disjoint fill is held under Go's thread sanitizer. Its control makes
 # every worker fill the whole array; byte identity alone cannot see that race.

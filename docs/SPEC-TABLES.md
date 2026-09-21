@@ -410,7 +410,11 @@ does.
 **GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
 the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
 (the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). Two spellings are Go's own and the reason is at each site:
+generic text walk). The unit's shared runtime is emitted ONCE, into the
+package's home `<Package>Table.go` — the file named for the package when one
+exists, else a file emitted for the unit — named by the PACKAGE so an
+earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
 per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
@@ -420,14 +424,19 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA emits the two accelerators and no table wire.** A unit that declares
-tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
-`<Name>Row.java` for every blittable record in the closure, and the runtime
-types those need; it gets no `<Base>Table.java`. The Java port of the table
-wire wrote the form that preceded the id-table wire, which this specification
-does not describe and the C++ reference does not open, and it was removed
-rather than carried (schema#517 brings the current wire to Java; ROADMAP.md
-marks the cells). **JAVA's divergences**, each forced by the language and each
+**JAVA emits the two accelerators and the table wire's foundation.** A unit
+that declares tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7)
+per table, `<Name>Row.java` for every blittable record in the closure, and the
+runtime types those need; it gets no `<Base>Table.java`. The Java port of the
+table wire wrote the form that preceded the id-table wire, which this
+specification does not describe and the C++ reference does not open, and it was
+removed rather than carried (schema#517 brings the current wire to Java;
+ROADMAP.md marks the cells). What the port carries today is the form's
+FOUNDATION, `TableIds.java`: the form byte read first, `fnv1a64` identity at
+sixty-four bits, the canonical LEB128 reader and writer with the non-minimal
+refusal, and the first-use id table whose entry count is the file's last
+little-endian u64 (§3) — so the codecs land over a form this port already
+spells. **JAVA's divergences**, each forced by the language and each
 named where it is spelled: **the unit's namespace is the PACKAGE and a public
 type lives in a file of its own name**, so the shared runtime is ONE FILE PER
 TYPE — `TableBytes.java`, `TableBlockInfo.java`, `TableCookInfo.java` and the
@@ -1063,13 +1072,16 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers, an array of unions, and any VALUE whose closure
-  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
-  named follow-on (§15): an absent field is not an edge (§3.1), and the
-  authoring walks must gate on the presence companion before an optional
-  field may hold pointer edges. The bounded arrays of pointers and of
-  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
-  the field serves with it.
+- **an array of pointers and an array of unions** — a named follow-on
+  (§15): an absent field is not an edge (§3.1), and the authoring walks
+  must gate on the presence companion before an optional field may hold
+  pointer edges. The bounded arrays of pointers and of unions serve today
+  without the `?` (§2.1, §2.6), and a table wrapping the field serves with
+  it. **An optional over a VALUE whose closure is variable-length is
+  legal** — scalar `?T` and by-value array `?[N]T` alike: the numbering,
+  the pack measure and the pack are one declaration-order walk that gates
+  every edge on the presence companion, so an absent optional descends
+  nothing and is not an edge (§3.1).
 - **a specified default** — presence is the only default an optional has.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
@@ -1281,9 +1293,8 @@ the whole page:
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
-  table closure reaches is a case of its own with two answers that exclude
-  each other, and it is ruled on schema#606 (THE HAZARD REACHES A `type`,
-  below).
+  table closure reaches is not refused: schema#606 ruled it on the WIRE, so
+  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
   enum through a constant it names the constant. In arm position `[E]T` is
@@ -1301,19 +1312,21 @@ beside the keyed one leaves the class open for anyone who spells it that way
 and never touches the field again, which no kind number can catch, because
 nothing about the FIELD moved.
 
-**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 IS THE RULING.**
-A `type` a table reaches rides this wire as a kind `13` body, and a
-positional array inside it rides under kind `14` today (§3), so a variant
-inserted in the middle lands every later element one slot off in every stored
-file, exactly as it does in the table body's own field. What a `type` edit
-moves is the connect gate and the committed baseline (SPEC.md §3.1, §18), and
-a STORED FILE carries neither: a save written before the insert holds no
-protocol id and no baseline, so nothing in it can report the shift. Two
-answers close that and they exclude each other, refusing the shape in every
-`type` a table closure reaches or keying the table wire for an enum-extent
-array wherever it is declared, so this page states the refusal for the table
-body and the union arm and states neither answer for the `type` until the
-ruling lands.
+**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 CLOSES IT ON THE
+WIRE.** A `type` a table reaches rides this wire as a kind `13` body, and a
+variant inserted in the middle lands every later element one slot off in every
+stored file, exactly as it does in the table body's own field. What a `type`
+edit moves is the connect gate and the committed baseline (SPEC.md §3.1, §18),
+and a STORED FILE carries neither: a save written before the insert holds no
+protocol id and no baseline, so nothing in it can report the shift. **THE WIRE
+DECIDES, NOT THE BODY: an enum-extent array rides KEYED, kind `16`, on the
+table wire wherever it is declared.** `[E.Max]T` inside a reached `type` rides
+the same kind `[E]T` rides there, so the closed class §4.1 counts cannot be
+reopened one body away, and the positional spelling stays legal in that `type`
+because the wire closes the class without a non-local refusal. The table body
+and the union arm still REFUSE the positional spelling by name, because there
+the keyed spelling `[E]T` is the form to write and `flags` stays the table's
+one positional vocabulary.
 
 **THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
 rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
@@ -1321,8 +1334,8 @@ enum only tables reach leaves the protocol id, so the connect gate stops
 refusing two peers whose variant orders disagree. That is correct for a
 vocabulary read by NAME and wrong for one read by POSITION, and the refusal
 above is what leaves `flags` as the only positional vocabulary a table body
-and a union arm have, with schema#606 closing the `type` under either of its
-answers, and therefore the only exception the projection needs.
+and a union arm have, with schema#606 keying the reached `type` on the table
+wire, and therefore the only exception the projection needs.
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
 table reaches: that body's `[E.Max]T` is a plain array whose extent is the
@@ -1330,7 +1343,8 @@ variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
 refusal above is the table body's and the union arm's, and it is what §2.2's
 mode derivation already made a per-body question. A `type` a table closure
-reaches keeps the spelling until schema#606 rules.
+reaches keeps the spelling, and its kind `13` body keys the array on the table
+wire (above).
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
@@ -1361,9 +1375,10 @@ sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
 both stand on the tree as well as on the rule.
 
-**RULING STATUS: the type-held case is ruled on schema#606.** Until then a
-`type` no table reaches keeps the spelling and a `type` a table reaches is
-not refused.
+**RULING STATUS: the type-held case is closed on schema#606, on the WIRE.** A
+`type` no table reaches keeps the spelling, and a `type` a table reaches keeps
+the spelling too: its kind `13` body keys an enum-extent array rather than
+refusing it, so the closed class cannot be reopened one body away.
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -4745,9 +4760,9 @@ present slot, two bytes where both are small, and it closes that class. The corp
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
 refused in a table body and a union arm, on the bound's provenance and not
-on its spelling** (§2.4). Whether a `type` the table closure holds can still
-carry the class in on kind `14` under a kind `13` body, or rides keyed there
-as every enum-extent array would, is ruled on schema#606.
+on its spelling** (§2.4). A `type` the table closure holds rides keyed there
+as every enum-extent array does, on schema#606's ruling (§2.4): its kind `13`
+body carries the array under kind `16`, not the positional kind `14`.
 
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
@@ -7419,8 +7434,8 @@ on it.**
   from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
   way or folding it through a constant. The same array held by a `type` a
-  table closure reaches is ruled on schema#606, by that refusal or by a keyed
-  wire, and the class is closed under either answer. That refusal
+  table closure reaches rides keyed on the table wire (schema#606), so the
+  class is closed there too, without a refusal. That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
   the protocol id is scoped by (SPEC.md §3.1).
@@ -8968,8 +8983,9 @@ refusal by name is a compile error rather than an answer a driver writes.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
-it ON: the same six counters, the two retention counters beside them, and a
-save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
+same six counters, the two retention counters beside them, and a save the
+oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
@@ -11466,8 +11482,9 @@ in build version (§20.5).
   folds from either are all refused in a table body and in a union arm**, on
   the bound's provenance, and an arm's diagnostic names the arm and the table
   that reaches the union (§2.4).
-  **RULING STATUS: the type-held case is ruled on schema#606**, and until
-  then a `type` a table reaches is not refused (§2.4).
+  **RULING STATUS: the type-held case is closed on schema#606, on the WIRE**:
+  a `type` a table reaches keeps the spelling and its kind `13` body keys the
+  array (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
   `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because
@@ -12255,8 +12272,9 @@ are these rulings, in the owner's words:
   where the whole spelling projects and the connect gate covers a variant
   insert, and it is REFUSED in a TABLE BODY and a UNION ARM (§2.4), where
   nothing on the wire could report the same insert. `[E]T` is the table form.
-  A `type` a table closure reaches is ruled on schema#606. What the user
-  chooses is still a choice
+  A `type` a table closure reaches rides keyed on the table wire: schema#606
+  ruled the wire, not the body, so `[E.Max]T` there has the keyed kind `16`
+  and needs no refusal. What the user chooses is still a choice
   in the place the choice is safe, and the table body has one spelling
   because a table has one positional vocabulary, `flags`, and that is what
   makes `flags` the only exception the scoped projection needs.
@@ -13043,13 +13061,15 @@ inspects everything in the schema built:
   bit buys nothing a wrapper table does not already give. Wrap the field in
   a table and make that optional today; `?[..N]T` and `?[N]T` landed and
   are not part of this entry.
-- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
-  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
-  `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
-  sizing) to gate on the presence companion, and none of them does yet; the
-  refusal keeps the two writers byte-identical until that gating lands as
-  its own change, walks and corpus together.
+- **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T` and
+  `?[N]Body`. A field the writer does not write is not an edge (§3.1), and
+  the numbering, the pack measure and the pack gate on the presence
+  companion now, but the element is already optional — a null slot, or an
+  arm's `None` — so what a second presence bit means beside that wants
+  stating before it is wire. **`?T` and the by-value `?[N]T` of a
+  variable-length value LANDED** with that gate: an absent optional is not
+  descended, and `test/tables/G1.schema`'s optional half is the corpus
+  schema and the wire pin.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
 - **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
@@ -14785,9 +14805,11 @@ and the Block files cost nothing unless they are included. It is held in two
 halves, because they answer different questions: the build fails if one symbol
 of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
 a layout constant — appears in a Table source, AND every Table source is
-byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
-measured against a build that could not emit a Block file at all rather than
-against the emitter's own output. The descriptor
+byte-compared against the SAME build with the block form removed from its
+emitters, so the identity is measured against a build that emitted no Block
+file at all rather than against frozen text. Both arms move together, so the
+comparison survives any legitimate Table-emitter change and goes red when the
+block form leaks into a Table source. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 

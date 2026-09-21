@@ -1,0 +1,39 @@
+# THE CLASSIFIER'S TABLE, read by `tools/vuln/govulncheck.sh selftest`, which
+# `make test` runs. One line per fixture: the log excerpt and the verdict the
+# classifier owes it. A case is added by writing the log a real run printed and
+# naming it here — nothing else.
+#
+# Every fixture is a shape a real run has printed or can print: govulncheck's
+# own fetch line, the module proxy `go run` pulls the pinned scanner through,
+# the socket's own words, and — the reason this table exists — the two that a
+# looser classifier read as an outage and would have forgiven.
+#
+# fixture                            verdict
+
+# A finding is never retried and never forgiven.
+finding.log                          finding
+
+# The transport, anchored: a status code beside the host that returned it, the
+# words a socket writes, and a truncation beside a host.
+db-503.log                           transport
+proxy-502.log                        transport
+dial-tcp-no-such-host.log            transport
+tls-handshake-timeout.log            transport
+db-truncated-eof.log                 transport
+
+# THE TWO FALSE POSITIVES THIS ANCHORING EXISTS FOR. A Go file with 503 lines
+# and a panic whose index is [504] carry those digits and nothing else; a
+# classifier that forgives them forgives a real failure and the gate passes on
+# a tree it never scanned.
+compile-error-line-503.log           error
+panic-index-504.log                  error
+
+# `unexpected EOF` is the PARSER's phrase as often as a truncated response, so
+# it counts only beside a fetch host (db-truncated-eof.log above).
+parser-unexpected-eof.log            error
+
+# A CLEAN run's own words. The classifier is only ever asked about a run that
+# already failed, so this fixture's verdict is not the interesting half: what it
+# locks is that `Your code is affected by 0 vulnerabilities.` is NOT read as a
+# finding, which the finding marker's digit is what prevents.
+clean-zero-vulnerabilities.log       error

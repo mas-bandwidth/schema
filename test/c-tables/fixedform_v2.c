@@ -19,6 +19,19 @@ void fixed_v2_read_v1( const uint8_t * data, int64_t bytes )
     Cfg back;
     TableReport r;
     int64_t n;
+    /* ZEROED, AND DELIBERATELY NOT cfg_reset. The load's own one prefill of the
+       declared defaults is exactly what the two "takes its declared default"
+       checks below prove, so this side must not write those defaults itself:
+       `a` declares 5.0 and `c` declares true, neither is the zero pattern, and
+       a load that skipped its prefill still fails here.
+
+       What the fill buys is that the reads below are DEFINED on the paths
+       where the load writes nothing at all. Every refusal and every malformed
+       answer returns -1 before the record loop, and fixed_check COUNTS a
+       failure and carries on (fixedform_main.c) — so `n == 1` failing does not
+       stop this function, and those reads are walked, not hypothetical. gcc
+       says exactly that under -Wmaybe-uninitialized. */
+    memset( &back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     n = cfg_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
     fixed_check( n == 1, "V2 reads V1: one record" );
