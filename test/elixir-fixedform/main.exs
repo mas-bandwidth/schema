@@ -727,6 +727,117 @@ compiled_is_identity.(
   bodies_of.(read.("fx1.bin"), Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())
 )
 
+# ---------------------------------------------------------------------------
+# W14: THE PLAN'S DESTINATIONS ARE THE IMAGE'S OWN OFFSETS AND SIZES
+# ---------------------------------------------------------------------------
+#
+# docs/FIXED-FORM-ALGORITHM.md §7: "Every port owes that test, and the
+# build-time assertion that the plan's destinations equal its own `offsetof`
+# and `sizeof`." This leg has no struct to take an offsetof of — a %Struct{}
+# is a map and its fields are terms, not bytes — so its offsetof IS the
+# field's own byte offset in THIS BUILD's own record image: declared order at
+# declared widths, nothing padded between fields
+# (internal/codegen/elixirtable/fixedform.go's fixedDst note). Its sizeof IS
+# the declared storage width the body is tiled with. The compiler bakes both
+# as literals — `fx_root_fixed_dst()`, one {dst, stride, aux, counted, arg}
+# row per layout entry, and `fx_root_fixed_plan()` — and what is asserted here
+# is that those literals ARE the image's own numbers. Using them is not
+# asserting them: every `compile` call above takes `..._fixed_dst()` and never
+# asks whether a row names its field's own bytes.
+Leg.section("W14: the plan's destinations are the image's own offsets and sizes")
+
+w14_dst = Tblfx1.FX1Fixed.fx_root_fixed_dst()
+w14_plan = Tblfx1.FX1Fixed.fx_root_fixed_plan()
+w14_body = Tblfx1.FX1Fixed.fx_root_fixed_body_bytes()
+w14_layout = Tblfx1.FX1Fixed.fx_root_fixed_layout()
+
+# ONE ROW PER LAYOUT ENTRY: a four-byte count and seventeen-byte entries, the
+# framing §3.4 fixes forever. A row missing is a plan compiler indexing a row
+# that is not there.
+<<w14_count::little-unsigned-32, _::binary>> = w14_layout
+Leg.eq("W14: one dst row per layout entry", tuple_size(w14_dst), w14_count)
+
+# THE SCALAR PREFIX, HAND-DERIVED FROM FX1.schema — declared order at declared
+# widths, nothing padded: keep uint32 @ 0, narrow uint16 @ 4, renamed int32 @
+# 6, gone int32 @ 10. Entry 0 is the root itself; entries 1..4 are these.
+Leg.eq("W14: keep's dst is the image's own offset 0", elem(w14_dst, 1), {0, 0, 0, 0, 0})
+
+Leg.eq(
+  "W14: narrow's dst is the image's own offset 4",
+  elem(w14_dst, 2),
+  {4, 0, 0, 0, 0}
+)
+
+Leg.eq(
+  "W14: renamed's dst is the image's own offset 6",
+  elem(w14_dst, 3),
+  {6, 0, 0, 0, 0}
+)
+
+Leg.eq(
+  "W14: gone's dst is the image's own offset 10",
+  elem(w14_dst, 4),
+  {10, 0, 0, 0, 0}
+)
+
+# THE AUX LANE IS DERIVED THE SAME WAY (the doc's "How a port DERIVES aux"):
+# label string(8) is its LENGTH word @ 22 with its BUFFER @ 26, utf8.
+Leg.eq(
+  "W14: label's dst is its length word and its aux its buffer",
+  elem(w14_dst, 8),
+  {22, 0, 26, 0, 1}
+)
+
+# AND THE WRITER AGREES, BYTES NOT LITERALS: two files differing in ONE field
+# differ first at that field's image offset — the write path's own answer to
+# where the field lives, independent of the dst literal above.
+w14_body_of = fn v ->
+  bodies_of.(Tblfx1.FX1Fixed.fx_root_fixed_save([v]), w14_body) |> hd()
+end
+
+w14_first_diff = fn x, y ->
+  Enum.find(0..(byte_size(x) - 1)//1, fn i -> :binary.at(x, i) != :binary.at(y, i) end)
+end
+
+w14_base_body = w14_body_of.(a)
+
+Leg.eq(
+  "W14: the writer lands keep at image offset 0",
+  w14_first_diff.(w14_base_body, w14_body_of.(%{a | keep: a.keep + 1})),
+  0
+)
+
+Leg.eq(
+  "W14: the writer lands narrow at image offset 4",
+  w14_first_diff.(w14_base_body, w14_body_of.(%{a | narrow: a.narrow + 1})),
+  4
+)
+
+Leg.eq(
+  "W14: the writer lands label's length word at image offset 22",
+  w14_first_diff.(w14_base_body, w14_body_of.(%{a | label: "hello"})),
+  22
+)
+
+# THE SIZEOF HALF: the identity plan tiles the body's declared width with
+# copies whose source and destination are the same number — the destination IS
+# the image offset because this build's storage IS the image — and the tiles
+# run contiguously from 0 to exactly body_bytes. FX1.schema's own widths add
+# to 64: 4 + 2 + 4 + 4 + 8 + (4 + 8) + (4 + 16) + (4 + 6).
+Leg.eq("W14: the body is the schema's own 64 bytes", w14_body, 64)
+
+w14_covered =
+  Enum.reduce_while(w14_plan, 0, fn
+    {:copy, s, d, n}, at when s == d and d == at and n > 0 -> {:cont, at + n}
+    _, _ -> {:halt, -1}
+  end)
+
+Leg.eq(
+  "W14: the identity plan tiles [0, body_bytes) with src == dst",
+  w14_covered,
+  w14_body
+)
+
 # AN ORDINAL SLIDE, which is the one edit a record's bytes cannot show.
 #
 # FE2 inserts `Electrum` between Bronze and Silver, so Gold's ORDINAL slides
