@@ -424,14 +424,19 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA emits the two accelerators and no table wire.** A unit that declares
-tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
-`<Name>Row.java` for every blittable record in the closure, and the runtime
-types those need; it gets no `<Base>Table.java`. The Java port of the table
-wire wrote the form that preceded the id-table wire, which this specification
-does not describe and the C++ reference does not open, and it was removed
-rather than carried (schema#517 brings the current wire to Java; ROADMAP.md
-marks the cells). **JAVA's divergences**, each forced by the language and each
+**JAVA emits the two accelerators and the table wire's foundation.** A unit
+that declares tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7)
+per table, `<Name>Row.java` for every blittable record in the closure, and the
+runtime types those need; it gets no `<Base>Table.java`. The Java port of the
+table wire wrote the form that preceded the id-table wire, which this
+specification does not describe and the C++ reference does not open, and it was
+removed rather than carried (schema#517 brings the current wire to Java;
+ROADMAP.md marks the cells). What the port carries today is the form's
+FOUNDATION, `TableIds.java`: the form byte read first, `fnv1a64` identity at
+sixty-four bits, the canonical LEB128 reader and writer with the non-minimal
+refusal, and the first-use id table whose entry count is the file's last
+little-endian u64 (§3) — so the codecs land over a form this port already
+spells. **JAVA's divergences**, each forced by the language and each
 named where it is spelled: **the unit's namespace is the PACKAGE and a public
 type lives in a file of its own name**, so the shared runtime is ONE FILE PER
 TYPE — `TableBytes.java`, `TableBlockInfo.java`, `TableCookInfo.java` and the
