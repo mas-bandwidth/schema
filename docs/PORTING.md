@@ -239,7 +239,7 @@ floors of I1 are measured over the unit it holds.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — native class: the primitives are force-inlined instead (M4) | — native class: the primitives are force-inlined instead (M4) | — native class: `#[inline(always)]` on the primitives instead (M4) | ❌ #406 | ✅ `tables-cs-standalone` | ✅ `tables-java-standalone` | ✅ `tables-js-standalone` | ✅ `tables-dart-standalone` `tables-dart-standalone-negative-control` | ❌ #406 |
+| — native class: the primitives are force-inlined instead (M4) | — native class: the primitives are force-inlined instead (M4) | — native class: `#[inline(always)]` on the primitives instead (M4) | ✅ `tables-go-standalone` | ✅ `tables-cs-standalone` | ✅ `tables-java-standalone` | ✅ `tables-js-standalone` | ✅ `tables-dart-standalone` `tables-dart-standalone-negative-control` | ✅ `tables-elixir-standalone` |
 
 ### M5 — Keyed arrays index by key, refused at both ends
 
