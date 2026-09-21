@@ -1165,6 +1165,115 @@ void fuCase() {
   }
 }
 
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/FIXED-FORM-ALGORITHM.md §4.1
+// fix 12; docs/SPEC-TABLES.md §3.4). A plan entry carries the ordinal a union
+// arm's GUARD byte must hold for the entry to run AND the argument the entry's
+// OWN op takes — for a text entry, its flavour. They must be two lanes: one
+// shared lane gives whichever fact was written last, so a `string(N)` under a
+// union arm reads with the wrong flavour or under the wrong arm, and neither is
+// visible to this build's own records; only to a peer's. FU1 puts a string(8)
+// under the union's SECOND arm, so the arm ordinal (2) and the flavour (1) are
+// different numbers and a collision is caught by NAME. This is the dart leg's
+// twin of the C++ reference's union_text_case (test/tables/fixedform_main.cpp,
+// its UT1 half at :885-887) ported into this file's idiom: the plan is the
+// build's own static data (fuRootFixedIdentity), so the two facts are read out
+// of their lanes directly rather than through C++'s plan array.
+void twoLanesCase() {
+  const lanes = fu1home.TableFixedLane.lanes;
+  final plan = fu1.fuRootFixedIdentity;
+
+  // THE TEXT ENTRY UNDER THE ARM. FU1 declares exactly one string, so the
+  // identity plan carries exactly one text entry, and it is guarded.
+  var found = -1;
+  var texts = 0;
+  for (var i = 0; i < fu1.fuRootFixedIdentityCount; i++) {
+    if (plan[i * lanes + fu1home.TableFixedLane.op] ==
+        fu1home.TableFixedOp.text) {
+      found = i;
+      texts++;
+    }
+  }
+  check(
+    texts == 1,
+    'two lanes: the identity plan carries exactly one text entry (got $texts)',
+  );
+  check(
+    found >= 0,
+    "two lanes: the identity plan carries the arm's text entry",
+  );
+  if (found < 0) {
+    return;
+  }
+  final b = found * lanes;
+  final guard = plan[b + fu1home.TableFixedLane.guard];
+  final arg = plan[b + fu1home.TableFixedLane.arg];
+  final meta = plan[b + fu1home.TableFixedLane.meta];
+
+  check(
+    guard != fu1home.tableFixedNoGuard,
+    "two lanes: the text entry is guarded by the arm's tag byte",
+  );
+  check(arg == 2, "two lanes: arg is the SECOND arm's ordinal (got $arg)");
+  check(
+    meta == fu1home.TableFixedOp.textUtf8,
+    'two lanes: meta is the utf8 flavour (got $meta)',
+  );
+  // THE WHOLE POINT: the ordinal and the flavour are DIFFERENT facts. If one
+  // lane carried both, the guard's ordinal 2 would be the flavour (wide, 2)
+  // and this entry's string would read as WIDE — or the guard would test the
+  // tag against the flavour 1 and the entry would never run.
+  check(
+    arg != meta,
+    'two lanes: the guard ordinal and the op flavour are DIFFERENT facts in '
+    'different lanes (arg $arg, meta $meta)',
+  );
+  check(
+    plan[b + fu1home.TableFixedLane.argW] == 1,
+    "two lanes: the guard's width rides in its own lane",
+  );
+
+  // AND THE TWO LANES ARE USED. A record whose SECOND arm carries "seven77"
+  // round-trips whole: an entry guarded by the wrong ordinal never runs (the
+  // text is lost) and an entry whose flavour is the arm ordinal halves the
+  // bound and terminates two bytes at a time. Both are silent; the value is
+  // what says so.
+  final one = fu1home.FuRoot();
+  one.pick.type = fu1decl.PickType.labelled; // the SECOND arm
+  one.pick.labelled.lead = 101;
+  one.pick.labelled.label.setRange(0, 7, 'seven77'.codeUnits);
+  one.pick.labelled.labelLength = 7;
+  one.pick.labelled.trail = 202;
+  final w = Uint8List(fu1.fuRootFixedMeasure(1));
+  check(
+    fu1.fuRootFixedSave(<fu1home.FuRoot>[one], 1, w) == w.length,
+    'two lanes: save',
+  );
+  final back = <fu1home.FuRoot>[fu1home.FuRoot()];
+  final r = fu1home.TableFixedReport();
+  check(
+    fu1.fuRootFixedLoad(back, 1, w, w.length, fu1.fuRootFixedNewPlan(), r) == 1,
+    'two lanes: the record reads',
+  );
+  check(
+    back[0].pick.labelled.labelLength == 7 &&
+        text(back[0].pick.labelled.label, back[0].pick.labelled.labelLength) ==
+            'seven77',
+    "two lanes: the arm's string(8), whole",
+  );
+  check(
+    back[0].pick.labelled.lead == 101 && back[0].pick.labelled.trail == 202,
+    'two lanes: the scalars around the text land',
+  );
+  quiet(r, 'two lanes');
+  // A PROOF THE CASE RAN: the file's other cases only speak on failure, and
+  // this one is called before the reference corpus is read so its line is
+  // visible even where the corpus cannot be built.
+  print(
+    'two lanes: arg=$arg and meta=$meta ride in their own lanes, and the arm\'s '
+    'string reads whole',
+  );
+}
+
 // 6. AN ENUM VARIANT AND A UNION ARM INSERTED IN THE MIDDLE, and a keyed
 // array whose keys slid — remapped BY NAME and never by position.
 void vCase() {
@@ -2103,6 +2212,12 @@ void main(List<String> args) {
     'FX1 FxRoot: body ${fx1.fxRootFixedBodyBytes}, layout ${fx1.fxRootFixedLayoutBytes}, '
     'identity plan ${fx1.fxRootFixedIdentityCount} entries',
   );
+  // W7, THE TWO LANES (docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). It reads
+  // only the build's own static plan and a record it writes itself, so it is
+  // called BEFORE the reference corpus is opened: its line is then visible
+  // even where the C++ oracle is absent, which is the one thing this file's
+  // other cases cannot say for themselves.
+  twoLanesCase();
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
   // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
