@@ -1789,6 +1789,50 @@ tables-runtime-home-negative-control: bin/schema tables-runtime-home
 	 fi; \
 	 echo "runtime home negative control: the file-order rule moves the runtime from $$base to $$added"
 
+# THE RUNTIME HOME IS THE PACKAGE (docs/PORTING.md J2). The C++ table emitter has
+# no <Package>Table.cs: it writes one header per unit file (out[f.Base+"Table.h"])
+# and lets an include guard admit the shared runtime exactly once per translation
+# unit. The guards are built from the PACKAGE — strings.ToUpper(pkg) in front of
+# every _SCHEMA_TABLE_* suffix — so the home is the guard NAME, not the file that
+# happens to sort first. The gate adds Aaa.schema, ahead of Guarded.schema, and
+# requires the sorted set of _SCHEMA_TABLE_ guards to stay TABLEDEMO_-prefixed and
+# identical across the two trees.
+.PHONY: tables-cpp-runtime-home
+tables-cpp-runtime-home: bin/schema
+	@rm -rf build/runtime-home-cpp && mkdir -p build/runtime-home-cpp/src
+	@cp tables/examples/*.schema build/runtime-home-cpp/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-cpp/src/Aaa.schema
+	@./bin/schema generate --lang cpp --out build/runtime-home-cpp/base tables/examples
+	@./bin/schema generate --lang cpp --out build/runtime-home-cpp/added build/runtime-home-cpp/src
+	@base=$$(cd build/runtime-home-cpp/base && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 added=$$(cd build/runtime-home-cpp/added && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 if [ -z "$$base" ]; then echo "RUNTIME HOME GATE FAILED: the base tree has no _SCHEMA_TABLE_ guards — the gate is comparing two nothings"; exit 1; fi; \
+	 if [ -z "$$added" ]; then echo "RUNTIME HOME GATE FAILED: the added tree has no _SCHEMA_TABLE_ guards — the gate is comparing two nothings"; exit 1; fi; \
+	 for guard in $$base $$added; do \
+		case $$guard in TABLEDEMO_*) ;; *) echo "RUNTIME HOME GATE FAILED: guard $$guard is not prefixed TABLEDEMO_"; exit 1;; esac; \
+	 done; \
+	 if [ "$$base" != "$$added" ]; then echo "RUNTIME HOME GATE FAILED: the guard sets differ — base [$$base] vs added [$$added]"; exit 1; fi
+	@echo "runtime home gate (cpp): every _SCHEMA_TABLE_ guard is named by the package and the sorted set is identical across the two trees"
+
+.PHONY: tables-cpp-runtime-home-negative-control
+tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
+	@sed 's|guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"|guard := strings.ToUpper(ir.ProtocolIdHome(u)) + "_SCHEMA_TABLE_PRIMITIVES" // SABOTAGED: back to the file order|' \
+		internal/codegen/cpptable/cpptable.go > build/cppruntime-fileorder.gotext
+	@grep -q SABOTAGED build/cppruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cppruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cppruntime-overlay.json
+	@go build -overlay=build/cppruntime-overlay.json -o build/schema-cppruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-cpp/base-sabotage build/runtime-home-cpp/added-sabotage
+	@./build/schema-cppruntime-sabotaged generate --lang cpp --out build/runtime-home-cpp/base-sabotage tables/examples
+	@./build/schema-cppruntime-sabotaged generate --lang cpp --out build/runtime-home-cpp/added-sabotage build/runtime-home-cpp/src
+	@base=$$(cd build/runtime-home-cpp/base-sabotage && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 added=$$(cd build/runtime-home-cpp/added-sabotage && grep -ho '#ifndef [A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES[A-Z0-9_]*' *Table.h | awk '{print $$2}' | sort -u); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the guard $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (cpp): the file-order rule moves the guard from $$base to $$added"
+
 # DEFECT B's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
 # The dogfood found the C# blittable emitter projecting a bounded array INSIDE
 # a nested record out of line — a sixteen-byte triple where C++ put the whole
@@ -3390,6 +3434,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-block-home-negative-control
 	$(MAKE) tables-runtime-home
 	$(MAKE) tables-runtime-home-negative-control
+	$(MAKE) tables-cpp-runtime-home
+	$(MAKE) tables-cpp-runtime-home-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative-control
