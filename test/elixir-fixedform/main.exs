@@ -114,6 +114,101 @@ read = fn name -> File.read!(Path.join(corpus, name)) end
 Leg.start()
 
 # ---------------------------------------------------------------------------
+# W12: THE LAYOUT HASH IS fnv1a64 OVER THE LAYOUT'S BYTES AS WRITTEN, THE
+# 4-BYTE COUNT INCLUDED, AND THEN OVER THE DEFINITIONS DIGEST (§1)
+# ---------------------------------------------------------------------------
+#
+# EVERY HASH THIS RUNTIME HOLDS IS A HANDED CONSTANT — it computes none from
+# layout bytes, on the identity lane or anywhere else — so a hash that SKIPPED
+# the four-byte count would pass every fixture this leg already has, because
+# nothing ever recomputes it. The oracle below is written the plain way and
+# NEVER borrowed from the code under test: a driver that hashed with the code it
+# is checking "would agree with whatever that code happened to do"
+# (test/js-tables/fixedform.mjs:850-858, docs/FIXED-FORM-ALGORITHM.md:1082).
+#
+# IT SITS FIRST, BESIDE THE WRITE'S OWN BYTE-FOR-BYTE CASE BELOW, because a
+# broken constant sends a self-written file `layout_newer` and takes the later
+# sections down with it: the property has to be read off the FILE'S OWN HEADER,
+# which is answered before any lineage.
+#
+# FU1 and FU2 are the corpus files whose DEFINITIONS DIGEST is empty, which is
+# §1's own case — "an empty digest leaves the hash the layout's alone" — so the
+# whole of the input is the layout's bytes, the four-byte entry count at offset
+# 0 included, and the header's hash can be re-derived in the open.
+fnv1a64 = fn bytes ->
+  Enum.reduce(:binary.bin_to_list(bytes), 0xCBF29CE484222325, fn b, h ->
+    Bitwise.band(Bitwise.bxor(h, b) * 0x100000001B3, 0xFFFFFFFFFFFFFFFF)
+  end)
+end
+
+hash_of_corpus = fn name, runtime, emitted_hash, emitted_layout ->
+  {:ok, file_hash, file_layout, _records} = runtime.read_file_header(read.(name))
+  <<_count::little-unsigned-32, entries::binary>> = file_layout
+
+  Leg.eq(
+    "#{name}: the header's hash is fnv1a64 over the layout's bytes AS WRITTEN, THE 4-BYTE COUNT INCLUDED",
+    file_hash,
+    fnv1a64.(file_layout)
+  )
+
+  # AND THIS BUILD'S OWN HANDED CONSTANT IS THE SAME NUMBER, which is the half
+  # that moves when the EMITTER — and not the C++ reference — is wrong.
+  Leg.eq(
+    "#{name}: THIS BUILD'S HANDED CONSTANT is fnv1a64 over the layout's bytes AS WRITTEN, THE 4-BYTE COUNT INCLUDED",
+    emitted_hash.(),
+    fnv1a64.(file_layout)
+  )
+
+  Leg.eq(
+    "#{name}: and the emitted layout bytes are the corpus's own",
+    emitted_layout.(),
+    file_layout
+  )
+
+  Leg.check(
+    "#{name}: dropping the 4-byte count from the input changes the number",
+    fnv1a64.(entries) != fnv1a64.(file_layout)
+  )
+
+  file_hash
+end
+
+fu1_hash =
+  hash_of_corpus.(
+    "fu1.bin",
+    Tblfu1.FixedRuntime,
+    &Tblfu1.FU1Fixed.fu_root_fixed_hash/0,
+    &Tblfu1.FU1Fixed.fu_root_fixed_layout/0
+  )
+
+fu2_hash =
+  hash_of_corpus.(
+    "fu2.bin",
+    Tblfu2.FixedRuntime,
+    &Tblfu2.FU2Fixed.fu_root_fixed_hash/0,
+    &Tblfu2.FU2Fixed.fu_root_fixed_layout/0
+  )
+
+# A SINGLE LUCKY CONSTANT CANNOT PASS: two corpus files with different layouts
+# have to hash to two different numbers.
+Leg.check(
+  "the two corpus files do not share a layout hash",
+  fu1_hash != fu2_hash
+)
+
+# AND THE HASH'S SECOND INPUT, which an empty-digest file cannot show. FX1
+# declares ranges, so its definitions digest is non-empty and the header's hash
+# is NOT fnv1a64 over the layout's bytes alone — §1 folds the digest in after
+# them.
+{:ok, fx1_file_hash, fx1_file_layout, _records} =
+  Tblfx1.FixedRuntime.read_file_header(read.("fx1.bin"))
+
+Leg.check(
+  "fx1.bin: a non-empty definitions digest makes the header hash more than the layout's bytes alone",
+  fx1_file_hash != fnv1a64.(fx1_file_layout)
+)
+
+# ---------------------------------------------------------------------------
 # THE WRITE: every file read and saved back has to come out BYTE FOR BYTE
 # ---------------------------------------------------------------------------
 
