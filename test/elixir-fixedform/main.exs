@@ -1144,6 +1144,38 @@ _ = compiled_enum_past_the_last_variant
 Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect.type}, {0, 0})
 Leg.eq("so nothing is counted", none_report.clamped, 0)
 
+# THE 64-BIT TEMPORARY (schema#876 C6): a width-8 ordinal is read WHOLE through
+# a 64-bit temporary, never truncated to a narrower one. A 32-bit temp reads the
+# low four bytes of 2^32 and sees 0 — which is None — and counts NOTHING. Read
+# whole, the same byte is past the writer's ONE variant, so it lands None AND
+# counts one `clamped`. The ordinal op reads at the WRITER'S width, and `size`
+# admits 8 (§1.2): `little-unsigned-size(size)` never narrows it. This is the
+# C++ reference's owed8 case (test/tables/fixedform_main.cpp:1091) in this leg's
+# idiom: a plan handed straight to the loop, one width-8 ordinal, and the same
+# discriminating byte.
+Leg.section("a width-8 ordinal is read WHOLE through a 64-bit temporary")
+
+whole_plan = [{:ordinal, 0, 0, 8, 8, 1}]
+whole_body = <<0, 0, 0, 0, 1, 0, 0, 0>>
+whole_prefill = <<0::little-unsigned-64>>
+
+{whole_image, whole_report} =
+  Tblfu1.FixedRuntime.run(
+    whole_plan,
+    whole_body,
+    whole_prefill,
+    Tblfu1.FixedRuntime.report()
+  )
+
+<<whole_landed::little-unsigned-64>> = whole_image
+
+Leg.eq("a width-8 ordinal of 2^32 is past the writer's one variant", whole_landed, 0)
+
+Leg.check(
+  "and COUNT clamped — a 32-bit temp would read 0 and count nothing",
+  whole_report.clamped >= 1
+)
+
 # A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
 # what a form that writes 0 or 1 and reads anything owes a hostile writer. Both
 # land through the PROJECTION, which the identity and compiled paths share, so
