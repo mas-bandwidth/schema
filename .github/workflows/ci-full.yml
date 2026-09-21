@@ -506,10 +506,16 @@ jobs:
   # rebases; that scan proves the rules EXIST, and the emission from nothing is
   # what proves one ran.
   generated:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
+    # this is the one check that names a stale committed generated/ tree, and a
+    # pull request into fixed-table-form runs no other — ci-fast.yml's leg gate is
+    # `github.base_ref == 'main'` and every other job in this file carries the
+    # label gate — so #1395 landed a stale
+    # generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it.
+    # The tree-current question is an ITERATION gate and belongs on every pull
+    # request. On a merge, the nightly and a dispatch it runs with the rest of
+    # the file; carrying no job-level `if:` makes all of these unrepresentable to
+    # skip.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -573,10 +579,11 @@ jobs:
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
   pins:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
+    # like `generated`, a stale pin is a "this diff is self-consistent" failure,
+    # and a pull request into fixed-table-form runs no other leg gate. On a
+    # merge, the nightly and a dispatch it runs with the rest of the file;
+    # carrying no job-level `if:` keeps every one of those live.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
