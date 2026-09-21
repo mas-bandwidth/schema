@@ -316,6 +316,65 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	}
 }
 
+// jobKeyRe matches a top-level job key, `  <name>:` at exactly two columns —
+// the indent that separates a job from the four-column keys and steps inside it.
+var jobKeyRe = regexp.MustCompile(`^  [A-Za-z0-9_-]+:$`)
+
+// jobIfCondition returns the `if:` value of one top-level job name in a
+// workflow body, or "" when the job carries no gate (and so runs on every
+// trigger the workflow handles).
+func jobIfCondition(data, job string) string {
+	inJob := false
+	for _, raw := range strings.Split(data, "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if !inJob {
+			if raw == "  "+job+":" {
+				inJob = true
+			}
+			continue
+		}
+		// The block ends at the next sibling job key or any top-level key: a
+		// line that is not a comment, and either stands at fewer than two
+		// columns or names another job. Inter-job prose is comment-only.
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if !strings.HasPrefix(raw, "  ") || jobKeyRe.MatchString(raw) {
+				return ""
+			}
+		}
+		if strings.HasPrefix(trimmed, "if:") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "if:"))
+		}
+	}
+	return ""
+}
+
+// TestGeneratedTreeAndPinsRunOnEveryPullRequest (issue #1421) refuses the one
+// gate that must NEVER be behind the `full-ci` label. The `generated` job is
+// the only check that names a stale committed generated/ tree, and it lives in
+// ci-full.yml — whose every job skipped itself on an unlabelled pull request.
+// A pull request into fixed-table-form runs neither this file nor the leg gate
+// (ci-fast.yml's gate is `github.base_ref == 'main'`), so #1395 landed a stale
+// generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it. A
+// "the committed tree is what this compiler emits" question is an ITERATION
+// question by this file's own rule, so it belongs on every pull request and
+// not behind a label. `pins` answers the same question for testdata/ and is
+// dropped from the label gate with it.
+func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, job := range []string{"generated", "pins"} {
+		cond := jobIfCondition(string(data), job)
+		if cond == "" {
+			continue // no gate: runs on every trigger, every pull request with it
+		}
+		if strings.Contains(cond, "full-ci") {
+			t.Errorf("ci-full.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
+		}
+	}
+}
+
 // gitLsFiles returns the tracked paths under dir, relative to root.
 func gitLsFiles(t *testing.T, root, dir string) []string {
 	t.Helper()
