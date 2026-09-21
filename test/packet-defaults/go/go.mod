@@ -12,4 +12,4 @@ replace packetdefaults => ../../../build/packet-defaults/go/defaults
 
 replace packetplain => ../../../build/packet-defaults/go/plain
 
-replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+replace github.com/mas-bandwidth/serialize.go => ../../../serialize.go

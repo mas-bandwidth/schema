@@ -9,4 +9,4 @@ require (
 
 replace bench => ../../../generated/bench/go
 
-replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+replace github.com/mas-bandwidth/serialize.go => ../../../serialize.go

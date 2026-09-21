@@ -29,7 +29,7 @@ replace blockdemo => ../../../build/tables-generated-go/block
 
 replace graphdemo => ../../../build/tables-generated-go/pointers
 
-replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+replace github.com/mas-bandwidth/serialize.go => ../../../serialize.go
 
 require tblm1 v0.0.0
 replace tblm1 => ../../../build/tables-generated-go/m1

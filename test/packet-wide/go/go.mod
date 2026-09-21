@@ -9,4 +9,4 @@ require (
 
 replace packetwide => ../../../build/packet-wide/go
 
-replace github.com/mas-bandwidth/serialize.go => ../../../../serialize.go
+replace github.com/mas-bandwidth/serialize.go => ../../../serialize.go
