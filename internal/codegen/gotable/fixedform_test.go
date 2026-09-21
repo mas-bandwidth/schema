@@ -639,6 +639,60 @@ func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 `)
 }
 
+// TestFixedFormRefuseIsTotal asserts §5.3 "REFUSE is total: no counter moves,
+// nothing is decoded, and not one destination byte is written". The destination
+// is pre-poisoned with 0x5A and every poisoned byte is still 0x5A after the
+// refusal. Every counter is zero at the same time.
+func TestFixedFormRefuseIsTotal(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestFixedFormRefuseIsTotal(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointMeasure(&one)
+	form1 := make([]byte, need)
+	if n := PointSave(&one, form1); n != need {
+		t.Fatalf("form-1 save %d", n)
+	}
+	if form1[0] != 1 {
+		t.Fatalf("form-1 save wrote form %d", form1[0])
+	}
+	batch := make([]Point, 1)
+	const poison = 0x5A
+	dst := (*[8]byte)(unsafe.Pointer(&batch[0]))
+	dst[0] = poison
+	dst[1] = poison
+	dst[2] = poison
+	dst[3] = poison
+	dst[4] = poison
+	dst[5] = poison
+	dst[6] = poison
+	dst[7] = poison
+	var r TableReport
+	plan := make([]TableFixedEntry, 64)
+	n := PointFixedLoad(batch, form1, plan, &r)
+	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
+		t.Fatalf("REFUSE is total: want refusal, got n=%d %+v", n, r)
+	}
+	if dst[0] != poison || dst[1] != poison || dst[2] != poison || dst[3] != poison ||
+		dst[4] != poison || dst[5] != poison || dst[6] != poison || dst[7] != poison {
+		t.Fatalf("REFUSE is total: destination changed")
+	}
+	if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+		t.Fatalf("REFUSE is total: counters not zero: %+v", r)
+	}
+}
+`)
+}
+
 func TestForm1OfVariableTableStillLoads(t *testing.T) {
 	runGenerated(t, `package probe
 table Node {
