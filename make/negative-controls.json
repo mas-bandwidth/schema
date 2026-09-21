@@ -13,6 +13,7 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
