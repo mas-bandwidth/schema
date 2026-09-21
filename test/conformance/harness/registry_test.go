@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -86,7 +89,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	}
 	// a CI row with no driver behind it is refused, not run
 	writeFile(t, filepath.Join(tree, "test", "conformance", "zy", "ci.json"), `{"targets": "build/conformance-zy"}`+"\n")
-	if _, err := matrix(filepath.Join(tree, "test", "conformance")); err == nil || !strings.Contains(err.Error(), "zy") {
+	if _, err := matrixFor(filepath.Join(tree, "test", "conformance"), tierPullRequest); err == nil || !strings.Contains(err.Error(), "zy") {
 		t.Errorf("a ci.json with no driver was not refused: %v", err)
 	}
 
@@ -113,7 +116,7 @@ func discover(t *testing.T, tree string) map[string]string {
 	}
 	out["harness"] = strings.Join(langs, " ")
 
-	m, err := matrix(filepath.Join(tree, "test", "conformance"))
+	m, err := matrixFor(filepath.Join(tree, "test", "conformance"), tierPullRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,4 +191,147 @@ func writeExec(t *testing.T, path, text string) {
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestMatrixForTiers is the gate on the tier filter itself — the code that
+// decides, for every leg, whether CI runs it on the commit or overnight. The
+// committed registry is the subject: the per-commit tier must be the eight
+// legs that fit the owner's one-to-two-minute law, the nightly tier exactly
+// the legs moved out of it, and no leg may sit in both or in neither. A new
+// port lands in this table with its tier, which is the deliberate act the law
+// asks for.
+func TestMatrixForTiers(t *testing.T) {
+	const registry = ".."
+
+	langsOf := func(t *testing.T, raw []byte) []string {
+		t.Helper()
+		var got struct {
+			Include []map[string]string `json:"include"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("the matrix is not JSON: %v", err)
+		}
+		var langs []string
+		for _, row := range got.Include {
+			langs = append(langs, row["lang"])
+		}
+		sort.Strings(langs)
+		return langs
+	}
+
+	for _, tc := range []struct {
+		name  string
+		tier  string
+		want  []string
+		wantE string
+	}{
+		{
+			name: "the per-commit tier is the eight legs inside the law",
+			tier: tierPullRequest,
+			want: []string{"cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"},
+		},
+		{
+			name: "the nightly tier is exactly the legs moved out of it",
+			tier: tierNightly,
+			want: []string{"c"},
+		},
+		{
+			name:  "an unknown tier is refused, not silently empty",
+			tier:  "bogus",
+			wantE: `"bogus" is not a tier`,
+		},
+		{
+			name:  "no tier at all is refused too",
+			tier:  "",
+			wantE: `"" is not a tier`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := matrixFor(registry, tc.tier)
+			if tc.wantE != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantE) {
+					t.Fatalf("matrixFor(%q): want an error naming %q, got %v", tc.tier, tc.wantE, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("matrixFor(%q): %v", tc.tier, err)
+			}
+			if got := langsOf(t, raw); !slices.Equal(got, tc.want) {
+				t.Errorf("matrixFor(%q) legs = %v, want %v — a leg changed tier, or a port landed without one", tc.tier, got, tc.want)
+			}
+		})
+	}
+
+	// Every registered leg is in one tier and one only: a leg in both runs
+	// twice under one job name, a leg in neither is a check that no workflow
+	// performs.
+	t.Run("the tiers partition the registry", func(t *testing.T) {
+		perCommit, err := matrixFor(registry, tierPullRequest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nightly, err := matrixFor(registry, tierNightly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := map[string]int{}
+		for _, lang := range langsOf(t, perCommit) {
+			in[lang]++
+		}
+		for _, lang := range langsOf(t, nightly) {
+			in[lang]++
+		}
+		for lang, n := range in {
+			if n != 1 {
+				t.Errorf("%s is in %d tiers, want exactly 1", lang, n)
+			}
+		}
+		drivers, err := discoverDrivers(registry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range drivers {
+			if in[d.lang] == 0 {
+				t.Errorf("%s is registered and in no tier: no workflow runs it", d.lang)
+			}
+		}
+		if len(in) != len(drivers) {
+			t.Errorf("the tiers name %d legs, the registry has %d", len(in), len(drivers))
+		}
+	})
+}
+
+// TestMatrixForRefusals covers the two refusals the committed registry cannot
+// reach: a ci.json naming a tier that does not exist, and a tier whose filter
+// keeps nothing — a workflow that would expand to no job and report green.
+func TestMatrixForRefusals(t *testing.T) {
+	plant := func(t *testing.T, rows map[string]string) string {
+		t.Helper()
+		tree := t.TempDir()
+		for lang, row := range rows {
+			writeExec(t, filepath.Join(tree, lang, "driver"), "#!/bin/sh\nexit 0\n")
+			writeFile(t, filepath.Join(tree, lang, "ci.json"), row+"\n")
+		}
+		return tree
+	}
+
+	t.Run("a ci.json naming a tier that does not exist", func(t *testing.T) {
+		tree := plant(t, map[string]string{
+			"cpp": `{"targets": "build/conformance-cpp"}`,
+			"zz":  `{"targets": "build/conformance-zz", "tier": "weekly"}`,
+		})
+		_, err := matrixFor(tree, tierPullRequest)
+		if err == nil || !strings.Contains(err.Error(), `"weekly" is not a tier`) || !strings.Contains(err.Error(), "zz") {
+			t.Fatalf("a bad tier in a row was not refused by name: %v", err)
+		}
+	})
+
+	t.Run("a tier no leg is in", func(t *testing.T) {
+		tree := plant(t, map[string]string{"cpp": `{"targets": "build/conformance-cpp"}`})
+		_, err := matrixFor(tree, tierNightly)
+		if err == nil || !strings.Contains(err.Error(), "expands to no job") {
+			t.Fatalf("an empty tier was not refused: %v", err)
+		}
+	})
 }
