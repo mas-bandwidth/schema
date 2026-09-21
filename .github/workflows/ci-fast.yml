@@ -298,10 +298,14 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
-  # human would otherwise find by reading. golangci-lint, modernize, the
-  # absolute ledger and the render smoke are NOT here: each downloads and
-  # compiles a tool of its own, which is a minute this lane does not have, and
-  # they run in ci-full.yml.
+  # human would otherwise find by reading. modernize runs here too (issue
+  # #1424): the full `lint` job is gated behind the `full-ci` label on pull
+  # requests, so a PR into fixed-table-form skips it and modernize only fires
+  # on a branch push — the hole #1422 slipped through when two lines it landed
+  # in internal/ci reddened `CI full` on the push, after the PR had passed with
+  # lint skipped. golangci-lint, the absolute ledger and the render smoke are
+  # NOT here: each downloads and compiles a tool of its own, which is a minute
+  # this lane does not have, and they run in ci-full.yml.
   lint-fast:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
@@ -345,6 +349,14 @@ jobs:
         run: go mod tidy -diff
       - name: go vet
         run: go vet ./...
+      # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
+      # but a pull request into fixed-table-form skips it, because that job is
+      # gated behind the `full-ci` label; `lint-fast` has no such gate and runs
+      # on every pull-request push, so it carries the check here instead. The
+      # pin below is the one ci-full.yml carries — the version gopls's own
+      # module tags — and is bumped by hand in both files together.
+      - name: modernize
+        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
