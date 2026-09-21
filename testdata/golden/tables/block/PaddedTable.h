@@ -2169,7 +2169,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -3509,7 +3515,7 @@ struct PaddedRow {
     char label[15 + 1] = {}; // string(15): max length, used length beside it
     int32_t label_length = 0;
     uint16_t slots[4] = {};
-    TableKeyed<uint8_t, Team> teams; // [Team]: one slot per named variant, keyed by the value
+    TableKeyed<uint8_t, Team> teams = {}; // [Team]: one slot per named variant, keyed by the value
     int32_t counter = 0;
     bool counter_present = false; // ?int32: absent until set
 };

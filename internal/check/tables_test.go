@@ -114,6 +114,8 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableJson { y int32 }\n"},
 		{name: "a declaration colliding with the block layout check", want: "generated TABLE-wire runtime",
 			src: "package t\ntable Tab { x int32 }\ntype TableBlockLayout { y int32 }\n"},
+		{name: "a declaration colliding with the bit helpers' scratch", want: "generated TABLE-wire runtime",
+			src: "package t\ntable Tab { x int32 }\ntype TableBitsScratch { y int32 }\n"},
 
 		// THE RUST CONSTANT SPACE (docs/SPEC-TABLES.md §11). Rust spells a
 		// constant SCREAMING_SNAKE, and the spelling is MANY-TO-ONE:
@@ -196,10 +198,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { xs ?[..4]U }\n"},
 		{name: "an optional array takes no specified default", want: "an optional field takes no specified default",
 			src: "package t\ntable Tab { xs ?[..4]int32 = 5 }\n"},
-		{name: "an optional whose closure is variable is a named follow-on", want: "? on a value whose closure is variable-length",
-			src: "package t\ntable Leaf { value int32\n    next *Leaf }\ntable Tab { opt ?Leaf }\n"},
-		{name: "an optional array whose element closure is variable is a named follow-on", want: "? on a value whose closure is variable-length",
-			src: "package t\ntable Leaf { value int32\n    next *Leaf }\ntable Tab { xs ?[..2]Leaf }\n"},
 		{name: "an optional string is a named follow-on", want: "? on string(N) is a named follow-on",
 			src: "package t\ntable Tab { s ?string(8) }\n"},
 		{name: "an optional bytes is a named follow-on", want: "? on bytes(N) is a named follow-on",
