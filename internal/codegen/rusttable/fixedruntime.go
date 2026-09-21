@@ -571,11 +571,11 @@ pub fn table_fixed_run(
                 // above) and COUNTS, so the compiled plan counts it exactly as
                 // the identity plan's decode bound does and the SAME forged
                 // bytes land the SAME clamped == 1 on either plan
-                // (schema#1254, §5.4, §5.8 row 12). Compiler::push on this leg
-                // takes no record bound at all, so the one entry that reads a
-                // record byte carries its own — and src.get is the bounds-safe
-                // read, so a short record is a malformed verdict and never a
-                // panic.
+                // (schema#1254, §5.4, §5.8 row 12). Compiler::push holds every
+                // entry to the writer's record, this one with it, so the read
+                // below is behind the compile-time refusal — and src.get is
+                // the bounds-safe read, so a short record is a malformed
+                // verdict and never a panic.
                 if p.aux == 0 && p.dstsize != 0 && p.guard == TABLE_FIXED_NO_GUARD {
                     match src.get(s..s + n) {
                         None => {
@@ -963,10 +963,64 @@ struct Compiler<'a> {
     count: usize,
     remap_used: usize,
     overflow: bool,
+    // too_large is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
+    // WHOLE under layout_record_too_large and never lands a short read.
+    too_large: bool,
+    // record is the WRITER's declared root size, the bound every entry's
+    // source extent is held to.
+    record: u32,
 }
 
 impl Compiler<'_> {
+    // HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from src.
+    // The run loop's own bound checks are the same arithmetic, record by
+    // record; this is that arithmetic ONCE, at compile, against the writer's
+    // own declared record size.
+    fn op_reach(op: TableFixedOp, size: u32) -> u64 {
+        match op {
+            // a count reads the live count word; the size lane is THIS
+            // READER'S OWN BOUND, which a grown array makes larger than the
+            // writer's whole record while the entry still reads four bytes
+            TableFixedOp::Count => 4,
+            // a text entry's unit count behind its four-byte length word
+            TableFixedOp::Text => 4 + size as u64,
+            // an f32 on the wire
+            TableFixedOp::WidenF => 4,
+            // reads no record byte at all — except the union's None const
+            // below, which reads the writer's raw tag
+            TableFixedOp::Const => 0,
+            // copy, ordinal, widen: a byte run
+            _ => size as u64,
+        }
+    }
+
     fn push(&mut self, e: TableFixedEntry) {
+        // EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED
+        // RECORD SIZE: the plan's source offsets are arithmetic over sizes a
+        // WRITER wrote down, so a layout that names a byte past root.size is
+        // refused WHOLE and never partly compiled. The boundary is past and
+        // not at: a layout reaching EXACTLY to root.size still compiles.
+        let mut end = e.src as u64 + Self::op_reach(e.op, e.size);
+        if e.op == TableFixedOp::Const && e.aux == 0 && e.dstsize != 0 {
+            // EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
+            // to count a clamp past the writer's arm set. It has a source
+            // reach, so one past the writer's record refuses the plan whole
+            // like every other entry.
+            end = e.src as u64 + e.size as u64;
+        }
+        if e.guard != TABLE_FIXED_NO_GUARD {
+            // A GUARDED ENTRY LOADS THE TAG BEFORE ANYTHING ELSE, so the
+            // guard's own reach counts too. A zero width reads as one.
+            let w = if e.argw == 0 { 1u64 } else { e.argw as u64 };
+            let g = e.guard as u64 + w;
+            if g > end {
+                end = g;
+            }
+        }
+        if self.record != 0 && end > self.record as u64 {
+            self.too_large = true;
+            return;
+        }
         if self.count >= self.plan.len() {
             self.overflow = true;
             return;
@@ -1012,7 +1066,9 @@ impl Compiler<'_> {
 /// ` + "`counted`" + ` is MY side of MY block, one byte an entry, saying whether an array
 /// entry carries a live count in front of it — the one storage fact a block
 /// entry cannot state. Returns the entries written, or None when the caller's
-/// plan or remap storage does not hold it.
+/// plan or remap storage does not hold it — and None too when an entry names
+/// a byte past the WRITER's own declared record size, refused WHOLE under
+/// layout_record_too_large and never partly compiled.
 pub fn table_fixed_compile(
     theirs: &TableFixedBlock,
     mine: &TableFixedBlock,
@@ -1027,8 +1083,17 @@ pub fn table_fixed_compile(
         count: 0,
         remap_used: 0,
         overflow: false,
+        too_large: false,
+        // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
+        // declared size, taken from the layout this plan is compiled against.
+        record: theirs.entry(0).size,
     };
     match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, 0, true, report);
+    // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
+    // name: the report carries layout_record_too_large and no plan runs.
+    if c.too_large {
+        return report.refuse(TableFixedReason::LayoutRecordTooLarge);
+    }
     if c.overflow {
         return None;
     }
