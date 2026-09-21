@@ -487,6 +487,7 @@
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-allocator-runtime-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
         "tables-dart-runtime-home-negative-control",
