@@ -325,7 +325,7 @@ var jobKeyRe = regexp.MustCompile(`^  [A-Za-z0-9_-]+:$`)
 // trigger the workflow handles).
 func jobIfCondition(data, job string) string {
 	inJob := false
-	for _, raw := range strings.Split(data, "\n") {
+	for raw := range strings.SplitSeq(data, "\n") {
 		trimmed := strings.TrimSpace(raw)
 		if !inJob {
 			if raw == "  "+job+":" {
@@ -341,8 +341,8 @@ func jobIfCondition(data, job string) string {
 				return ""
 			}
 		}
-		if strings.HasPrefix(trimmed, "if:") {
-			return strings.TrimSpace(strings.TrimPrefix(trimmed, "if:"))
+		if ifCond, ok := strings.CutPrefix(trimmed, "if:"); ok {
+			return strings.TrimSpace(ifCond)
 		}
 	}
 	return ""
@@ -372,6 +372,30 @@ func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
 		if strings.Contains(cond, "full-ci") {
 			t.Errorf("ci-full.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
 		}
+	}
+}
+
+// TestModernizeRunsOnEveryPullRequest (issue #1424) refuses the modernize check
+// being gated behind the `full-ci` label. #1422 landed two lines in
+// internal/ci/ci_test.go that modernize flags; its PR passed only because the
+// full `lint` job skips an unlabelled pull request into fixed-table-form, and
+// the red then fired on the branch push alone — after merge. So modernize must
+// ride the fast lane: ci-fast.yml's `lint-fast` has no `full-ci` gate and runs
+// on every pull-request push, and the `modernize` step is where the same check
+// that bites on the push bites on the PR.
+func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	cond := jobIfCondition(body, "lint-fast")
+	if strings.Contains(cond, "full-ci") {
+		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
+	}
+	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
+		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
 	}
 }
 
