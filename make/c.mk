@@ -918,6 +918,96 @@ tables-c-view: bin/schema test/c-tables/view_main.c
 
 test-c tables-c: tables-c-view
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md, schema#421), the C
+# half of the J1 technique: the generated ACCESSOR and the generated DESCRIPTOR
+# are two independent derivations of one layout, so the leg reads every field
+# of the block projection, every block row, and the cook node BOTH ways and
+# requires agreement. The pointer field `next` is held separately as a SLOT,
+# because its position is what a self-relative delta is relative to.
+#
+# The two tiers do not derive their offsets the same way, and the probe is
+# shaped to match: the BLOCK tier's descriptor carries the emitter's own number
+# as a literal (internal/codegen/ctable/block.go), so an offset-against-offset
+# comparison against the C compiler's offsetof is a genuine two-way check; the
+# COOK tier's descriptor carries `(uint32_t) offsetof( St, member )`
+# (internal/codegen/ctable/codecs.go), so there the VALUE read back blind, the
+# slot's elem_size and the delta read through the slot are what is held against
+# the named member. The same source compiles once per unit (two units cannot
+# share a translation unit — they redefine the shared runtime).
+.PHONY: tables-c-accessor-descriptor-agreement
+tables-c-accessor-descriptor-agreement: bin/schema test/c-tables/accessor_descriptor_main.c
+	@rm -rf build/c-accessor-descriptor
+	@mkdir -p build/c-accessor-descriptor/block build/c-accessor-descriptor/pointers
+	./bin/schema generate --lang c --out build/c-accessor-descriptor/block tables/block
+	./bin/schema generate --lang c --out build/c-accessor-descriptor/pointers tables/pointers
+	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_BLOCK -Ibuild/c-accessor-descriptor/block \
+		test/c-tables/accessor_descriptor_main.c build/c-accessor-descriptor/block/RenderBlock.c build/c-accessor-descriptor/block/RenderTable.c \
+		-o build/c-accessor-descriptor/block-probe -lm
+	./build/c-accessor-descriptor/block-probe
+	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_COOK -Ibuild/c-accessor-descriptor/pointers \
+		test/c-tables/accessor_descriptor_main.c build/c-accessor-descriptor/pointers/GraphTable.c build/c-accessor-descriptor/pointers/PartsTable.c build/c-accessor-descriptor/pointers/MarksTable.c \
+		-o build/c-accessor-descriptor/cook-probe -lm
+	./build/c-accessor-descriptor/cook-probe
+
+# Its NEGATIVE CONTROLS. A gate that has never seen one derivation move is
+# watching nothing, so two are sabotaged through `go build -overlay`, and each
+# must turn the probe red: a block scalar's descriptor offset moved four bytes,
+# and a cook pointer SLOT's descriptor offset moved eight (the width of a
+# TableRef). No tracked file moves — the sabotage lives only under build/.
+.PHONY: tables-c-accessor-negative-control
+tables-c-accessor-negative-control: bin/schema test/c-tables/accessor_descriptor_main.c
+	@rm -rf build/c-accessor-sabotage && mkdir -p build/c-accessor-sabotage/block
+	@sed -e 's|%d, %du, %s, %s }|%d, %du, %s, %s } /* SABOTAGED */|' \
+		-e 's|f.Name, fl.Offset, fl.Size, kind, blockCOffset(facts.CountOffset)|f.Name, fl.Offset+4, fl.Size, kind, blockCOffset(facts.CountOffset)|' \
+		internal/codegen/ctable/block.go > build/c-accessor-sabotage/block.go.txt
+	@cmp -s internal/codegen/ctable/block.go build/c-accessor-sabotage/block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/block.go":"%s/build/c-accessor-sabotage/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-accessor-sabotage/overlay.json
+	go build -overlay build/c-accessor-sabotage/overlay.json -o build/c-accessor-sabotage/schema ./cmd/schema
+	build/c-accessor-sabotage/schema generate --lang c --out build/c-accessor-sabotage/block tables/block
+	@grep -q "SABOTAGED" build/c-accessor-sabotage/block/RenderBlock.c || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_BLOCK -Ibuild/c-accessor-sabotage/block \
+		test/c-tables/accessor_descriptor_main.c build/c-accessor-sabotage/block/RenderBlock.c build/c-accessor-sabotage/block/RenderTable.c \
+		-o build/c-accessor-sabotage/probe -lm
+	@if ./build/c-accessor-sabotage/probe > build/c-accessor-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a block scalar offset four bytes off left the gate GREEN"; \
+		cat build/c-accessor-sabotage/log; exit 1; \
+	fi
+	@grep -q "the accessor's offset is not the descriptor's" build/c-accessor-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the accessor/descriptor disagreement"; \
+		  cat build/c-accessor-sabotage/log; exit 1; }
+	@echo "negative control: a block descriptor offset four bytes off turns the C accessor/descriptor gate RED"
+
+.PHONY: tables-c-slot-negative-control
+tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_main.c
+	@rm -rf build/c-slot-sabotage && mkdir -p build/c-slot-sabotage/pointers
+	@sed -e 's|(uint32_t) offsetof( %s, %s ),|(uint32_t) offsetof( %s, %s ) + 8 * %s /* SABOTAGED */,|' \
+		-e 's|st.Name, member, elemSize, countOffset|st.Name, member, boolC(f.Type.Pointer), elemSize, countOffset|' \
+		internal/codegen/ctable/codecs.go > build/c-slot-sabotage/codecs.go.txt
+	@cmp -s internal/codegen/ctable/codecs.go build/c-slot-sabotage/codecs.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/codecs.go":"%s/build/c-slot-sabotage/codecs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-slot-sabotage/overlay.json
+	go build -overlay build/c-slot-sabotage/overlay.json -o build/c-slot-sabotage/schema ./cmd/schema
+	build/c-slot-sabotage/schema generate --lang c --out build/c-slot-sabotage/pointers tables/pointers
+	@grep -q "SABOTAGED" build/c-slot-sabotage/pointers/GraphTable.c || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged slot"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_COOK -Ibuild/c-slot-sabotage/pointers \
+		test/c-tables/accessor_descriptor_main.c build/c-slot-sabotage/pointers/GraphTable.c build/c-slot-sabotage/pointers/PartsTable.c build/c-slot-sabotage/pointers/MarksTable.c \
+		-o build/c-slot-sabotage/probe -lm
+	@if ./build/c-slot-sabotage/probe > build/c-slot-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the gate GREEN"; \
+		cat build/c-slot-sabotage/log; exit 1; \
+	fi
+	@grep -q "the slot accessor's offset is not the descriptor's" build/c-slot-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the pointer slot"; \
+		  cat build/c-slot-sabotage/log; exit 1; }
+	@echo "negative control: a pointer slot eight bytes off turns the C accessor/descriptor gate RED"
+
+test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negative-control tables-c-slot-negative-control
+
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
 # the same corpus in C, with the two gates that hold the emitter honest, the
 # forgery fuzzer under ASan and UBSan, and a short soak.
