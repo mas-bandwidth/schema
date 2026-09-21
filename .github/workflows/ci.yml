@@ -18,20 +18,21 @@ name: CI
 # group is in and why. `tools/negativecontrols` refuses a group that is in
 # neither, so nothing can fall between the two files.
 #
-# `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
-# rounding away: 87 s of its 109 is `make tables-big-endian-negative-control`,
-# which cross-compiles the tables battery for s390x, runs it under qemu, and
-# then compiles it a SECOND time for the negative control. Building its six
-# binaries in parallel bought 14 s of that; the rest is the control's own two
-# compiles, which are serial by construction. The next job that wants a place
-# on this gate takes the budget from somewhere, and that is where to look.
-# NOTE, 2026-09-07: that job measures 4:15 to 4:26 on main (runs 34111624059,
-# 34111228369, 34110320928), which is over the rule and is not this leg's
-# doing. It wants the same treatment the negative controls have here, and
-# issue #684 owns giving it that. Its control is the reason
-# tables-big-endian-negative-control sits in the plan's exclusion list rather
-# than in a group: this job runs it on every pull request already. The C twin,
-# tables-c-big-endian-negative-control, rides the same job for the same reason.
+# `big-endian` WAS THE BINDING CONSTRAINT, and issue #684 owned bringing it
+# under the rule. It measures 4:15 to 4:26 on main (runs 34111624059,
+# 34111228369, 34110320928) because one job ran the leg's five independent
+# pieces and its control end to end, and the run paid their SUM. It has the
+# negative controls' treatment now: the job is a matrix of one row per piece —
+# the tables battery, the collections battery, the cook, the C leg, the C++
+# control, the C twin control and the Go leg — because those share nothing but
+# bin/schema and the generated tree. The Makefile carries the same pieces as
+# targets of their own, and `make tables-big-endian-negative-control` still
+# runs the leg and then the control, which is what `make test`, certify.yml and
+# a workstation ask for.
+#
+# Its control is still the reason tables-big-endian-negative-control sits in
+# the plan's exclusion list rather than in a group: this file runs it on every
+# pull request already, now in the `control` row, and the C twin in `c-control`.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
 # both OSes, every `tables-<lang>-release` target. It runs nightly and on
@@ -613,7 +614,9 @@ jobs:
   #
   # It is an iteration gate, not a certification one — it answers a question
   # about the code in the diff, not about the compiler that built it — and it
-  # fits the budget.
+  # fits the budget now that it is sharded by unit (issue #684): one row per
+  # independent piece, so the run pays the longest piece rather than the sum.
+  # The controls keep their own rows, so nothing runs less than it did.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -623,8 +626,39 @@ jobs:
   # from the policy the failing install prints. The step after the install
   # records the resolved closure both pins pull in.
   big-endian:
+    name: big-endian (${{ matrix.leg }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # ONE PIECE PER ROW (issue #684). The pieces share nothing but bin/schema
+      # and the generated tree, which each row rebuilds in about fifteen
+      # seconds; in one job the run paid their SUM. The Makefile carries the
+      # same pieces as targets of their own and
+      # `tables-big-endian-negative-control` still runs the leg and the control
+      # in order.
+      #
+      # The `control` row is `tables-big-endian-control-only`: the C++ negative
+      # control's own recipe, without the leg in front of it, because the leg
+      # is the `tables` and `collections` rows and the pair is the same pair
+      # whether one job runs them or three. `c-control` is the C twin. They are
+      # what prove the matrix can go red.
+      matrix:
+        include:
+          - leg: tables
+            target: tables-big-endian-tables
+          - leg: collections
+            target: tables-big-endian-collections
+          - leg: cook
+            target: tables-cook-endian
+          - leg: c
+            target: tables-c-big-endian
+          - leg: control
+            target: tables-big-endian-control-only
+          - leg: c-control
+            target: tables-c-big-endian-negative-control
+          - leg: go
+            target: conformance-big-endian
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -660,53 +694,35 @@ jobs:
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
-      # The one sibling the C++ battery needs, header-only, at the pin every
-      # other job uses: a table unit declaring a 128-bit field takes its
-      # storage type (serialize::int128_t / uint128_t) from serialize.h.
-      - name: Check out the serialize runtime (pinned release)
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
-
-      # The battery on the target, then the control that proves it can fail.
-      # BE_CXX and BE_CC name the pinned compilers: the exact-version package
-      # installs the SUFFIXED drivers, and the Makefile's unsuffixed defaults
-      # are for a workstation that installed the metapackage. The C leg needs
-      # the C driver because the tolerant wire has a C reader too, and the
-      # g++ cross package pulls its gcc sibling in.
-      #
-      # -j BECAUSE THIS IS THE JOB AT THE BOUND. Six independent binaries hang
-      # off `tables-big-endian` — the tables corpus, the block driver both
-      # ways, the cook reader both ways, and the cook fixtures — sharing only
-      # bin/schema and the generated tree, which make builds once. The runner
-      # has four cores and the leg was spending them one at a time.
-      - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
-
-      # The C twin of that control: put16 never reaches table_writer_finish's
-      # #else arm, so a C-side byte-order defect there would leave the job green.
-      # Serial after the C++ control because both overlay-rebuild the compiler.
-      - name: the C big-endian negative control
-        run: make tables-c-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
-
-      # The memcpy arm of the same function is a host soak
-      # (tables-c-little-endian-negative-control). The negative-controls matrix
-      # runs it; this job does not, because that arm is not compiled for s390x.
-
-      # And the GO table leg on the same target. Go cross-compiles, so the
-      # conformance driver is one env var away from a big-endian binary, and
-      # the harness's own goldens become the gate: a big-endian reader loads
-      # what a little-endian host wrote, writes it back, and is byte-compared
-      # over the wire, the read report and the text form.
-      #
-      # It needs the Go RUNTIME checkout, even though the table codec names no
-      # runtime at all: a generated unit's PACKET sources sit in the same
-      # package as its table sources, and those import it.
-      - name: Check out the Go serialize runtime (pinned release)
+      # BOTH siblings in every row, the argument the negative-control rows make
+      # one door over: a table unit declaring a 128-bit field takes its storage
+      # type from serialize.h, a generated unit's PACKET sources import the Go
+      # runtime, and which of those a leg reaches for belongs to the leg rather
+      # than to this list. Two shallow clones cost two seconds and remove the
+      # whole class of "the row forgot a sibling".
+      - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
-      - name: the Go table leg, big-endian
-        run: make conformance-big-endian
+      # -j BECAUSE EVERY ROW STILL HAS BINARIES TO BUILD. BE_CXX and BE_CC name
+      # the pinned compilers: the exact-version package installs the SUFFIXED
+      # drivers, and the Makefile's unsuffixed defaults are for a workstation
+      # that installed the metapackage. The C leg needs the C driver because the
+      # tolerant wire has a C reader too, and the g++ cross package pulls its
+      # gcc sibling in.
+      #
+      # The Go row cross-compiles, so the conformance driver is one env var away
+      # from a big-endian binary, and the harness's own goldens become the gate:
+      # a big-endian reader loads what a little-endian host wrote, writes it
+      # back, and is byte-compared over the wire, the read report and the text
+      # form. It needs the Go runtime checkout even though the table codec names
+      # no runtime at all: a generated unit's PACKET sources sit in the same
+      # package as its table sources, and those import it — hence both siblings
+      # above, in every row.
+      - name: ${{ matrix.target }}
+        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
@@ -817,25 +833,23 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # THE PIN AND THE RETRIES LIVE IN THE TREE, NOT IN THIS FILE. `make vuln`
-      # runs tools/vuln/govulncheck.sh, which carries the scanner's pin (the
-      # Makefile's GOVULNCHECK_VERSION, bumped by hand), three attempts 15 s
-      # then 45 s apart, and the classifier that decides whether a red one is
-      # this tree's fault. `make` is the one entry (AGENTS.md rule 6), and a
-      # classifier that lives in the tree is one `make test` can hold to its
-      # fixtures — which is what tools/vuln/testdata/cases.txt does, including
-      # the two log excerpts a looser classifier read as an outage.
+      # THE PIN LIVES IN THE TREE, NOT IN THIS FILE. `make vuln` runs the
+      # scanner PINNED AND DIRECT (the Makefile's GOVULNCHECK_VERSION, bumped
+      # by hand), with no retry and no classifier: any failure — an unreachable
+      # database included — is RED. A PR-tier gate that forgives an outage is
+      # one that has silently stopped watching, and a new CVE is the one
+      # verdict that changes with no commit here. `make` is the one entry
+      # (AGENTS.md rule 6).
       #
-      # ONLY THE TRANSPORT IS RETRIED AND ONLY THE TRANSPORT IS EVER FORGIVEN:
-      # a finding fails on the first attempt, and so does any other failure.
-      # THIS gate forgives a database that never answers, because a
-      # contributor's diff cannot be judged by vuln.go.dev's uptime; the
-      # nightly in certify.yml runs `make vuln-strict` and goes RED on the same
-      # outage, so an outage is never green everywhere at once.
+      # The nightly in certify.yml runs `make vuln-strict` instead: the same
+      # pin through the classifying script (tools/vuln/govulncheck.sh), three
+      # attempts against a transient blip and then RED, because a certificate
+      # is a full run at an exact SHA and an unreachable database certifies
+      # nothing. The classifier is held to its fixtures by `make test`, in
+      # tools/vuln/testdata/cases.txt.
       #
-      # INSIDE THE 10-MINUTE CAP with room to spare: the scan measures 35 s on
-      # this runner and 9.4 s on a 64-core bench, so three attempts and two
-      # sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst case. The cap is there for
+      # INSIDE THE 10-MINUTE CAP with room to spare: the direct scan measures
+      # 35 s on this runner and 9.4 s on a 64-core bench. The cap is there for
       # a scan that HANGS instead of failing, and it still ends the job.
       - name: govulncheck
         run: make vuln

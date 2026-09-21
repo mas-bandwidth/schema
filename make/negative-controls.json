@@ -13,13 +13,17 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
+        "tables-c-runtime-home-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
@@ -255,6 +259,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
@@ -495,8 +500,10 @@
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-allocator-runtime-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
+        "tables-dart-runtime-home-negative-control",
         "tables-dart-standalone-negative-control"
       ],
       "dart": "3.13.2"
@@ -504,7 +511,7 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Java port's controls and its four packet families: eight controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
@@ -512,7 +519,8 @@
         "packet-utf8-java-negative-control",
         "packet-wide-java-negative-control",
         "tables-java-cook-extent-negative-control",
-        "tables-java-fuzz-negative-control"
+        "tables-java-fuzz-negative-control",
+        "tables-java-runtime-home-negative-control"
       ],
       "java": "21"
     },
@@ -524,8 +532,10 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
+        "tables-elixir-accessor-negative-control",
         "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fuzz-negative-control"
+        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-slot-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -546,6 +556,7 @@
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
         "tables-go-slot-negative-control",
+        "tables-go-runtime-home-negative-control",
         "tables-go-block-race-negative-control",
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",
@@ -601,11 +612,11 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
     }
   ]
 }

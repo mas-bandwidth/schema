@@ -170,6 +170,17 @@ tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tabl
 		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
 		cargo +nightly miri run --quiet
 
+# THE RUST PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
+# target by name, so the expensive half lands by adding it here and nothing
+# else. The native forgery fuzzer is the PR-scale instrument `make test` does
+# not run at all; this is its long form at five times the shared N under a
+# second seed, beside the name-claim control it belongs with.
+.PHONY: tables-rust-release
+tables-rust-release:
+	$(MAKE) tables-rust-fuzz N=500000
+	$(MAKE) tables-rust-fuzz SEED=2 N=500000
+	$(MAKE) tables-rust-names-negative-control
+
 # THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
 # that a schema declaration may not lower onto one of the table runtime's Rust
 # CONSTANTS is a refusal, and a refusal that has never fired proves nothing —
@@ -239,14 +250,38 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Rust side.
+# The page's cook example is pulled out of docs/USAGE.md, wrapped in a crate
+# that reads the fixture cook and calls the function verbatim, and built against
+# the generated `tables/pointers` crate — so a renamed function or a moved field
+# is a compile error here, not a release later.
+.PHONY: tables-rust-usage
+tables-rust-usage: build/tables-generated-rust/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/rust-usage && mkdir -p build/rust-usage/src
+	printf '[package]\nname = "rustusage"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\ngraphdemo = { path = "../tables-generated-rust/graphdemo" }\n' > build/rust-usage/Cargo.toml
+	printf 'use std::fs;\n\nfn main() {\n    let path = std::env::args().nth(1).expect("usage: rust-usage <Scene.cook>");\n    let bytes = fs::read(&path).expect("read the Scene cook");\n    if !usage(&bytes) { panic!("the Scene cook did not open"); }\n    println!("usage: docs/USAGE.md Rust cook example opened the Scene cook and walked its chain");\n}\n\n' > build/rust-usage/src/main.rs
+	sed -n '/<!-- rust-table-usage -->/,/<!-- \/rust-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/rust-usage/src/main.rs
+	grep -q 'SceneCook::open' build/rust-usage/src/main.rs || \
+		{ echo "MISSING: docs/USAGE.md carries no rust-table-usage example"; exit 1; }
+	cd build/rust-usage && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- $(CURDIR)/build/cook-open/Scene.cook
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
-# control, the big-endian check, the bench crates' compile gates, and the
-# packet tests — the corpus binaries in BOTH build modes (see below).
+# control, the FORGERY FUZZER the header above says rides every push, the
+# big-endian check, the bench crates' compile gates, and the packet tests —
+# the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
 test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
+	$(MAKE) tables-rust-usage
 	$(MAKE) tables-rust-names-negative-control
+	# THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the native leg, the
+	# one the header above records as the per-push cost — 409,746 mutants in
+	# 4.5 s at N=100000. It walks what it opened, and the both-bounds control
+	# that proves it load-bearing is tables-block-fuzz-extent-negative-control.
+	# The MIRI leg beside it stays a by-hand gate.
+	$(MAKE) tables-rust-fuzz
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.

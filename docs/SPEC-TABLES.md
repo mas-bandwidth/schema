@@ -410,7 +410,11 @@ does.
 **GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
 the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
 (the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
-generic text walk). Two spellings are Go's own and the reason is at each site:
+generic text walk). The unit's shared runtime is emitted ONCE, into the
+package's home `<Package>Table.go` — the file named for the package when one
+exists, else a file emitted for the unit — named by the PACKAGE so an
+earlier-sorting file cannot relocate it (§19.2). Two spellings are Go's own and
+the reason is at each site:
 an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
 enum type, because Go has no overloading and a free pair would have to mint a
 per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
@@ -1063,13 +1067,16 @@ any scalar, and a bounded array of those. It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers, an array of unions, and any VALUE whose closure
-  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
-  named follow-on (§15): an absent field is not an edge (§3.1), and the
-  authoring walks must gate on the presence companion before an optional
-  field may hold pointer edges. The bounded arrays of pointers and of
-  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
-  the field serves with it.
+- **an array of pointers and an array of unions** — a named follow-on
+  (§15): an absent field is not an edge (§3.1), and the authoring walks
+  must gate on the presence companion before an optional field may hold
+  pointer edges. The bounded arrays of pointers and of unions serve today
+  without the `?` (§2.1, §2.6), and a table wrapping the field serves with
+  it. **An optional over a VALUE whose closure is variable-length is
+  legal** — scalar `?T` and by-value array `?[N]T` alike: the numbering,
+  the pack measure and the pack are one declaration-order walk that gates
+  every edge on the presence companion, so an absent optional descends
+  nothing and is not an edge (§3.1).
 - **a specified default** — presence is the only default an optional has.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
@@ -8968,8 +8975,9 @@ refusal by name is a compile error rather than an answer a driver writes.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
-it ON: the same six counters, the two retention counters beside them, and a
-save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
+same six counters, the two retention counters beside them, and a save the
+oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
@@ -13043,13 +13051,15 @@ inspects everything in the schema built:
   bit buys nothing a wrapper table does not already give. Wrap the field in
   a table and make that optional today; `?[..N]T` and `?[N]T` landed and
   are not part of this entry.
-- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
-  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
-  `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
-  sizing) to gate on the presence companion, and none of them does yet; the
-  refusal keeps the two writers byte-identical until that gating lands as
-  its own change, walks and corpus together.
+- **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T` and
+  `?[N]Body`. A field the writer does not write is not an edge (§3.1), and
+  the numbering, the pack measure and the pack gate on the presence
+  companion now, but the element is already optional — a null slot, or an
+  arm's `None` — so what a second presence bit means beside that wants
+  stating before it is wire. **`?T` and the by-value `?[N]T` of a
+  variable-length value LANDED** with that gate: an absent optional is not
+  descended, and `test/tables/G1.schema`'s optional half is the corpus
+  schema and the wire pin.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
 - **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
@@ -14785,9 +14795,11 @@ and the Block files cost nothing unless they are included. It is held in two
 halves, because they answer different questions: the build fails if one symbol
 of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
 a layout constant — appears in a Table source, AND every Table source is
-byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
-measured against a build that could not emit a Block file at all rather than
-against the emitter's own output. The descriptor
+byte-compared against the SAME build with the block form removed from its
+emitters, so the identity is measured against a build that emitted no Block
+file at all rather than against frozen text. Both arms move together, so the
+comparison survives any legitimate Table-emitter change and goes red when the
+block form leaks into a Table source. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 
