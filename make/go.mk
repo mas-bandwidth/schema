@@ -158,6 +158,34 @@ define go_table_module
 @printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
+# THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
+# `tables-js-standalone` and `tables-dart-standalone` (docs/PORTING.md): a
+# generated <Package>Table.go carries the unit's table runtime — its cursor,
+# its readers and its writers — INSIDE the file rather than importing it from
+# a sibling runtime module, so what the unit reaches for a table codec is the
+# platform's own library. The one external spelling the form admits is the
+# 128-bit scalar TYPE the sibling runtime owns (`serialize.Int128`,
+# `serialize.Uint128`, `serialize.Int128From64`), named only by a unit whose
+# closure declares a 128-bit field; any other symbol of that module marks the
+# unit as dependent and is refused. The scan runs over the CODE, with every
+# // comment stripped first, on the same terms as the C++ zero-cost and
+# view-containment gates: the banner's "serialize.go storage" is prose, not a
+# dependency.
+.PHONY: tables-go-standalone
+tables-go-standalone: build/tables-generated-go/.stamp
+	@n=$$(ls build/tables-generated-go/*/*Table.go 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
+		fi
+	@for f in build/tables-generated-go/*/*Table.go; do \
+		bad=$$(sed -E 's://.*$$::' $$f | grep -oE 'serialize\.[A-Za-z0-9_]+' | sort -u | grep -vxE 'serialize\.(Int128|Uint128|Int128From64|go)'); \
+		if [ -n "$$bad" ]; then \
+			echo "STANDALONE GATE FAILED: the sibling runtime leaked into $$f beyond its 128-bit scalar type:"; \
+			echo "$$bad"; exit 1; \
+		fi; \
+	done
+	@echo "tables Go standalone gate: generated Table sources carry the runtime inline, naming the sibling only for its 128-bit scalar type"
+
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
@@ -284,13 +312,14 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and two seconds
-# of the soak; the hour is `make tables-go-soak` — the bench units' compile
-# gates, and the packet tests.
+# of the soak; the hour is `make tables-go-soak` — the standalone gate, the
+# bench units' compile gates, and the packet tests.
 .PHONY: test-go
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) tables-go-json-walk
+	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
