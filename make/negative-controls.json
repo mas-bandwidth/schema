@@ -516,8 +516,10 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
+        "tables-elixir-accessor-negative-control",
         "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fuzz-negative-control"
+        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-slot-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
