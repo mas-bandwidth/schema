@@ -2,7 +2,7 @@
 
 ## Packet wire
 
-Constants, enums, flags and types: bit-picked structs exchanged between client and server without versioning.
+Constants, enums, flags and types: bit-packed structs exchanged between client and server with exactly the same protocol version.
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -102,13 +102,17 @@ Fixed tables provide versioning such that a new reader can always read an old wr
 | Constant body size and file-size measurement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | complete | 24% | 19% | 29% | 7% | 28% | 28% | 40% | 43% | 21% |
 
-[Source data](docs/roadmap.sexp)
-
 <!-- nova-work:fixed-tables:end -->
 
-### Future
+## Future
 
-Future capabilities we are thinking about, in particular around more advanced variable (recursive) table definitions and cooking data to efficient binary formats.
+Future capabilities we are thinking about, in particular around more advanced variable and recursive table definitions and cooking data to efficient binary formats.
+
+The eleven columns after the nine are the languages a game team has around it:
+Swift, TypeScript, Lua, Clojure, Python, Ruby, Kotlin, GDScript, Zig, Odin and
+Haxe. Each arrives the way the nine did — the packet wire bit-identical to the
+corpus first, then every table row, then its scorecard — and they are tracked
+on [issue #381](https://github.com/mas-bandwidth/schema/issues/381).
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -145,20 +149,11 @@ Future capabilities we are thinking about, in particular around more advanced va
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | save games | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-## How the work is done
+## Fund this work
 
 Schema is built by Glenn Fiedler, together with AI collaborators that do much of 
 the building, testing and porting. Glenn owns every design decision. Every month a
 [public ledger](https://github.com/mas-bandwidth/patreon#public-ledgers) shows
 where the AI collaborator's tokens went, by repository, and what they bought.
 
-## Fund this work
-
-If you write games in more than one language, this is being built for you. If
-you have ever kept two schema systems in step by hand, or shipped a client and
-a server that disagreed about one field, this is the fix we are building.
-
-Your support pays for the tokens the AI collaborator runs on and the machines
-the benchmarks run on, and the ledger shows you where every one of them went.
-
-**[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
+If you'd like to support this work, you can **[become a supporter](https://www.patreon.com/MasBandwidth/membership)**

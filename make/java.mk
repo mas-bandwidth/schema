@@ -134,6 +134,75 @@ tables-java-zero-cost: bin/schema
 		{ echo "ZERO-COST GATE FAILED: a table-free unit's packet output is not the committed one"; exit 1; }
 	@echo "tables Java zero-cost gate: a table-free unit emits no table code at all"
 
+# THE RUNTIME HOME IS FILE-ORDER-PROOF ON JAVA BY CONSTRUCTION, AND NOW IT IS
+# ASSERTED (docs/PORTING.md:1412, J2 — "The runtime home, with a file-order
+# control"). In every port a unit's shared runtime is named by the PACKAGE and
+# never by the file that happens to sort first (docs/SPEC-TABLES.md §19.2), so a
+# schema file that sorts earlier relocates nothing. Java meets that by
+# construction rather than by a rule: a public type lives in a file of its own
+# name, so the shared runtime is ONE FILE PER TYPE — TableBytes.java,
+# TableBlockInfo.java, TableCookStorage.java and the rest — and javatable has no
+# expression that computes a home a file-order rule could reach (no
+# `capitalize(u.Package)`, no `ProtocolIdHome` on this surface). The gate
+# therefore asserts the ten literal names runtimeFileNames() gives, not a grepped
+# marker: on Java the file name IS the claim. The packet surface's protocol-id
+# home is file-ordered ON PURPOSE (ir.ProtocolIdHome is u.Files[0].Base — the
+# trap at internal/codegen/java/java.go:71), and that is not what this gate
+# watches.
+#
+# Seven of the ten bodies are CONSTANT SOURCE — TableBytes, TableBlockRows,
+# TableBlockInfo, TableBlockFieldInfo, TableCookStorage, TableCookInfo and
+# TableCookFieldInfo — so the gate byte-compares those across the two trees. The
+# other three (BuildVersion, TableBlockLayout, TableCookLayout) carry unit facts
+# that a new table legitimately moves, and are asserted by name only.
+.PHONY: tables-java-runtime-home
+tables-java-runtime-home: bin/schema
+	@rm -rf build/runtime-home-java && mkdir -p build/runtime-home-java/src
+	@cp tables/examples/*.schema build/runtime-home-java/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-java/src/Aaa.schema
+	@./bin/schema generate --lang java --out build/runtime-home-java/base tables/examples
+	@./bin/schema generate --lang java --out build/runtime-home-java/added build/runtime-home-java/src
+	@n=0; for t in TableBytes TableBlockRows TableBlockInfo TableBlockFieldInfo TableBlockLayout TableCookInfo TableCookFieldInfo TableCookStorage TableCookLayout BuildVersion; do \
+		b=0; a=0; \
+		[ -f build/runtime-home-java/base/$$t.java ] && b=1 && n=$$((n+1)); \
+		[ -f build/runtime-home-java/added/$$t.java ] && a=1; \
+		if [ "$$b" != "$$a" ]; then \
+			echo "RUNTIME HOME GATE FAILED (Java): $$t.java is in one tree and not the other — the shared runtime moved when an earlier-sorting file joined the unit"; exit 1; \
+		fi; \
+	done; \
+	if [ "$$n" -lt 10 ]; then \
+		echo "RUNTIME HOME GATE FAILED (Java): found $$n runtime types, expected at least 10 — the glob, not the property, is what broke"; exit 1; \
+	fi
+	@for t in TableBytes TableBlockRows TableBlockInfo TableBlockFieldInfo TableCookStorage TableCookInfo TableCookFieldInfo; do \
+		cmp -s build/runtime-home-java/base/$$t.java build/runtime-home-java/added/$$t.java || \
+			{ echo "RUNTIME HOME GATE FAILED (Java): $$t.java's bytes moved when the unit gained a file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Java): every shared runtime type stays in its own <Type>.java, byte for byte, when an earlier-sorting file joins the unit"
+
+# The negative control: the file-order rule put back, in Java's spelling — the
+# byte-access runtime named by the file that sorts first instead of by itself.
+# The sabotage is the ONE edit, applied through `go build -overlay` exactly as
+# the C# (Makefile:1734) and JS (make/js.mk:322) controls do it, so no tracked
+# Go file is ever written. `ir` is already imported in javatable.go.
+.PHONY: tables-java-runtime-home-negative-control
+tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
+	@sed 's|"TableBytes.java": *tableBytesFile(u),|ir.ProtocolIdHome(u) + "Bytes.java": tableBytesFile(u), // SABOTAGED: back to the file order|' \
+		internal/codegen/javatable/javatable.go > build/javaruntime-fileorder.gotext
+	@[ "$$(grep -c SABOTAGED build/javaruntime-fileorder.gotext)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing, or patched more than one line"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/javatable.go":"%s/build/javaruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/javaruntime-overlay.json
+	@go build -overlay=build/javaruntime-overlay.json -o build/schema-javaruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-java/base-sabotage build/runtime-home-java/added-sabotage
+	@./build/schema-javaruntime-sabotaged generate --lang java --out build/runtime-home-java/base-sabotage tables/examples
+	@./build/schema-javaruntime-sabotaged generate --lang java --out build/runtime-home-java/added-sabotage build/runtime-home-java/src
+	@base=$$(cd build/runtime-home-java/base-sabotage && ls *Bytes.java); \
+	 added=$$(cd build/runtime-home-java/added-sabotage && ls *Bytes.java); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the byte-access runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Java): the file-order rule moves the byte-access runtime from $$base to $$added"
+
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
 # failure in a consumer's tree and not only in ours.
@@ -277,6 +346,23 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
+# The cook example is pulled from docs/USAGE.md into a class that reads the
+# fixture cook and supplies the page's `use` hook, compiled with the generated
+# `tables/pointers` package under the consumer's `-Xlint:all -Werror`, and run.
+.PHONY: tables-java-usage
+tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/java-usage && mkdir -p build/java-usage
+	printf 'package graphdemo;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic final class Usage {\n    static int used;\n\n    static void use(int value) { used++; }\n\n    public static void main(String[] args) throws Exception {\n        byte[] bytes = Files.readAllBytes(Path.of(args[0]));\n\n' > build/java-usage/Usage.java
+	sed -n '/<!-- java-table-usage -->/,/<!-- \/java-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/java-usage/Usage.java
+	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> build/java-usage/Usage.java
+	grep -q 'SceneCook.open' build/java-usage/Usage.java || \
+		{ echo "MISSING: docs/USAGE.md carries no java-table-usage example"; exit 1; }
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-usage/classes \
+		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
+	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
@@ -291,9 +377,11 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 .PHONY: tables-java-release
 tables-java-release:
 	$(MAKE) tables-java-compile-all
+	$(MAKE) tables-java-usage
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
+	$(MAKE) tables-java-runtime-home-negative-control
 
 generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
@@ -403,6 +491,7 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-standalone
 	$(MAKE) tables-java-zero-cost
+	$(MAKE) tables-java-runtime-home
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
