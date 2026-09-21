@@ -15,6 +15,7 @@
         "tables-block-race-negative-control",
         "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
+        "tables-c-runtime-home-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
