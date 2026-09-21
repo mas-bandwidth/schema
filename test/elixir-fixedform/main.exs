@@ -1521,6 +1521,79 @@ bad_tree =
 # answers as its six neighbours.
 refuse.("a child count that does not close", bad_tree)
 
+# THE SEVEN §1.1 RULES, EACH BY ITS OWN NAME, AS THE LOCK'S VALIDATION (§5.6).
+# §5.6 retired the run-time walk of a stranger's layout — on the wire a hostile
+# layout is COMPARED, never parsed, so the read answers one name
+# (`layout_malformed` / `layout_newer`), asserted above. What §5.6 kept is the
+# seven checks AS THE LOCK'S VALIDATION OF WHAT IT RECORDS, and on this leg that
+# is `parse_layout/1`: the same seven refusals, each under its own name, and the
+# ORDER load-bearing — keep the FIRST reason and stop.
+leg_seven = fn name, bad, want ->
+  Leg.eq("#{name} refuses as `#{want}`", Tblfx1.FixedRuntime.parse_layout(bad), {:error, want})
+end
+
+Leg.eq(
+  "the unbroken layout parses — §1.1 admits it, so each refusal below is the ONE break",
+  Tblfx1.FixedRuntime.parse_layout(layout) |> elem(0),
+  :ok
+)
+
+leg_seven.(
+  "RULE 1: an entry count that does not fit",
+  <<99::little-unsigned-32, entries::binary>>,
+  :layout_count_mismatch
+)
+
+leg_seven.(
+  "RULE 1: an entry count of zero is not a layout",
+  <<0::little-unsigned-32, entries::binary>>,
+  :layout_count_mismatch
+)
+
+leg_seven.("RULE 2: a kind outside the closed set", bad_kind, :layout_kind_unknown)
+leg_seven.("RULE 3: a size its kind does not admit", bad_size, :layout_size_mismatch)
+leg_seven.("RULE 4: a root that is not a table", bad_root, :layout_kind_invalid)
+leg_seven.("RULE 5: a child count that does not close", bad_tree, :layout_tree_unclosed)
+
+# RULE 6: no entry's size, and no partial sum of a parent's children, passes 65536.
+bad_too_large =
+  <<binary_part(layout, 0, 13)::binary, 0x01, 0x00, 0x01, 0x00,
+    binary_part(layout, 17, byte_size(layout) - 17)::binary>>
+
+leg_seven.("RULE 6: a record size past 65536", bad_too_large, :layout_record_too_large)
+
+# RULE 7: nesting does not pass the reader's own walk bound (64). A chain of
+# single-child optional wrappers is a depth the wire would otherwise get to
+# choose, so the bound is on the WALK and the refusal is by the walk's own name.
+mk_entry = fn id, kind, size, children ->
+  <<id::little-unsigned-64, kind, size::little-unsigned-32, children::little-unsigned-32>>
+end
+
+deep = 70
+
+deep_entries =
+  Enum.map_join(0..deep, "", fn i ->
+    kind = if i == 0, do: 13, else: 35
+    children = if i == deep, do: 0, else: 1
+    mk_entry.(i + 1, kind, 1, children)
+  end)
+
+leg_seven.(
+  "RULE 7: a nesting depth past the walk's own bound",
+  <<deep + 1::little-unsigned-32, deep_entries::binary>>,
+  :layout_too_deep
+)
+
+# THE ORDER IS LOAD-BEARING: rule 1 fires before the root's kind (rule 4). Break
+# BOTH at once and the FIRST reason — the count — is the one kept, not rule 4.
+Leg.eq(
+  "the order keeps the FIRST reason: a bad count is named before a bad root",
+  Tblfx1.FixedRuntime.parse_layout(
+    <<99::little-unsigned-32, binary_part(bad_root, 4, byte_size(bad_root) - 4)::binary>>
+  ),
+  {:error, :layout_count_mismatch}
+)
+
 # A HEADER WHOSE HASH NAMES A LAYOUT THIS BUILD DOES NOT HOLD is answered at
 # §5.3 step 5 and the bytes behind it are never looked at — these ARE this
 # reader's own, valid layout bytes, and the answer is still `layout_newer`. The
