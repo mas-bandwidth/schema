@@ -111,12 +111,16 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  fixedPointShiftBits(check, bench, fixed);
   formHeaderProbes(check, fx1, fx1home);
+  refuseTotalProbe(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
+  wideTextCodeUnits(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
   liveCountSlack(check, fx1, fx1home);
+  hostileByteSweep(check, fx1, fx1home);
   holePrefillIdentity(check, fx1, fx1home);
   retired("holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
   retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -135,6 +139,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
       fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
     };
     optionalBytes(check, o, optionalDir);
+    rangedScalarClamp(check, o);
     retired("optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
     retired("optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
   }
@@ -228,6 +233,117 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const r = read(bytes);
     check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
       "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// C8 — A FIXED-POINT FIELD'S BOUND IS IN VALUE UNITS AND ITS STORAGE IS RAW;
+// A bits(N) CLAMPS TO 2^N - 1
+// ---------------------------------------------------------------------------
+//
+// docs/FIXED-FORM-ALGORITHM.md §4.6: "A fixed-point field's bounds are in VALUE
+// UNITS and its storage is raw, so both ends are shifted by F first; a bits(N)
+// clamps to 2^N - 1." The C++ reference asserts the fixed-point half in
+// test/tables/fixedform_properties.cpp `probe_clamp_op` (a value past the
+// reader's max lands at max<<F and counts one); this is its twin on the JS leg.
+//
+// The record is written by THIS BUILD's own writer, so the reader takes the
+// identity plan, and the forged raw is the only thing that differs from bytes
+// already known good. The bounds pass is §4.6's, and it runs AFTER the plan on
+// BOTH paths (internal/codegen/jstable/fixedjs.go `emitDecodeBounds`), which is
+// why the identity path is the honest place to pin it — a fix there must move
+// this.
+const C8_SERVER_TIME = 48;   // BenchMixed.server_time fixed(24,8) | max 65535
+const C8_PING = 1221;        // BenchMixed.ping ufixed(8,8)        | max 250
+const C8_CRC_HINT = 1223;    // BenchMixed.crc_hint bits(24)
+
+export function fixedPointShiftBits(check, bench, fixed) {
+  const head = LAYOUT_AT + fixed.FixedTableFixedLayoutBytes;
+  const BODY = head + 8; // the first (only) record's body, past its hash
+
+  const oneRecord = () => {
+    const values = [new bench.FixedTable()];
+    const bytes = new Uint8Array(fixed.FixedTableFixedMeasure(1));
+    fixed.FixedTableFixedSave(values, 1, bytes);
+    return bytes;
+  };
+  const read = (bytes) => {
+    const values = [new bench.FixedTable()];
+    const report = new bench.TableFixedReport();
+    const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
+      fixed.FixedTableFixedNewPlan(), report);
+    return { n, report, v: values[0].Value };
+  };
+
+  // THE POSITIVE CONTROL FIRST: untouched storage is in range and moves
+  // nothing. A pass that fired on every record would read as a pass below.
+  {
+    const r = read(oneRecord());
+    check(r.n === 1 && r.report.clamped === 0,
+      "C8 F-SHIFT: an untouched record clamps nothing");
+  }
+
+  // A FIXED FIELD'S DECLARED MAX IS IN VALUE UNITS, so a raw past
+  // 65535<<8 = 16776960 lands at 16776960 and counts one. F is 8, and the
+  // whole number 16776960 is unreachable without the shift.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + C8_SERVER_TIME, 16777000, true);
+    const r = read(bytes);
+    check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
+      "C8 F-SHIFT: a fixed(24,8) raw past max<<F is a clamp, not a refusal");
+    check(r.v.ServerTime === 16776960,
+      `C8 F-SHIFT: fixed(24,8) past max 65535 lands at 65535<<8 (got ${r.v.ServerTime})`);
+    check(r.report.clamped === 1,
+      `C8 F-SHIFT: and it counts exactly one clamp (got ${r.report.clamped})`);
+  }
+  // AND THE CONTROL: a raw AT max<<F is in range and moves no counter.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + C8_SERVER_TIME, 16776960, true);
+    const r = read(bytes);
+    check(r.n === 1 && r.v.ServerTime === 16776960 && r.report.clamped === 0,
+      "C8 F-SHIFT: a raw AT max<<F is in range and counts nothing");
+  }
+
+  // THE UNSIGNED FIXED TWIN, so the shift is proved on both signednesses:
+  // ping ufixed(8,8) | max = 250 -> 250<<8 = 64000.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint16(BODY + C8_PING, 65000, true);
+    const r = read(bytes);
+    check(r.v.Ping === 64000,
+      `C8 F-SHIFT: ufixed(8,8) past max 250 lands at 250<<8 (got ${r.v.Ping})`);
+    check(r.report.clamped === 1,
+      `C8 F-SHIFT: and the unsigned fixed clamp counts one (got ${r.report.clamped})`);
+  }
+  // AND ITS CONTROL.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint16(BODY + C8_PING, 64000, true);
+    const r = read(bytes);
+    check(r.v.Ping === 64000 && r.report.clamped === 0,
+      "C8 F-SHIFT: a ufixed(8,8) raw AT max<<F counts nothing");
+  }
+
+  // A bits(N) CLAMPS TO 2^N - 1: crc_hint bits(24) rides in a 32-bit lane, so
+  // the WIDTH is the bound and the top byte is what the clamp drops.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 0x01000000, true);
+    const r = read(bytes);
+    check(r.v.CrcHint === 16777215,
+      `C8 BITS: bits(24) past 2^24-1 lands at 2^24-1 (got ${r.v.CrcHint})`);
+    check(r.report.clamped === 1,
+      `C8 BITS: and it counts exactly one clamp (got ${r.report.clamped})`);
+  }
+  // AND THE CONTROL: 2^24-1 itself is in width and moves nothing.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 16777215, true);
+    const r = read(bytes);
+    check(r.v.CrcHint === 16777215 && r.report.clamped === 0,
+      "C8 BITS: a bits(24) value AT 2^24-1 is in width and counts nothing");
   }
 }
 
@@ -425,6 +541,83 @@ function guardComparedAtArgW(check, home) {
     "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
   check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
     "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+}
+
+// ---------------------------------------------------------------------------
+// C5: WIDE TEXT CODE UNITS (schema#876; docs/FIXED-FORM-ALGORITHM.md §4.5's
+// text row, fix 7 — "wide code units over v, never 2N, an astral pair
+// counting two").
+// ---------------------------------------------------------------------------
+//
+// A `wstring(N)` rides this form as a length in CODE UNITS with 2N bytes
+// behind it, and the text op's WIDE flavour is what keeps the two apart:
+// `unit := (meta == wide) ? 2 : 1`, `cap := size / unit` — the cap a forged
+// length is clamped to is N UNITS, never the 2N bytes a byte counter would
+// admit. This leg's compiler refuses kind 33 in a table closure
+// (compiler/widetext.go: "the js table codec is a named follow-on"), so no
+// generated module ever carries the flavour; the flavour itself rides in
+// every module's runtime (internal/codegen/jstable/fixedruntime.go, the
+// TableFixedOpText case), and this case reaches it the way
+// guardComparedAtArgW reaches the guard test: a hand-built plan over
+// hand-built bytes, through TableFixedRun, the one loop identity and
+// compiled both take.
+//
+// The op and flavour constants are SPELLED OUT, exactly as the header
+// offsets at this file's head are: TableFixedOpText is 2 and
+// TableFixedTextWide is 2 (internal/codegen/jstable/fixedruntime.go) — a
+// driver that read them out of the code under test would agree with
+// whatever that code happened to say.
+export function wideTextCodeUnits(check, home) {
+  check(home.TableFixedLanes === 9,
+    `C5: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+
+  // op=TEXT src=0 dst=0 size=16 aux=4 guard=NONE(-1) arg=0 meta=WIDE(2)
+  // argw=1 — a wstring(8): the length word at the record's head, 2N = 16
+  // bytes of span behind it, and the same twenty bytes in the image.
+  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1];
+
+  const run = (length, units) => {
+    const src = new Uint8Array(20);
+    const sv = new DataView(src.buffer);
+    sv.setInt32(0, length, true);
+    for (let i = 0; i < units.length; i++) { sv.setUint16(4 + i * 2, units[i], true); }
+    const dst = new Uint8Array(20);
+    const dv = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    home.TableFixedRun(new Int32Array(plan), 1, src, sv, 0, dst, dv, null, r);
+    return { length: dv.getInt32(0, true), clamped: r.clamped, payload: dst.subarray(4) };
+  };
+
+  // THE POSITIVE CONTROL, and the row's name: five units of which an ASTRAL
+  // PAIR is two. A leg counting bytes reads ten and loses the text; a leg
+  // counting units lands five, and the pair's halves land as two units.
+  {
+    const got = run(5, [0xE000, 0xD83D, 0xDE00, 0xFFFF, 0x007A]);
+    check(got.length === 5 && got.clamped === 0,
+      `C5: an astral pair is TWO code units and the length counts both — five units land as five and no counter moves (got length ${got.length}, clamped ${got.clamped})`);
+    check(got.payload[2] === 0x3D && got.payload[3] === 0xD8 && got.payload[4] === 0x00 && got.payload[5] === 0xDE,
+      "C5: the pair's two halves land as two little-endian units behind the first");
+  }
+
+  // AT THE BOUND: eight units is a wstring(8)'s own declared cap, not a clamp.
+  {
+    const got = run(8, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68]);
+    check(got.length === 8 && got.clamped === 0,
+      `C5: eight units at the bound are not a clamp and move no counter (got length ${got.length}, clamped ${got.clamped})`);
+  }
+
+  // THE FORGED LENGTH — the discriminating case. Twelve units is past the
+  // field's eight, so it clamps to eight and counts once; a cap taken in
+  // BYTES is sixteen, admits the twelve, and hands the consumer a length
+  // past its own storage with nothing said — a silently wrong report, never
+  // a refusal. The ONE line carries the input and its expectation together,
+  // so the legitimacy control edits this line alone.
+  const forged = (input, wantLength, wantClamped) => {
+    const got = run(input, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68]);
+    check(got.length === wantLength && got.clamped === wantClamped,
+      `C5: a length of ${input} units over wstring(8) lands ${wantLength} with ${wantClamped} clamped — the cap is CODE UNITS, never the 2N bytes (got length ${got.length}, clamped ${got.clamped})`);
+  };
+  forged(12, 8, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +826,68 @@ function formHeaderProbes(check, fx1, fx1home) {
     bad[3] = 1;
     malformedFile("reserved byte 3 set nonzero", bad);
   }
+}
+
+// ---------------------------------------------------------------------------
+// REFUSE IS TOTAL — the per-record hash refusal (W15, docs §5.8 row 9)
+// ---------------------------------------------------------------------------
+//
+// `refuse_writes_nothing` ON THIS DRIVER'S OWN READER: the one refusal the
+// prefill bug broke. §5.3 holds that a record whose hash names no layout this
+// reader holds answers `no_layout`, and REFUSE is total — no counter moves,
+// nothing is decoded, and not one destination byte is written, the prefill
+// included. The reference USED to prefill before the per-record hash check, so
+// a refused read had already written the caller's storage; the fix made the
+// hash check first. A golden file that would change if the refusal broke is
+// detection, not assertion: here the destination is PRE-POISONED with a
+// sentinel (0x5A) and compared byte for byte AFTER the refusal, and every
+// counter is asserted zero at the same time, in one case, by the rule's name.
+function refuseTotalProbe(check, fx1, fx1home) {
+  const R = fx1home.TableFixedRefusal;
+
+  // a valid form-3 file of this leg's own FX1, to forge the record's hash in
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
+    "refuse total: the valid form-3 fixture saves its own length");
+
+  // the record's own hash, inverted: the header still names this build's own
+  // layout, but record 0 now names none this reader holds — no_layout.
+  const bad = Uint8Array.from(w1);
+  bad[LAYOUT_AT + fx1.FxRootFixedLayoutBytes] ^= 0xff;
+
+  // THE DESTINATION IS POISONED, NOT RESET. A read that wrote a default would
+  // look exactly like a read that wrote nothing if the destination started at
+  // its construction values, so every byte of the caller's image takes a
+  // sentinel a lawful read never lands (0x5A), the decoded value takes one
+  // too, and the whole surface is compared after the refusal.
+  const plan = fx1.FxRootFixedNewPlan();
+  plan.image.fill(0x5A);
+  const values = [new fx1home.FxRoot()];
+  const v = values[0];
+  v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
+  v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
+  v.Label.fill(0x5A); v.LabelLength = 0x5A;
+  v.Marks.fill(0x5A); v.MarksCount = 0x5A;
+  v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+
+  const r = new fx1home.TableFixedReport();
+  const n = fx1.FxRootFixedLoad(values, 1, bad, bad.length, plan, r);
+
+  check(n === -1 && r.refused === R.NoLayout && !r.malformed,
+    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and malformed does not fire");
+  check(r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && r.widened === 0 && r.duplicate === 0,
+    "REFUSE is total: no counter moves");
+  check(plan.image.every((b) => b === 0x5A),
+    "REFUSE is total: not one destination byte is written, the prefill included");
+  check(v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
+    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
+    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
+    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
+    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A,
+    "REFUSE is total: nothing is decoded");
 }
 
 // ---------------------------------------------------------------------------
@@ -1433,6 +1688,117 @@ function liveCountSlack(check, fx1, fx1home) {
     `live-count: clamped counts 0 not 3 (got ${r.clamped})`);
 }
 
+// ---------------------------------------------------------------------------
+// P3 — HOSTILE BYTES, THE SWEEP (docs/FIXED-FORM-ALGORITHM.md §7 item 5, the
+// coverage matrix row "byte-flip fuzz, sanitizer, three answers never a fourth";
+// docs/SPEC-TABLES.md §3.4). THE REFERENCE IS test/tables/fixedform_main.cpp's
+// `fuzz_case` (lines 642-694) and test/tables/fixedform_properties.cpp's P3
+// (lines 522-638); the C leg's port is test/c-tables/fixedform_main.c:94-113.
+//
+// A FIXED RECORD CARRIES NO LENGTHS AND NO TERMINATORS, so every offset this
+// reader uses is arithmetic over sizes a stranger wrote down: a count, a length,
+// a union tag, a nested body's position. Every byte of a form-3 file is flipped
+// to a hostile value here, handed to THIS build's identity reader, and the
+// answer must be one of exactly three and never a fourth — a refusal by name, a
+// `malformed` read, or a read that lands values — where "lands values" means
+// every landed field is inside the bound the schema declares for it. A throw, a
+// negative read that is neither a refusal nor malformed, or an out-of-bound
+// field is the fourth answer, which is what this refuses.
+//
+// THE SANITIZER HALF of §7 item 5 is what the C++ reference gets from ASan+UBSan
+// (test/tables/fixedform_properties.cpp:1-16). JavaScript cannot step outside a
+// Uint8Array: an in-range DataView offset is always a value and an out-of-range
+// one throws a RangeError, which this catches and reports as the fourth answer.
+// The RANGED clamp (`emitDecodeBounds`) and the count/length clamps
+// (`emitDecodeCount`) are the pass the identity path owes, and a hostile value
+// that reaches a consumer unclamped is the silently WRONG REPORT this watches
+// for.
+//
+// Exported so a sandbox without the C++ reference corpus can run this case
+// directly; checkFixedForm also calls it, which is what the gate runs.
+function fx1HostileIssue(v) {
+  if (!(v.Renamed >= 0 && v.Renamed <= 1000)) { return `renamed ${v.Renamed}`; }
+  if (!(v.Gone >= 0 && v.Gone <= 1000)) { return `gone ${v.Gone}`; }
+  if (!(v.Nested.A >= 0 && v.Nested.A <= 1000)) { return `nested.a ${v.Nested.A}`; }
+  if (!(v.Nested.B >= 0 && v.Nested.B <= 1000)) { return `nested.b ${v.Nested.B}`; }
+  if (!(v.LabelLength >= 0 && v.LabelLength <= 8)) { return `label_length ${v.LabelLength}`; }
+  if (!(v.MarksCount >= 0 && v.MarksCount <= 4)) { return `marks_count ${v.MarksCount}`; }
+  if (!(v.BlobLength >= 0 && v.BlobLength <= 6)) { return `blob_length ${v.BlobLength}`; }
+  return null;
+}
+
+export function hostileByteSweep(check, fx1, fx1home) {
+  const clean = new fx1home.FxRoot();
+  clean.Keep = 4242; clean.Narrow = 40000; clean.Renamed = 321; clean.Gone = 654;
+  clean.Nested.A = 111; clean.Nested.B = 222;
+  clean.LabelLength = setText(clean.Label, "fx1");
+  clean.Marks[0] = 101; clean.Marks[1] = 202; clean.MarksCount = 2;
+  clean.Blob[0] = 0xDE; clean.Blob[1] = 0xAD; clean.Blob[2] = 0xBE; clean.Blob[3] = 0xEF;
+  clean.BlobLength = 4;
+  const file = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([clean], 1, file) === file.length,
+    "P3 hostile bytes: the lawful record saves");
+
+  // CONTROL 1's positive half, and it is the rule's own legitimate value: the
+  // UNFLIPPED record must land, in bound, with no counter moved. A sweep whose
+  // assertions fired on this would be testing something else entirely.
+  {
+    const back = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(back, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed && r.refused === 0 && r.clamped === 0,
+      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, malformed ${r.malformed}, clamped ${r.clamped})`);
+    check(fx1HostileIssue(back[0]) === null,
+      `P3 hostile bytes: the lawful record lands every field in bound (${fx1HostileIssue(back[0])})`);
+  }
+
+  const POISON = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
+  let refused = 0, malformed = 0, landed = 0, corrected = 0, threw = 0, divergences = 0;
+  for (let at = 0; at < file.length; at++) {
+    for (const p of POISON) {
+      if (file[at] === p) { continue; } // not a flip; the clean byte is already this
+      const hit = Uint8Array.from(file);
+      hit[at] = p;
+      const back = [new fx1home.FxRoot()];
+      const r = new fx1home.TableFixedReport();
+      let n;
+      try {
+        n = fx1.FxRootFixedLoad(back, 1, hit, hit.length, fx1.FxRootFixedNewPlan(), r);
+      } catch (e) {
+        threw++; divergences++;
+        check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} THREW ${e.name}: ${e.message}`);
+        continue;
+      }
+      if (n < 0) {
+        if (r.refused !== 0 && !r.malformed) { refused++; }
+        else if (r.malformed && r.refused === 0) { malformed++; }
+        else {
+          divergences++;
+          check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} answered a FOURTH way: n ${n}, refused ${r.refused}, malformed ${r.malformed}`);
+        }
+        continue;
+      }
+      landed++;
+      if (r.clamped > 0) { corrected++; }
+      const issue = fx1HostileIssue(back[0]);
+      if (issue !== null) {
+        divergences++;
+        check(false, `P3 hostile bytes: byte ${at} -> 0x${p.toString(16)} landed OUT OF BOUND: ${issue}`);
+      }
+    }
+  }
+  // NOT VACUOUS: each of the three answers must actually have been SEEN. A
+  // sweep that never refused, or never malformed, or never landed, is a sweep
+  // over the wrong file.
+  check(refused > 0, `P3 hostile bytes: the sweep saw a named refusal (${refused})`);
+  check(malformed > 0, `P3 hostile bytes: the sweep saw a malformed read (${malformed})`);
+  check(landed > 0, `P3 hostile bytes: the sweep saw reads that landed values (${landed})`);
+  check(corrected > 0, `P3 hostile bytes: the sweep exercised a correction that moved a counter (${corrected})`);
+  check(divergences === 0, `P3 hostile bytes: ${divergences} divergences`);
+  console.log(`P3 hostile bytes: ${file.length} bytes x ${POISON.length} poisons — ${refused} refused by name, ` +
+    `${malformed} malformed, ${landed} records read (${corrected} with a correction), ${threw} throws, ${divergences} divergences`);
+}
+
 // HOLE PREFILL, THE IDENTITY HALF: §5.3 step 8's own text, "identity's hole list
 // is empty", because the identity plan is ONE COPY of the whole body and there is
 // nothing left unwritten to prefill. There is no identity FLAG in the record loop
@@ -1530,6 +1896,16 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
     `[${ident[0].Blob[0]}, ${ident[0].Blob[1]}, ${ident[0].Blob[2]}, ${ident[0].Blob[3]}], want [222, 173, 190, 239]`);
   check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0,
     "bytes(N) identity: the slack behind the used length is zero");
+  // W11 ASSERTION: bytes(N) is layout kind 14 (Array), not kind 12 (String),
+  // and it takes the ARRAY's plan row (count at aux, not at dst).
+  // Entry 11 is blob, Entry 12 is its element (u8).
+  const LAYOUT_AT = 20; const ENTRY_BYTES = 17; const KIND_AT = 8;
+  const blobEntryAt = LAYOUT_AT + 4 + 17 * 11;
+  const elemEntryAt = LAYOUT_AT + 4 + 17 * 12;
+  check(w1[blobEntryAt + KIND_AT] === 14,
+    `bytes(N) is layout kind 14 (Array), not kind 12 (String): got ${w1[blobEntryAt + KIND_AT]}`);
+  check(w1[elemEntryAt + KIND_AT] === 6,
+    `bytes(N) element is kind 6 (u8): got ${w1[elemEntryAt + KIND_AT]}`);
 }
 
 // RETIRED BY §5.6: every assertion below the first save reads a record through
@@ -1905,6 +2281,72 @@ function optionalVersioning(check, o, dir) {
     check(back[0].Link.Value === 0,
       "P1 reads P3: the nested value keeps its declared default rather than reading the flag as a payload byte");
   }
+}
+
+// ---------------------------------------------------------------------------
+// C7 — THE RANGED SCALAR CLAMP, the hostile half (docs/FIXED-FORM-ALGORITHM.md
+// §4.6; the reference's bounds_case, item 1, test/tables/fixedform_main.cpp).
+// ---------------------------------------------------------------------------
+//
+// A fixed record is a positional image and the one read loop moves bytes: it
+// asks nothing about what they mean. The min and max a `plain int32 | min, max`
+// declares are therefore held by the DECODE and by nothing else — no plan op
+// clamps, and the identity plan is ONE copy of the whole body. A record under
+// this build's own hash still arrives from a writer this reader cannot vouch
+// for, so an out-of-range value lands at this reader's declared end and moves
+// `clamped` exactly ONCE, as §4.6's event and never a refusal: the record still
+// reads. `plain` is `int32 = 5 | min = 0, max = 1000`.
+//
+// THE POISON GOES THROUGH THE WRITER, the way the reference forges it: the
+// write side's checks are debug-only by rule and a range is not one of them, so
+// a caller can put 5000 on the wire and the reader is what answers for it.
+//
+// The COMPILED half — a plan carrying an OLD writer's bound — is a stranger's
+// layout and is owed on the lineage harness, where the lock hands the plan its
+// bound; only the identity half runs here.
+export function rangedScalarClamp(check, o) {
+  const { fo1, fo1home } = o;
+
+  // One record, written by THIS build's own writer with `planted` in `plain`,
+  // then read back through the identity plan. `tail` rides behind the ranged
+  // field so a clamp that ran off the end of its own field is visible.
+  const read = (planted) => {
+    const one = new fo1home.OptRoot();
+    one.Plain = planted;
+    one.Tail = 203;
+    const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
+    check(fo1.OptRootFixedSave([one], 1, w) === w.length,
+      "C7 RANGED: the record saves");
+    const back = [new fo1home.OptRoot()];
+    const r = new fo1home.TableFixedReport();
+    const n = fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r);
+    return { n, v: back[0], r };
+  };
+
+  // `want` and `wantClamped` are THE DECLARATION'S OWN ANSWER and not the
+  // site's: an in-range value stands and moves no counter, an out-of-range one
+  // lands at the end it passed and moves it once. A site that clamped a
+  // legitimate value, or left a forged one standing, is exactly what reds.
+  const probe = (planted) => {
+    const { n, v, r } = read(planted);
+    const want = planted < 0 ? 0 : planted > 1000 ? 1000 : planted;
+    const wantClamped = planted < 0 || planted > 1000 ? 1 : 0;
+    check(n === 1 && v.Plain === want,
+      `C7 RANGED: a value of ${planted} lands at ${want} (got ${v.Plain})`);
+    check(r.clamped === wantClamped,
+      `C7 RANGED: a value of ${planted} moves clamped ${wantClamped} (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      `C7 RANGED: a value of ${planted} is an event and not a refusal — the record still reads`);
+    check(v.Tail === 203,
+      `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.Tail})`);
+  };
+
+  probe(5000);  // past max
+  probe(-7);    // under min
+  // THE POSITIVE CONTROL: both legitimate ends stand and move no counter, so a
+  // clamp that fired on a legal value would be visible.
+  probe(1000);  // the legitimate max
+  probe(0);     // the legitimate min
 }
 
 // ---------------------------------------------------------------------------
