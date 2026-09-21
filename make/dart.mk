@@ -176,6 +176,95 @@ tables-dart-standalone-negative-control:
 	@grep -m1 "outside the unit" build/dart-standalone-nc/log
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
+# THE RUNTIME-HOME GATE, Dart (docs/PORTING.md §J2). A unit's shared block and
+# cook runtimes live in one file each named by the PACKAGE — <Package>Block.dart
+# and <Package>Cook.dart — never by the file that happens to sort first, so a
+# schema file that sorts earlier relocates nothing and the two runtimes are
+# byte-identical across the two trees. Dart emits no runtime-home marker comment
+# (cstable.go and jstable.go carry one; darttable does not), so the home is
+# identified by its own declaration at column zero, which nothing else in the
+# unit declares: ^const int tableBlockMagic / ^const int tableCookMagic. And
+# because a Dart library is a file, the siblings NAME the home in an import
+# line — a moved home rewrites import lines across the unit — so the gate also
+# asserts the package-named library is the one the unit's other libraries
+# actually import.
+.PHONY: tables-dart-runtime-home
+tables-dart-runtime-home: bin/schema
+	@rm -rf build/runtime-home-dart && mkdir -p build/runtime-home-dart/src
+	@cp tables/examples/*.schema build/runtime-home-dart/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-dart/src/Aaa.schema
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/base tables/examples
+	@./bin/schema generate --lang dart --out build/runtime-home-dart/added build/runtime-home-dart/src
+	@for surface in Block Cook; do \
+		base=$$(cd build/runtime-home-dart/base && grep -l "^const int table$${surface}Magic" *$$surface.dart); \
+		added=$$(cd build/runtime-home-dart/added && grep -l "^const int table$${surface}Magic" *$$surface.dart); \
+		if [ "$$base" != "Tabledemo$$surface.dart" ] || [ "$$added" != "Tabledemo$$surface.dart" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.dart both times"; exit 1; \
+		fi; \
+	done
+	@for tree in base added; do \
+		importers=$$(cd build/runtime-home-dart/$$tree && grep -l "^import 'TabledemoBlock.dart';" *Block.dart); \
+		if [ -z "$$importers" ]; then \
+			echo "RUNTIME HOME GATE FAILED: no sibling imports the block home in the $$tree tree"; \
+			echo "the import lines that were found:"; \
+			grep -h "^import '" build/runtime-home-dart/$$tree/*Block.dart | sort -u; exit 1; \
+		fi; \
+	done
+	@grep -v "tableBuildVersion" build/runtime-home-dart/base/TabledemoBlock.dart > build/runtime-home-dart/base.strip
+	@grep -v "tableBuildVersion" build/runtime-home-dart/added/TabledemoBlock.dart > build/runtime-home-dart/added.strip
+	@cmp -s build/runtime-home-dart/base.strip build/runtime-home-dart/added.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart block runtime's bytes moved when the unit gained a file"; exit 1; }
+	@cmp -s build/runtime-home-dart/base/TabledemoCook.dart build/runtime-home-dart/added/TabledemoCook.dart || \
+		{ echo "RUNTIME HOME GATE FAILED: the Dart cook runtime's bytes moved when the unit gained a file"; exit 1; }
+	@echo "runtime home gate (Dart): the block and cook runtimes stay in <Package><Surface>.dart, the siblings import <Package>Block.dart, and the bytes are identical when an earlier-sorting file joins the unit"
+
+# THE RUNTIME-HOME DRIVER, Dart. One new source under test/dart-tables resolves
+# <Package>{Block,Cook}.dart by NAME and reads the runtime's own constants back —
+# the half a grep cannot make: under the file-order rule the package-named
+# library is not emitted at all, so the import does not resolve and the program
+# does not run.
+.PHONY: tables-dart-runtime-home-driver
+tables-dart-runtime-home-driver: tables-dart-runtime-home
+	$(DART) analyze test/dart-tables/runtime_home.dart
+	$(DART) test/dart-tables/runtime_home.dart
+
+# THE RUNTIME-HOME GATE'S NEGATIVE CONTROL, Dart. The rule is put back to the
+# file order — home := ir.ProtocolIdHome(u) — in a COPY of darttable, the two
+# trees are regenerated from the sabotaged compiler, and the gate must go red on
+# both the name (the home MOVES when the earlier-sorting file joins) and the
+# driver (the package-named library the driver imports is no longer emitted).
+.PHONY: tables-dart-runtime-home-negative-control
+tables-dart-runtime-home-negative-control: bin/schema tables-dart-runtime-home
+	@rm -rf build/dart-runtime-home-nc && mkdir -p build/dart-runtime-home-nc
+	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/darttable/darttable.go > build/dart-runtime-home-nc/darttable.go.txt
+	@cmp -s internal/codegen/darttable/darttable.go build/dart-runtime-home-nc/darttable.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/darttable.go":"%s/build/dart-runtime-home-nc/darttable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-runtime-home-nc/overlay.json
+	go build -overlay build/dart-runtime-home-nc/overlay.json -o build/dart-runtime-home-nc/schema ./cmd/schema
+	@rm -rf build/runtime-home-dart/base-sabotage build/runtime-home-dart/added-sabotage
+	@./build/dart-runtime-home-nc/schema generate --lang dart --out build/runtime-home-dart/base-sabotage tables/examples
+	@./build/dart-runtime-home-nc/schema generate --lang dart --out build/runtime-home-dart/added-sabotage build/runtime-home-dart/src
+	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
+	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi
+	@sed -e "s|../../build/runtime-home-dart/base/|$(CURDIR)/build/runtime-home-dart/base-sabotage/|g" \
+		test/dart-tables/runtime_home.dart > build/dart-runtime-home-nc/runtime_home.dart
+	@if $(DART) build/dart-runtime-home-nc/runtime_home.dart > build/dart-runtime-home-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the driver stayed green with the home named off the file order"; \
+		tail -5 build/dart-runtime-home-nc/log; exit 1; \
+	fi
+	@grep -q "TabledemoBlock.dart" build/dart-runtime-home-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red for some other reason"; \
+		  tail -20 build/dart-runtime-home-nc/log; exit 1; }
+	@grep -m1 "TabledemoBlock.dart" build/dart-runtime-home-nc/log
+	@base=$$(cd build/runtime-home-dart/base-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
+	 added=$$(cd build/runtime-home-dart/added-sabotage && grep -l "^const int tableBlockMagic" *Block.dart); \
+	 echo "negative control: the file-order rule moves the Dart runtime from $$base to $$added and the driver's import no longer resolves"
+
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
 # port lands its expensive half by adding the target and nothing else: two
 # hundred and eighty thousand forgery-fuzz mutants over the block and cook
@@ -204,14 +293,20 @@ DART_FUZZ_MUTANTS ?= 4000
 
 # THE FUZZER'S NEGATIVE CONTROL, on the same rule as the block form's C++ one: a
 # fuzzer that has never gone red proves nothing about the reader it points at.
-# ONE CHECK is removed from the block Open — the count against the declared
-# maximum — in a COPY of the emitter, the corpus is regenerated from the
-# sabotaged compiler, and the oracle must find it. No tracked file is written
-# to, so an interrupt cannot leave a sabotaged working tree.
+# BOTH HALVES OF THE EXTENT BOUND are removed from the block Open — the rows
+# against the caller's extent and the padding check behind it — in a COPY of
+# the emitter, the corpus is regenerated from the sabotaged compiler, and the
+# oracle must find it. Removing the rows bound ALONE leaves the reader correct:
+# the padding check downstream computes `extent - used` and refuses on the
+# negative slack, which is why the control names two clauses rather than one,
+# and why it removes the whole layer rather than the count's declared-maximum
+# check beside it. No tracked file is written to, so an interrupt cannot leave
+# a sabotaged working tree.
 .PHONY: tables-dart-fuzz-negative-control tables-dart-release
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
+	@sed -e 's|if (rows > extent - offsetOf) {|if (false) { // SABOTAGED: the rows bound is gone|' \
+	     -e 's|if (padding > extent - used) {|if (false) { // SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -224,14 +319,14 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	     -e "s|../../build/tables-generated-dart/pointers/|$(CURDIR)/build/dart-fuzz-nc/generated/pointers/|g" \
 		test/dart-tables/fuzz.dart > build/dart-fuzz-nc/fuzz.dart
 	@if $(DART) build/dart-fuzz-nc/fuzz.dart 4000 > build/dart-fuzz-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the count bound removed"; \
+		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with both extent bounds removed"; \
 		tail -5 build/dart-fuzz-nc/log; exit 1; \
 	fi
-	@grep -q "past the declared" build/dart-fuzz-nc/log || \
+	@grep -q "past the claimed" build/dart-fuzz-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
 		  tail -20 build/dart-fuzz-nc/log; exit 1; }
-	@grep -m1 "past the declared" build/dart-fuzz-nc/log
-	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
+	@grep -m1 "past the claimed" build/dart-fuzz-nc/log
+	@echo "negative control: both halves of the Dart block Open's extent bound removed turns the fuzzer RED"
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
@@ -251,6 +346,9 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
 	$(MAKE) tables-dart-standalone-negative-control
+	$(MAKE) tables-dart-runtime-home
+	$(MAKE) tables-dart-runtime-home-driver
+	$(MAKE) tables-dart-runtime-home-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
@@ -319,3 +417,40 @@ packet-wide-dart-negative-control: packet-wide-dart
 	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
 
 test-dart: packet-wide-dart packet-wide-dart-negative-control
+
+# THE DART ALLOCATION GATE's RUNTIME PIN (docs/PORTING.md §I14, schema#420). The
+# gate reads the running SDK and REFUSES to certify on any other than the pin,
+# which it reads from test/conformance/dart/ci.json — the same row CI builds its
+# matrix from, so the gate cannot drift from the SDK CI installs.
+# SCHEMA_DART_ALLOC_ANY_DART=1 reports without certifying.
+# THERE IS NO ALLOCATION MEASUREMENT ON THIS LEG YET (schema#420): this target
+# holds the refusal only, takes no generated code and costs milliseconds, which
+# is why it rides the per-commit leg.
+.PHONY: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control
+tables-dart-allocator-runtime:
+	$(DART) analyze test/dart-tables/allocator_runtime_pin.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/allocator_runtime_pin.dart
+	$(DART) test/dart-tables/allocator_runtime_pin.dart
+
+# ITS NEGATIVE CONTROL, on the same three moves as the go one
+# (test/conformance/go/ownership-negative-control:23-28): run the gate under a
+# DIFFERENT runtime, FAIL IF THE RUN SUCCEEDS, and grep the exact refusal back
+# out of the log. Dart has no GOTOOLCHAIN, so the off-pin runtime is simulated
+# with SCHEMA_DART_ALLOC_VERSION; that seam can only ever force a refusal,
+# because an override equal to the pin is itself refused.
+tables-dart-allocator-runtime-negative-control:
+	@mkdir -p build/dart-allocator-runtime-nc
+	@if SCHEMA_DART_ALLOC_VERSION=3.14.1 SCHEMA_DART_ALLOC_ANY_DART=0 \
+			$(DART) test/dart-tables/allocator_runtime_pin.dart \
+			> build/dart-allocator-runtime-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate certified an off-pin runtime"; \
+		cat build/dart-allocator-runtime-nc/log; exit 1; \
+	fi
+	@grep -Fq "allocation certification requires dart 3.13.2, running dart 3.14.1" \
+		build/dart-allocator-runtime-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat build/dart-allocator-runtime-nc/log; exit 1; }
+	@grep -m1 -F "allocation certification requires dart" build/dart-allocator-runtime-nc/log
+	@echo "negative control: Dart allocation certification refuses SDK 3.14.1"
+
+test-dart: tables-dart-allocator-runtime tables-dart-allocator-runtime-negative-control

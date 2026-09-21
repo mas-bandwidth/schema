@@ -345,6 +345,12 @@ sourced across five columns.
 - **Ecosystems.** Protocol Buffers has ten first-party languages and
   forty-plus third-party ones, FlatBuffers thirteen of uneven coverage, and
   Avro six published SDKs; schema has nine [s39].
+- **Migration importers.** `flatc --proto` reads a `.proto` file and emits a
+  first-draft `.fbs`, the lowest-effort adoption on-ramp any of the four ships.
+  Schema's `schema import --proto` (and `--fbs`), which would emit a first-draft
+  `.schema` with the bounds left for the author to declare, is not declined and
+  not built; it is worth building after 3.0.0 if a team asks
+  ([#477](https://github.com/mas-bandwidth/schema/issues/477)).
 
 ## Where schema is ahead
 
