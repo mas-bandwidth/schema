@@ -970,6 +970,179 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 `)
 }
 
+// TestFixedFormHostileByteSweep is P3 on the Go leg: the C++ reference's
+// record-byte sweep (test/tables/fixedform_properties.cpp:522-638, "mutate
+// every record byte, both paths") and its whole-file control's law
+// (test/tables/fixedform_main.cpp:642-694): every byte of a form-3 record is
+// poisoned six ways and the reader answers ONE OF THREE ways and never a
+// fourth — a refusal by name, a malformed read, or a read that lands values.
+// The fourth answer, at the heart of docs/FIXED-FORM-ALGORITHM.md §7 item 5
+// ("a byte-flip fuzz over the whole file, under a sanitizer"), is a read that
+// returns records while a ranged field rode past its declared bound. Go's
+// slice indexing is the sanitizer here: an out-of-bounds step is a panic, and
+// a wrong-but-in-bounds step is what this case fails on by name.
+//
+// THE SITE IS THE READ-SIDE BOUNDS PASS (docs/SPEC-TABLES.md §3.4), emitted as
+// <T>FixedClamp straight-line over the storage the one read loop just wrote,
+// and it is that pass — not the loop, which moves bytes and holds no bound
+// ("NO PLAN OP CLAMPS") — that keeps a hostile byte in bound. Host declares no
+// version lineage, so the eight-byte layout hash always names the baked
+// identity plan and that plan's read is the path swept below; a poisoned hash
+// byte is a named refusal before any record. The pass runs for whichever plan
+// won, so it is one function over storage and either plan is held by it.
+// CONTROL 2, below, disconnects the pass from the loop to prove it — and not
+// some other check — is what holds the value back.
+func TestFixedFormHostileByteSweep(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Host {
+    small int32 = 5 | min = 0, max = 1000
+    marks [..4]int32 | min = 0, max = 1000
+    note ?int32 | min = 0, max = 1000
+    tail int32 = 7
+}
+`, `package probe
+import (
+	"encoding/binary"
+	"fmt"
+	"testing"
+	"unsafe"
+)
+
+// The six poisons the C++ reference sweeps (fixedform_properties.cpp:170).
+var sweepPoison = [6]byte{0x00, 0x01, 0x02, 0x7f, 0x80, 0xff}
+
+func sweepClean(t *testing.T) []byte {
+	t.Helper()
+	v := Host{}
+	HostReset(&v)
+	v.Small = 5
+	v.MarksCount = 2
+	v.Marks[0] = 10
+	v.Marks[1] = 20
+	v.NotePresent = true
+	v.Note = 30
+	v.Tail = 7
+	buf := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{v}, buf); n != int64(len(buf)) {
+		t.Fatalf("save wrote %d of %d", n, len(buf))
+	}
+	return buf
+}
+
+// sweepInBound is the property: a read that RETURNED values landed every
+// ranged value inside its declared bound. A value past the bound here is the
+// fourth answer, and the message says so.
+func sweepInBound(t *testing.T, what string, v Host, r TableReport) {
+	t.Helper()
+	if v.Small < 0 || v.Small > 1000 {
+		t.Fatalf("%s: a read REPORTED SUCCESS with small=%d out of bound, report %+v", what, v.Small, r)
+	}
+	if v.MarksCount < 0 || v.MarksCount > 4 {
+		t.Fatalf("%s: a read REPORTED SUCCESS with marks_count=%d out of bound, report %+v", what, v.MarksCount, r)
+	}
+	for i := int64(0); i < int64(v.MarksCount); i++ {
+		if v.Marks[i] < 0 || v.Marks[i] > 1000 {
+			t.Fatalf("%s: a read REPORTED SUCCESS with marks[%d]=%d out of bound, report %+v", what, i, v.Marks[i], r)
+		}
+	}
+	if v.NotePresent && (v.Note < 0 || v.Note > 1000) {
+		t.Fatalf("%s: a read REPORTED SUCCESS with note=%d out of bound, report %+v", what, v.Note, r)
+	}
+}
+
+func TestHostileByteSweep(t *testing.T) {
+	clean := sweepClean(t)
+
+	// CONTROL 1, in the case: the legitimate value the rule admits does not
+	// fire. A clean file clamps nothing, refuses nothing and lands in bound.
+	{
+		got := make([]Host, 1)
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		if n := HostFixedLoad(got, clean, plan, &r); n != 1 {
+			t.Fatalf("clean read n=%d %+v", n, r)
+		}
+		if r.Verdict != TableOpenOk || r.Reason != "" || r.Malformed || r.Clamped != 0 {
+			t.Fatalf("clean read fired: %+v", r)
+		}
+		sweepInBound(t, "clean", got[0], r)
+	}
+
+	// THE SWEEP: every byte of the record — the eight-byte layout hash and the
+	// body behind it — poisoned six ways through HostFixedLoad, the production
+	// entrypoint. Host carries no lineage, so a poisoned hash byte meets a
+	// named refusal and a poisoned body byte is read by the baked identity plan
+	// and then held to its bound by the one pass that runs for whichever plan.
+	for at := 0; at < HostFixedRecordBytes; at++ {
+		for p := 0; p < len(sweepPoison); p++ {
+			hit := append([]byte(nil), clean...)
+			hit[len(hit)-HostFixedRecordBytes+at] = sweepPoison[p]
+			got := make([]Host, 1)
+			var r TableReport
+			plan := make([]TableFixedEntry, 256)
+			n := HostFixedLoad(got, hit, plan, &r)
+			what := fmt.Sprintf("record byte %d poison 0x%02x", at, sweepPoison[p])
+			if n < 0 {
+				named := r.Verdict == TableOpenRefused && r.Reason != ""
+				if !named && !r.Malformed {
+					t.Fatalf("%s: a negative read is NEITHER a named refusal NOR malformed: %+v", what, r)
+				}
+				if named && r.Malformed {
+					t.Fatalf("%s: a refusal is also damage: %+v", what, r)
+				}
+				continue
+			}
+			if r.Verdict != TableOpenOk || r.Reason != "" || r.Malformed {
+				t.Fatalf("%s: a read that returned records carried a refusal or damage: %+v", what, r)
+			}
+			sweepInBound(t, what, got[0], r)
+		}
+	}
+
+	// CONTROL 2, the negative control that compiles: revert the CALLER and keep
+	// the HELPER. The loop a plan drives is tableFixedRun and its copy op lands
+	// small verbatim — NO PLAN OP CLAMPS (§3.4). Plant the top of int32 where
+	// small lives, run only the identity plan's loop, and the value lands
+	// raw: the fourth answer the sweep above proves never closes a real read.
+	// Then run the helper the caller runs after the loop — HostFixedClamp —
+	// and the SAME value is one clamp back inside its declared bound.
+	{
+		if HostFixedPlan.Count <= 0 {
+			t.Fatal("CONTROL 2 FAILED: no identity plan")
+		}
+		plan := make([]TableFixedEntry, HostFixedPlan.Count)
+		copy(plan, HostFixedPlan.Entries[:HostFixedPlan.Count])
+		var v Host
+		HostReset(&v)
+		smallDst := unsafe.Offsetof(v.Small)
+		small := -1
+		for i := range plan {
+			if plan[i].Op == tableFixedCopy && plan[i].Size == 4 && plan[i].Dst == uint32(smallDst) {
+				small = i
+				break
+			}
+		}
+		if small < 0 {
+			t.Fatalf("CONTROL 2 FAILED: the identity plan carries no copy of small at dst %d", smallDst)
+		}
+		poisoned := append([]byte(nil), clean...)
+		body := poisoned[len(poisoned)-HostFixedRecordBytes+8:]
+		binary.LittleEndian.PutUint32(body[plan[small].Src:], 2147483647)
+		dst := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+		var r TableReport
+		tableFixedRun(plan, int32(len(plan)), body, dst, &r)
+		if v.Small != 2147483647 {
+			t.Fatalf("CONTROL 2 FAILED: the loop alone landed small=%d, not the planted out-of-bound value", v.Small)
+		}
+		HostFixedClamp(&v, &r)
+		if v.Small != 1000 || r.Clamped < 1 {
+			t.Fatalf("CONTROL 2 FAILED: the bounds pass did not bring small back to bound: small=%d clamped=%d", v.Small, r.Clamped)
+		}
+	}
+}
+`)
+}
+
 // TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (Rowan,
 // Java #833 read): a string(8) under a union's SECOND arm. Write on the
 // identity path, read with a compiled plan from a different layout. If Arg
