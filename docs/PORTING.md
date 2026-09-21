@@ -332,7 +332,7 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ✅ `internal/codegen/elixirtable/block.go:173` (`<F>_count`/`<F>_at`, and a lazy `Stream` walk) `TestElixirBlockRowsAreReachedWithoutAllocatingTheArray` |
 
 ### M8 — The cook opens in O(1)
 
