@@ -2136,7 +2136,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -3499,7 +3505,7 @@ struct SimState {
     int32_t samples[3] = {};
     uint16_t weights[4] = {}; // used count beside it; count in [0, 4]
     int32_t weights_count = 0;
-    TableKeyed<int64_t, Axis> axes; // [Axis]: one slot per named variant, keyed by the value
+    TableKeyed<int64_t, Axis> axes = {}; // [Axis]: one slot per named variant, keyed by the value
     alignas( 16 ) serialize::uint128_t seeds[2] = {}; // used count beside it; count in [0, 2]
     int32_t seeds_count = 0;
     Pose pose;

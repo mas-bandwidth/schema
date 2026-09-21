@@ -2275,7 +2275,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -6408,7 +6414,7 @@ struct PackConfig {
     uint32_t version = 1;
     GlobalSettings global;
     TableKeyed<ShipEntry, ShipType> ships; // [ShipType]: one slot per named variant, keyed by the value
-    TableKeyed<int32_t, Difficulty> thresholds; // [Difficulty]: one slot per named variant, keyed by the value
+    TableKeyed<int32_t, Difficulty> thresholds = {}; // [Difficulty]: one slot per named variant, keyed by the value
     ShipEntry reserves[3]; // used count beside it; count in [0, 3]
     int32_t reserves_count = 0;
 };
