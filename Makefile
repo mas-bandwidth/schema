@@ -3085,6 +3085,93 @@ tables-pack-negative-control: tables-pack
 	fi
 	@echo "pack negative control: eliding a present ?T turns the golden red"
 
+# THE TEXT DIFFERENTIAL AGAINST A THIRD IMPLEMENTATION (docs/PORTING.md I13,
+# docs/SPEC-TABLES.md §17.1's third golden, schema#419). `tables-pack` pins TWO
+# hand-built instances; this target makes the instance RANDOM — N of them, on a
+# seed — so the differential reaches the float ties a pinned golden never does.
+# The driver draws each float32 leaf of the known-good PackConfig corpus wire
+# from one of two families (random bits, and ±(m+k/2^e) whose decimal expansion
+# ends in 5) and emits (wire, text); then the compiler's own Go engine
+# (`schema unpack`, written from the spec and from neither backend) reads the
+# same wire and writes its text, and the two texts are byte-compared, then the
+# other direction. -ffp-contract=off is load-bearing: a contracted multiply-add
+# would change a value this row is measuring the spelling of.
+#
+# JSON_DIFF_N / JSON_DIFF_SEED are this target's own knobs, not the fuzzers'
+# global N/SEED (sized for a 100000-mutant run); both overridable on the line.
+JSON_DIFF_N ?= 40
+JSON_DIFF_SEED ?= 419
+# the generated tree the driver compiles against; the negative control below
+# points these same variables at a sabotaged copy, so a build and its twin can
+# never drift into covering different code
+JSON_DIFF_GEN ?= build/tables-generated
+JSON_DIFF_INCLUDES := -I$(JSON_DIFF_GEN)/examples -Itest/tables -I$(SERIALIZE)
+# Pack.schema names no other file's types, so one .h/.cpp pair is the whole
+# dependency (internal/codegen/cpptable/cpptable.go:1703,1732)
+JSON_DIFF_SOURCES := $(JSON_DIFF_GEN)/examples/PackTable.cpp
+
+build/schema_test_json_differential: build/tables-generated/.stamp test/tables/json_differential_main.cpp
+	@mkdir -p build
+	$(CXX) $(PACK_CXXFLAGS) $(JSON_DIFF_INCLUDES) test/tables/json_differential_main.cpp $(JSON_DIFF_SOURCES) -o $@
+
+.PHONY: tables-json-differential
+tables-json-differential: build/tables-generated/.stamp build/schema_test_json_differential build/tables-pack.bin bin/schema
+	@rm -rf build/json-diff && mkdir -p build/json-diff
+	./build/schema_test_json_differential write build/tables-pack.bin $(JSON_DIFF_SEED) $(JSON_DIFF_N) build/json-diff
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema unpack --one-file --root PackConfig --in build/json-diff/$$i.wire build/json-diff/$$i-text tables/examples || exit 1; \
+		cmp build/json-diff/$$i.cpp.json build/json-diff/$$i-text/PackConfig.json || exit 1; \
+		i=$$((i+1)); \
+	done
+	./build/schema_test_json_differential read $(JSON_DIFF_N) build/json-diff
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema pack --root PackConfig --out build/json-diff/$$i.back.wire build/json-diff/$$i-text tables/examples || exit 1; \
+		cmp build/json-diff/$$i.wire build/json-diff/$$i.back.wire || exit 1; \
+		i=$$((i+1)); \
+	done
+	@echo "json differential: compared $(JSON_DIFF_N) instances — direction one (unpack vs ToJson), direction two (FromJson vs Save), and the engine's back direction (pack) — on seed $(JSON_DIFF_SEED)"
+
+# ITS NEGATIVE CONTROL: break ONE rule of the C++ float writer — widen the
+# round-trip check that decides an f32's spelling from strtof to strtod, so
+# "shortest that reads back at the field's own width" becomes "shortest that
+# reads back as a double", and every non-trivial float32 renders at nine digits
+# where the engine writes the short form. A differential that does not move when
+# one side's rounding rule is broken is worth nothing, so the target runs the
+# POSITIVE one first: a red positive gate can never pass as a successful
+# sabotage. The sabotaged source lives under build/ and reaches the compiler
+# through `go build -overlay`, so no tracked file is ever written to.
+.PHONY: tables-json-differential-negative-control
+tables-json-differential-negative-control: tables-json-differential
+	@rm -rf build/json-diff-nc && mkdir -p build/json-diff-nc
+	@sed 's|if ( (double) strtof( text, NULL ) == value ) { break; }|if ( (double) strtod( text, NULL ) == value ) { break; } // SABOTAGED: an f64 round-trip decides an f32 spelling|' \
+		internal/codegen/cpptable/json.go > build/json-diff-nc/json.go.txt
+	@cmp -s build/json-diff-nc/json.go.txt internal/codegen/cpptable/json.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@test "$$(grep -c SABOTAGED build/json-diff-nc/json.go.txt)" = "1" || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not land exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/build/json-diff-nc/json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/json-diff-nc/overlay.json
+	@go build -overlay=build/json-diff-nc/overlay.json -o build/json-diff-nc/schema ./cmd/schema
+	@./build/json-diff-nc/schema generate --lang cpp --out build/json-diff-nc/examples tables/examples
+	@grep -rl SABOTAGED build/json-diff-nc/examples/ || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach the generated code"; exit 1; }
+	$(CXX) $(PACK_CXXFLAGS) -Ibuild/json-diff-nc/examples -Itest/tables -I$(SERIALIZE) \
+		test/tables/json_differential_main.cpp build/json-diff-nc/examples/PackTable.cpp \
+		-o build/json-diff-nc/schema_test_json_differential
+	@rm -rf build/json-diff-nc/run && mkdir -p build/json-diff-nc/run
+	./build/json-diff-nc/schema_test_json_differential write build/tables-pack.bin $(JSON_DIFF_SEED) $(JSON_DIFF_N) build/json-diff-nc/run
+	@i=0; while [ $$i -lt $(JSON_DIFF_N) ]; do \
+		./bin/schema unpack --one-file --root PackConfig --in build/json-diff-nc/run/$$i.wire build/json-diff-nc/run/$$i-text tables/examples || exit 1; \
+		i=$$((i+1)); \
+	done
+	@if ./build/json-diff-nc/schema_test_json_differential read $(JSON_DIFF_N) build/json-diff-nc/run > build/json-diff-nc/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the differential stayed green with strtof widened to strtod"; exit 1; \
+	fi
+	@grep -q "DIFF instance" build/json-diff-nc/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the differential went red, but not on a text mismatch"; cat build/json-diff-nc/run.log; exit 1; }
+	@echo "json differential negative control: an f64 round-trip deciding an f32 spelling turns the differential red"
+	@cat build/json-diff-nc/run.log
+
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/random_main.cpp -o $@
@@ -3306,6 +3393,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative-control
+	$(MAKE) tables-json-differential
+	$(MAKE) tables-json-differential-negative-control
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
 	./build/schema_test_random
