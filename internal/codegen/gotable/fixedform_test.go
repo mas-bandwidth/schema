@@ -2230,3 +2230,83 @@ func TestTextLengthClamp(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormOptionalVersusPlainNesting is item E5 of schema#876, "?T vs
+// plain nesting": the fixed form's one deliberate departure from §2.3. On form
+// 1 a `?T` and a plain `T` nesting are wire-identical; HERE they are one byte
+// apart, so the layout carries kind 35 against the plain nesting's kind 13
+// (docs/FIXED-FORM-ALGORITHM.md §2.2, the `?T` row: "the present flag THEN the
+// payload, which rides WHOLE"). A reader that declares `?OptLeaf` given a
+// writer that sent `OptLeaf` bare owes `present == 1` and the payload exact
+// (bill §12.8, docs/FIXED-FORM-VERSIONING-TESTS.md's `optional_add` row:
+// "present == 1, value exact"): the present byte is a CONSTANT the plan emits
+// (fixedruntime.go's `me.Kind == 35 && te.Kind != 35`), NOT the fresh value's
+// false. The old writer is this build's own writer, so the file is lawful by
+// construction and nothing here reads the C++ corpus; the reader takes the OLD
+// unit's locked entry as its lineage, which is the only way a versioned read is
+// reached now (docs/FIXED-FORM-ALGORITHM.md §5.6).
+func TestFixedFormOptionalVersusPlainNesting(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "optional_add.bin")
+	old := readSchema(t, "VOLD_optional_add")
+	newer := readSchema(t, "VNEW_optional_add")
+	// STAGE ONE: the plain-nesting writer writes its own file, 777 in the
+	// payload and the 0xA/0xB brackets around it so a mislaid wrapper size
+	// moves a neighbour.
+	writeSrc := fmt.Sprintf(`package probe
+
+import ("os"; "testing")
+
+func TestWrite(t *testing.T) {
+	var v OptionalAdd
+	OptionalAddReset(&v)
+	v.Lead = 0xAAAAAAAA
+	v.Link.Value = 777
+	v.Trail = 0xBBBBBBBB
+	buf := make([]byte, OptionalAddFixedMeasure(1))
+	if OptionalAddFixedSave([]OptionalAdd{v}, buf) < 0 {
+		t.Fatal("save")
+	}
+	if err := os.WriteFile(%q, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+`, file)
+	if out, err := runVersionProbe(t, old, nil, writeSrc); err != nil {
+		t.Fatalf("the plain-nesting writer did not write its own file: %v\n%s", err, out)
+	}
+	// STAGE TWO: the ?T reader, handed the plain writer's lock as its lineage.
+	readSrc := fmt.Sprintf(`package probe
+
+import ("os"; "testing")
+
+func TestRead(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := make([]OptionalAdd, 2)
+	plan := make([]TableFixedEntry, 4096)
+	var r TableReport
+	n := OptionalAddFixedLoad(back, data, plan, &r)
+	if n != 1 || r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+		t.Fatalf("the ?T reader refused the plain writer's file: n=%%d %%+v", n, r)
+	}
+	if !back[0].LinkPresent {
+		t.Fatalf("T into ?T owes present = 1, not the fresh value's false: %%+v", back[0])
+	}
+	if back[0].Link.Value != 777 {
+		t.Fatalf("the payload beside the present companion is not the writer's value: %%+v", back[0])
+	}
+	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
+		t.Fatalf("the row moved a neighbour: %%+v", back[0])
+	}
+	if r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+		t.Fatalf("a supported T-into-?T widening is not an event: %%+v", r)
+	}
+}
+`, file)
+	if out, err := runVersionProbe(t, newer, []string{old}, readSrc); err != nil {
+		t.Fatalf("the ?T reader failed its read: %v\n%s", err, out)
+	}
+}
