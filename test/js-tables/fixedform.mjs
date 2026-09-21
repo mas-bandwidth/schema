@@ -118,6 +118,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   guardComparedAtArgW(check, fx1home);
   planPartition(check, ut1, ut1home, fx1, fx1home);
   wideTextCodeUnits(check, fx1home);
+  ordinalWidth8ReadWhole(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -773,6 +774,66 @@ export function wideTextCodeUnits(check, home) {
       `C5: a length of ${input} units over wstring(8) lands ${wantLength} with ${wantClamped} clamped — the cap is CODE UNITS, never the 2N bytes (got length ${got.length}, clamped ${got.clamped})`);
   };
   forged(12, 8, 1);
+}
+
+// ---------------------------------------------------------------------------
+// A WIDTH-8 ORDINAL IS READ WHOLE — THROUGH SIXTY-FOUR BITS, NOT THIRTY-TWO.
+//
+// docs/FIXED-FORM-ALGORITHM.md §4.5's `ordinal` row reads `raw := LE(size,
+// record+src)` "through a 64-bit temporary, an ordinal width of `8` being
+// admissible", and the versioning bill's fix 7 records the defect this pins: a
+// `uint32_t raw` truncated a width-8 ordinal to its low four bytes. The
+// JavaScript twin of the C++ reference's `owed8_width8_ordinal_read_whole_case`
+// (test/tables/fixedform_main.cpp:1089-1118).
+//
+// ONE PATH: this drives TableFixedRun directly — the same loop the identity and
+// compiled plans both run — with an ordinal entry built by hand, an eight-byte
+// tag lane remapping through a one-entry table, exactly as the reference builds
+// its plan entry. The site under test is fixedruntime.go's ordinal op, whose
+// width-8 read is two u32 lanes and whose `hi !== 0` arm is the whole fact.
+// ---------------------------------------------------------------------------
+export function ordinalWidth8ReadWhole(check, home) {
+  // THE PLAN ENTRY IS NINE int32 LANES, in the order this loop reads them:
+  //   [op, src, dst, size, aux, guard, arg, meta, argw]
+  // op 3 is TableFixedOpOrdinal (fixedruntime.go:98); guard -1 is
+  // TableFixedNoGuard (fixedruntime.go:107), an unguarded top-level entry;
+  // meta's low byte is the ordinal's DESTINATION width, 8 here; size is the
+  // SOURCE width, 8, the width-8 lane this case is about. aux 0 is the remap
+  // table's offset. Nothing here is read out of the code under test.
+  const run = (srcBytes) => {
+    const src = new Uint8Array(srcBytes);
+    const srcView = new DataView(src.buffer);
+    const dst = new Uint8Array(8);
+    dst.fill(0xAB); // poison, so a lane the op never writes is visible
+    const dstView = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    // the table's slot 0 is its length (one entry), slot 1 is variant 1's own
+    // ordinal — the same shape as the reference's uint16 map { 1, 1 }
+    const remap = new Int32Array([1, 1]);
+    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1];
+    home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, remap, r);
+    return { landed: dstView.getBigUint64(0, true), clamped: r.clamped };
+  };
+
+  // 1. THE FORGED VALUE: 2^32 = 0x0000000100000000, whose LOW four bytes are
+  //    zero and whose HIGH four carry the one. A 32-bit temporary reads 0,
+  //    lands None and COUNTS NOTHING — the truncation this case pins. Through
+  //    all sixty-four bits it is an ordinal past the writer's one variant, so
+  //    it lands None AND is counted once (§4.5, §4.6).
+  {
+    const { landed, clamped } = run([0, 0, 0, 0, 1, 0, 0, 0]);
+    check(landed === 0n, `ORDINAL WIDTH 8: a 2^32 ordinal lands None (got ${landed})`);
+    check(clamped === 1,
+      `ORDINAL WIDTH 8: the HIGH LANE is seen — a 32-bit temporary would have read 0 and counted nothing (got ${clamped})`);
+  }
+
+  // 2. THE LEGITIMATE VALUE THE RULE ADMITS — the negative control. Ordinal 1
+  //    is inside the one-entry table, so it remaps to 1 and moves no counter.
+  {
+    const { landed, clamped } = run([1, 0, 0, 0, 0, 0, 0, 0]);
+    check(landed === 1n, `ORDINAL WIDTH 8: ordinal 1 remaps through the table (got ${landed})`);
+    check(clamped === 0, `ORDINAL WIDTH 8: an admitted ordinal moves no counter (got ${clamped})`);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -448,6 +448,73 @@ func fixedBodySpan(off int) string {
 `)
 }
 
+// TestFixedFormHashCheckedLast is the row "hash checked LAST" (docs/FIXED-FORM-
+// ALGORITHM.md §2's load order, §5.3 steps 3 to 5): the header's hash is TAKEN
+// AS GIVEN and never recomputed from the wire, AND the layout's own framing is
+// judged BEFORE the hash is looked up, so a file whose u32 layout length
+// overruns it answers `layout_malformed` even when its header hash is one this
+// reader has never locked. A reader that consulted the hash first would answer
+// `layout_newer` and bury the framing damage — the order is the property, not
+// the two individual names (§5.3: "The order is load-bearing").
+//
+// The reference states the same pair by hand: test/tables/fixedform_main.cpp's
+// negative_control() flips the header hash and demands `layout_newer`
+// (312-325), and layout_validation()'s residue builds a file whose length runs
+// past its bytes under an unlocked hash and demands `layout_malformed`
+// (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
+// taken-as-given half is also the generator's own §5.3 shape (fixedform.go:750).
+func TestFixedFormHashCheckedLast(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import ("encoding/binary"; "testing")
+
+func TestHashCheckedLast(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := PointFixedSave([]Point{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	plan := make([]TableFixedEntry, 64)
+	got := make([]Point, 1)
+	var r TableReport
+
+	// CONTROL 1 — THE RULE'S LEGITIMATE VALUE: the file's own, known hash. The
+	// same loader reads it, so the refusals below are the hash and the length
+	// and not the fixture.
+	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+		t.Fatalf("the file with its own hash reads: n=%d got=%+v report=%+v", n, got[0], r)
+	}
+
+	// THE HASH IS TAKEN AS GIVEN, NEVER RECOMPUTED. A hash no lineage entry
+	// holds is layout_newer, and the report carries THE FILE'S hash — the
+	// flipped value, not this build's. A reader that recomputed hash_of(layout)
+	// would find its own entry and read the file.
+	unknown := append([]byte(nil), buf...)
+	flipped := binary.LittleEndian.Uint64(unknown[TableFixedHashAt:]) ^ 0xFFFFFFFFFFFFFFFF
+	binary.LittleEndian.PutUint64(unknown[TableFixedHashAt:], flipped)
+	r = TableReport{}
+	if n := PointFixedLoad(got, unknown, plan, &r); n != -1 || r.Reason != "layout_newer" || r.LayoutHash != flipped || r.Malformed {
+		t.Fatalf("an unknown header hash is layout_newer carrying the file's hash: n=%d report=%+v", n, r)
+	}
+
+	// AND THE LAYOUT FRAMING IS JUDGED FIRST (§5.3 step 3 before steps 4-5): the
+	// u32 length at 16 overruns the file, so the answer is layout_malformed even
+	// though the header's hash is one this reader has never locked.
+	overrun := append([]byte(nil), unknown...)
+	binary.LittleEndian.PutUint32(overrun[TableFixedHeaderBytes:], uint32(len(overrun)))
+	r = TableReport{}
+	if n := PointFixedLoad(got, overrun, plan, &r); n != -1 || r.Reason != "layout_malformed" || r.Malformed {
+		t.Fatalf("the layout framing is checked BEFORE the hash: n=%d report=%+v", n, r)
+	}
+}
+`)
+}
+
 // RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
 // below read a file written under ANOTHER schema's layout WITHOUT that layout
 // being in the reader's lineage, and they assert the run-time walk of a
@@ -2053,6 +2120,849 @@ func TestWideText(t *testing.T) {
 	}
 	if got[1].CaptionLength != 8 || rep.Clamped != 1 {
 		t.Fatalf("CODE UNITS: a byte-legal length 16 on wstring(8) landed length %d, clamped=%d; want 8 and exactly one clamp", got[1].CaptionLength, rep.Clamped)
+	}
+}
+`)
+}
+
+// TestFixedFormLayoutMalformedTruncated is the row layout_malformed, truncated,
+// item F4 of schema#876: a GAP on this leg. A file whose header DECLARES a
+// layout LONGER than the bytes it carries is refused BY NAME — layout_malformed
+// — and is not the `malformed` residue its siblings answer with: F7 is a file
+// under the twenty-byte header, F8 a record region that is not whole records,
+// both of which set report.Malformed and leave Reason UNTOUCHED. The
+// declaration is the u32 at TableFixedHeaderBytes, and the law is
+// docs/FIXED-FORM-ALGORITHM.md §2's load table step 3: `L := LE(4, b+16)`; if
+// `20 + L > bytes`, `REFUSE layout_malformed`. The site is the step-3 guard
+// emitted at fixedform.go:745. The pointer is test/tables/fixedform_main.cpp's
+// residue case inside layout_validation() (lines 519-527): a twenty-byte file
+// whose length word names a hundred absent bytes is `layout_malformed`,
+// "NOTHING WAS DECODED AND NOTHING WAS COUNTED" (refuses(), lines 391-394).
+// The destination is filled with a sentinel Point and proved still the
+// sentinel, so "no byte is written" is observed rather than assumed; the whole
+// report is compared to TableReport{Verdict: TableOpenRefused, Reason:
+// "layout_malformed"} in one !=, pinning every counter, Malformed and any field
+// added later to its zero value at once. CONTROL 1 is the unbroken file reading
+// clean, so the refusals are the forged word and not the fixture. CONTROL 2
+// removes the step-3 guard and the row must go RED.
+func TestFixedFormLayoutMalformedTruncated(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import ("testing")
+
+func TestLayoutMalformedTruncated(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := PointFixedSave([]Point{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	got := make([]Point, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 64)
+
+	// CONTROL 1: the unbroken file reads clean.
+	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
+		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, got[0], r)
+	}
+
+	// THE REFERENCE'S FILE, byte for byte: twenty bytes of header, its u32
+	// length word naming 100 bytes the file does not carry.
+	ref := make([]byte, TableFixedHeaderBytes+4)
+	ref[0] = 3
+	tableFixedPut32(ref[TableFixedHeaderBytes:], 100)
+	got = []Point{{X: -1, Y: -1}}
+	r = TableReport{}
+	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
+	}
+
+	// AND A REAL FILE TRUNCATED, so its OWN declared layout no longer fits: the
+	// length word is correct and the bytes are withdrawn from under it. This is
+	// the same arm reached from the other side, and the case a leg cannot pass
+	// by comparing the layout to the lock's, because the word is this build's.
+	short := buf[:TableFixedHeaderBytes+4+int(tableFixedGet32(buf[TableFixedHeaderBytes:]))-1]
+	got = []Point{{X: -1, Y: -1}}
+	r = TableReport{}
+	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {
+		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
+	}
+}
+`)
+}
+
+// THE TEXT LENGTH CLAMP (roadmap go/C3, the task node whose title is quoted here
+// verbatim: "text length clamp"). docs/FIXED-FORM-ALGORITHM.md §4.5 states the
+// rule for the `text` op:
+//
+//	"the length (i32 LE) ... clamped into [0, cap], COUNT clamped if it fired"
+//
+// and §4.5's table gives the cap: "the payload's BYTE span, min(mine, theirs)",
+// so the cap is the span read in UNITS — `cap := size / unit`. The reader keeps
+// this check in every build, release included, and a clamp counts ONCE for the
+// field. The forged word is read as a SIGNED i32, so an all-ones word is -1 and
+// clamps UP to zero; a word past the cap clamps DOWN to it.
+//
+// THE THREE VALUES ARE THE THREE FACTS: exactly the bound is ADMITTED and counts
+// nothing (the case must not be vacuous), one past it clamps to the bound and
+// counts one, and the all-ones word clamps to zero and counts one. The forged
+// field is bracketed by `lead` and `trail`, so a clamp that mislaid the size
+// moves a neighbour and this says so.
+//
+// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size / unit`
+// then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
+// int32(capn); report.Clamped++ }`. DISABLING that `else if` leaves the forged
+// length standing and the counters silent — a silently WRONG REPORT, measured
+// in CONTROL 2 below.
+func TestFixedFormTextLengthClamp(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Text {
+    lead  uint32 = 1
+    label string(8)
+    trail uint32 = 2
+}
+`, `package probe
+import ("bytes"; "encoding/binary"; "testing")
+
+func TestTextLengthClamp(t *testing.T) {
+	one := Text{}
+	TextReset(&one)
+	one.Lead = 0xAAAAAAAA
+	copy(one.Label[:], "abcdefgh")
+	one.LabelLength = 8
+	one.Trail = 0xBBBBBBBB
+	need := TextFixedMeasure(1)
+	base := make([]byte, need)
+	if n := TextFixedSave([]Text{one}, base); n != need {
+		t.Fatalf("save %d want %d", n, need)
+	}
+	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00,
+		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'}
+	at := bytes.Index(base, needle)
+	if at < 0 {
+		t.Fatalf("text_length_clamp: the lead + length 8 + \"abcdefgh\" needle is not in the file")
+	}
+	if bytes.Index(base[at+1:], needle) >= 0 {
+		t.Fatalf("text_length_clamp: the needle occurs more than once, so the search is not a locator")
+	}
+	// base[at+4:] is the length word. The cap is the field's own bound, 8.
+	cases := []struct {
+		name        string
+		forge       uint32
+		want        uint32
+		wantClamped int32
+	}{
+		{"at the bound: admitted, no clamp", 8, 8, 0},
+		{"one past the bound: clamped down", 9, 8, 1},
+		{"all ones reads signed -1: clamped up to zero", 0xFFFFFFFF, 0, 1},
+	}
+	for _, c := range cases {
+		buf := append([]byte(nil), base...)
+		binary.LittleEndian.PutUint32(buf[at+4:], c.forge)
+		got := make([]Text, 1)
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		n := TextFixedLoad(got, buf, plan, &r)
+		if n != 1 {
+			t.Fatalf("%s: the forged file reads one record, n=%d %+v", c.name, n, r)
+		}
+		if got[0].LabelLength != int32(c.want) {
+			t.Fatalf("%s: the length landed %d, not %d (never the forged %d): %+v",
+				c.name, got[0].LabelLength, c.want, c.forge, got[0])
+		}
+		if c.want > 0 && string(got[0].Label[:c.want]) != "abcdefgh" {
+			t.Fatalf("%s: the used bytes landed %q, not \"abcdefgh\": %+v",
+				c.name, got[0].Label[:c.want], got[0])
+		}
+		if c.want == 0 && got[0].Label[0] != 0 {
+			t.Fatalf("%s: the terminator did not zero the used length: %+v", c.name, got[0])
+		}
+		if r.Clamped != c.wantClamped {
+			t.Fatalf("%s: Clamped=%d, want %d — once per field: %+v", c.name, r.Clamped, c.wantClamped, r)
+		}
+		if got[0].Lead != 0xAAAAAAAA || got[0].Trail != 0xBBBBBBBB {
+			t.Fatalf("%s: the clamp moved a neighbour: %+v", c.name, got[0])
+		}
+		if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+			t.Fatalf("%s: a counter other than Clamped moved: %+v", c.name, r)
+		}
+		if r.Malformed || r.Verdict == TableOpenRefused || r.Reason != "" {
+			t.Fatalf("%s: a forged length reads clean, not a refusal: %+v", c.name, r)
+		}
+	}
+}
+`)
+}
+
+// TestFixedFormOptionalVersusPlainNesting is item E5 of schema#876, "?T vs
+// plain nesting": the fixed form's one deliberate departure from §2.3. On form
+// 1 a `?T` and a plain `T` nesting are wire-identical; HERE they are one byte
+// apart, so the layout carries kind 35 against the plain nesting's kind 13
+// (docs/FIXED-FORM-ALGORITHM.md §2.2, the `?T` row: "the present flag THEN the
+// payload, which rides WHOLE"). A reader that declares `?OptLeaf` given a
+// writer that sent `OptLeaf` bare owes `present == 1` and the payload exact
+// (bill §12.8, docs/FIXED-FORM-VERSIONING-TESTS.md's `optional_add` row:
+// "present == 1, value exact"): the present byte is a CONSTANT the plan emits
+// (fixedruntime.go's `me.Kind == 35 && te.Kind != 35`), NOT the fresh value's
+// false. The old writer is this build's own writer, so the file is lawful by
+// construction and nothing here reads the C++ corpus; the reader takes the OLD
+// unit's locked entry as its lineage, which is the only way a versioned read is
+// reached now (docs/FIXED-FORM-ALGORITHM.md §5.6).
+func TestFixedFormOptionalVersusPlainNesting(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "optional_add.bin")
+	old := readSchema(t, "VOLD_optional_add")
+	newer := readSchema(t, "VNEW_optional_add")
+	// STAGE ONE: the plain-nesting writer writes its own file, 777 in the
+	// payload and the 0xA/0xB brackets around it so a mislaid wrapper size
+	// moves a neighbour.
+	writeSrc := fmt.Sprintf(`package probe
+
+import ("os"; "testing")
+
+func TestWrite(t *testing.T) {
+	var v OptionalAdd
+	OptionalAddReset(&v)
+	v.Lead = 0xAAAAAAAA
+	v.Link.Value = 777
+	v.Trail = 0xBBBBBBBB
+	buf := make([]byte, OptionalAddFixedMeasure(1))
+	if OptionalAddFixedSave([]OptionalAdd{v}, buf) < 0 {
+		t.Fatal("save")
+	}
+	if err := os.WriteFile(%q, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+`, file)
+	if out, err := runVersionProbe(t, old, nil, writeSrc); err != nil {
+		t.Fatalf("the plain-nesting writer did not write its own file: %v\n%s", err, out)
+	}
+	// STAGE TWO: the ?T reader, handed the plain writer's lock as its lineage.
+	readSrc := fmt.Sprintf(`package probe
+
+import ("os"; "testing")
+
+func TestRead(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := make([]OptionalAdd, 2)
+	plan := make([]TableFixedEntry, 4096)
+	var r TableReport
+	n := OptionalAddFixedLoad(back, data, plan, &r)
+	if n != 1 || r.Reason != "" || r.Malformed || r.Verdict == TableOpenRefused {
+		t.Fatalf("the ?T reader refused the plain writer's file: n=%%d %%+v", n, r)
+	}
+	if !back[0].LinkPresent {
+		t.Fatalf("T into ?T owes present = 1, not the fresh value's false: %%+v", back[0])
+	}
+	if back[0].Link.Value != 777 {
+		t.Fatalf("the payload beside the present companion is not the writer's value: %%+v", back[0])
+	}
+	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
+		t.Fatalf("the row moved a neighbour: %%+v", back[0])
+	}
+	if r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+		t.Fatalf("a supported T-into-?T widening is not an event: %%+v", r)
+	}
+}
+`, file)
+	if out, err := runVersionProbe(t, newer, []string{old}, readSrc); err != nil {
+		t.Fatalf("the ?T reader failed its read: %v\n%s", err, out)
+	}
+}
+
+// P4, "THE WRONG PLAN MUST GO RED" (docs/FIXED-FORM-ALGORITHM.md §7 item 4).
+// The reference's negative_control() (test/tables/fixedform_main.cpp:234-260)
+// runs FX1's identity plan over an FX2 record and requires it NOT reproduce
+// the record, because FX2 inserts `added` and widens `narrow`, so every offset
+// past them has moved. This leg's versioning suite reads older and newer
+// records through the RIGHT plan and refuses a hash it does not lock, but
+// nothing here ever watched the wrong plan fail — and a check that never
+// watched the wrong plan fail never checked the right one. This case is the Go
+// twin of the reference's: FxOld is the old shape, FxNew the new one, the SAME
+// nested table under both.
+//
+// Two answers are asserted by name: (1) FxOld's identity plan run straight
+// over FxNew's record body — the path select-by-hash exists to prevent — must
+// NOT reproduce the record; (2) the loader refuses the file whose hash it does
+// not lock with `layout_newer` and moves no counter. The legitimate value the
+// rule admits (FxOld reading FxOld) is asserted too, so neither half can pass
+// vacuously.
+//
+// The name matches the `tables-go-versioning` gate's own `-run` pattern
+// (make/go.mk:557), which is the half of `make tables-go-fixed-form
+// tables-go-versioning` that runs this package; a `TestFixedForm...` name here
+// would not be reached by that target at all.
+func TestFixedVersioningWrongPlanGoesRed(t *testing.T) {
+	runGenerated(t, `package probe
+
+fixed table FxNested
+{
+    a int32 = 1
+    b int32 = 2
+}
+
+fixed table FxExtra
+{
+    x int32 = 0
+    y int32 = 0
+}
+
+// THE OLD SHAPE, FX1's: a narrow field, and no field between renamed and
+// the nested table.
+fixed table FxOld
+{
+    keep    uint32 = 7
+    narrow  uint16 = 3
+    renamed int32 = 5
+    gone    int32 = 9
+    nested  FxNested
+}
+
+// THE NEW SHAPE, FX2's: narrow widened, added inserted before the nested
+// table, and a whole nested TYPE FxOld has no name for.
+fixed table FxNew
+{
+    keep       uint32 = 7
+    narrow     uint32 = 3
+    renamed_to int32 = 5
+    added      int32 = 11
+    nested     FxNested
+    extra      FxExtra
+}
+`, `package probe
+
+import (
+    "testing"
+    "unsafe"
+)
+
+func TestWrongPlanGoesRed(t *testing.T) {
+    two := FxNew{}
+    FxNewReset(&two)
+    two.Keep = 5150
+    two.Narrow = 70000
+    two.RenamedTo = 808
+    two.Added = 909
+    two.Nested.A = 33
+    two.Nested.B = 44
+    w2 := make([]byte, FxNewFixedMeasure(1))
+    if n := FxNewFixedSave([]FxNew{two}, w2); n != int64(len(w2)) {
+        t.Fatalf("FxNew save %d", n)
+    }
+
+    // (2) THE LOADER REFUSES. FxNew's record carries FxNew's hash in the
+    // header at offset 8; FxOld's lock holds only FxOld's hash, so FxOld's
+    // plan is never entered and the file is layout_newer.
+    plan := make([]TableFixedEntry, 1024)
+    var r TableReport
+    old := make([]FxOld, 1)
+    if n := FxOldFixedLoad(old, w2, plan, &r); n >= 0 || r.Reason != "layout_newer" {
+        t.Fatalf("the loader did not refuse a file under another layout: n=%d %+v", n, r)
+    }
+    if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Malformed {
+        t.Fatalf("layout_newer is a refusal and moves no counter: %+v", r)
+    }
+
+    // (1) THE WRONG PLAN IS WRONG. FxOld's identity plan over FxNew's record
+    // body: renamed and the nested table sit at moved offsets, so the values
+    // cannot survive. This is the same run the reference's negative_control()
+    // makes with FX1's plan over an FX2 body.
+    body := w2[len(w2)-FxNewFixedRecordBytes:]
+    if int32(len(body)) != FxNewFixedRecordBytes {
+        t.Fatalf("record body is %d bytes, want %d", len(body), FxNewFixedRecordBytes)
+    }
+    wrong := FxOld{}
+    FxOldReset(&wrong)
+    var rr TableReport
+    tableFixedRun(FxOldFixedPlan.Entries, FxOldFixedPlan.Count, body[8:],
+        tableFixedOverlay(unsafe.Pointer(&wrong), unsafe.Sizeof(wrong)), &rr)
+    intact := wrong.Renamed == two.RenamedTo &&
+        wrong.Nested.A == two.Nested.A && wrong.Nested.B == two.Nested.B
+    if intact {
+        t.Fatalf("NEGATIVE CONTROL FAILED: FxOld's identity plan reproduced an FxNew record: %+v", wrong)
+    }
+
+    // THE LEGITIMATE VALUE THE RULE ADMITS: FxOld's own record reads back
+    // whole under FxOld's own hash, so neither half above is vacuous.
+    one := FxOld{}
+    FxOldReset(&one)
+    one.Keep = 4242
+    one.Narrow = 40000
+    one.Renamed = 321
+    one.Gone = 654
+    one.Nested.A = 111
+    one.Nested.B = 222
+    w1 := make([]byte, FxOldFixedMeasure(1))
+    if n := FxOldFixedSave([]FxOld{one}, w1); n != int64(len(w1)) {
+        t.Fatalf("FxOld save %d", n)
+    }
+    back := make([]FxOld, 1)
+    r = TableReport{}
+    if n := FxOldFixedLoad(back, w1, plan, &r); n != 1 ||
+        back[0].Renamed != 321 || back[0].Nested.A != 111 || r != (TableReport{}) {
+        t.Fatalf("the right plan must reproduce its own record: n=%d %+v %+v", n, back[0], r)
+    }
+}
+`)
+}
+
+// TestFixedFormAbsentOptionalSkipsStore is W2, asserted by name: an absent
+// optional writes flag 0 and SKIPS THE PAYLOAD STORE
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, fix 13). The payload rides WHOLE whether
+// or not it is present, and when the flag is 0 what rides is the TEMPLATE'S
+// ZEROS — an absent optional is a hole in the record and not a window into the
+// writer's memory. The C++ reference pins the same rule in
+// test/tables/fixedform_main.cpp:1401 `absent_optional_case`, and the C leg at
+// test/c-tables/fixedform_v1.c:123 `fixed_v1_absent_optional`.
+//
+// THE CONTROL IS THE STAIN, as it is for every other kind of slack: the payload
+// storage is filled with a byte a clean record carries nowhere (0x5A), the
+// test proves the stain IS in storage, then proves THE WIRE CARRIES NONE OF
+// IT, and then proves the SAME payload PRESENT does put those bytes on the
+// wire — so the check is about the flag and not about the writer never having
+// written a payload at all.
+func TestFixedFormAbsentOptionalSkipsStore(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Link
+{
+    value int32 = 0 | min = 0, max = 1000
+    tag   string(8)
+}
+
+fixed table Chain
+{
+    name string(16)
+    link ?Link
+}
+`, `package probe
+import ("bytes"; "testing")
+
+func TestAbsentOptionalSkipsStore(t *testing.T) {
+	one := Chain{}
+	ChainReset(&one)
+	copy(one.Name[:], "absent")
+	one.NameLength = 6
+	one.LinkPresent = false
+	one.Link.Value = 0x5A5A5A
+	for i := range one.Link.Tag {
+		one.Link.Tag[i] = 0x5A
+	}
+	if one.Link.Value != 0x5A5A5A || one.Link.Tag[0] != 0x5A {
+		t.Fatal("CONTROL: the absent payload really is stained in storage")
+	}
+
+	need := ChainFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := ChainFixedSave([]Chain{one}, buf); n != need {
+		t.Fatalf("absent optional: the record saves %d want %d", n, need)
+	}
+	body := buf[len(buf)-ChainFixedRecordBytes+8:]
+	if hits := bytes.Count(body, []byte{0x5A}); hits != 0 {
+		t.Fatalf("ABSENT OPTIONAL: %d bytes of the absent payload reached the wire", hits)
+	}
+
+	// and the reader reads what the flag says, with the payload at the
+	// template's zeros
+	back := make([]Chain, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := ChainFixedLoad(back, buf, plan, &r); n != 1 {
+		t.Fatalf("absent optional: the record reads %d %+v", n, r)
+	}
+	if back[0].LinkPresent {
+		t.Fatal("absent optional: the flag")
+	}
+	if back[0].Link.Value != 0 || back[0].Link.TagLength != 0 {
+		t.Fatalf("absent optional: the payload reads %d/%d, not the wire's zeros", back[0].Link.Value, back[0].Link.TagLength)
+	}
+	if r != (TableReport{}) {
+		t.Fatalf("absent optional: a clean read moves no counter: %+v", r)
+	}
+
+	// THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+	// the wire, so the check above is about the flag and not about the writer
+	// never having written a payload.
+	present := one
+	present.LinkPresent = true
+	present.Link.TagLength = 4
+	pbuf := make([]byte, ChainFixedMeasure(1))
+	if n := ChainFixedSave([]Chain{present}, pbuf); n != int64(len(pbuf)) {
+		t.Fatalf("absent optional: the present twin saves %d", n)
+	}
+	pbody := pbuf[len(pbuf)-ChainFixedRecordBytes+8:]
+	if bytes.IndexByte(pbody, 0x5A) < 0 {
+		t.Fatal("NEGATIVE CONTROL: the SAME payload PRESENT did NOT reach the wire")
+	}
+}
+`)
+}
+
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S (docs/FIXED-FORM-ALGORITHM.md §4.1,
+// docs/SPEC-TABLES.md §3.4). `bytes(N)` rides this form as an array of u8, so
+// the plan compiler lands it through the ARRAY case: the count goes to the
+// row's aux and the elements to the row's dst. A text field's row is the other
+// way round — dst the length, aux the buffer — and under that convention a
+// `bytes(N)` gets a count destination that is the BUFFER'S FIRST FOUR BYTES and
+// an element destination that is the LENGTH FIELD. Identity lands the field
+// with one TEXT op and reads neither column, so only the compiled path ever saw
+// it. This is the Go port of the C++ reference's bytes_row_case
+// (test/tables/fixedform_main.cpp:781-854), whose negative control is the OLD
+// row: the two columns swapped on a copy of this build's own rows.
+func TestFixedFormBytesNTakesTheArrayRow(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Probe
+{
+    label string(8)
+    blob  bytes(6)
+    marks [..4]int32
+}
+`, `package probe
+import ("testing";"unsafe")
+
+func TestBytesRow(t *testing.T) {
+    one := Probe{}
+    ProbeReset(&one)
+    copy(one.Label[:], []byte("abc")); one.LabelLength = 3
+    one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF
+    one.BlobLength = 4
+    one.Marks[0] = 11; one.Marks[1] = 22; one.MarksCount = 2
+    w := make([]byte, ProbeFixedMeasure(1))
+    if n := ProbeFixedSave([]Probe{one}, w); n != int64(len(w)) { t.Fatalf("save %d", n) }
+
+    theirs, why := tableFixedParseLayout(ProbeFixedLayout)
+    if why != "" { t.Fatalf("layout: %s", why) }
+
+    // THE ROW IS FOUND BY ITS SHAPE and not by its index — stride one and a
+    // live count is a bytes(N) and nothing else — so the control does not
+    // quietly stop pointing at it the day a field moves.
+    swapped := append([]TableFixedDst(nil), ProbeFixedDst...)
+    found := -1
+    for i := range swapped {
+        if swapped[i].Stride == 1 && swapped[i].Counted != 0 { found = i; break }
+    }
+    if found < 0 { t.Fatal("bytes row: no row with stride one and a live count") }
+    d := swapped[found].Dst
+    swapped[found].Dst = swapped[found].Aux // the TEXT convention, as it was
+    swapped[found].Aux = d
+
+    body := w[TableFixedHeaderBytes+4+len(ProbeFixedLayout)+8:]
+    for pass := 0; pass < 2; pass++ {
+        rowset := ProbeFixedDst
+        if pass == 1 { rowset = swapped }
+        plan := make([]TableFixedEntry, 256)
+        var c TableReport
+        made := tableFixedCompile(theirs, ProbeFixedLayout, rowset, plan, &c)
+        if made <= 0 { t.Fatalf("bytes row: the plan compiles either way, made %d %+v", made, c) }
+        var back Probe
+        ProbeReset(&back)
+        r := TableReport{}
+        tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&back), unsafe.Sizeof(back)), &r)
+        right := back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF
+        if pass == 0 {
+            if !right { t.Fatalf("BYTES(N): the array row must land the buffer in the buffer and the length in the length: %+v", back) }
+        } else if right {
+            t.Fatal("NEGATIVE CONTROL: the text row still landed the bytes; the old row was not the control")
+        }
+    }
+}
+`)
+}
+
+// TestFixedFormBoundsShiftFixedAndBits is C8 "fixed-point F-shift / bits(N)",
+// asserted BY NAME against its own clause (docs/FIXED-FORM-ALGORITHM.md §4.6):
+// "A fixed-point field's bounds are in VALUE UNITS and its storage is raw, so
+// both ends are shifted by F first; a `bits(N)` clamps to `2^N - 1`." The
+// emitter's numbers are ir.TableRawRange's — the declared whole-unit bounds
+// Lsh(F) — and the bits branch clamps at the N-bit mask, NOT at the storage
+// width. A poisoned raw rides the writer (the write side's bounds are
+// debug-only and a range is not one of them) and the read-side pass over
+// STORAGE is what holds it. The legitimate value the rule admits is the
+// CONTROL and must not move the counter.
+func TestFixedFormBoundsShiftFixedAndBits(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Probe {
+    tilt fixed(12, 4) | min = -8, max = 7
+    mask bits(12)
+}
+`, `package probe
+import ("testing")
+
+func oneRound(t *testing.T, in Probe) (Probe, TableReport) {
+	t.Helper()
+	need := ProbeFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := ProbeFixedSave([]Probe{in}, buf); n != need {
+		t.Fatalf("save %d want %d", n, need)
+	}
+	got := make([]Probe, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := ProbeFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("load %d %+v", n, r)
+	}
+	return got[0], r
+}
+
+func TestShiftAndBits(t *testing.T) {
+	// CONTROL 1 (not vacuous): the legitimate value the rule admits — the
+	// declared max shifted onto the raw scale (7<<4 = 112) and the bits mask
+	// (2^12-1 = 4095) — must NOT fire.
+	var ok Probe
+	ProbeReset(&ok)
+	ok.Tilt = 7 << 4
+	ok.Mask = 1<<12 - 1
+	clean, r := oneRound(t, ok)
+	if clean.Tilt != 112 || clean.Mask != 4095 || r.Clamped != 0 {
+		t.Fatalf("CONTROL: an admitted value moved: tilt=%d mask=%d clamped=%d", clean.Tilt, clean.Mask, r.Clamped)
+	}
+
+	// POISON: raw storage past both bounds, through the writer.
+	var bad Probe
+	ProbeReset(&bad)
+	bad.Tilt = 200  // raw > 112
+	bad.Mask = 5000 // raw > 4095
+	held, r := oneRound(t, bad)
+	if held.Tilt != 112 {
+		t.Fatalf("F-SHIFT: fixed tilt landed %d, want 112 = max 7 shifted by F=4", held.Tilt)
+	}
+	if held.Mask != 4095 {
+		t.Fatalf("BITS: mask landed %d, want 4095 = 2^12-1 (not the 32-bit storage top)", held.Mask)
+	}
+	if r.Clamped != 2 {
+		t.Fatalf("clamped=%d, want 2 (one per poisoned field)", r.Clamped)
+	}
+}
+`)
+}
+
+// TestFixedFormDuplicateNeverRaised pins E9 (schema#876): the fixed form's §4
+// counter set is `unknown`, `kind_mismatch`, `widened`, `clamped`, `malformed`
+// — "this form raises all but `duplicate`" (docs/FIXED-FORM-ALGORITHM.md §4,
+// and §29: "`duplicate` is the TEXT form's — the fixed wire never raises it").
+// `duplicate` is the TEXT form's counter for a repeated map key; the fixed form
+// refuses a map field outright (ir.TableFixedSupported) and its only keyed
+// structure, the enum-keyed array, is slot-indexed by variant with no key on the
+// wire — so a fixed read must leave `Duplicate` at zero. The Go TableReport
+// carries a `Duplicate` member (shared across forms, gotable.go), so this
+// fixture asserts the counters that EXIST on this leg's report, by name, on
+// both the identity plan and the compiled plan path.
+func TestFixedFormDuplicateNeverRaised(t *testing.T) {
+	runGenerated(t, `package probe
+enum Key { a, b, c }
+fixed table Child {
+    n int32 = 0
+}
+fixed table Root {
+    slots [Key]Child
+    seq   int32 = 7
+}
+`, `package probe
+import ("testing"; "unsafe")
+
+func TestDuplicateStaysZero(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.Slots[0].N = 11
+	one.Slots[1].N = 22
+	one.Slots[2].N = 33
+	one.Seq = 44
+	buf := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+
+	// IDENTITY PATH: the plan the emitter laid down.
+	got := make([]Root, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := RootFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("identity n=%d %+v", n, r)
+	}
+	if got[0].Slots[0].N != 11 || got[0].Slots[2].N != 33 || got[0].Seq != 44 {
+		t.Fatalf("identity keyed array did not land: %+v", got[0])
+	}
+	if r.Duplicate != 0 {
+		t.Fatalf("duplicate raised on the identity fixed read: %d (the fixed form raises all §4 counters but duplicate)", r.Duplicate)
+	}
+
+	// COMPILED PLAN PATH: the plan tableFixedCompile builds from the layout.
+	parsed, why := tableFixedParseLayout(RootFixedLayout)
+	if why != "" {
+		t.Fatalf("my own layout does not parse: %s", why)
+	}
+	var rr TableReport
+	made := tableFixedCompile(parsed, RootFixedLayout, RootFixedDst, plan, &rr)
+	if made <= 0 {
+		t.Fatalf("compile made %d", made)
+	}
+	var v Root
+	RootReset(&v)
+	record := buf[len(buf)-RootFixedRecordBytes:]
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &rr)
+	if rr.Duplicate != 0 {
+		t.Fatalf("duplicate raised on the compiled fixed read: %d (the fixed form raises all §4 counters but duplicate)", rr.Duplicate)
+	}
+}
+`)
+}
+
+// TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
+// UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
+// so a peer that leaves garbage past a string's stated length or an array's
+// live count is a peer this reader reads correctly. NON-ZERO SLACK IS NOT
+// malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
+//
+// The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
+// reads a wire its OWN writer zeroed; the read half is exactly the tolerance
+// above. This is that half with the wire slack poisoned AFTER the write, which
+// is the only way to reach the read rule at all: the writer's zeros would make
+// the assertion vacuous. The poison is chosen out of the array's declared
+// [0,10] range so that a pass which walked the declared bound instead of the
+// live count would count it.
+func TestFixedFormReadSlackUnspecified(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Slack {
+    label string(8)
+    marks [..4]int32 | min = 0, max = 10
+    tail  int32 = 42
+}
+`, `package probe
+import ("testing"; "encoding/binary")
+
+func TestReadSlackUnspecified(t *testing.T) {
+	one := Slack{}
+	SlackReset(&one)
+	one.Label[0] = 'h'
+	one.Label[1] = 'i'
+	one.LabelLength = 2
+	one.MarksCount = 1
+	one.Marks[0] = 7
+	buf := make([]byte, SlackFixedMeasure(1))
+	if n := SlackFixedSave([]Slack{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save: n=%d want %d", n, len(buf))
+	}
+	if SlackFixedBodyBytes != 36 {
+		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", SlackFixedBodyBytes)
+	}
+	body := buf[len(buf)-SlackFixedRecordBytes+8:]
+	// the declared wire order: label length (4) + 8 label bytes, marks count
+	// (4) + four int32 elements (16), then tail (4).
+	const labelSlackAt = 4 + 2              // past the stated length of 2
+	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
+	// A PEER left garbage in the declared slack: a byte no clean record carries.
+	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
+	for i := 0; i < 3; i++ {
+		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
+	}
+	// NOT VACUOUS: the wire really carries non-zero garbage in the declared
+	// slack (the exact bytes are a control knob; the RULE is about non-zero).
+	if body[labelSlackAt] == 0 || binary.LittleEndian.Uint32(body[marksSlackAt:]) == 0 {
+		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	}
+
+	got := make([]Slack, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := SlackFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("a peer's garbage in the slack refused the record: n=%d %+v", n, r)
+	}
+	if r != (TableReport{}) {
+		t.Fatalf("a peer's garbage in the slack moved a counter or named a refusal: %+v", r)
+	}
+	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
+		t.Fatalf("the used text did not read: %+v", got[0])
+	}
+	if got[0].MarksCount != 1 || got[0].Marks[0] != 7 {
+		t.Fatalf("the live prefix did not read: %+v", got[0])
+	}
+	if got[0].Tail != 42 {
+		t.Fatalf("the field past the slack moved: %+v", got[0])
+	}
+}
+`)
+}
+
+// TestFixedFormWriteSideBoundsAreDebugOnly names the rule that
+// TestFixedFormClampLiveCount only exercises. It writes an out-of-contract
+// count and length, and asserts the WRITE side does nothing: the save refuses
+// nothing and clamps nothing, so the caller's own bytes land on the wire. The
+// read side is what clamps, and only it (docs/FIXED-FORM-ALGORITHM.md §3.1:
+// "Write-side bound checks are DEBUG ONLY, by rule. `count <= Max` and
+// `length <= N` are a caller contract"). Go has no debug-only idiom (AGENTS.md
+// rule 4), so the fixed form's save path holds NO write-side bound check in
+// ANY build — this test asserts the rule's consequence by name: the write side
+// clamps nothing and refuses nothing, and a caller's bug rides the wire
+// unchanged rather than being silently clamped into a lawful record.
+func TestFixedFormWriteSideBoundsAreDebugOnly(t *testing.T) {
+	runGenerated(t, `package probe
+fixed table Host {
+    marks [..4]int32
+    name  string(8)
+    tail  int32 = 7
+}
+`, `package probe
+import ("testing")
+
+func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
+	if HostFixedBodyBytes != 36 {
+		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", HostFixedBodyBytes)
+	}
+
+	// THE NOT-VACUOUS CONTROL, first: a lawful count and length round-trip
+	// cleanly — the write side produces the record's own bytes and the read
+	// side clamps nothing, so this case is about the caller contract, not a
+	// broken save.
+	lawful := Host{Tail: 7}
+	HostReset(&lawful)
+	lawful.MarksCount = 2
+	lawful.Marks[0] = 11
+	lawful.Marks[1] = 22
+	lawful.NameLength = 3
+	copy(lawful.Name[:], "abc")
+	lb := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{lawful}, lb); n != int64(len(lb)) {
+		t.Fatalf("lawful save %d", n)
+	}
+	got := make([]Host, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := HostFixedLoad(got, lb, plan, &r); n != 1 {
+		t.Fatalf("lawful load %d %+v", n, r)
+	}
+	if got[0].MarksCount != 2 || got[0].NameLength != 3 || r.Clamped != 0 {
+		t.Fatalf("a lawful count and length must not clamp: %+v %+v", got[0], r)
+	}
+
+	// THE RULE, BY NAME. count <= Max and length <= N are a CALLER CONTRACT:
+	// 7 > 4 and 9 > 8 are the caller's bug, and the write side must refuse
+	// nothing and clamp nothing — the release path pays nothing.
+	one := Host{Tail: 7}
+	HostReset(&one)
+	one.MarksCount = 7
+	one.NameLength = 9
+	need := HostFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := HostFixedSave([]Host{one}, buf); n != need {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max and length <= N are a caller contract, not a wire defence — the release path must REFUSE NOTHING, but FixedSave returned %d, want %d", n, need)
+	}
+	body := buf[len(buf)-HostFixedRecordBytes+8:]
+	if got := tableFixedGet32(body[0:]); got != 7 {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: count <= Max is a caller contract — the write side must CLAMP NOTHING, but marks count landed on the wire as %d, want the caller's 7", got)
+	}
+	if got := tableFixedGet32(body[20:]); got != 9 {
+		t.Fatalf("write-side bound checks are DEBUG ONLY, by rule: length <= N is a caller contract — the write side must CLAMP NOTHING, but name length landed on the wire as %d, want the caller's 9", got)
+	}
+	if got := tableFixedGet32(body[32:]); got != 7 {
+		t.Fatalf("the field past the out-of-contract count and length moved: %d, want the writer's 7", got)
 	}
 }
 `)
