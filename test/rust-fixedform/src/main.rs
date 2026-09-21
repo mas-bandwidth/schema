@@ -1994,6 +1994,46 @@ fn the_guard_is_the_whole_tag() {
 }
 
 // ---------------------------------------------------------------------------
+// A WIDTH-8 ORDINAL IS READ WHOLE THROUGH A 64-BIT TEMPORARY
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, `ordinal` row; the twin of
+// test/tables/fixedform_main.cpp `owed8_width8_ordinal_read_whole_case`).
+//
+// A uint32_t temporary truncates a 64-bit ordinal whose low four bytes are
+// zero: 2^32 reads as 0, which is neither nonzero nor past the writer's count,
+// so it lands None WITHOUT counting a clamp — the same silent bytes as the
+// right answer with the counter missing. The plan is data, so the case is
+// reached by BUILDING THE ENTRY — an `ordinal` op at width 8 over a remap
+// whose count is 1 — and running the loop over it.
+// ---------------------------------------------------------------------------
+
+fn the_width8_ordinal_read_whole() {
+    let entry = tblfu1::TableFixedEntry {
+        src: 0,
+        dst: 0,
+        size: 8,
+        aux: 0,
+        dstsize: 8,
+        op: tblfu1::TableFixedOp::Ordinal,
+        ..tblfu1::TableFixedEntry::default()
+    };
+    let remap: [u16; 2] = [1, 1]; // one variant, remapped to 1
+    // 2^32: needs all eight bytes, so a 32-bit temporary would read 0.
+    let src: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
+    let mut dst = [0xABu8; 8];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[entry], &remap, &src, &mut dst, &mut report);
+    let landed = u64::from_le_bytes(dst);
+    check(
+        landed == 0,
+        "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant",
+    );
+    check(
+        report.clamped >= 1,
+        "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4).
 //
 // A fixed record is a positional image and the one read loop moves bytes: it
@@ -2420,6 +2460,7 @@ fn main() {
     the_record_bound();
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
+    the_width8_ordinal_read_whole();
     the_declared_range();
     the_text_content_rule(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
