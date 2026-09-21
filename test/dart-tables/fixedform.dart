@@ -2395,6 +2395,203 @@ void readSlackUnspecified() {
 }
 
 // ---------------------------------------------------------------------------
+// 3b. W6 — THE PLAN IS PARTITIONED
+// ---------------------------------------------------------------------------
+
+// W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §5.2, §4.4, §5.9
+// #42). §5.2's PLAN lays every UNGUARDED entry down first and every guarded one
+// after, and the plan states where the second half starts — `split` is the
+// NUMBER OF UNGUARDED ENTRIES, the index the guarded half begins at, and never
+// a count of guarded ones. §5.9 #42 asks a leg whose run loop tests
+// `guard != tableFixedNoGuard` per entry whether it still owes the partition,
+// and answers: IT DOES. The partition is not only what makes an inline two-half
+// loop possible; it is what makes COALESCING ACROSS THE SPLIT illegal, because
+// merging a guarded `copy` into an unguarded one lands an arm's bytes
+// unconditionally.
+//
+// THIS LEG SPELLS IT `plan.split`, and TableFixedCompiler.compile
+// (internal/codegen/darttable/fixedruntime.go) is the walk that lays it down:
+// pass 0 keeps the unguarded entries, the count is taken as the split, and pass
+// 1 appends the guarded ones. The identity plan is a BAKED constant with no
+// split of its own, so the property is read off a COMPILED plan — the half an
+// identity plan cannot speak for, because the walk runs TWICE there. A caller
+// never sees a lineage lane's split, so it is read off the plan's own entries:
+// once a guarded entry has been seen, no unguarded one may follow.
+//
+// `split` is also what puts a union's unguarded tag AHEAD of the arm that
+// overwrites it, which is why the FX1 check below expects the split at the END
+// and not at zero: a plan with no guarded entry has every entry unguarded, and
+// the count IS the boundary.
+int planPartitionIsHeld(Int32List entries, int count, int split, String who) {
+  final lanes = v1home.TableFixedLane.lanes;
+  final opLane = v1home.TableFixedLane.op;
+  final srcLane = v1home.TableFixedLane.src;
+  final dstLane = v1home.TableFixedLane.dst;
+  final sizeLane = v1home.TableFixedLane.size;
+  final guardLane = v1home.TableFixedLane.guard;
+  final argLane = v1home.TableFixedLane.arg;
+  final noGuard = v1home.tableFixedNoGuard;
+  int guardAt(int i) => entries[i * lanes + guardLane];
+
+  check(
+    split >= 0 && split <= count,
+    'W6: $who — split $split is in range for $count entries',
+  );
+  var guarded = 0;
+  for (var i = 0; i < count; i++) {
+    final isGuarded = guardAt(i) != noGuard;
+    if (isGuarded) {
+      guarded++;
+    }
+    if (i < split) {
+      check(
+        !isGuarded,
+        'W6: $who — entry $i is below the split and carries a GUARD',
+      );
+    } else {
+      check(
+        isGuarded,
+        'W6: $who — entry $i is above the split and carries NO guard',
+      );
+    }
+  }
+  // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+  // below it and the entry at it would be ONE entry. They are two, and this
+  // says why they have to be.
+  if (split > 0 && split < count) {
+    final a = split - 1;
+    final b = split;
+    final mergeable =
+        entries[a * lanes + opLane] == v1home.TableFixedOp.copy &&
+        entries[b * lanes + opLane] == v1home.TableFixedOp.copy &&
+        guardAt(a) == guardAt(b) &&
+        entries[a * lanes + argLane] == entries[b * lanes + argLane] &&
+        entries[a * lanes + srcLane] + entries[a * lanes + sizeLane] ==
+            entries[b * lanes + srcLane] &&
+        entries[a * lanes + dstLane] + entries[a * lanes + sizeLane] ==
+            entries[b * lanes + dstLane];
+    check(
+      !mergeable,
+      'W6: $who — the pair at the split was not coalesced across it',
+    );
+  }
+  return guarded;
+}
+
+void planPartitionCase() {
+  // V1 READS V2'S LAYOUT. V2 inserts an arm in the MIDDLE of Effect, so the
+  // compiled plan carries guarded arm entries the identity plan does not, and
+  // the scalars and arrays around them are unguarded. The compile is the SAME
+  // walk the build runs for a locked peer: `theirs` is the writer's layout and
+  // `mine` is this build's own.
+  {
+    final plan = v1.cfgFixedNewPlan();
+    final report = v1home.TableFixedReport();
+    plan.theirs.parse(
+      ByteData.sublistView(v2.cfgFixedLayout),
+      0,
+      v2.cfgFixedLayout.length,
+    );
+    final made = v1home.TableFixedCompiler.compile(
+      plan,
+      v1.cfgFixedLayout,
+      ByteData.sublistView(v1.cfgFixedLayout),
+      v1.cfgFixedDst,
+      v1.cfgFixedCover,
+      v1.cfgFixedCoverCount,
+      report,
+    );
+    check(made > 0, 'W6: V1 reading V2 compiles a plan (got $made)');
+    final guarded = planPartitionIsHeld(
+      plan.entries,
+      made,
+      plan.split,
+      'V1 identity reading V2\'s layout',
+    );
+    check(
+      guarded > 0,
+      'W6: the compiled plan really has a guarded half, so the case is not vacuous',
+    );
+    print(
+      'W6: V1<-V2 — $made entries, ${plan.split} unguarded then $guarded guarded, '
+      'no run coalesces across the split',
+    );
+  }
+
+  // AND THE OTHER DIRECTION, V2 READING V1, which is the §5 read: a newer
+  // build reading the older generation's bytes. The split is a property of the
+  // plan's order and not of which side is newer, so it holds here too.
+  {
+    final plan = v2.cfgFixedNewPlan();
+    final report = v2home.TableFixedReport();
+    plan.theirs.parse(
+      ByteData.sublistView(v1.cfgFixedLayout),
+      0,
+      v1.cfgFixedLayout.length,
+    );
+    final made = v2home.TableFixedCompiler.compile(
+      plan,
+      v2.cfgFixedLayout,
+      ByteData.sublistView(v2.cfgFixedLayout),
+      v2.cfgFixedDst,
+      v2.cfgFixedCover,
+      v2.cfgFixedCoverCount,
+      report,
+    );
+    check(made > 0, 'W6: V2 reading V1 compiles a plan (got $made)');
+    final guarded = planPartitionIsHeld(
+      plan.entries,
+      made,
+      plan.split,
+      'V2 identity reading V1\'s layout',
+    );
+    check(
+      guarded > 0,
+      'W6: V2 reading V1 really has a guarded half, so the case is not vacuous',
+    );
+    print('W6: V2<-V1 — $made entries, split ${plan.split}');
+  }
+
+  // A PLAN WITH NO GUARDED HALF AT ALL. FX1 carries no union, so every entry
+  // is unguarded and the split is then the WHOLE plan — which is what `split`
+  // being a count of UNGUARDED entries rather than of guarded ones makes come
+  // out right. A split of zero here would mean the boundary was recorded as a
+  // count of guarded entries, and every unguarded entry would be read as one
+  // that must test a guard.
+  {
+    final plan = fx1.fxRootFixedNewPlan();
+    final report = fx1home.TableFixedReport();
+    plan.theirs.parse(
+      ByteData.sublistView(fx1.fxRootFixedLayout),
+      0,
+      fx1.fxRootFixedLayout.length,
+    );
+    final made = fx1home.TableFixedCompiler.compile(
+      plan,
+      fx1.fxRootFixedLayout,
+      ByteData.sublistView(fx1.fxRootFixedLayout),
+      fx1.fxRootFixedDst,
+      fx1.fxRootFixedCover,
+      fx1.fxRootFixedCoverCount,
+      report,
+    );
+    check(made > 0, 'W6: FX1 compiles a plan (got $made)');
+    final guarded = planPartitionIsHeld(
+      plan.entries,
+      made,
+      plan.split,
+      'FX1 identity plan',
+    );
+    check(
+      guarded == 0 && plan.split == made,
+      'W6: a plan with no guarded entry has its split at the END, not at zero '
+      '(split ${plan.split} of ${plan.count})',
+    );
+    print('W6: FX1 identity plan — $made entries, split at the END');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
@@ -3457,6 +3654,7 @@ void main(List<String> args) {
   hostileBytesCase();
   writeSlackCase();
   readSlackUnspecified();
+  planPartitionCase();
   negativeControl();
   // F4: the sample lives behind the corpus reads, and it does not need them —
   // it is the reader's OWN header and a length that lies.
