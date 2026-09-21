@@ -548,12 +548,27 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, tabs int) {
 	ind := strings.Repeat("\t", tabs)
-	base := off
 	if f.Type.Optional {
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s.%sPresent {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s[%d:], p)\n%s}\n",
-			ind, ind, ind, val, member(f), ind, ind, ind, buf, base, ind)
-		base += fixedPresentBytes
+			ind, ind, ind, val, member(f), ind, ind, ind, buf, off, ind)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/FIXED-FORM-ALGORITHM.md §3.1, fix 13): the payload rides WHOLE
+		// whether or not it is present, and when the flag is 0 what rides is
+		// zero. It is ONE `if` here rather than a rule anywhere else, because
+		// the template already put the zeros there — so an absent optional
+		// costs the writer the branch and not one store, and a caller's
+		// untouched payload storage never reaches the wire.
+		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
+		g.emitFixedWritePayload(f, off+fixedPresentBytes, buf, val, tabs+1)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitFixedWritePayload(f, off, buf, val, tabs)
+}
+
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	base := off
 	dest := fmt.Sprintf("%s[%d:]", buf, base)
 	switch {
 	case f.KeyEnum != "":
