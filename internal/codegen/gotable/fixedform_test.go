@@ -1967,6 +1967,65 @@ func byteSpell(b []byte) string {
 	return strings.Join(hex, " ")
 }
 
+// TestFixedFormBytesIsLayoutKind14 is item W11 of schema#876: `bytes(N)` is
+// walked as an ARRAY OF u8 on this wire — kind 14 with ONE synthetic child at
+// kind 6, size 1 — and never as a text kind (docs/FIXED-FORM-ALGORITHM.md:54,
+// the closed-kind table at :75, and the buffer row at :696-703: "`bytes(N)` is
+// an ARRAY row (fix 10)"). A constant being USED is not the property being
+// ASSERTED, so this reads back THE LAYOUT THE EMITTER BUILDS rather than
+// matching a substring of generated Go: it asks fixedWalkRoot — the same call
+// emitFixedRoot makes at fixedform.go:647 — for the entries of a table with one
+// `bytes(6)` and one `string(6)`, finds the bytes field by its WIRE ID, and pins
+// the ARRAY entry and its synthetic u8 child. The string field is the other row
+// (kind 12), so the case tells the two apart and is not matching whatever entry
+// it happens to find first.
+func TestFixedFormBytesIsLayoutKind14(t *testing.T) {
+	u := unitFrom(t, `package probe
+fixed table Carrier {
+    tag bytes(6)
+    label string(6)
+}
+`)
+	carrier := u.Tables["Carrier"]
+	if carrier == nil {
+		t.Fatal("the fixed table Carrier is not in the unit's tables")
+	}
+	w := (&tableGen{}).fixedWalkRoot(carrier)
+
+	tagID := ir.TableWireId("tag")
+	labelID := ir.TableWireId("label")
+	at, labelAt := -1, -1
+	for i, e := range w.entries {
+		switch e.id {
+		case tagID:
+			at = i
+		case labelID:
+			labelAt = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the bytes(6) field is not in the layout under its wire id; entries: %+v", w.entries)
+	}
+	if e := w.entries[at]; e.kind != ir.TableKindArray {
+		t.Fatalf("bytes(6) is layout kind %d, want %d (an array of u8)", e.kind, ir.TableKindArray)
+	}
+	if e := w.entries[at]; e.children != 1 {
+		t.Fatalf("bytes(6) carries %d children, want the one synthetic u8", e.children)
+	}
+	if at+1 >= len(w.entries) {
+		t.Fatal("bytes(6)'s synthetic element is not the entry after it")
+	}
+	if c := w.entries[at+1]; c.kind != ir.TableKindU8 || c.size != 1 || c.children != 0 {
+		t.Fatalf("bytes(6)'s element is kind %d size %d children %d, want the synthetic u8 (6, 1, 0)", c.kind, c.size, c.children)
+	}
+	if labelAt < 0 {
+		t.Fatal("the string(6) field is not in the layout under its wire id")
+	}
+	if e := w.entries[labelAt]; e.kind != ir.TableKindString {
+		t.Fatalf("string(6) is layout kind %d, want %d; the bytes row and the text row are distinct", e.kind, ir.TableKindString)
+	}
+}
+
 // TestFixedFormWideTextCodeUnits is item C5 of schema#876: a `wstring(N)`'s
 // length rides the fixed form in UTF-16 CODE UNITS, so the read-side cap is
 // `span / 2` and never `span`, and an astral pair counts TWO. The contract
