@@ -5785,9 +5785,10 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 
 include make/checks/reference-review.mk
 
-# THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
-# so the gate both workflows run is a target here, and the retry-and-classify
-# logic is a committed script that `make test` holds to its fixtures — not
+# THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
+# run are targets here: `vuln` runs the scanner pinned and direct, and the
+# retry-and-classify logic behind the nightly is a committed script
+# (tools/vuln/govulncheck.sh) that `make test` holds to its fixtures — not
 # lines of YAML duplicated into two files, where the first divergence between
 # the copies is nobody's to notice.
 #
@@ -5796,16 +5797,17 @@ include make/checks/reference-review.mk
 # time, so a red run can never mean the scanner moved under us.
 GOVULNCHECK_VERSION ?= v1.7.0
 
-# `make vuln` is the pull-request gate: a database still unreachable after three
-# attempts is forgiven, loudly, because a contributor's diff cannot be judged by
-# vuln.go.dev's uptime. `make vuln-strict` is the nightly certification's gate:
-# the same three attempts, and then RED, because a certificate is a full run at
-# an exact SHA and an unreachable database certifies nothing. The two differ by
-# that flag and nothing else, and both exist so an outage always leaves a red
-# SOMEWHERE rather than nowhere.
+# `make vuln` is the pull-request gate and runs the scanner PINNED AND DIRECT,
+# with no retry and no classifier: any failure — an unreachable database
+# included — is RED, because a PR-tier gate that forgives an outage is a gate
+# that has silently stopped watching, and a new CVE is the one verdict that
+# changes with no commit here. `make vuln-strict` is the nightly certification's
+# gate: the same pin through the classifying script, three attempts against a
+# transient blip and then RED, because a certificate is a full run at an exact
+# SHA and an unreachable database certifies nothing.
 .PHONY: vuln
 vuln:
-	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: vuln-strict
 vuln-strict:

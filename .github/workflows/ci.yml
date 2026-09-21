@@ -833,25 +833,23 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # THE PIN AND THE RETRIES LIVE IN THE TREE, NOT IN THIS FILE. `make vuln`
-      # runs tools/vuln/govulncheck.sh, which carries the scanner's pin (the
-      # Makefile's GOVULNCHECK_VERSION, bumped by hand), three attempts 15 s
-      # then 45 s apart, and the classifier that decides whether a red one is
-      # this tree's fault. `make` is the one entry (AGENTS.md rule 6), and a
-      # classifier that lives in the tree is one `make test` can hold to its
-      # fixtures — which is what tools/vuln/testdata/cases.txt does, including
-      # the two log excerpts a looser classifier read as an outage.
+      # THE PIN LIVES IN THE TREE, NOT IN THIS FILE. `make vuln` runs the
+      # scanner PINNED AND DIRECT (the Makefile's GOVULNCHECK_VERSION, bumped
+      # by hand), with no retry and no classifier: any failure — an unreachable
+      # database included — is RED. A PR-tier gate that forgives an outage is
+      # one that has silently stopped watching, and a new CVE is the one
+      # verdict that changes with no commit here. `make` is the one entry
+      # (AGENTS.md rule 6).
       #
-      # ONLY THE TRANSPORT IS RETRIED AND ONLY THE TRANSPORT IS EVER FORGIVEN:
-      # a finding fails on the first attempt, and so does any other failure.
-      # THIS gate forgives a database that never answers, because a
-      # contributor's diff cannot be judged by vuln.go.dev's uptime; the
-      # nightly in certify.yml runs `make vuln-strict` and goes RED on the same
-      # outage, so an outage is never green everywhere at once.
+      # The nightly in certify.yml runs `make vuln-strict` instead: the same
+      # pin through the classifying script (tools/vuln/govulncheck.sh), three
+      # attempts against a transient blip and then RED, because a certificate
+      # is a full run at an exact SHA and an unreachable database certifies
+      # nothing. The classifier is held to its fixtures by `make test`, in
+      # tools/vuln/testdata/cases.txt.
       #
-      # INSIDE THE 10-MINUTE CAP with room to spare: the scan measures 35 s on
-      # this runner and 9.4 s on a 64-core bench, so three attempts and two
-      # sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst case. The cap is there for
+      # INSIDE THE 10-MINUTE CAP with room to spare: the direct scan measures
+      # 35 s on this runner and 9.4 s on a 64-core bench. The cap is there for
       # a scan that HANGS instead of failing, and it still ends the job.
       - name: govulncheck
         run: make vuln
