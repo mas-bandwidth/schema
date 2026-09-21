@@ -3213,6 +3213,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# every other leg's ride in that leg's test-<lang> (make/<lang>.mk).
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
+	$(MAKE) conformance-negative-control-cpp
 	$(MAKE) conformance-negative-control-absent
 	$(MAKE) conformance-negative-control-reference-surface
 	$(MAKE) conformance-negative-control-block-dump
@@ -5436,6 +5437,53 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
+
+# THE C++ EMITTER-SIDE CONFORMANCE CONTROL (docs/PORTING.md I11). The control
+# above flips a byte in a COPY OF THE DRIVER, so it localizes the text form and
+# cannot show the harness finding a defect in GENERATED code. This one breaks
+# the emitter itself: the walker's read-path storage offset in
+# internal/codegen/cpptable/json.go is XORed by four, the whole tree is
+# regenerated through a Go build overlay, and the C++ driver is rebuilt against
+# what that emitter emitted. The harness must go RED on `json-read` alone —
+# `json-write` and `wire` stay green, which is what says the break is the
+# READER's. Nothing tracked is written to: the emitter source is patched into a
+# COPY under build/ and reached through the overlay, so an interrupt cannot
+# leave a sabotaged working tree.
+CONFORMANCE_NEGATIVE_CPP := build/conformance-negative-cpp
+.PHONY: conformance-negative-control-cpp
+conformance-negative-control-cpp: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_CPP) && mkdir -p $(CONFORMANCE_NEGATIVE_CPP)
+	go run ./tools/sabotage -name table-cpp-json-read -out $(CONFORMANCE_NEGATIVE_CPP)/json.go.txt internal/codegen/cpptable/json.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/$(CONFORMANCE_NEGATIVE_CPP)/json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_CPP)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_CPP)/overlay.json -o $(CONFORMANCE_NEGATIVE_CPP)/schema ./cmd/schema
+	$(call tables_generate,$(CONFORMANCE_NEGATIVE_CPP)/schema,$(CONFORMANCE_NEGATIVE_CPP)/generated)
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_CPP)/generated/*/*Table.cpp || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) \
+		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES)) \
+		test/conformance/cpp/main.cpp \
+		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(CONFORMANCE_NEGATIVE_CPP)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_CPP)/driver
+	@printf 'cpp %s/driver\n' "$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_CPP)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_CPP)/work > $(CONFORMANCE_NEGATIVE_CPP)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged C++ walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; \
+	fi
+	@grep -Eq '^json-read +FAIL ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on json-read"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -Eq '^json-write +pass ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -m1 "cpp / json-read" $(CONFORMANCE_NEGATIVE_CPP)/log
+	@echo "negative control: one storage offset off in the C++ emitter turns the harness RED on json-read alone"
 
 # THE NEGATIVE CONTROL FOR THE BLOCK ROW DUMP (docs/SPEC-TABLES.md §19.2), and it
 # sabotages neither driver: it flips one byte INSIDE A ROW of the block image
