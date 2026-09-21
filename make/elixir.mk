@@ -101,6 +101,23 @@ build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/confo
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 
+# THE STANDALONE GATE, Elixir — the M4b twin of the gates above
+# (docs/PORTING.md). A generated table module INLINES its bitstring segments
+# rather than importing a runtime (`internal/codegen/elixirtable/elixirtable.go:12-13`),
+# so the unit compiles on the BEAM toolchain ALONE: every generated .ex file is
+# handed to elixirc with no driver, no test support and no sibling runtime
+# checkout, and the unit that generates is the unit that compiles. A module
+# that reached for a dependency would not resolve here.
+.PHONY: tables-elixir-standalone
+tables-elixir-standalone: build/tables-generated-elixir/.stamp
+	@n=$$(ls build/tables-generated-elixir/*/*.ex 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated table modules, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
+		fi
+	@rm -rf build/elixir-standalone-ebin && mkdir -p build/elixir-standalone-ebin
+	$(ELIXIRC) -o build/elixir-standalone-ebin build/tables-generated-elixir/*/*.ex
+	@echo "tables Elixir standalone gate: every generated module compiles on the BEAM toolchain alone"
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
@@ -244,7 +261,8 @@ tables-elixir-release:
 
 # THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
-# both and the block lead gate — then the format check and the packet tests.
+# both, the block lead gate and the standalone gate — then the format check and
+# the packet tests.
 # The port emits no table wire (schema#515), so there is no walk gate, no
 # text-form control, no allocation audit and no soak here: each measured the
 # wire's previous form and went with it.
@@ -252,6 +270,7 @@ tables-elixir-release:
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
+	$(MAKE) tables-elixir-standalone
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
 	cd test/elixir && $(ELIXIR) main.exs
 	cd test/elixir-ludicrous && $(ELIXIR) main.exs
