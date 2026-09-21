@@ -430,8 +430,9 @@ cook-write blob_str16             testdata/conformance/tables/cook-write/blob_st
 #   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 #
 # <base> names the block line the image comes from; <extent> is the length the
-# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read
-# out of an ALIGNED base, and the column is the cook battery's.
+# CALLER claims (-1: the image's own); <pointer> is the BUFFER the caller holds —
+# 0 an aligned base, 1..63 that many bytes past one — because an unaligned base
+# is a pointer fact and not a file fact, exactly as in the cook battery below.
 # The harness applies the patch and hands a driver a path.
 # Repin with: make conformance-pin.
 forgery block_magic_foreign        block block_render block_render 0 0x0000 8 0x0                      -1 refuse a foreign magic
@@ -452,6 +453,13 @@ forgery block_offset_overflow      block block_render block_render 0 0x0020 8 0x
 # read first: the used extent is derived from them and has nothing to say until
 # they agree.
 forgery block_extent_padding       block block_render block_render 0 -1           0     0                            2815 refuse bytes that stop inside the used extent's own padding
+
+# THE BASE'S ALIGNMENT, held by the REFERENCE rather than by a port's own gate
+# (§19.2): the image is untouched and the CALLER's buffer sits one byte past an
+# aligned base, so the last clause of the read — the one that reads nothing out
+# of the block — is the only one that can refuse it. The Elixir lead gate
+# (`make tables-elixir-block-lead`) found this arm missing from the battery.
+forgery block_base_unaligned       block block_render block_render 1 -1           0     0                             -1 refuse a base one byte past an aligned one
 
 # THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned
 # from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:
@@ -929,6 +937,7 @@ refusal block_count_past_extent   bad_layout
 refusal block_count_past_maximum  bad_layout
 refusal block_offset_overflow     bad_layout
 refusal block_extent_padding      truncated
+refusal block_base_unaligned      unaligned_base
 
 # ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ------------------------------
 #
