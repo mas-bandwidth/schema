@@ -20,6 +20,7 @@
 #endif
 #include "ConstantsWire.h"
 #include "EnumsWire.h"
+#include "VectorWire.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,48 +54,6 @@ extern "C" {
 #define SCHEMA_C_WRITE_INLINE
 #endif
 #endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
-/* Writes Vec3. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec3( serialize_write_stream_t * stream, const Vec3 * value )
-{
-    if ( !serialize_write_double( stream, value->x ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_double( stream, value->y ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_double( stream, value->z ) )
-    {
-        return 0;
-    }
-    return 1;
-}
-
-/* Reads Vec3. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3( serialize_read_stream_t * stream, Vec3 * value )
-{
-    /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
-    if ( serialize_read_bits_remaining( stream ) < 192 )
-    {
-        return serialize_read_fail( stream );
-    }
-
-    if ( !serialize_read_double( stream, &value->x ) )
-    {
-        return 0;
-    }
-    if ( !serialize_read_double( stream, &value->y ) )
-    {
-        return 0;
-    }
-    if ( !serialize_read_double( stream, &value->z ) )
-    {
-        return 0;
-    }
-    return 1;
-}
 
 /* Writes Quat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quat( serialize_write_stream_t * stream, const Quat * value )

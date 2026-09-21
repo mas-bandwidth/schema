@@ -20,21 +20,11 @@
 #endif
 #include "Constants.h"
 #include "Enums.h"
+#include "Vector.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-
-/* type Vec3 */
-typedef struct Vec3 {
-    double x;
-    double y;
-    double z;
-} Vec3;
-
-#define VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Quat */
@@ -46,7 +36,7 @@ typedef struct Quat {
 } Quat;
 
 #define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUAT_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define QUAT_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Handle */

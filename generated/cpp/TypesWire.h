@@ -14,6 +14,7 @@
 #include "Types.h"
 #include "ConstantsWire.h"
 #include "EnumsWire.h"
+#include "VectorWire.h"
 
 namespace example {
 
@@ -54,22 +55,6 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
-
-SCHEMA_WRITE_INLINE bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
-{
-    write_double( stream, value.x );
-    write_double( stream, value.y );
-    write_double( stream, value.z );
-    return true;
-}
-
-SCHEMA_READ_INLINE bool ReadVec3( serialize::ReadStream & stream, Vec3 & value )
-{
-    read_double( stream, value.x );
-    read_double( stream, value.y );
-    read_double( stream, value.z );
-    return true;
-}
 
 SCHEMA_WRITE_INLINE bool WriteQuat( serialize::WriteStream & stream, const Quat & value )
 {

@@ -11,14 +11,6 @@ using Serialize;
 namespace Example
 {
 
-    // type Vec3
-    public sealed class Vec3
-    {
-        public double X;
-        public double Y;
-        public double Z;
-    }
-
     // type Quat
     public sealed class Quat
     {
@@ -159,83 +151,6 @@ namespace Example
     // home (SPEC §6.1 naming); partial, one slice per generated file.
     public static partial class Schema
     {
-        // Vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-        // Vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long Vec3MaxBits = 192;
-        public const long Vec3MaxBytes = 24;
-
-        // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroVec3(Vec3 value)
-        {
-            value.X = 0.0;
-            value.Y = 0.0;
-            value.Z = 0.0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitVec3(Vec3 value)
-        {
-            value.X = 0.0;
-            value.Y = 0.0;
-            value.Z = 0.0;
-        }
-
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteVec3(WriteStream stream, Vec3 value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteVec3Batch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteVec3Batch(ref WriteBatch batch, Vec3 value)
-        {
-            if (!batch.SerializeDouble(ref value.X))
-            {
-                return false;
-            }
-            if (!batch.SerializeDouble(ref value.Y))
-            {
-                return false;
-            }
-            if (!batch.SerializeDouble(ref value.Z))
-            {
-                return false;
-            }
-            return true;
-        }
-
-        public static bool ReadVec3(ReadStream stream, Vec3 value)
-        {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadVec3Batch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadVec3Batch(ref ReadBatch batch, Vec3 value)
-        {
-            if (!batch.SerializeDouble(ref value.X))
-            {
-                return false;
-            }
-            if (!batch.SerializeDouble(ref value.Y))
-            {
-                return false;
-            }
-            if (!batch.SerializeDouble(ref value.Z))
-            {
-                return false;
-            }
-            return true;
-        }
-
         // QuatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // QuatMaxBytes is rounded up to the 8-byte write-buffer granularity.
         public const long QuatMaxBits = 256;

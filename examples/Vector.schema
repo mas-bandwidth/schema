@@ -1,0 +1,20 @@
+// Vector.schema — the continuous vector, in its own file so the cpp_native
+// mapping rides.
+// cpp_native/cpp_include (SPEC §4.2, Native type mapping): generated C++
+// declares Vec3 storage as ::VecMath — a hand math type deriving from the
+// generated basis struct (same layout, plus operators) — and every header
+// referencing it from ANOTHER file of the unit includes the mapped header.
+// Inside this file's own generated header the mapping is off (the mapped
+// header derives from the basis, so a mapped reference here would be
+// circular), which is why Vec3 is alone here and referenced from Types.schema
+// and the rest of the unit. Other targets ignore the pair.
+
+package example
+
+// Continuous vector — float64 components, the deep wire.
+type Vec3 | cpp_native = VecMath, cpp_include = "vec_math.h"
+{
+    x float64
+    y float64
+    z float64
+}

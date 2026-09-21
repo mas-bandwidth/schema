@@ -13,6 +13,7 @@
 #include "Joins.h"
 #include "Render.h"
 #include "Types.h"
+#include "Vector.h"
 #include "Wire.h"
 #ifndef SCHEMA_EXAMPLE_TABLE_PRIMITIVES
 #define SCHEMA_EXAMPLE_TABLE_PRIMITIVES
