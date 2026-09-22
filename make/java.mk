@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS)
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -120,6 +120,11 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# The C, C# and Go legs have generated this unit all along; the Java leg is
 	# the one that did not, which is why nothing here said so.
 	./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
+	# K1/K2 is the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md §3, §4):
+	# K1 writes grade=Grade, raw=uint16; K2 reads grade=uint16, raw=Grade.
+	# Both fields produce kind_mismatch == 2 in both directions.
+	./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -587,7 +592,9 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
-		build/tables-generated-java/p3/*.java test/conformance/java/src/Driver.java
+		build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
+		test/conformance/java/src/Driver.java
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
