@@ -570,3 +570,16 @@ jobs:
             status=1
           fi
           exit $status
+
+  # THE NINE SCHEMA LEGS (issue #nx-g30). One reusable workflow, leg.yml,
+  # runs every registered driver over its own surface; the matrix input is
+  # the registry under test/conformance/<lang>/ci.json, so a tenth leg is
+  # exactly one matrix entry — a new <lang> directory with a driver and a
+  # ci.json — and nothing in this file moves. The same workflow is what
+  # ci.yml's conformance pair calls inline; here it is the certification
+  # path's view, run nightly and on demand under the same per-row timeout
+  # the conformance leg carries in ci.yml, so a row that goes red on its own
+  # fails the job rather than timing out the day.
+  schema-legs:
+    name: schema legs (certify)
+    uses: ./.github/workflows/leg.yml
