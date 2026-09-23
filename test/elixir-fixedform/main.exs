@@ -2134,4 +2134,142 @@ Leg.eq(
   <<0::little-signed-32>>
 )
 
+# ---------------------------------------------------------------------------
+# W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+# (docs/FIXED-FORM-ALGORITHM.md §4.2 fix 3)
+# ---------------------------------------------------------------------------
+#
+# The plan's source offsets are arithmetic over sizes a WRITER wrote down, so a
+# layout that passes every rule of §1.1 and still names a byte past `root.size`
+# is refused WHOLE, never partly compiled, under `layout_record_too_large`.
+#
+# THE LAYOUT HERE IS INTERNALLY VALID, hand-built out of this build's own field
+# ids and passing all seven rules. After COMPILE-from-lock (§5.3), LOAD never
+# parses a stranger — an unknown hash is `layout_newer` — so the bound is
+# asserted on `FixedRuntime.compile/5` directly, which is the path a known older
+# writer still takes through the lineage harness. THE FINDING IS THAT THIS LEG
+# CARRIES NO SUCH BOUND: the `layout_record_too_large` refusals in
+# FixedRuntime.parse_layout/1 are the 65536-byte / `@record_max` overflow arm
+# (fixedruntime.go:617,730,768) and the compile path answers `{:ok, plan, n,
+# report}` where the reference answers -2. The three checks below say so.
+#
+# WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+# `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+# of no elements — and the compiler takes the head from the READER's own row
+# (`counted`, so `head = 4`), so a reader whose field carries a live count
+# subtracts four from zero. The elements then land at `their_at + 4`, past a
+# record that ends at four.
+Leg.section("W10: an entry past the writer's declared record size is refused WHOLE")
+
+# THE IDS ARE READ OUT OF THIS BUILD'S OWN LAYOUT rather than spelled as hashes,
+# so the case does not quietly stop naming the fields it means.
+{:ok, w10_mine} = Tblfx1.FixedRuntime.parse_layout(Tblfx1.FX1Fixed.fx_root_fixed_layout())
+w10_root_id = elem(elem(w10_mine.entries, 0), 0)
+
+w10_keep_id =
+  Enum.reduce(1..(w10_mine.count - 1)//1, 0, fn i, acc ->
+    case elem(w10_mine.entries, i) do
+      {id, 8, 4, _} when acc == 0 -> id
+      _ -> acc
+    end
+  end)
+
+w10_label_id =
+  Enum.reduce(1..(w10_mine.count - 1)//1, 0, fn i, acc ->
+    case elem(w10_mine.entries, i) do
+      {id, 12, _, _} when acc == 0 -> id
+      _ -> acc
+    end
+  end)
+
+# `blob` is the ARRAY whose element is a u8 (kind 6, size 1), which is what
+# separates `bytes(6)` from `marks`, whose element is an int32.
+{w10_blob_id, w10_blob_elem_id} =
+  Enum.reduce(1..(w10_mine.count - 2)//1, {0, 0}, fn i, {b, be} ->
+    case {elem(w10_mine.entries, i), elem(w10_mine.entries, i + 1)} do
+      {{bid, 14, _, _}, {beid, 6, 1, _}} when b == 0 -> {bid, beid}
+      _ -> {b, be}
+    end
+  end)
+
+Leg.check(
+  "W10: the ids this case names are the ids this build's own layout carries",
+  w10_root_id != 0 and w10_keep_id != 0 and w10_blob_id != 0 and w10_label_id != 0
+)
+
+w10_entry = fn id, kind, size, children ->
+  <<id::little-unsigned-64, kind::unsigned-8, size::little-unsigned-32,
+    children::little-unsigned-32>>
+end
+
+# 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`: a record body of FOUR
+#    bytes, `keep` (kind 8, size 4) at 0, then a bytes/array entry of size ZERO
+#    at offset 4.
+w10_hostile =
+  IO.iodata_to_binary([
+    <<4::little-unsigned-32>>,
+    w10_entry.(w10_root_id, 13, 4, 2),
+    w10_entry.(w10_keep_id, 8, 4, 0),
+    w10_entry.(w10_blob_id, 14, 0, 1),
+    w10_entry.(w10_blob_elem_id, 6, 1, 0)
+  ])
+
+w10_hostile_parsed = Tblfx1.FixedRuntime.parse_layout(w10_hostile)
+
+Leg.check(
+  "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND",
+  match?({:ok, _}, w10_hostile_parsed)
+)
+
+{:ok, w10_hostile_mine} = w10_hostile_parsed
+
+w10_compiled =
+  Tblfx1.FixedRuntime.compile(
+    w10_hostile_mine,
+    w10_mine,
+    Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+    4096,
+    Tblfx1.FixedRuntime.report()
+  )
+
+Leg.check(
+  "W10: COMPILE refuses an entry past the writer's record size, naming layout_record_too_large",
+  match?({:error, :layout_record_too_large, _}, w10_compiled)
+)
+
+# 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the overrun —
+#    a text entry whose length word and payload END EXACTLY at `root.size` — is
+#    a layout with nothing wrong with it, and a bound that refused it would be a
+#    bound that refuses the wire. It must pass all seven rules and must COMPILE.
+w10_boundary =
+  IO.iodata_to_binary([
+    <<3::little-unsigned-32>>,
+    w10_entry.(w10_root_id, 13, 16, 2),
+    w10_entry.(w10_keep_id, 8, 4, 0),
+    w10_entry.(w10_label_id, 12, 12, 0)
+  ])
+
+w10_boundary_parsed = Tblfx1.FixedRuntime.parse_layout(w10_boundary)
+
+Leg.check(
+  "W10: the boundary layout passes all seven rules of §1.1",
+  match?({:ok, _}, w10_boundary_parsed)
+)
+
+{:ok, w10_boundary_mine} = w10_boundary_parsed
+
+w10_boundary_compiled =
+  Tblfx1.FixedRuntime.compile(
+    w10_boundary_mine,
+    w10_mine,
+    Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+    4096,
+    Tblfx1.FixedRuntime.report()
+  )
+
+Leg.check(
+  "W10: a text entry ending EXACTLY at root.size is not a refusal",
+  match?({:ok, _, _, _}, w10_boundary_compiled)
+)
+
 Leg.verdict()
