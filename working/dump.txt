@@ -1,0 +1,274 @@
+# test/tables/W1.schema :: Vessel
+key=vessel
+entries_count=8
+layout_size=140
+digest_size=49
+full_hash=0x8ec667778380f964
+layout_only_hash=0xbcc9862b21130a06
+digest_only_hash=0x925753be11088b2d
+layout_hex=080000007b7b5dc28e0c0d110d4400000005000000861b638ebaadbcc40c2400000000000000f3a4484419abd7560e08000000010000000000000000000000060100000000000000f85775e8906b5ab5090800000000000000185509fe81a9bd100d0c000000010000003d62cb8fecfcf7390c0c00000000000000f6adda11cc8cda80040400000000000000
+digest_hex=460300000066ad65a1f9e977a41566eb799496f64377cd66621e8f9c19abb7f2520000000000000000e803000000000000
+digest_R_count=1
+digest_F_count=1
+entries:
+   0 id=0x110d0c8ec25d7b7b kind=13 size=68 children=5 note="Vessel"
+   1 id=0xc4bcadba8e631b86 kind=12 size=36 children=0 note="name"
+   2 id=0x56d7ab194448a4f3 kind=14 size=8 children=1 note="tag"
+   3 id=0x0000000000000000 kind=6 size=1 children=0 note="u8"
+   4 id=0xb55a6b90e87557f8 kind=9 size=8 children=0 note="caps"
+   5 id=0x10bda981fe095518 kind=13 size=12 children=1 note="badge"
+   6 id=0x39f7fcec8fcb623d kind=12 size=12 children=0 note="label"
+   7 id=0x80da8ccc11daadf6 kind=4 size=4 children=0 note="hull"
+
+# test/tables/K1.schema :: Root
+key=root
+entries_count=6
+layout_size=106
+digest_size=0
+full_hash=0x34b9313dd146d798
+layout_only_hash=0x34b9313dd146d798
+digest_only_hash=0xcbf29ce484222325
+layout_hex=06000000a5b251ef2bfe7cca0d0300000002000000d48ac477299ba8321e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c42000000000000000009151ff6019c1f689070200000000000000
+digest_hex=
+entries:
+   0 id=0xca7cfe2bef51b2a5 kind=13 size=3 children=2 note="Root"
+   1 id=0x32a89b2977c48ad4 kind=30 size=1 children=3 note="grade"
+   2 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+   3 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+   4 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+   5 id=0x89f6c11960ff5191 kind=7 size=2 children=0 note="raw"
+
+# test/tables/R1.schema :: Cfg
+key=cfg
+entries_count=25
+layout_size=429
+digest_size=0
+full_hash=0xd8a7f50e85f0e2c4
+layout_only_hash=0xd8a7f50e85f0e2c4
+digest_only_hash=0xcbf29ce484222325
+layout_hex=190000004102a0aa1938ef0b0d1e00000005000000d48ac477299ba8321e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c42000000000000000009443f2513bc8c1360f0500000004000000cc68359db2fb5d580d0400000001000000e6b4e78a35d1f9ee040400000000000000331dea2bf696395e0d0400000001000000b1b60b3803cfc6260a0400000000000000a90733c50de030bf2000000000000000006969b1a27efe1381040400000000000000cc69e4e29bbeb5ff0d0400000001000000c6875c803a62dc9a0a0400000000000000c599f782764e0ad90e080000000100000000000000000000001e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c4200000000000000000dd542dd0294d3faa100c0000000200000034b4f6e68f8202ef1e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c42000000000000000000000000000000000040400000000000000
+digest_hex=
+entries:
+   0 id=0x0bef3819aaa00241 kind=13 size=30 children=5 note="Cfg"
+   1 id=0x32a89b2977c48ad4 kind=30 size=1 children=3 note="grade"
+   2 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+   3 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+   4 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+   5 id=0x36c1c83b51f24394 kind=15 size=5 children=4 note="effect"
+   6 id=0x585dfbb29d3568cc kind=13 size=4 children=1 note="boost"
+   7 id=0xeef9d1358ae7b4e6 kind=4 size=4 children=0 note="power"
+   8 id=0x5e3996f62bea1d33 kind=13 size=4 children=1 note="ward"
+   9 id=0x26c6cf03380bb6b1 kind=10 size=4 children=0 note="charge"
+  10 id=0xbf30e00dc53307a9 kind=32 size=0 children=0 note="ping"
+  11 id=0x8113fe7ea2b16969 kind=4 size=4 children=0 note="amount"
+  12 id=0xffb5be9be2e469cc kind=13 size=4 children=1 note="buff"
+  13 id=0x9adc623a805c87c6 kind=10 size=4 children=0 note="multiplier"
+  14 id=0xd90a4e7682f799c5 kind=14 size=8 children=1 note="grades"
+  15 id=0x0000000000000000 kind=30 size=1 children=3 note="element"
+  16 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+  17 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+  18 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+  19 id=0xaa3f4d29d02d54dd kind=16 size=12 children=2 note="tally"
+  20 id=0xef02828fe6f6b434 kind=30 size=1 children=3 note="Grade"
+  21 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+  22 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+  23 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+  24 id=0x0000000000000000 kind=4 size=4 children=0 note="element"
+
+# tables/examples/Ranges.schema :: RangedSigned
+key=rangedsigned
+entries_count=19
+layout_size=327
+digest_size=289
+full_hash=0xcbf32b9992cc8183
+layout_only_hash=0xaaf4b92f603d1a73
+digest_only_hash=0x492be0a35957c025
+layout_hex=130000002ebe28da1d7579ec0d4800000011000000b52e70bf111512480201000000000000007d0f096831fe2b94020100000000000000d15db505d1ac82d1020100000000000000812a91c823ed9def020100000000000000b46037a24e5755b6030200000000000000de2b7a8dafb317d2030200000000000000007912c9702f659003020000000000000058b14d357c9d656a030200000000000000d6912c5388bd93e6040400000000000000b4fb99cf27e85e06040400000000000000ee86a1c2c421b1c90404000000000000007af2ac65a4df63d30404000000000000006f9dc40007c74975050800000000000000db7197411766ce1c05080000000000000097550b6260fa543b050800000000000000235dce8eb9fc08d30508000000000000007d19b6856bde0cc70e0c000000010000000000000000000000030200000000000000
+digest_hex=5280ffffffffffffff7f000000000000005280ffffffffffffff7e000000000000005281ffffffffffffff7f000000000000005281ffffffffffffff7e00000000000000520080ffffffffffffff7f000000000000520080fffffffffffffe7f000000000000520180ffffffffffffff7f000000000000520180fffffffffffffe7f0000000000005200000080ffffffffffffff7f000000005200000080fffffffffeffff7f000000005201000080ffffffffffffff7f000000005201000080fffffffffeffff7f00000000520000000000000080ffffffffffffff7f520000000000000080feffffffffffff7f520100000000000080ffffffffffffff7f520100000000000080feffffffffffff7f520080ffffffffffffff7f000000000000
+digest_R_count=17
+entries:
+   0 id=0xec79751dda28be2e kind=13 size=72 children=17 note="RangedSigned"
+   1 id=0x48121511bf702eb5 kind=2 size=1 children=0 note="i8_span"
+   2 id=0x942bfe3168090f7d kind=2 size=1 children=0 note="i8_low"
+   3 id=0xd182acd105b55dd1 kind=2 size=1 children=0 note="i8_high"
+   4 id=0xef9ded23c8912a81 kind=2 size=1 children=0 note="i8_inside"
+   5 id=0xb655574ea23760b4 kind=3 size=2 children=0 note="i16_span"
+   6 id=0xd217b3af8d7a2bde kind=3 size=2 children=0 note="i16_low"
+   7 id=0x90652f70c9127900 kind=3 size=2 children=0 note="i16_high"
+   8 id=0x6a659d7c354db158 kind=3 size=2 children=0 note="i16_inside"
+   9 id=0xe693bd88532c91d6 kind=4 size=4 children=0 note="i32_span"
+  10 id=0x065ee827cf99fbb4 kind=4 size=4 children=0 note="i32_low"
+  11 id=0xc9b121c4c2a186ee kind=4 size=4 children=0 note="i32_high"
+  12 id=0xd363dfa465acf27a kind=4 size=4 children=0 note="i32_inside"
+  13 id=0x7549c70700c49d6f kind=5 size=8 children=0 note="i64_span"
+  14 id=0x1cce6617419771db kind=5 size=8 children=0 note="i64_low"
+  15 id=0x3b54fa60620b5597 kind=5 size=8 children=0 note="i64_high"
+  16 id=0xd308fcb98ece5d23 kind=5 size=8 children=0 note="i64_inside"
+  17 id=0xc70cde6b85b6197d kind=14 size=12 children=1 note="edges"
+  18 id=0x0000000000000000 kind=3 size=2 children=0 note="element"
+
+# tables/examples/Ranges.schema :: RangedUnsigned
+key=rangedunsigned
+entries_count=19
+layout_size=327
+digest_size=289
+full_hash=0x8b7880ef6aaed3c0
+layout_only_hash=0x9e7760dd0c2ba2f6
+digest_only_hash=0xa2f66898e9fdf339
+layout_hex=13000000f18bd2b7c4c01e030d600000001100000021c0377f5597880f060100000000000000a1a200823f55172e0601000000000000007d1b30f90dc6e5a00601000000000000004d84f5a673c0b21c060100000000000000600979b150c1a04c070200000000000000b24cb036681352f20702000000000000000c61e716f2e1374f07020000000000000004338f9705b676d1070200000000000000da9c47e74d920b20080400000000000000b0acb5312a2f3da5080400000000000000d2e3a4a18ebe59970804000000000000000e3c2e08fc15c58d0804000000000000007389dfdb11efecbe09080000000000000027f2ffe066ad1701090800000000000000db8906b5f35ab4f2090800000000000000f7caeb7e01123e71090800000000000000e551ae5abefe41c30e24000000010000000000000000000000090800000000000000
+digest_hex=520000000000000000ff00000000000000520000000000000000fe00000000000000520100000000000000ff00000000000000520100000000000000fe00000000000000520000000000000000ffff000000000000520000000000000000feff000000000000520100000000000000ffff000000000000520100000000000000feff000000000000520000000000000000ffffffff00000000520000000000000000feffffff00000000520100000000000000ffffffff00000000520100000000000000feffffff0000000052000000000000000000000000000000005200000000000000000000000000000000520100000000000000000000000000000052010000000000000000000000000000005200000000000000000000000000000000
+digest_R_count=17
+entries:
+   0 id=0x031ec0c4b7d28bf1 kind=13 size=96 children=17 note="RangedUnsigned"
+   1 id=0x0f8897557f37c021 kind=6 size=1 children=0 note="u8_span"
+   2 id=0x2e17553f8200a2a1 kind=6 size=1 children=0 note="u8_low"
+   3 id=0xa0e5c60df9301b7d kind=6 size=1 children=0 note="u8_high"
+   4 id=0x1cb2c073a6f5844d kind=6 size=1 children=0 note="u8_inside"
+   5 id=0x4ca0c150b1790960 kind=7 size=2 children=0 note="u16_span"
+   6 id=0xf252136836b04cb2 kind=7 size=2 children=0 note="u16_low"
+   7 id=0x4f37e1f216e7610c kind=7 size=2 children=0 note="u16_high"
+   8 id=0xd176b605978f3304 kind=7 size=2 children=0 note="u16_inside"
+   9 id=0x200b924de7479cda kind=8 size=4 children=0 note="u32_span"
+  10 id=0xa53d2f2a31b5acb0 kind=8 size=4 children=0 note="u32_low"
+  11 id=0x9759be8ea1a4e3d2 kind=8 size=4 children=0 note="u32_high"
+  12 id=0x8dc515fc082e3c0e kind=8 size=4 children=0 note="u32_inside"
+  13 id=0xbeecef11dbdf8973 kind=9 size=8 children=0 note="u64_span"
+  14 id=0x0117ad66e0fff227 kind=9 size=8 children=0 note="u64_low"
+  15 id=0xf2b45af3b50689db kind=9 size=8 children=0 note="u64_high"
+  16 id=0x713e12017eebcaf7 kind=9 size=8 children=0 note="u64_inside"
+  17 id=0xc341febe5aae51e5 kind=14 size=36 children=1 note="counts"
+  18 id=0x0000000000000000 kind=9 size=8 children=0 note="element"
+
+# tables/examples/Ranges.schema :: RangedWidths
+key=rangedwidths
+entries_count=7
+layout_size=123
+digest_size=30
+full_hash=0xe45869be02e1f158
+layout_only_hash=0x0f48d5bc4bc8f930
+digest_only_hash=0x673dc151d96574d9
+layout_hex=07000000d75e4f9e4e6959bf0d2000000006000000c78d4db5070ca608060400000000000000be97ad12197095ff0704000000000000007094b312195c9cff080400000000000000e761ab12197092ff0908000000000000008a9ead12197495ff070400000000000000a135a51219688bff090800000000000000
+digest_hex=4208000000421000000042200000004240000000420c0000004230000000
+digest_B_count=6
+entries:
+   0 id=0xbf59694e9e4f5ed7 kind=13 size=32 children=6 note="RangedWidths"
+   1 id=0x08a60c07b54d8dc7 kind=6 size=4 children=0 note="b8"
+   2 id=0xff95701912ad97be kind=7 size=4 children=0 note="b16"
+   3 id=0xff9c5c1912b39470 kind=8 size=4 children=0 note="b32"
+   4 id=0xff92701912ab61e7 kind=9 size=8 children=0 note="b64"
+   5 id=0xff95741912ad9e8a kind=7 size=4 children=0 note="b12"
+   6 id=0xff8b681912a535a1 kind=9 size=8 children=0 note="b48"
+
+# tables/examples/Tables.schema :: LoadoutConfig
+key=loadoutconfig
+entries_count=43
+layout_size=735
+digest_size=88
+full_hash=0x1907531031b66e4e
+layout_only_hash=0xe747768b18247870
+digest_only_hash=0x534ecb8d74a3a613
+layout_hex=2b000000a1cc8da2ae0caaa60d9a00000007000000d48ac477299ba8321e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c4200000000000000000c599f782764e0ad90e080000000100000000000000000000001e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c42000000000000000004925d7235af46fb40e030000000100000000000000000000001e010000000300000091c5c4aa397792c42000000000000000008025f1eade1ae5c3200000000000000000b318320d7ec916c42000000000000000004ae5967084f5064b09080000000000000039e983f77f1331bf0d1600000006000000c07fb38abe08637f0a0400000000000000d2b1ac02570533170a040000000000000032e9139e30c5314f040400000000000000a4edcad59a3e01a5060400000000000000593f2e60bc8765ad0101000000000000009443f2513bc8c1360f0500000002000000cc69e4e29bbeb5ff0d0400000001000000c6875c803a62dc9a0a0400000000000000d72f3de7edc5cd130d04000000010000006969b1a27efe138104040000000000000024cc8a11f5f028de0e2c0000000100000000000000000000000d1600000006000000c07fb38abe08637f0a0400000000000000d2b1ac02570533170a040000000000000032e9139e30c5314f040400000000000000a4edcad59a3e01a5060400000000000000593f2e60bc8765ad0101000000000000009443f2513bc8c1360f0500000002000000cc69e4e29bbeb5ff0d0400000001000000c6875c803a62dc9a0a0400000000000000d72f3de7edc5cd130d04000000010000006969b1a27efe1381040400000000000000419a244003aa01f90e440000000100000000000000000000000d0800000002000000d131fef61816776a040400000000000000e6b4e78a35d1f9ee0a0400000000000000
+digest_hex=46030000006651c6bc45b548aa4466f2e820c52a496f51667b643b2e3791af3e5200000000000000000a00000000000000420600000052000000000000000064000000000000005200000000000000000700000000000000
+digest_R_count=3
+digest_Q_count=2
+digest_F_count=1
+digest_B_count=1
+entries:
+   0 id=0xa6aa0caea28dcca1 kind=13 size=154 children=7 note="LoadoutConfig"
+   1 id=0x32a89b2977c48ad4 kind=30 size=1 children=3 note="grade"
+   2 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+   3 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+   4 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+   5 id=0xd90a4e7682f799c5 kind=14 size=8 children=1 note="grades"
+   6 id=0x0000000000000000 kind=30 size=1 children=3 note="element"
+   7 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+   8 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+   9 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+  10 id=0xb46ff45a23d72549 kind=14 size=3 children=1 note="podium"
+  11 id=0x0000000000000000 kind=30 size=1 children=3 note="element"
+  12 id=0xc4927739aac4c591 kind=32 size=0 children=0 note="Bronze"
+  13 id=0xc3e51adeeaf12580 kind=32 size=0 children=0 note="Silver"
+  14 id=0xc416c97e0d3218b3 kind=32 size=0 children=0 note="Gold"
+  15 id=0x4b06f5847096e54a kind=9 size=8 children=0 note="perks"
+  16 id=0xbf31137ff783e939 kind=13 size=22 children=6 note="primary"
+  17 id=0x7f6308be8ab37fc0 kind=10 size=4 children=0 note="damage"
+  18 id=0x1733055702acb1d2 kind=10 size=4 children=0 note="speed"
+  19 id=0x4f31c5309e13e932 kind=4 size=4 children=0 note="penetration"
+  20 id=0xa5013e9ad5caeda4 kind=6 size=4 children=0 note="channel"
+  21 id=0xad6587bc602e3f59 kind=1 size=1 children=0 note="homing"
+  22 id=0x36c1c83b51f24394 kind=15 size=5 children=2 note="effect"
+  23 id=0xffb5be9be2e469cc kind=13 size=4 children=1 note="buff"
+  24 id=0x9adc623a805c87c6 kind=10 size=4 children=0 note="multiplier"
+  25 id=0x13cdc5ede73d2fd7 kind=13 size=4 children=1 note="debuff"
+  26 id=0x8113fe7ea2b16969 kind=4 size=4 children=0 note="amount"
+  27 id=0xde28f0f5118acc24 kind=14 size=44 children=1 note="backups"
+  28 id=0x0000000000000000 kind=13 size=22 children=6 note="element"
+  29 id=0x7f6308be8ab37fc0 kind=10 size=4 children=0 note="damage"
+  30 id=0x1733055702acb1d2 kind=10 size=4 children=0 note="speed"
+  31 id=0x4f31c5309e13e932 kind=4 size=4 children=0 note="penetration"
+  32 id=0xa5013e9ad5caeda4 kind=6 size=4 children=0 note="channel"
+  33 id=0xad6587bc602e3f59 kind=1 size=1 children=0 note="homing"
+  34 id=0x36c1c83b51f24394 kind=15 size=5 children=2 note="effect"
+  35 id=0xffb5be9be2e469cc kind=13 size=4 children=1 note="buff"
+  36 id=0x9adc623a805c87c6 kind=10 size=4 children=0 note="multiplier"
+  37 id=0x13cdc5ede73d2fd7 kind=13 size=4 children=1 note="debuff"
+  38 id=0x8113fe7ea2b16969 kind=4 size=4 children=0 note="amount"
+  39 id=0xf901aa0340249a41 kind=14 size=68 children=1 note="attachments"
+  40 id=0x0000000000000000 kind=13 size=8 children=2 note="element"
+  41 id=0x6a771618f6fe31d1 kind=4 size=4 children=0 note="slot"
+  42 id=0xeef9d1358ae7b4e6 kind=10 size=4 children=0 note="power"
+
+# tables/examples/Tables.schema :: WeaponConfig
+key=weaponconfig
+entries_count=11
+layout_size=191
+digest_size=39
+full_hash=0xd7c60dc6bdce60fe
+layout_only_hash=0x1b545259baa4f450
+digest_only_hash=0x4b8dd13650fb139d
+layout_hex=0b000000c3b0c4860d7877050d1600000006000000c07fb38abe08637f0a0400000000000000d2b1ac02570533170a040000000000000032e9139e30c5314f040400000000000000a4edcad59a3e01a5060400000000000000593f2e60bc8765ad0101000000000000009443f2513bc8c1360f0500000002000000cc69e4e29bbeb5ff0d0400000001000000c6875c803a62dc9a0a0400000000000000d72f3de7edc5cd130d04000000010000006969b1a27efe1381040400000000000000
+digest_hex=5200000000000000000a0000000000000042060000005200000000000000006400000000000000
+digest_R_count=2
+digest_B_count=1
+entries:
+   0 id=0x0577780d86c4b0c3 kind=13 size=22 children=6 note="WeaponConfig"
+   1 id=0x7f6308be8ab37fc0 kind=10 size=4 children=0 note="damage"
+   2 id=0x1733055702acb1d2 kind=10 size=4 children=0 note="speed"
+   3 id=0x4f31c5309e13e932 kind=4 size=4 children=0 note="penetration"
+   4 id=0xa5013e9ad5caeda4 kind=6 size=4 children=0 note="channel"
+   5 id=0xad6587bc602e3f59 kind=1 size=1 children=0 note="homing"
+   6 id=0x36c1c83b51f24394 kind=15 size=5 children=2 note="effect"
+   7 id=0xffb5be9be2e469cc kind=13 size=4 children=1 note="buff"
+   8 id=0x9adc623a805c87c6 kind=10 size=4 children=0 note="multiplier"
+   9 id=0x13cdc5ede73d2fd7 kind=13 size=4 children=1 note="debuff"
+  10 id=0x8113fe7ea2b16969 kind=4 size=4 children=0 note="amount"
+
+# tables/messages/Messages.schema :: User
+key=user
+entries_count=2
+layout_size=38
+digest_size=0
+full_hash=0x353c49c5bfd611e4
+layout_only_hash=0x353c49c5bfd611e4
+digest_only_hash=0xcbf29ce484222325
+layout_hex=02000000d293b801f0818fa40d1400000001000000861b638ebaadbcc40c1400000000000000
+digest_hex=
+entries:
+   0 id=0xa48f81f001b893d2 kind=13 size=20 children=1 note="User"
+   1 id=0xc4bcadba8e631b86 kind=12 size=20 children=0 note="name"
+
+# tables/messages/Messages.schema :: Script
+key=script
+entries_count=3
+layout_size=55
+digest_size=0
+full_hash=0xd588b514f822228f
+layout_only_hash=0xd588b514f822228f
+digest_only_hash=0xcbf29ce484222325
+layout_hex=030000002ac93f163d5565950d48000000020000007606d7eb0d2dc5030c440000000000000007594f69ada54bbf080400000000000000
+digest_hex=
+entries:
+   0 id=0x9565553d163fc92a kind=13 size=72 children=2 note="Script"
+   1 id=0x03c52d0debd70676 kind=12 size=68 children=0 note="path"
+   2 id=0xbf4ba5ad694f5907 kind=8 size=4 children=0 note="line"
+
