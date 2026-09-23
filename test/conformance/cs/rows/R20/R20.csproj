@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell-cs-r20</AssemblyName>
+    <TablesGeneratedDir Condition
+="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(TablesGeneratedDir)/r1/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/r2/*.cs" />
+  </ItemGroup>
+
+</Project>
