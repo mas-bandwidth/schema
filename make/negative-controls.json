@@ -21,6 +21,7 @@
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",

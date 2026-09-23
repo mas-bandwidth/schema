@@ -238,6 +238,14 @@ jobs:
       - name: the toolchain gate goes red without the toolchains it pins
         run: make toolchain-negative-control
 
+      # THE PYTHON LEG (#1400). Each ported row is a self-checking script, and
+      # until this step no job ran one: the row was documentation of a rule,
+      # not a gate over it. The runner's own python3 is enough; the target
+      # refuses a run that found no rows. Its control is in the base group of
+      # make/negative-controls.json.
+      - name: the python leg's rows pass
+        run: make tables-py-packet
+
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
       # so that what it uploads is the cache AFTER vet and the whole test
       # suite have filled it, which is the widest cache this tree produces.
