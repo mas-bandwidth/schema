@@ -531,6 +531,7 @@
         "packet-defaults-java-negative-control",
         "packet-utf8-java-negative-control",
         "packet-wide-java-negative-control",
+        "tables-java-allocator-runtime-negative-control",
         "tables-java-cook-extent-negative-control",
         "tables-java-fuzz-negative-control",
         "tables-java-runtime-home-negative-control"
