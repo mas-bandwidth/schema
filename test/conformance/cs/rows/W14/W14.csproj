@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- cell-cs-w14 — plan dst == offsetof/sizeof -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell-cs-w14</AssemblyName>
+    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(TablesGeneratedDir)/k1/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/rt1/*.cs" />
+  </ItemGroup>
+
+</Project>

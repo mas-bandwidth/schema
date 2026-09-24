@@ -732,3 +732,79 @@ table Bag
 		t.Fatal("a unit of one plain scalar table has no fixed roots, want one")
 	}
 }
+
+// W14: THE PLAN'S DESTINATIONS ARE THE PORT'S OWN OFFSETS AND SIZES
+// (docs/FIXED-FORM-ALGORITHM.md §7: "the build-time assertion that the plan's
+// destinations equal its own `offsetof` and `sizeof`").
+//
+// The C++ reference emits a `static_assert` per member tying the plan's row to
+// its compiler's `offsetof`/`sizeof` (internal/codegen/cpptable/fixedform.go,
+// emitFixedLayoutAsserts). This language has no struct to take an offsetof of:
+// the reader's storage IS the canonical body image, so the leg's own offsets are
+// the PACKED wire positions and its own sizeof is the constant body
+// (`TestFixedLayoutMatchesReference` pins the body to the reference's 1236).
+// The plan rows are `fixedDst`, emitted verbatim as `<Name>FixedDst`
+// (fixedmodule.go) and consumed by the plan compiler the lineage lays down
+// (fixedruntime.go, `TableFixedDstOff`/`Aux`/`Stride`). Nothing else on the leg
+// reads those columns — the identity plan is one whole-body copy — so a row that
+// drifted would misplace every value a compiled (lineage) plan lands and no
+// identity-path test could see it.
+//
+// This is the Java leg's idiom (javatable's TestBytesNDstRowIsAnArray): pin the
+// representative rows of one of every construct by name, against the packed wire
+// law. The values below are hand-derived from the declared widths, not copied
+// from the walk, and the body is the reference's own.
+func TestFixedPlanDestinationsAreThePortsOwnOffsets(t *testing.T) {
+	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
+	st := findTable(t, u, "FixedTable")
+	w := fixedWalkRoot(st)
+
+	// the first row with this note. `entity_id`, `damage` and `delta` repeat
+	// inside arrays; the first occurrence is the element the plan walks first.
+	row := func(note string) (fixedDst, bool) {
+		for i, e := range w.entries {
+			if e.note == note {
+				return w.dst[i], true
+			}
+		}
+		return fixedDst{}, false
+	}
+	expect := func(note string, dst, stride, aux int64, counted, arg int) {
+		t.Helper()
+		d, ok := row(note)
+		if !ok {
+			t.Fatalf("no plan row named %q — the walk no longer lays the construct out", note)
+		}
+		if d.dst != dst || d.stride != stride || d.aux != aux || d.counted != counted || d.arg != arg {
+			t.Errorf("%s plan row = {dst:%d stride:%d aux:%d counted:%d arg:%d}, want {dst:%d stride:%d aux:%d counted:%d arg:%d}",
+				note, d.dst, d.stride, d.aux, d.counted, d.arg, dst, stride, aux, counted, arg)
+		}
+	}
+
+	// the packed running offsets: scalars land at their own byte, an array at
+	// its element base with its count one count-width back, a string at its
+	// length with its buffer behind it, bytes the ARRAY way round.
+	expect("session_id", 12, 0, 0, 0, 0) // after sequence u32, ack_sequence u32, ack_bits u32
+	expect("entities", 56, 51, 52, 1, 0) // counted array: dst element base, aux count
+	expect("entity_id", 0, 0, 0, 0, 0)   // first element of entities
+	expect("pos_x", 4, 0, 0, 0, 0)       // packed inside the element, stride 51
+	expect("damage", 41, 0, 0, 0, 0)     // the element's last field
+	expect("stats", 468, 8, 464, 1, 0)   // the second counted array
+	expect("delta", 4, 0, 0, 0, 0)
+	expect("game_event", 1108, 0, 1108, 0, 0)  // union: the tag at the field's own byte
+	expect("loadout", 1122, 1, 0, 0, 0)        // a fixed array of bool bytes
+	expect("player_name", 1126, 0, 1130, 0, 1) // string: dst length, aux buffer, utf8
+	expect("payload", 1149, 1, 1145, 1, 3)     // bytes: dst buffer, aux length, bytes flavour
+	expect("flux", 1205, 0, 0, 0, 0)           // int128: sixteen bytes
+	expect("idle_ticks", 1232, 0, 0, 0, 0)     // the last field
+
+	// and the last row's sizeof reaches the body: the plan tiles the record.
+	if body := fixedTypeBytes(st); body != 1236 {
+		t.Fatalf("the body is %d, the reference's is 1236", body)
+	} else {
+		d, _ := row("idle_ticks")
+		if d.dst+4 != body {
+			t.Errorf("the last field lands at %d with four bytes, and the body is %d — the plan does not tile the record", d.dst, body)
+		}
+	}
+}

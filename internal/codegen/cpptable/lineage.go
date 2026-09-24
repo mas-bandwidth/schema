@@ -2,7 +2,6 @@ package cpptable
 
 import (
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -302,12 +301,21 @@ func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnow
 		if ir.TableKindSigned(ir.TableScalarKind(wf)) {
 			sgn = 1
 		}
+		// THE WRITER'S BOUNDS ON THE RAW SCALE (schema#1811): the pass compares
+		// the stored raw, so a fixed field's whole-unit bounds are shifted by F
+		// first (ir.TableRawRange, the helper every other clamp uses). A bound
+		// that does not fit the int64 lanes bounds nothing here: skip it rather
+		// than clamp to a zero it never declared.
+		lo, hi, ok := ir.TableRawRange(wf)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			continue
+		}
 		out = append(out, fixedKnownRange{
 			dst:    uint32(fl.Offset),
 			width:  uint8(w),
 			signed: sgn,
-			lo:     bigInt64(wf.IntMin),
-			hi:     bigInt64(wf.IntMax),
+			lo:     lo.Int64(),
+			hi:     hi.Int64(),
 		})
 	}
 	return out
@@ -323,16 +331,6 @@ func knownRangeField(st *ir.Struct, name string) *ir.Field {
 		}
 	}
 	return nil
-}
-
-func bigInt64(n *big.Int) int64 {
-	if n == nil {
-		return 0
-	}
-	if n.IsInt64() {
-		return n.Int64()
-	}
-	return 0
 }
 
 func peerTable(u *ir.Unit, wireName string) *ir.Struct {

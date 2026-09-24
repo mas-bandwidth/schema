@@ -1109,6 +1109,149 @@ fn the_layout_validation() {
 }
 
 // ---------------------------------------------------------------------------
+// W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+// (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). The plan's source offsets are
+// arithmetic over sizes a WRITER wrote down, so a layout that passes every
+// rule of §1.1 and still names a byte past `root.size` is refused WHOLE and
+// never partly compiled, under `layout_record_too_large`.
+//
+// THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
+// field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
+// never parses a stranger — unknown hash is `layout_newer` — so the bound is
+// asserted on `table_fixed_compile` directly, which is the path a known older
+// writer still takes. A Load of the same bytes still refuses, and sets nothing.
+//
+// WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+// `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+// of no elements — and the compiler takes the head from the READER's own row
+// (`counted`), so a reader whose field carries a live count subtracts four
+// from zero. The elements then land at `their_at + 4`, past a record that
+// ends at four.
+fn the_record_bound() {
+    // the ids are READ OUT of this build's own layout rather than spelled as
+    // hashes, so the case does not quietly stop naming the fields it means
+    let mine = tblfx1::TableFixedBlock::parse(&tblfx1::FX_ROOT_FIXED_BLOCK)
+        .expect("my own block parses");
+    let root_id = mine.entry(0).id;
+    let mut keep_id = 0u64;
+    let mut blob_id = 0u64;
+    let mut blob_elem_id = 0u64;
+    let mut label_id = 0u64;
+    for i in 1..mine.count() {
+        let e = mine.entry(i);
+        if e.kind == 8 && e.size == 4 && keep_id == 0 {
+            keep_id = e.id; // `keep`, a uint32
+        }
+        if e.kind == 12 && label_id == 0 {
+            label_id = e.id; // `label`, a string(8)
+        }
+        if e.kind == 14 && i + 1 < mine.count() {
+            // `blob`, bytes(6): an array of u8
+            let el = mine.entry(i + 1);
+            if el.kind == 6 && el.size == 1 {
+                blob_id = e.id;
+                blob_elem_id = el.id;
+            }
+        }
+    }
+    check(
+        root_id != 0 && keep_id != 0 && blob_id != 0 && label_id != 0,
+        "W10: the ids this case names are the ids this build's own layout carries",
+    );
+
+    // 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`
+    {
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, 4);
+        put_entry(&mut layout, root_id, 13, 4, 2); // a record body of FOUR bytes
+        put_entry(&mut layout, keep_id, 8, 4, 0); // the four bytes, at 0
+        put_entry(&mut layout, blob_id, 14, 0, 1); // an array of NO bytes, at 4
+        put_entry(&mut layout, blob_elem_id, 6, 1, 0);
+        let theirs = tblfx1::TableFixedBlock::parse(&layout);
+        check(
+            theirs.is_ok(),
+            "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND",
+        );
+        let theirs = theirs.expect("the hostile layout parses");
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        let made = tblfx1::table_fixed_compile(
+            &theirs,
+            &mine,
+            &tblfx1::FX_ROOT_FIXED_COUNTED,
+            &mut plan,
+            &mut remap,
+            &mut report,
+        );
+        check(
+            made.is_none(),
+            "W10: COMPILE answers None (hostile) for an entry past the writer's record size",
+        );
+        check(
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutRecordTooLarge,
+            "W10: COMPILE names layout_record_too_large for an entry past the writer's record size",
+        );
+        let f = file_of(&layout);
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        values[0].keep = 7; // the destination's BEFORE state, which a refusal must not touch
+        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, &f, &mut plan, &mut remap, &mut report);
+        check(
+            n.is_none() && report.refused,
+            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)",
+        );
+        check(
+            report.unknown == 0
+                && report.kind_mismatch == 0
+                && report.widened == 0
+                && report.clamped == 0
+                && !report.malformed,
+            "W10: the refusal sets nothing and counts nothing",
+        );
+        check(
+            values[0].keep == 7 && values[0].blob_length == 0,
+            "W10: NOT PARTLY COMPILED — no entry of the plan ran",
+        );
+    }
+
+    // 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
+    //    overrun — a text entry whose length word and payload END EXACTLY at
+    //    `root.size` — is a layout with nothing wrong with it, and a bound that
+    //    refused it would be a bound that refuses the wire.
+    {
+        let mut layout = vec![0u8; 4];
+        put32(&mut layout, 0, 3);
+        put_entry(&mut layout, root_id, 13, 16, 2); // four bytes, then a string(8)'s twelve
+        put_entry(&mut layout, keep_id, 8, 4, 0);
+        put_entry(&mut layout, label_id, 12, 12, 0); // src 4, +4 the length word, 12 bytes to 16
+        let theirs = tblfx1::TableFixedBlock::parse(&layout);
+        check(
+            theirs.is_ok(),
+            "W10: the boundary layout passes all seven rules of §1.1",
+        );
+        let theirs = theirs.expect("the boundary layout parses");
+        let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut remap = [0u16; 1024];
+        let mut report = tblfx1::TableFixedReport::default();
+        let made = tblfx1::table_fixed_compile(
+            &theirs,
+            &mine,
+            &tblfx1::FX_ROOT_FIXED_COUNTED,
+            &mut plan,
+            &mut remap,
+            &mut report,
+        );
+        check(
+            made.is_some() && !report.refused && !report.malformed,
+            "W10: a text entry ending EXACTLY at root.size is not a refusal",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // THE UNION, ON THE REFERENCE'S OWN BENCH CORPUS (docs/SPEC-TABLES.md §15)
 //
 // bench/paired/corpus/bench_fixed.bin is 64 records of BenchMixed written by
@@ -1851,6 +1994,46 @@ fn the_guard_is_the_whole_tag() {
 }
 
 // ---------------------------------------------------------------------------
+// A WIDTH-8 ORDINAL IS READ WHOLE THROUGH A 64-BIT TEMPORARY
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, `ordinal` row; the twin of
+// test/tables/fixedform_main.cpp `owed8_width8_ordinal_read_whole_case`).
+//
+// A uint32_t temporary truncates a 64-bit ordinal whose low four bytes are
+// zero: 2^32 reads as 0, which is neither nonzero nor past the writer's count,
+// so it lands None WITHOUT counting a clamp — the same silent bytes as the
+// right answer with the counter missing. The plan is data, so the case is
+// reached by BUILDING THE ENTRY — an `ordinal` op at width 8 over a remap
+// whose count is 1 — and running the loop over it.
+// ---------------------------------------------------------------------------
+
+fn the_width8_ordinal_read_whole() {
+    let entry = tblfu1::TableFixedEntry {
+        src: 0,
+        dst: 0,
+        size: 8,
+        aux: 0,
+        dstsize: 8,
+        op: tblfu1::TableFixedOp::Ordinal,
+        ..tblfu1::TableFixedEntry::default()
+    };
+    let remap: [u16; 2] = [1, 1]; // one variant, remapped to 1
+    // 2^32: needs all eight bytes, so a 32-bit temporary would read 0.
+    let src: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
+    let mut dst = [0xABu8; 8];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[entry], &remap, &src, &mut dst, &mut report);
+    let landed = u64::from_le_bytes(dst);
+    check(
+        landed == 0,
+        "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant",
+    );
+    check(
+        report.clamped >= 1,
+        "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4).
 //
 // A fixed record is a positional image and the one read loop moves bytes: it
@@ -1929,6 +2112,90 @@ fn the_declared_range() {
     check(
         back[0].i8_span == -128 && report.clamped == 0,
         "the range: a bound ON the storage width's own limit clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// THE LAST BOUND: bits(N) IS HELD BY ITS OWN WIDTH (docs/SPEC-TABLES.md §3.4,
+// §4; docs/FIXED-FORM-ALGORITHM.md §5.4).
+//
+// A `bits(N)` whose N is narrower than the four- or eight-byte lane it rides
+// in holds no declared min/max — its range is its WIDTH — so the bounds pass
+// clamps it to 2^N - 1. A `bits(N)` that fills its lane exactly emits no
+// comparison at all, because every value the lane holds is in range. The
+// C++ twin wrote this case as a `-fsyntax-only` compile (`tables-clamp-limits`)
+// rather than a runtime read; this leg already had the table in tabledemo
+// (tables/examples/Ranges.schema) and pins the value, not just the emission.
+// ---------------------------------------------------------------------------
+
+fn the_declared_width() {
+    let mut one = tabledemo::RangedWidthsRow::default();
+    one.b12 = 3000; // well inside bits(12)'s 0..=4095
+    one.b48 = 0x1234_5678_9ABC; // well inside bits(48)'s 0..=2^48-1
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_widths_fixed_measure(1)];
+    check(
+        tabledemo::ranged_widths_fixed_save(&values, &mut file) == Some(file.len()),
+        "the width: the record writes",
+    );
+
+    // THE CLEAN READ FIRST, so the clamp below is the forgery and not the pass.
+    let mut back = [tabledemo::RangedWidthsRow::default(); 2];
+    let mut plan = [tabledemo::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the width: the clean record reads");
+    check(
+        back[0].b12 == 3000 && back[0].b48 == 0x1234_5678_9ABC && report.clamped == 0,
+        "NEGATIVE CONTROL: a value inside bits(N)'s width lands untouched and clamps NOTHING",
+    );
+
+    // AND NOW THE FORGERY: `b12` is bits(12) and sits at body offset 20 (its
+    // siblings b8, b16, b32, b64 ride at 0, 4, 8 and 12), so 4096 is a value
+    // the declaration says cannot exist.
+    let body = records_at(&file) + 8;
+    let mut forged = file.clone();
+    forged[body + 20] = 0x00;
+    forged[body + 21] = 0x10; // 4096 = 0x1000 little-endian, one past 4095
+    forged[body + 22] = 0x00;
+    forged[body + 23] = 0x00;
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the width: the forged record still reads");
+    check(
+        back[0].b12 == 4095,
+        "the width: a value past 2^N-1 lands AT 2^N-1",
+    );
+    check(
+        report.clamped == 1 && !report.malformed && !report.refused,
+        "the width: and counts ONE clamped — not damage, and not a refusal",
+    );
+
+    // the other width: bits(48)'s top is 2^48-1, and b48 sits at body offset 24.
+    let mut forged = file.clone();
+    for i in 0..8 {
+        forged[body + 24 + i] = 0xFF; // a u64 past 2^48-1
+    }
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b48 == 0xFFFF_FFFF_FFFF && report.clamped == 1,
+        "the width: bits(48) past its top lands AT 2^48-1 and counts one",
+    );
+
+    // A SPAN THAT IS THE LANE'S OWN IS NOT A BOUND, and no comparison is
+    // emitted for it: `b32` is bits(32) in a 4-byte lane and `b64` is bits(64)
+    // in an 8-byte one, so every value the lane holds is in range.
+    let mut forged = file.clone();
+    for i in 0..4 {
+        forged[body + 8 + i] = 0xFF; // b32 = 0xFFFFFFFF, and legal
+    }
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].b32 == 0xFFFF_FFFF && report.clamped == 0,
+        "the width: a bits(N) that fills its lane clamps nothing",
     );
 }
 
@@ -2013,6 +2280,114 @@ fn the_text_content_rule(dir: &str) {
     check(
         !report.malformed && values[0].blob[0] == 0x80,
         "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// P3 — HOSTILE BYTES, SWEEP + SANITIZER (docs/FIXED-FORM-ALGORITHM.md §7 item 5).
+//
+// "a byte-flip fuzz over the whole file, under a sanitizer, and it is not
+// optional — every offset is arithmetic over sizes a stranger wrote down, so
+// every byte, one bit at a time, is answered one of three ways and never a
+// fourth: a refusal by name, a `malformed` read, or a read that lands values".
+// The port of the C++ reference's `P3: mutate every record byte, both paths`
+// (test/tables/fixedform_properties.cpp:522, poison set :170-171); this leg
+// sweeps the WHOLE file — header, layout and both records — because the doc's
+// item 5 says the fuzz is over the whole file, not one record. The sanitizer
+// half is the build itself: this binary runs under BOTH `cargo run` AND
+// `cargo run --release` (make/rust.mk `tables-rust-fixedform`), so every
+// out-of-bounds slice is a checked panic in either mode, and a panic anywhere
+// in the sweep aborts the run — the fourth answer never arrives quietly.
+//
+// THE SITE is the generated load's guards (internal/codegen/rusttable/fixedform.go:
+// the empty/short/reserved checks at :1090-1106, the length-held block slice at
+// :1110-1112, the byte-compared layout at :1141, the ragged-tail
+// `is_multiple_of` at :1187) and the runtime's bounds-checked run
+// (internal/codegen/rusttable/fixedruntime.go:418 `table_fixed_run`, every op
+// through `.get()` answering `malformed`), with the scatter clamping every
+// stranger-held count, length, tag and ordinal to the reader's bound and the
+// refusal contract at fixedruntime.go:254 (`refuse`: nothing decoded, no
+// counter moves, `malformed` does not fire).
+// ---------------------------------------------------------------------------
+
+fn the_hostile_sweep(dir: &str) {
+    // THE CLEAN READ FIRST, so what follows is the forgery and not the pass:
+    // the legitimate value the rule admits must NOT fire.
+    let golden = slurp(dir, "fx1.bin");
+    let mut values = [tblfx1::FxRootRow::default(); 8];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+    check(
+        n == Some(2) && report == tblfx1::TableFixedReport::default(),
+        "P3 hostile sweep: the untouched file loads clean, so every refusal below is the forgery",
+    );
+
+    // THE SWEEP: the reference's own poison set, every offset of the whole file.
+    const POISON: [u8; 6] = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
+    let mut refused: u32 = 0;
+    let mut damaged: u32 = 0;
+    let mut landed: u32 = 0;
+    for at in 0..golden.len() {
+        for &p in &POISON {
+            let mut hit = golden.clone();
+            hit[at] = p;
+            let mut report = tblfx1::TableFixedReport::default();
+            let n = tblfx1::fx_root_fixed_load(&mut values, &hit, &mut plan, &mut remap, &mut report);
+            // THREE ANSWERS NEVER A FOURTH. A panic is the fourth: it unwinds
+            // out of the load and fails the whole binary, so reaching here IS
+            // the sanitizer's verdict for this mutation.
+            let named = n.is_none()
+                && report.refused
+                && report.reason != tblfx1::TableFixedReason::None
+                && !report.malformed;
+            let hurt = report.malformed && !report.refused;
+            let clean = n.is_some() && !report.refused && !report.malformed;
+            if named {
+                refused += 1;
+            } else if hurt {
+                damaged += 1;
+            } else if clean {
+                landed += 1;
+            } else {
+                check(
+                    false,
+                    &format!(
+                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a fourth answer (n={n:?} refused={} malformed={})",
+                        report.refused, report.malformed,
+                    ),
+                );
+            }
+        }
+    }
+    let total = (golden.len() * POISON.len()) as u32;
+    check(
+        refused + damaged + landed == total,
+        &format!(
+            "P3 hostile sweep: all {total} mutations answered, none a fourth (refused={refused} malformed={damaged} landed={landed})",
+        ),
+    );
+    check(
+        refused > 0 && damaged > 0 && landed > 0,
+        &format!(
+            "P3 hostile sweep: all three answers fired, never only one (refused={refused} malformed={damaged} landed={landed})",
+        ),
+    );
+
+    // AND THE LENGTH IS STRANGER-CONTROLLED TOO: one byte off the end is a
+    // ragged tail — `malformed`, never a silent short read.
+    let mut short = golden.clone();
+    short.pop();
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut values, &short, &mut plan, &mut remap, &mut report);
+    check(
+        n.is_none() && report.malformed && !report.refused,
+        "P3 hostile sweep: a one-byte-short file is DAMAGE, not a short read",
+    );
+    println!(
+        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",
+        golden.len(),
     );
 }
 
@@ -2274,10 +2649,14 @@ fn main() {
     the_negative_controls(&dir);
     the_form_header_probes(&dir);
     the_layout_validation();
+    the_record_bound();
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
+    the_width8_ordinal_read_whole();
     the_declared_range();
+    the_declared_width();
     the_text_content_rule(&dir);
+    the_hostile_sweep(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");
