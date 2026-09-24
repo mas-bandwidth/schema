@@ -61,21 +61,3 @@ func TestRowR31(t *testing.T) {
 		t.Error("should have comment explaining arg has no byte lane")
 	}
 }
-
-func findRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "cmd", "schema")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find repo root")
-		}
-		dir = parent
-	}
-}
