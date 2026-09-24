@@ -412,13 +412,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
 	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("// destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
-	g.pf("// then the arms: the entries that are nearly all of a plan never test a\n")
-	g.pf("// guard at all.\n")
+	g.pf("// destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.pf("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
+	g.pf("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.pf("// FIRST, then the arms: the entries that are nearly all of a plan never\n")
+	g.pf("// test a guard at all.\n")
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for _, e := range plan {
 		guard := "kTableFixedNoGuard"
@@ -429,8 +431,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d }, // %s\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, e.Note)
+		argw2 := e.ArgW2
+		if argw2 == 0 {
+			argw2 = 1
+		}
+		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
+		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
+		guard2 := "kTableFixedNoGuard"
+		if e.Guard2 != ir.TableFixedNoGuard {
+			guard2 = fmt.Sprintf("%du", e.Guard2)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, // %s\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
@@ -483,13 +495,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
+	// A committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader
+	// that measured first would answer `malformed` for every real file of the two
+	// forms it is supposed to name. Only a file with NO FIRST BYTE is malformed
+	// before the byte is read; the twenty-byte minimum and the seven reserved
+	// bytes follow it.
+	g.pf("    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = true;\n")
 	g.pf("        report->reason = data[0] == kTableWireForm ? previous_form\n")
 	g.pf("                       : data[0] == kTableWireMessageForm ? message_form_as_file\n")
 	g.pf("                       : newer_form;\n")
 	g.pf("        return -1;\n    }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
+	g.pf("    // one is `malformed`, which is what keeps them spendable later.\n")
+	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
+	g.pf("    {\n        if ( data[i] != 0 ) { report->malformed = true; return -1; }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
 	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
@@ -707,6 +730,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedCount"
 	case ir.TableFixedOpText:
 		return "kTableFixedText"
+	case ir.TableFixedOpBool:
+		return "kTableFixedBool"
 	}
 	return "kTableFixedCopy"
 }

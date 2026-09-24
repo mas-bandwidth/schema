@@ -328,7 +328,7 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 # SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
 .PHONY: tables-dart-versioning
 tables-dart-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning'
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning|TestFixedCompiledPlanTagPastArmSet'
 	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-dart-fixed-form-negative-control

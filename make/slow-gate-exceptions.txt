@@ -1,0 +1,42 @@
+# THE WRITTEN EXCEPTION LIST for `make slow-gate-scan` (schema#988, G5).
+#
+# A recipe line that runs `go test` on a package holding slowtest-gated tests
+# and sets NEITHER SCHEMA_SLOW=1 NOR SCHEMA_REQUIRE_CORPUS goes green having
+# run nothing. tools/slowgatescan fails on every such line BY NAME. A line may
+# stand only if it is named here WITH A REASON — the point of this file is that
+# a deliberate omission is written where the next reader trips over it, and
+# silence never passes for a decision again.
+#
+# Format: target<TAB>package<TAB>reason. All three fields are required.
+#
+# An entry that matches no recipe line any more FAILS THE SCAN TOO: a stale
+# excuse is exactly how the next bare `go test` slips in behind a line nobody
+# reads. Delete it when the line it excuses is gone or armed.
+
+# --- the two umbrella lines: the fast half, by design (issue completion gate 2)
+#
+# `go test ./...` is the DEFAULT half — pure Go, under two minutes, the half a
+# child will actually run (internal/slowtest, the owner's 1-2 minute rule). The
+# slow half is NOT left to silence and NOT left to nightly: `test` and `test-go`
+# depend on the fourteen positive gate targets, and every one of those runs its
+# `go test` through test/slowgate/proof, which sets SCHEMA_SLOW=1, refuses a
+# gate skip in its own log and requires a named `--- PASS` per gate. So the
+# skips under this line are accounted for by the targets in the same `make`
+# invocation, and `make slow-gate-coverage` checks that accounting test by test
+# against a real transcript rather than trusting this paragraph.
+test	./...	the fast half by design (the 1-2 minute rule); the slow half runs in the fourteen positive gate targets `test`/`test-go` depend on, each through test/slowgate/proof, and `make slow-gate-coverage` proves test by test that no gated test is left to nobody
+update-goldens	./...	regenerates goldens with -update; it is the pure-Go golden half, and the toolchain gates it cannot regenerate are run by the fourteen positive gate targets (same accounting as `test`)
+slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests skip at the gate under a DEFAULT `go test ./...`, so setting the variable here would erase the very thing being counted
+
+# --- lines whose selected tests are NOT gated (measured, not assumed)
+#
+# The scan is package-granular on purpose: it cannot know which tests a -run
+# pattern selects without running them. These three lines name tests that reach
+# no slowtest.Gate at all — measured on darwin at this head with a plain
+# `go test -v -run <the same pattern>`: 0 lines of slowtest's skip message.
+# `make slow-gate-coverage` is the check that keeps that true.
+tables-go-block-fill-refuser	./internal/codegen/gotable	TestBlockFillRefuser reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.03s under a plain go test); it emits and reads in-process
+tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlockFillRefuserNegativeControl reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.02s under a plain go test)
+tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
+
+

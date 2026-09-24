@@ -1602,7 +1602,15 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 756;
-static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+// INLINE, not static: this blob is odr-used by the inline Announce()
+// below, and a static array in a header is a DIFFERENT entity in every
+// unit that includes it, which is the ODR violation [basic.def.odr] forbids
+// an inline function's definition to carry — and which GCC turns into a link
+// error by placing such an array in the referencing COMDAT group, where the
+// group the linker discards strands any surviving reference to it. One
+// entity, its own COMDAT, and every definition of it token-identical because
+// there is only one header that writes it.
+inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x01, 0x01, 0x09, 0x9e, 0x15, 0xed, 0x01, 0x9b, 0x02, 0x01, 0xab, 0x02,
     0x0e, 0xcc, 0x05, 0x06, 0xc9, 0x05, 0x30, 0xb1, 0x3a, 0xff, 0x4a, 0xd9,
     0xb1, 0x40, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x11, 0x20, 0xea,
@@ -2220,10 +2228,13 @@ constexpr uint8_t kTableFixedForm = 3;
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
-// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other four are what a plan compiled from another writer's layout adds.
+// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
+// bool; the rest are what a plan compiled from another writer's layout adds.
+// kTableFixedPresent is T into ?T and keeps its opcode 7; bool is 8, never 7.
 // NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
 // after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
+// Bool is not a range: it is byte != 0, in this loop, on BOTH plans, so a
+// memcpy into a C++ bool never lands 0x02 as an object holding 2 (fix 2).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2234,6 +2245,7 @@ enum : uint8_t
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
+    kTableFixedBool    = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
 };
 
 // meta on a kTableFixedText entry
@@ -2313,6 +2325,16 @@ struct TableFixedEntry
     // sits last so a ten-value aggregate still names op, arg, meta, dstsize
     // and sign in that order.
     uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2459,6 +2481,16 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
             break;
         }
+        case kTableFixedBool:
+        {
+            // A BOOL LANDS AS byte != 0. A memcpy into a C++ bool is the bug:
+            // 0x02 is not a value the object may hold, and a later load of it
+            // is undefined behaviour (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            uint8_t * d = dst + p.dst;
+            const uint8_t * s = src + p.src;
+            for ( uint32_t i = 0; i < p.size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+            break;
+        }
         case kTableFixedCount:
         {
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
@@ -2497,11 +2529,15 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             memcpy( &raw, src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
-            if ( raw != 0 )
-            {
-                if ( raw <= (uint64_t) table[0] ) { v = table[raw]; }
-                if ( v == 0 ) { clamped++; }
-            }
+            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
+            // AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
+            // (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
+            // identity plan's bounds pass does, so the SAME forged bytes land
+            // the SAME clamped == 1 on either plan. The test is the WRITER's
+            // top ordinal, table[0], and the pass that runs after this loop
+            // tests THIS reader's own top value — which a remapped 0 never
+            // trips, so the two never count the one event twice.
+            else if ( raw != 0 ) { clamped++; }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -2532,7 +2568,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
@@ -2572,6 +2612,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     {
         const TableFixedEntry & p = plan[i];
         if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -2643,7 +2684,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
-        default: lands[1] = e.dst + e.size; break; // copy, const
+        default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
 
@@ -3058,8 +3099,11 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     {
         if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
-        const bool guard_out = e.guard != kTableFixedNoGuard &&
-            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
@@ -3111,13 +3155,19 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint64_t arg );
+                                    uint32_t guard, uint64_t arg, int census );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
+//
+// The census flag is whether THIS entry is the FIRST time the peer's field is
+// seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
+// peer field dropped from a [4]Item is counted four times and the report says 4
+// where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
                                      const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                      const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                     uint32_t guard, uint64_t arg )
+                                     uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -3132,7 +3182,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
             if ( tc.id == mc.id )
             {
-                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
                 break;
             }
             their_off += tc.size;
@@ -3152,7 +3202,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             if ( TableFixedEntryAt( mine, mc_at ).id == tc.id ) { named = true; break; }
             mc_at += TableFixedSubtree( mine, mc_at );
         }
-        if ( !named && c.report != NULL ) { c.report->unknown++; }
+        if ( !named && census && c.report != NULL ) { c.report->unknown++; }
         tc_at += TableFixedSubtree( theirs, tc_at );
     }
 }
@@ -3160,7 +3210,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint64_t arg )
+                                    uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -3186,7 +3236,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         TableFixedEntry e;
         e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
         TableFixedPush( c, e );
-        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
         return;
     }
     if ( te.kind != me.kind )
@@ -3210,14 +3260,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
         {
-            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
+            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
             break;
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
@@ -3227,18 +3277,18 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t head = d.counted ? 4u : 0u;
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
-            uint32_t their_base = their_at + head;
+            const uint32_t their_base = their_at + head;
+            const uint32_t n = their_n < my_n ? their_n : my_n;
             if ( d.counted )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = aux_at; e.size = their_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                 TableFixedPush( c, e );
             }
-            const uint32_t n = their_n < my_n ? their_n : my_n;
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
-                                        mine, mi + 1, dst, at + i * d.stride, guard, arg );
+                                        mine, mi + 1, dst, at + i * d.stride, guard, arg, census && i == 0 );
             }
             break;
         }
@@ -3256,7 +3306,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
-                                            mine, mel, dst, at + k * d.stride, guard, arg );
+                                            mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
                     break;
                 }
             }
@@ -3309,34 +3359,30 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
+                                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
-            // Nested: an arm inside an arm answers to the OUTER tag, which is
-            // the one that decides whether any of it is there at all. Identity
-            // rewrites inner-guarded leaves onto that tag; the compiled path
-            // does the same so a foreign outer arm is not read as this inner
-            // union (#876 card 13).
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
             if ( guard != kTableFixedNoGuard )
             {
                 const uint8_t outer_w = saved_argw ? saved_argw : 1u;
-                for ( int32_t i = restamp_from; i < c.count; ++i )
+                for ( int32_t q = restamp_from; q < c.count; ++q )
                 {
-                    // The inner tag's own consts stay on the inner tag: restamping
-                    // them onto the outer tag fires every inner arm when the outer
-                    // matches, and the last arm wins. Payload leaves answer to the
-                    // OUTER tag (#876 card 13).
-                    if ( c.plan[i].guard == their_at &&
-                         !( c.plan[i].op == kTableFixedConst && c.plan[i].dst == aux_at ) )
-                    {
-                        c.plan[i].guard = guard;
-                        c.plan[i].arg = arg;
-                        c.plan[i].argw = outer_w;
-                    }
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
                 }
             }
             c.argw = saved_argw;
@@ -3395,7 +3441,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
             if ( te.size == me.size )
             {
-                e.size = me.size; e.op = kTableFixedCopy;
+                e.size = me.size;
+                e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -3433,11 +3480,11 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.report = report;
     c.record = TableFixedEntryAt( theirs, 0 ).size;
     c.want_guarded = false;
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
     const int32_t plain = c.count;
     c.want_guarded = true;
     c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
@@ -3449,9 +3496,12 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     for ( int32_t i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( out > split && plan[out-1].op == plan[i].op &&
+             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -4887,7 +4937,11 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
 static const int32_t kTableRetainKnownIds = 60;
-static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
+// INLINE, not static: TableRetainNameable below is an inline function
+// and odr-uses this array, so it must name ONE entity across every unit
+// that includes this header rather than a per-unit copy - the same rule
+// the hoisted descriptor's tag lists and wide ranges take.
+inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x01986b0b27400fb2ull, 0x06e2378b553a9e84ull, 0x0acac10912f5892aull, 0x0cc9e0af9a85fbc8ull,
     0x125073191daf5431ull, 0x17720bf67d347222ull, 0x1c84390d304f4f42ull, 0x1e7683ef2ebc7684ull,
     0x2034c5d17c00ceb7ull, 0x21277bcf1a4d67fbull, 0x2ec2f34386026d8bull, 0x2f2ec0474f1c4fe4ull,

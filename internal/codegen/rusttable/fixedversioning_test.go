@@ -46,11 +46,14 @@ package rusttable
 // this file is for — and the per-row message says which it is.
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -81,11 +84,27 @@ type versionRow struct {
 	poison bool
 	// check is Rust source asserting the landed values, over `values` and `n`.
 	check string
+	// unported is the REFUSAL that stops this leg's language surface from
+	// holding the row's kind at all, cited by name. §5.9 #44: such a row is ⚪
+	// UNPORTED and skipped BY NAME, never 🔴 and NEVER FOLDED INTO A GREEN — a
+	// red is a debt §5 owes, an unported row is a debt another section owes,
+	// and a reviewer may not read either as "this row passed".
+	unported string
 }
 
 var versionRows = []versionRow{
 	{row: "array_bounded_grow"},
-	{row: "array_elem_widen", widens: true},
+	{row: "array_elem_widen", widens: true, check: `
+    // EXACTLY FOUR, PER RECORD (§5.9 #33). widened moves once per ENTRY, a fold
+    // across a widen is forbidden, and the number is min(their_n, my_n) — which
+    // on this row is the bound, 4. A leg that FOLDED the run and widened after
+    // lands the reader's defaults over the writer's values, silently, and leaves
+    // widened at ZERO; a leg that folds and still widens counts ONE. Neither
+    // reads as four, which is why the assertion is exact and not "> 0".
+    assert_eq!(
+        report.widened, 4 * n as u32,
+        "a widened [..4] run owes EXACTLY 4 widen entries per record, not {}", report.widened
+    );`},
 	{row: "array_fixed_grow", poison: true, check: `
     // 4 exact, 4 at the ELEMENT DEFAULT — a nested Vec's OWN defaults, x = 7
     // and y = 9, which a zero fill cannot fake (bill §12.6).
@@ -123,6 +142,27 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+    // ONE RECORD, FOUR SLOTS (§5.9 #33). The OLD writer's [4]fixed(12,4) holds
+    // the RAW SCALED VALUE per slot; the NEW reader's element is [4]fixed(28,4),
+    // whose storage is twice as wide, so every old element must land
+    // SIGN-EXTENDED and exact. The values are the ends of the old element's raw
+    // range and the one a zero-extension gets wrong.
+    let want: [i32; 4] = [-1, -128, 0, 112];
+    for k in 0..4 {
+        assert!(
+            values[0].vals[k] == want[k],
+            "slot {k} widened wrong: {} and not {}", values[0].vals[k], want[k]
+        );
+    }
+    assert!(
+        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
+        "a neighbour moved: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+    );
+    assert!(
+        report.widened == 4,
+        "a widened [4]fixed element owes EXACTLY 4 widen entries, not {}", report.widened
+    );`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
@@ -153,14 +193,41 @@ var versionRows = []versionRow{
         "the slot the appended key opened is not its declared default: n={}", values[0].slots[3].n
     );`},
 	{row: "nested_append"},
-	{row: "optional_add"},
+	{row: "optional_add", poison: true, check: `
+    // THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A DEFAULT
+    // (§5.9 #40, bill §12.8): the writer sent a T, so the ?T this reader
+    // declares IS present and owes 1 — not the fresh value's false. A leg that
+    // prefills the companion and emits no present entry reads a value the
+    // writer sent as ABSENT: values intact, presence lost, and every value check
+    // still passing.
+    assert!(
+        values[0].link_present,
+        "T into ?T owes present = 1, and the prefill's false is not it (§5.9 #40)"
+    );
+    assert!(
+        values[0].lead == 1 || values[0].lead != 0x5A5A_5A5A,
+        "the poison survived in a neighbour: lead={:#x}", values[0].lead
+    );`},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
-	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
+	{row: "union_arm_payload_widen", poison: true, check: `
+    // THE ARM'S APPENDED FIELD IS ITS DECLARED DEFAULT, 55, and the only thing
+    // that can land it is a PREFILL IMAGE whose union was reset ARM BY ARM at
+    // each arm's own overlay storage, in declared order, with the tag None last
+    // (§5.2's prefill, ruled an INSTRUCTION by §5.9 #38). A union zeroed whole
+    // lands 0 here and every value check but this one still passes.
+    let arm = values[0]
+        .pick
+        .alpha()
+        .unwrap_or_else(|| panic!("the old writer's record does not select the alpha arm: tag={}", values[0].pick.tag()));
+    assert!(
+        arm.y == 55,
+        "the field appended to the arm's payload is not its declared default: y={} (a union zeroed whole, not reset arm by arm)", arm.y
+    );`},
+	{row: "wstring_grow", unported: "kind 33 is not carried in a TABLE closure by this leg: compiler/widetext.go's tableWideTextTargets lists C, C++, C#, Dart and Go and NOT rust, so `refuseWideText` refuses a Rust unit that declares a wstring(N) field and there is no reader to generate. This harness reaches the backend directly and would BYPASS that refusal, which §5.9 #44 forbids folding into a green"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -169,6 +236,9 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
+			if r.unported != "" {
+				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
+			}
 			versionAssert(t, out, "v_"+r.row+"_new_reads_old")
 		})
 	}
@@ -180,6 +250,9 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
+			if r.unported != "" {
+				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
+			}
 			versionAssert(t, out, "v_"+r.row+"_old_refuses_new")
 		})
 	}
@@ -212,6 +285,19 @@ func TestFixedVersioningHash(t *testing.T) {
 	}
 }
 
+// ---- the writer's text cap --------------------------------------------------
+//
+// §5.2 TEXT: the span is `min(me.size, te.size) - 4` and the cap is `span /
+// unit`, so the bound a forged length is held to is THE WRITER's and never this
+// reader's grown one. The row is `string_grow` — a writer at `string(8)`, a
+// reader at `string(16)` — with the length word forged to 12: inside the
+// reader's bound, past the writer's span, and it must clamp to 8 and COUNT.
+
+func TestFixedVersioningTextCap(t *testing.T) {
+	out := versionRun(t)
+	versionAssert(t, out, "v_string_grow_forged_length")
+}
+
 // ---- lineage_merge ----------------------------------------------------------
 //
 // Two branches append different fields; after the merge BOTH pre-merge files
@@ -237,12 +323,32 @@ type versionProbe struct {
 
 // versionProbeSet is every probe this file runs, and it is STATIC: the rows are
 // a table, the floor is three retire levels of one reader, and the hash cases
-// and lineage_merge are one crate each. Nothing here reads the corpus — only
-// names files in it — so the set can be built before the oracle is checked.
-func versionProbeSet(corpus string) []versionProbe {
+// and lineage_merge are one crate each.
+//
+// THE SHARED NEW-READS-OLD BODY ASSERTED NO LANDED VALUE FOR 18 OF 26 ROWS: it
+// proved the file read, refused nothing and moved no counter, but only eight
+// rows carried their own `check`, so a mislaid size that moved a neighbour
+// stayed green across the rest. Every row whose root declares the `lead`/`trail`
+// pair now asserts the bracket by name.
+//
+// THE ORACLE IS THE CORPUS MANIFEST (§5.9 #32), read PER FILE and in DECIMAL,
+// not from the bytes under test. The brackets are not constant across rows —
+// 30 files use lead=2863311530 / trail=3149642683 and 8 use lead=1 / trail=2 —
+// and the file name is the key, so the reader is keyed on the file, never the
+// row. The gate is derived from the IR and not from a flag beside the row: a
+// hand-kept list drifts the first time a schema gains or loses the pair, and
+// that drift fails as a row silently stopping its value assertion.
+func versionProbeSet(t *testing.T, corpus string) []versionProbe {
 	probes := make([]versionProbe, 0, 2*len(versionRows)+5)
 
 	for _, r := range versionRows {
+		if r.unported != "" {
+			// NO PROBE AT ALL for a row whose kind this leg's language surface
+			// cannot hold (§5.9 #44): generating one here would bypass the
+			// compiler's own refusal and publish a green for a row that has no
+			// reader. The mark and the reason live on the row.
+			continue
+		}
 		// NEW-READS-OLD: the newer unit is handed the OLDER unit's locked entry.
 		counters := `    assert!(
         report.widened == 0,
@@ -250,6 +356,16 @@ func versionProbeSet(corpus string) []versionProbe {
     );`
 		if r.widens {
 			counters = `    assert!(report.widened != 0, "a WIDTH row moved no widened counter");`
+		}
+		root := versionRoot(t, versionUnit(t, versionSchema(t, "VOLD_"+r.row)))
+		lead, trail := versionBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+		bracket := ""
+		if versionHasField(root, "lead") && versionHasField(root, "trail") {
+			bracket = fmt.Sprintf(`
+    assert!(
+        values[0].lead == 0x%08X && values[0].trail == 0x%08X,
+        "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+    );`, lead, trail)
 		}
 		probes = append(probes, versionProbe{
 			name:   "probe_" + r.row + "_new_reads_old",
@@ -282,9 +398,10 @@ fn v_%[1]s_new_reads_old() {
         "counters moved on a clean backward read: {:?}", report
     );
 %[4]s
+%[6]s
 %[5]s
 }
-`, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), versionPoison(r.poison), counters, r.check)),
+`, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), versionPoison(r.poison), counters, r.check, bracket)),
 		})
 
 		// OLD-REFUSES-NEW: the older reader, no lineage beyond its own layout.
@@ -373,6 +490,48 @@ fn v_%[1]s_old_refuses_new() {
 `, r.row, filepath.Join(corpus, "new_"+r.row+".bin"), body)),
 		})
 	}
+
+	// THE WRITER'S TEXT CAP, FORGED. The only thing that can catch a cap taken
+	// from the READER's bound is a length BETWEEN the two bounds, so this probe
+	// forges one: lawful for the reader, past the writer's span, and owed a
+	// clamp to the writer's 8 with one `clamped` counted (§5.2 TEXT, §5.4).
+	probes = append(probes, versionProbe{
+		name:   "probe_string_grow_forged_length",
+		reader: "VNEW_string_grow",
+		older:  []string{"VOLD_string_grow"},
+		src: versionProbeSource(fmt.Sprintf(`
+/// string_grow, THE WRITER'S CAP: a forged length inside the READER's bound but
+/// past the WRITER's span clamps to the writer's span and counts one clamped.
+#[test]
+fn v_string_grow_forged_length() {
+    let mut data = std::fs::read(%q).expect("the reference's old_string_grow.bin");
+    // the records begin after the pinned header and the layout block
+    let block = u32::from_le_bytes(data[16..20].try_into().expect("four bytes")) as usize;
+    let at = 16 + 4 + block;
+    // the writer's body is lead(4), then the text's LENGTH word, then its 8 bytes
+    let len_at = at + 8 + 4;
+    data[len_at..len_at + 4].copy_from_slice(&12i32.to_le_bytes());
+    let mut values = vec![ROWTYPE::default(); 8];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    let n = n.unwrap_or_else(|| panic!(
+        "a forged LENGTH is not a refusal: {} {:?}", report.reason.name(), report
+    ));
+    assert!(n >= 1, "the forged record still reads, not {n}");
+    assert_eq!(
+        values[0].text_length, 8,
+        "a length past THE WRITER's span must clamp to the writer's 8, not to this reader's 16"
+    );
+    assert_eq!(
+        report.clamped, 1,
+        "the clamp that fired must count ONE clamped: {:?}", report
+    );
+    assert!(!report.malformed, "a forged length is clamped, not damage: {:?}", report);
+}
+`, filepath.Join(corpus, "old_string_grow.bin"))),
+	})
 
 	// THE FLOOR. Nothing retired, entry 0 retired, entries 0 and 1 retired —
 	// three readers of one lineage, VOLD then VMID then VNEW's own.
@@ -619,9 +778,9 @@ func versionUnit(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
-// versionRootName is the FILE's root: the one fixed table no other fixed table
-// of the unit names by value. A row whose change is NESTED declares two.
-func versionRootName(t *testing.T, u *ir.Unit) string {
+// versionRoot is the FILE's root: the one fixed table no other fixed table of
+// the unit names by value. A row whose change is NESTED declares two.
+func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 	t.Helper()
 	roots := ir.TableFixedRoots(u)
 	if len(roots) == 0 {
@@ -635,10 +794,202 @@ func versionRootName(t *testing.T, u *ir.Unit) string {
 	}
 	for _, st := range roots {
 		if !named[st.Name] {
-			return st.Name
+			return st
 		}
 	}
-	return roots[len(roots)-1].Name
+	return roots[len(roots)-1]
+}
+
+// versionRootName is versionRoot's name, the FILE's root.
+func versionRootName(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	return versionRoot(t, u).Name
+}
+
+// versionBrackets is §5.9 #32's value oracle: per row the `lead` and `trail`
+// the corpus brackets it with, so a mislaid size moves a neighbour and the row
+// says so by name. THE MANIFEST is read when the tree carries one
+// (`build/fixedform-corpus/manifest.txt`, §5.7 step 1's one line per row), and
+// where it does not the values the manifest would carry are taken FROM THE
+// CORPUS BYTES — which is where the manifest itself reads them: the lead is
+// the first four bytes of the first record's body and the trail the last four.
+func versionBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := versionManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// versionManifestBrackets reads ONE FILE'S row out of the corpus manifest, which
+// is the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead: it never fired and every row read its oracle
+// from the very .bin it was asserting.
+//
+// The manifest is not tracked, so `ok` false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+// versionManifestFloatBits is the FLOAT half of the corpus oracle, and it exists because this
+// file's `...ManifestRow` cannot carry one: that function parses every value as
+// a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
+// CONSTRUCTION — and every leg's compressed-float row asserted a HARDCODED
+// literal instead of the reference's answer (schema#1164, measured 2026-09-19
+// across all nine legs; Glenn: "do whatever is needed to make sure that a new
+// reader can read an old writer").
+//
+// THIS LEG ALREADY COMPARED BITS, which is the right comparison and is why it
+// is one of the cheap three. What it did not do is take the number from the
+// REFERENCE: a literal in a test is an oracle written by the same hand as the
+// code under test, and it agrees with a requantizing reader the moment somebody
+// "fixes" it to match.
+//
+// SECTION is "values" or "forged"; a forged key carries its byte offset, so a
+// key equal to `path` or beginning `path+"@"` is the one asked for. It FAILS
+// LOUDLY three ways — no manifest, no row, no such value — because a float
+// oracle that can degrade to "not checked" is the vacuity this repairs.
+func versionManifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var values string
+		named := false
+		for field := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
+func versionManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := versionManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// versionManifestRow answers one line's `values=` map when its `file=` is the
+// one asked for. The values are `<path>=<number>` pairs separated by commas,
+// and a pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func versionManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// versionHasField answers whether a row's ROOT declares a member by that name.
+// It is how the bracket check knows which rows carry §5.9 #32's `lead`/`trail`
+// pair, and it is read off the IR on purpose: a flag kept by hand beside each
+// row would drift the first time a schema gained or lost the pair, and the
+// failure mode of that drift is a row that silently stops asserting a landed
+// value — which is exactly the vacuity being repaired here.
+func versionHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // versionResult is the one cargo run's answer, shared by every test in this
@@ -687,7 +1038,7 @@ func versionBuildAndRun(t *testing.T, corpus string) versionResult {
 		t.Fatal(err)
 	}
 
-	probes := versionProbeSet(corpus)
+	probes := versionProbeSet(t, corpus)
 	members := make([]string, 0, len(probes))
 	for _, p := range probes {
 		versionWriteCrate(t, root, serialize, p)

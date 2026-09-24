@@ -90,7 +90,7 @@ void fixed_v1_bounds( void )
         fixed_check( made > 0, "C live-count: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) kTableFixedBool ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no clamp op either" );
 

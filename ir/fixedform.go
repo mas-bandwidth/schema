@@ -104,6 +104,20 @@ const (
 // because a `fixed table` never silently falls back to form 1.
 const TableFixedLeafCap = 4096
 
+// TableFixedMaxDepth is THE NESTING BOUND, AND THERE IS ONE OF IT: 64 nested
+// layout entries, the LAYOUT's own number (docs/FIXED-FORM-ALGORITHM.md §5.2's
+// `if depth > 64: REFUSE layout_malformed`, §6, docs/SPEC-TABLES.md §3.4's
+// *"The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*).
+//
+// EVERY RUNTIME ALREADY HOLDS THE WIRE TO IT — `kTableFixedMaxDepth = 64` in the
+// C and C++ legs, `tableFixedMaxDepth` in Go — and the compiler used to hold the
+// CLOSURE to 16 here, with no reason written beside the number and none in its
+// history (f144cd9b, the commit that brought this file into being, says nothing
+// about it). Two numbers for one fact is a compiler that drops a form the wire
+// would have carried, silently, at a depth no document names. So the compile
+// bound IS the layout's bound, and a table past it is NAMED ([TableFixedDepthBounds]).
+const TableFixedMaxDepth = 64
+
 const (
 	// TableFixedCountBytes and TableFixedPresentBytes: a count and a length are the
 	// int32 their storage already is, and a presence flag is one byte.
@@ -221,7 +235,13 @@ func TableFixedUnionTagBytes(un *Union) int64 {
 // not yet lay out — a union arm carrying text or an array, and a guarded
 // branch, which §3.4 refuses outright.
 func TableFixedSupported(st *Struct, depth int) bool {
-	if depth > 16 {
+	// THE STRUCT NESTING, AT THE LAYOUT'S OWN BOUND ([TableFixedMaxDepth]). A
+	// by-value cycle is refused upstream (§2), so this is a bound and not a
+	// cycle guard; what it must not be is a DIFFERENT number from the one the
+	// layout and every runtime hold. The layout's nesting is never shallower
+	// than the struct nesting it comes from, so a closure past this is past the
+	// layout's bound too, and [TableFixedDepthBounds] names it either way.
+	if depth > TableFixedMaxDepth {
 		return false
 	}
 	for _, f := range st.Fields {
@@ -307,34 +327,50 @@ func TableFixedKeyedSlots(owner *Struct, f *Field) string {
 }
 
 // TableFixedLeafCount bounds the entries a type's leaf walk writes, which sizes a
-// plan array. It counts leaves BEFORE coalescing.
+// plan array. It counts leaves BEFORE coalescing, and it counts THE WALK THE
+// REFERENCE EMITS: a bool or a present flag normalises through
+// [TableFixedOpBool] (byte != 0) rather than a flat copy, so an array whose
+// element holds one is walked element by element where the plain walk would have
+// folded it into one run. The cap is the reference's plan, so the count is the
+// reference's plan: otherwise the normalised walk bypasses a cap that still
+// counts the old flat fold. A flat array that carries no bool still costs one
+// run, exactly as [tableFixedElementLoop] folds it.
 func TableFixedLeafCount(u *Unit, st *Struct) int {
+	return tableFixedLeafCount(u, st, true)
+}
+
+func tableFixedLeafCount(u *Unit, st *Struct, normaliseBool bool) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += TableFixedFieldLeafCount(u, f)
+		n += tableFixedFieldLeafCount(u, f, normaliseBool)
 	}
 	return n
 }
 
-// TableFixedFieldLeafCount is one field's share of the count above.
-func TableFixedFieldLeafCount(u *Unit, f *Field) int {
-	per := TableFixedElementLeafCount(u, f)
-	flat := TableFixedFlatElem(u, f)
+// tableFixedFieldLeafCount is one field's share of the count above, over the
+// same walk [tableFixedBuildPlan] emits with normaliseBool. It is the plan's
+// own fold predicate: a flat element folds into one run unless normalisation
+// has to walk every element for a bool, and an array of bool is one normalised
+// run whatever the flat test says (see [tableFixedElementLoop]).
+func tableFixedFieldLeafCount(u *Unit, f *Field, normaliseBool bool) int {
+	per := tableFixedElementLeafCount(u, f, normaliseBool)
+	fold := TableFixedFlatElem(u, f) && (!normaliseBool || !tableFixedContainsBool(f))
+	boolRun := normaliseBool && f.Type.Kind == TBool
 	n := per
 	switch {
 	case f.KeyEnum != "":
 		n = int(f.KeyEnumRef.Max) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayFixed:
 		n = int(f.ArrayBound) * per
-		if flat {
+		if fold || boolRun {
 			n = 1
 		}
 	case f.Array == ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
-		if flat {
+		if fold || boolRun {
 			n = 2
 		}
 	case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
@@ -346,12 +382,12 @@ func TableFixedFieldLeafCount(u *Unit, f *Field) int {
 	return n
 }
 
-// TableFixedElementLeafCount is the same question about ONE element.
-func TableFixedElementLeafCount(u *Unit, f *Field) int {
+// tableFixedElementLeafCount is the same question about ONE element.
+func tableFixedElementLeafCount(u *Unit, f *Field, normaliseBool bool) int {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			return TableFixedLeafCount(u, r)
+			return tableFixedLeafCount(u, r, normaliseBool)
 		case *Union:
 			n := 1 // the tag
 			for _, v := range r.Variants {
@@ -360,7 +396,7 @@ func TableFixedElementLeafCount(u *Unit, f *Field) int {
 				if v.F == nil {
 					continue
 				}
-				n += TableFixedFieldLeafCount(u, v.F)
+				n += tableFixedFieldLeafCount(u, v.F, normaliseBool)
 			}
 			return n
 		}
@@ -596,6 +632,12 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //
 //	'R'  integer, float or fixed-point range: min then max, each i64 LE
 //	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'Q'  a COMPRESSED FLOAT's RESOLUTION, beside the 'R' its min and max went
+//	     into: the IEEE-754 bits of the float64 step, u64 LE. It is a
+//	     DEFINITION and never wire — in the fixed form a compressed float
+//	     rides as the float32 itself (SPEC-TABLES §3.4) — so the hash must
+//	     move when it moves, or a reader cannot refuse a peer that COARSENED
+//	     it (bill §2: the range widens, the resolution refines, else refuse)
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
 //	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
@@ -636,6 +678,13 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 		*b = append(*b, 'R')
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMax))
+		// THE RESOLUTION IS A DEFINITION, SO IT IS IN THE DIGEST. A
+		// compressed float rides as the float in the fixed form, so the step
+		// is nowhere in the layout bytes: without this row `| min = 0, max =
+		// 1, resolution = 0.01` and `resolution = 0.1` hash identically and a
+		// finer reader could not refuse a coarser peer by hash.
+		*b = append(*b, 'Q')
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.Resolution))
 	}
 	switch f.Type.Kind {
 	case TBits:
@@ -817,13 +866,18 @@ func TableFixedStrideBytes(u *Unit, f *Field) int64 {
 // TableFixedNoGuard is the guard of an entry that belongs to no union arm.
 const TableFixedNoGuard = int64(-1)
 
-// The three ops an IDENTITY plan can carry. The other four are a compiled
-// plan's, and a plan compiled from another writer's block is built at run time
-// by the runtime each backend carries.
+// The ops an IDENTITY plan can carry. Copy, count and text are the original
+// three; bool is the same loop's normalise (byte != 0), so a forged 0x02 in a
+// bool slot or a present flag lands as the language's own true and never as the
+// raw byte. It is not a compiled-plan op — the runtimes assign their own value
+// for that — and only a backend that asks for the normalised walk (the C++
+// reference today) puts it in a plan. The C++ runtime spells it
+// kTableFixedBool = 8; the compiled ops take 3..7 and must not be borrowed.
 const (
 	TableFixedOpCopy  = 0
 	TableFixedOpCount = 1
 	TableFixedOpText  = 2
+	TableFixedOpBool  = 8
 )
 
 // TableFixedLeaf is one entry of a plan: byte offsets into the record's body and
@@ -841,6 +895,14 @@ type TableFixedLeaf struct {
 	// tag of 0x0101. Zero is read as one. It is stamped with the OUTER tag's
 	// width when an arm nested inside an arm is rewritten onto that tag.
 	ArgW int
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO, and they are a CONJUNCTION with Guard/Arg: the entry runs when BOTH
+	// tags hold their ordinal (§4.1, §5.8 row 6). Stamping the outer tag OVER
+	// the inner one fired every inner arm the moment the outer one rode, and the
+	// last arm won. TableFixedNoGuard is "no second condition".
+	Guard2 int64
+	Arg2   int
+	ArgW2  int
 	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
 	// flavour today. It has its own lane because Arg's is the guard's, and the
 	// two used to share one — which put a text field under a union arm on a
@@ -851,31 +913,39 @@ type TableFixedLeaf struct {
 }
 
 // tableFixedLeaves writes one type's leaves at a base the caller gives — the C twin
-// of <Name>FixedLeaves.
-func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, out *[]TableFixedLeaf) {
+// of <Name>FixedLeaves. normaliseBool lands a bool or a present flag through
+// TableFixedOpBool (byte != 0) instead of a plain copy; it is false for every
+// backend but the C++ reference.
+func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	off := int64(0)
 	for _, f := range st.Fields {
-		tableFixedFieldLeaves(u, st, f, src+off, dst, out)
+		tableFixedFieldLeaves(u, st, f, src+off, dst, normaliseBool, out)
 		off += TableFixedFieldBytes(f)
 	}
 }
 
-func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[]TableFixedLeaf) {
+func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	base := src
 	if f.Type.Optional {
+		// THE PRESENT BYTE IS A BOOL ON THE WIRE: 0 or 1 and nothing else, so a
+		// forged 0x02 must land normalised, the same as a bool field.
+		op := TableFixedOpCopy
+		if normaliseBool {
+			op = TableFixedOpBool
+		}
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_present"),
-			Size: 1, Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + " present"})
+			Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: f.Name + " present"})
 		base += TableFixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
-		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, normaliseBool, out)
 	case f.Array == ArrayFixed:
-		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, normaliseBool, out)
 	case f.Array == ArrayCounted:
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_count"),
-			Size: f.ArrayBound, Guard: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
-		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, out)
+			Size: f.ArrayBound, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
+		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, out)
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
 	case f.Type.Kind == TWString:
@@ -883,63 +953,121 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 	case f.Type.Kind == TBytes:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 3, out)
 	default:
-		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, out)
+		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, normaliseBool, out)
 	}
 }
 
 func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, flavour int, out *[]TableFixedLeaf) {
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_length"),
-		Size: units, Aux: dst + TableFixedMemberOffset(u, st, f.Name), Guard: TableFixedNoGuard,
+		Size: units, Aux: dst + TableFixedMemberOffset(u, st, f.Name), Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard,
 		Op: TableFixedOpText, Meta: flavour, Note: f.Name})
 }
 
-func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, out *[]TableFixedLeaf) {
+func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	elem := TableFixedElementBytes(f)
 	at := dst + TableFixedMemberOffset(u, st, f.Name)
-	if TableFixedFlatElem(u, f) {
+	if normaliseBool && f.Type.Kind == TBool {
+		// [N]bool is ONE normalised run: a flat copy of N bytes would land a
+		// 0x02 as 2. The coalescer folds adjacent bool bytes, never a bool
+		// into a copy.
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: at, Size: count * elem,
+			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpBool, Note: f.Name + ", whole"})
+		return
+	}
+	if TableFixedFlatElem(u, f) && (!normaliseBool || !tableFixedContainsBool(f)) {
 		// THE WHOLE ARRAY IS ONE RUN: its storage image is its wire image, so
 		// the elements need no walk at all and the plan carries one entry
-		// however many of them there are.
+		// however many of them there are. A struct that holds a bool (or a
+		// present flag) is NOT this: a flat copy would land its byte
+		// verbatim, so it is walked one element at a time.
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: at, Size: count * elem,
-			Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + ", whole"})
+			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + ", whole"})
 		return
 	}
 	stride := TableFixedStrideBytes(u, f)
 	for i := range count {
-		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", out)
+		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", normaliseBool, out)
 	}
 }
 
 // tableFixedElementLeavesAt is ONE element's leaves at the bases given.
-func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, out *[]TableFixedLeaf) {
+func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, normaliseBool bool, out *[]TableFixedLeaf) {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			tableFixedLeaves(u, r, src, dst, out)
+			tableFixedLeaves(u, r, src, dst, normaliseBool, out)
 			return
 		case *Union:
 			tag := int64(StorageBitsFor(r.Max) / 8)
 			arms := TableFixedUnionArmOffset(u, r)
 			*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: tag,
-				Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note + " tag"})
+				Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note + " tag"})
 			for i, v := range r.Variants {
 				// THE GUARD IS STAMPED ON AFTERWARDS, over everything the arm
-				// wrote, exactly as the reference does: an arm nested inside an
-				// arm answers to the OUTER tag, which is the one that decides
-				// whether any of it is there at all.
+				// wrote: an arm nested inside an arm answers to the OUTER tag,
+				// which is the one that decides whether any of it is there at
+				// all — and its OWN arm selection survives that stamp, because
+				// the two tags are CONJOINED on the second lane rather than the
+				// outer one replacing the inner (§4.1, §5.8 row 6).
 				at := len(*out)
-				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, out)
+				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
 				for q := at; q < len(*out); q++ {
-					(*out)[q].Guard = src
-					(*out)[q].Arg = i + 1
-					(*out)[q].ArgW = int(tag)
+					if (*out)[q].Guard == TableFixedNoGuard {
+						(*out)[q].Guard = src
+						(*out)[q].Arg = i + 1
+						(*out)[q].ArgW = int(tag)
+						continue
+					}
+					// A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+					// cannot carry it (the guard chain is the follow-on, §5.8
+					// row 6); this walk is the build's own type, so it is a
+					// compiler error and not a wire event.
+					if (*out)[q].Guard2 != TableFixedNoGuard {
+						panic("fixed form: three nested union tags on one entry; the guard chain is owed (§5.8 row 6)")
+					}
+					(*out)[q].Guard2 = src
+					(*out)[q].Arg2 = i + 1
+					(*out)[q].ArgW2 = int(tag)
 				}
 			}
 			return
 		}
 	}
+	op := TableFixedOpCopy
+	if normaliseBool && f.Type.Kind == TBool {
+		op = TableFixedOpBool
+	}
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: TableFixedElementBytes(f),
-		Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note})
+		Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: note})
+}
+
+// tableFixedContainsBool is whether a field's storage holds a bool or a present
+// flag, so a flat memcpy of it would land a hostile byte as a bool.
+func tableFixedContainsBool(f *Field) bool {
+	return tableFixedContainsBoolField(f, map[string]bool{})
+}
+
+func tableFixedContainsBoolField(f *Field, seen map[string]bool) bool {
+	if f.Type.Kind == TBool || f.Type.Optional {
+		return true
+	}
+	if f.Type.Kind != TNamed {
+		return false
+	}
+	st, ok := f.Type.Ref.(*Struct)
+	if !ok {
+		return false
+	}
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, sf := range st.Fields {
+		if tableFixedContainsBoolField(sf, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // TableFixedBuildPlan is the leaf walk and the coalescer together: one type's
@@ -948,8 +1076,22 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 // adjacent COPY entries whose source and destination both advance together are
 // one entry. Neighbours are never merged across the split.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
+	return tableFixedBuildPlan(u, st, false)
+}
+
+// TableFixedBuildPlanNormalised is TableFixedBuildPlan with a bool field and a
+// present flag landing through TableFixedOpBool (byte != 0) instead of a plain
+// copy. It is the SAME walk and the same coalescer, so a port that reads the
+// normalised plan and one that reads the plain one cannot disagree about byte
+// positions; only the op on the two bool bytes differs. The C++ reference is
+// the consumer today (fix 2); a copy into a C++ bool is the UB it clears.
+func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
+	return tableFixedBuildPlan(u, st, true)
+}
+
+func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool bool) (plan []TableFixedLeaf, guarded int) {
 	var raw []TableFixedLeaf
-	tableFixedLeaves(u, st, 0, 0, &raw)
+	tableFixedLeaves(u, st, 0, 0, normaliseBool, &raw)
 	return tableFixedCoalesce(raw)
 }
 
@@ -961,8 +1103,9 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			}
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
-				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
+				if last.Op == e.Op && tableFixedRuns(e.Op) &&
 					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
+					last.Guard2 == e.Guard2 && last.Arg2 == e.Arg2 && last.ArgW2 == e.ArgW2 &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
@@ -975,6 +1118,14 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 		}
 	}
 	return plan, guarded
+}
+
+// tableFixedRuns is whether an op advances src and dst together one byte at a
+// time, which is the whole of what lets two adjacent entries become one. Copy
+// and bool both do; they never merge with EACH OTHER, or a forged 0x02 in a
+// bool slot would ride inside a memcpy.
+func tableFixedRuns(op int) bool {
+	return op == TableFixedOpCopy || op == TableFixedOpBool
 }
 
 // ---------------------------------------------------------------------------
@@ -1044,6 +1195,15 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 	for _, st := range TableFixedRoots(u) {
 		if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
 			continue // TableFixedRecordBounds has already named it
+		}
+		// AND THE WALK'S DEPTH BOUND, for the ceiling's own reason (§5.2). Past
+		// [TableFixedMaxDepth] no conforming reader takes the walk, so a writer
+		// emitted here produces bytes nobody decodes — the same sentence as the
+		// ceiling's, about the other bound. Every leg that builds its roots from
+		// this function inherits it, which is the point: the bound cannot be
+		// somewhere a port forgot to look. [TableFixedDepthBounds] names it.
+		if !TableFixedWithinDepth(st) {
+			continue
 		}
 		out = append(out, st)
 	}
@@ -1149,6 +1309,179 @@ func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
 	return warnings, errs
 }
 
+// TableFixedLayoutDepth is THE NESTING DEPTH OF A LAYOUT AS IT RIDES, read the
+// way a reader reads it: the entry count, then a pre-order run of entries each
+// carrying its child count, so the depth is the deepest the child counts open
+// the walk. The ROOT IS DEPTH 0, which is how §5.2's EMIT counts it.
+//
+// It takes the BYTES and not the entries, because the bytes are what a lock
+// holds for a layout that shipped and what LOAD compares (§6b): the depth of a
+// layout already in the field is a fact about the record, recoverable from the
+// record, and never a re-derivation from today's declaration.
+func TableFixedLayoutDepth(layout []byte) int {
+	if len(layout) < TableFixedLayoutHeaderBytes {
+		return 0
+	}
+	n := int(tableFixedU32(layout))
+	best := 0
+	var open []int // the children still owed by each entry the walk has open
+	for i := range n {
+		at := TableFixedLayoutHeaderBytes + i*TableFixedEntryBytes
+		if at+TableFixedEntryBytes > len(layout) {
+			break // a truncated layout is not this function's refusal to make
+		}
+		if len(open) > best {
+			best = len(open)
+		}
+		if len(open) > 0 {
+			open[len(open)-1]--
+		}
+		if children := int(tableFixedU32(layout[at+13:])); children > 0 {
+			open = append(open, children)
+		}
+		for len(open) > 0 && open[len(open)-1] == 0 {
+			open = open[:len(open)-1]
+		}
+	}
+	return best
+}
+
+func tableFixedU32(b []byte) uint32 {
+	if len(b) < 4 {
+		return 0
+	}
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
+}
+
+// TableFixedTypeDepth is [TableFixedLayoutDepth] of the layout this declaration
+// would ride, which is the number the compiler holds to the bound.
+func TableFixedTypeDepth(st *Struct) int {
+	return TableFixedLayoutDepth(TableFixedLayoutBytes(TableFixedWalkRoot(st)))
+}
+
+// TableFixedWithinDepth is THE DEPTH QUESTION, ASKED IN ONE PLACE. Every leg
+// that decides which form a table rides asks it here and nowhere else.
+//
+// THE REASON IS THE ONE THE RED TEAM FOUND. Five backends carried a PRIVATE copy
+// of the closure test — the same function, byte for byte, with its own `16`
+// written into it — and the private copy is what SELECTED THE EMITTED FORM. So a
+// fixed table nested 17 deep rode form 3 out of C++, C, C# and Rust and form 1
+// out of Go, Java, Elixir, JS and Dart: the same declaration, two wires, and
+// three of those five said nothing at all. A number a port can hold for itself
+// is a number the ports can disagree about, and on a WIRE fact that is not a
+// style difference but two incompatible fleets.
+//
+// So the bound is [TableFixedMaxDepth], there is one of it, and it is read
+// through here: a port that wants the answer calls this, and a port that cannot
+// call this (a generated runtime) gets the number handed to it by the emitter.
+// The depth is the LAYOUT's and not the closure's, because the layout's nesting
+// is never the shallower of the two — [TableFixedTypeDepth] is the number every
+// runtime's `kTableFixedMaxDepth` holds the wire to (§5.2's
+// `layout_malformed`).
+func TableFixedWithinDepth(st *Struct) bool {
+	// THE CLOSURE'S OWN COUNT FIRST, AND IT IS WHY THIS FUNCTION EXISTS RATHER
+	// THAN THE COMPARISON WRITTEN OUT. The layout walk has NO CYCLE GUARD — it
+	// does not need one, because a by-value cycle is refused upstream (§2) and a
+	// BY-POINTER cycle is legal and never reaches the walk. But this question is
+	// asked of tables that have not been filtered yet (a backend naming what it
+	// refuses asks it of every table in the file), and `Graph.schema`'s pointered
+	// closure walked forever the first time it was. So the by-value nesting is
+	// counted here first, cycle-safe, and it is never DEEPER than the layout it
+	// produces: past the bound by this count is past the bound.
+	if tableFixedValueDepth(st, map[*Struct]bool{}) > TableFixedMaxDepth {
+		return false
+	}
+	// AND A CLOSURE THIS FORM DOES NOT LAY OUT IS NOT A DEPTH QUESTION. It is
+	// turned away under its own name — a pointer, a map, an unbounded array, a
+	// guarded branch — and answering "too deep" about it would be this function
+	// taking the blame for a construct it has nothing to say about.
+	if !TableFixedSupported(st, 0) {
+		return true
+	}
+	return TableFixedTypeDepth(st) <= TableFixedMaxDepth
+}
+
+// tableFixedValueDepth is the BY-VALUE nesting depth of a closure, counted the
+// way [TableFixedSupported] counts it: a pointer or a map does not nest BY VALUE,
+// so it is a leaf here, which is exactly what makes a legal by-pointer cycle a
+// walk that ends. `seen` closes the cycle a declaration is allowed to have.
+func tableFixedValueDepth(st *Struct, seen map[*Struct]bool) int {
+	if seen[st] {
+		return 0
+	}
+	seen[st] = true
+	defer delete(seen, st)
+	deepest := 0
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.IsMap() || f.Type.Kind != TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			if n := 1 + tableFixedValueDepth(r, seen); n > deepest {
+				deepest = n
+			}
+		case *Union:
+			for _, v := range r.Variants {
+				if v.F == nil || v.F.Type.Pointer || v.F.Type.Kind != TNamed {
+					continue
+				}
+				if s, ok := v.F.Type.Ref.(*Struct); ok {
+					if n := 1 + tableFixedValueDepth(s, seen); n > deepest {
+						deepest = n
+					}
+				}
+			}
+		}
+	}
+	return deepest
+}
+
+// TableFixedDepthBounds holds every fixed table of the unit to
+// [TableFixedMaxDepth], and it is the depth's half of what
+// [TableFixedRecordBounds] does for the two size bounds: NOTHING HERE IS SILENT.
+//
+// THE TREATMENT IS THE 65536 CEILING'S, for the ceiling's own stated reason. A
+// nesting past the bound is a fact about THE FORM'S WALK and not about the
+// class: *"a nesting depth past what this reader walks (§3.4). A bound on the
+// WALK and not on the wire"* — no conforming reader takes the walk (§5.2 refuses
+// `layout_malformed`), so the fixed form IS NOT EMITTED for the table and it
+// keeps form 1, which it never lost, while the `fixed` keyword still buys it the
+// CLASS: a by-value storage, a cook, a block form (§19). That is exactly what
+// [TableFixedRecordBounds] does past the ceiling, and the sentence there is the
+// reason here too: *"the surprise the owner named is a SILENT change of wire,
+// and this one is not silent"*. A DECLARED table is named the more loudly — the
+// keyword is a request, and a request this form cannot serve is said out loud —
+// but either way the table and its depth are in the message, at compile time,
+// always on. What this replaces is the silence: the bound used to be 16, inside
+// the wire's 64, and a declared `fixed table` nested past it lost the form with
+// no word said about it at any depth, to 101 and beyond.
+func TableFixedDepthBounds(u *Unit) (warnings []string) {
+	for _, st := range TableFixedRoots(u) {
+		// A TABLE THIS FORM WOULD OTHERWISE LAY OUT, as the leaf cap reads it: a
+		// closure the form refuses for another reason, or a record past the
+		// wire's ceiling, is already answered under its own name, and a second
+		// sentence about the same table is noise.
+		if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+			continue
+		}
+		if TableFixedWithinDepth(st) {
+			continue
+		}
+		n := TableFixedTypeDepth(st)
+		if st.FixedDeclared {
+			warnings = append(warnings, fmt.Sprintf(
+				"table %s: a DECLARED fixed table's layout nests %d deep, past the %d-entry depth bound (docs/FIXED-FORM-ALGORITHM.md §5.2, §6, docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader takes a walk that deep (`layout_malformed`, and every runtime holds the wire to the same %d); it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form). Flatten the nesting to bring it back inside the bound",
+				st.Name, n, TableFixedMaxDepth, TableFixedMaxDepth))
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"table %s: a fixed table's layout nests %d deep, past the %d-entry depth bound (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT; it keeps form 1",
+			st.Name, n, TableFixedMaxDepth))
+	}
+	return warnings
+}
+
 // TableFixedEmitted answers whether a BACKEND emits the fixed form for one
 // type, and it is the ONE place that answer is computed: a port that asked the
 // question for itself would be a port that could disagree about which types
@@ -1163,6 +1496,8 @@ func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
 //   - THE PLAN'S LEAF CAP is the REFERENCE's: a plan is laid down as static
 //     data in an array the compiler sizes, and past [TableFixedLeafCap] that
 //     array is a build-time cost nobody asked for.
+//   - THE LAYOUT'S DEPTH is the WALK's: past [TableFixedMaxDepth] no conforming
+//     reader takes the walk (`layout_malformed`, §5.2).
 //
 // Nothing here is silent. [TableFixedRecordBounds] names every table the two
 // size bounds touch, and a table the leaf cap turns away is named by
@@ -1175,6 +1510,13 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 		return false
 	}
 	if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+		return false
+	}
+	// THE LAYOUT'S NESTING BOUND, on the layout and not on the closure: the
+	// struct nesting [TableFixedSupported] counts is never the deeper of the
+	// two, so this is the question asked where the answer lives.
+	// [TableFixedDepthBounds] names every table it turns away.
+	if !TableFixedWithinDepth(st) {
 		return false
 	}
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
@@ -1288,7 +1630,7 @@ func TableFixedIdentityCoverage(u *Unit, st *Struct) []TableFixedRange {
 	var raw []TableFixedRange
 	for _, e := range plan {
 		switch e.Op {
-		case TableFixedOpCopy:
+		case TableFixedOpCopy, TableFixedOpBool:
 			raw = append(raw, TableFixedRange{Dst: e.Dst, Size: e.Size})
 		case TableFixedOpCount:
 			// THE ENTRY'S SIZE IS THE BOUND, NOT THE MOVE: a count lands as the

@@ -202,8 +202,11 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VOLD_uint_widen.schema \
 	test/tables/VOLD_float_widen.schema \
 	test/tables/VOLD_range_widen.schema \
+	test/tables/VOLD_cfloat_range_widen.schema \
+	test/tables/VOLD_cfloat_res_refine.schema \
 	test/tables/VOLD_bits_grow.schema \
 	test/tables/VOLD_fixed_I_grow.schema \
+	test/tables/VOLD_fixed_I_grow_element.schema \
 	test/tables/VOLD_optional_add.schema \
 	test/tables/VNEW_array_bounded_grow.schema \
 	test/tables/VNEW_array_fixed_grow.schema \
@@ -216,16 +219,23 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VNEW_uint_widen.schema \
 	test/tables/VNEW_float_widen.schema \
 	test/tables/VNEW_range_widen.schema \
+	test/tables/VNEW_cfloat_range_widen.schema \
+	test/tables/VNEW_cfloat_res_refine.schema \
 	test/tables/VNEW_bits_grow.schema \
 	test/tables/VNEW_fixed_I_grow.schema \
+	test/tables/VNEW_fixed_I_grow_element.schema \
 	test/tables/VNEW_optional_add.schema \
+	test/tables/VOLD_hostile_bool.schema \
+	test/tables/VNEW_hostile_bool.schema \
 	test/tables/VOLD_floor.schema \
 	test/tables/VMID_floor.schema \
 	test/tables/VNEW_floor.schema \
 	test/tables/VOLD_lineage_merge.schema \
 	test/tables/VBRA_lineage_merge.schema \
 	test/tables/VBRB_lineage_merge.schema \
-	test/tables/VNEW_lineage_merge.schema
+	test/tables/VNEW_lineage_merge.schema \
+	test/tables/VOLD_unknown_census.schema \
+	test/tables/VNEW_unknown_census.schema
 # ---- rowan/cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate
@@ -241,6 +251,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/ut1 test/tables/UT1.schema
 	$(1) generate --lang cpp --out $(2)/ut2 test/tables/UT2.schema
 	$(1) generate --lang cpp --out $(2)/fn1 test/tables/FN1.schema
+	$(1) generate --lang cpp --out $(2)/hb test/tables/HB.schema
 	$(1) generate --lang cpp --out $(2)/fn2 test/tables/FN2.schema
 	$(1) generate --lang cpp --out $(2)/fu1 test/tables/FU1.schema
 	$(1) generate --lang cpp --out $(2)/fu2 test/tables/FU2.schema
@@ -335,7 +346,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -4523,24 +4534,19 @@ bench-fixedform-measure: build/schema_bench_fixedform
 .PHONY: bench-fixedform-measure
 
 
-# Prove the COMMITTED generated/ tree matches what the current compiler
-# emits (issue #30). `make test` regenerates every tracked generated file in
-# place, so staleness is precisely a dirty tree afterwards — a tracked file
-# that changed, or a newly emitted file nobody committed. CI runs the same
-# two checks after its make test step.
-generated-current: test
-	@git diff --exit-code generated/ || { \
-		echo "committed generated/ tree is STALE — the current compiler emits different text."; \
-		echo "review the diff above, then commit the regenerated files."; \
-		exit 1; \
-	}
-	@untracked=$$(git status --porcelain generated/); \
-	if [ -n "$$untracked" ]; then \
-		echo "$$untracked"; \
-		echo "the generator emitted files that are not committed under generated/ — add them."; \
-		exit 1; \
-	fi
-	@echo "generated/ tree is current"
+# Prove the COMMITTED generated/ tree matches what the current compiler emits
+# (issue #30, tightened by #898's gate G3). It used to regenerate in place and
+# read `git diff`: in place a rule only writes and never removes, so a file the
+# emitter STOPPED writing stayed on disk byte-identical to the index and the
+# diff was silent about it — and a rule that never ran at all left its whole
+# directory standing and was called green. So the tree is moved aside and the
+# compiler emits into NOTHING; the full listing and the bytes are compared both
+# ways, with every failing file named. test/generated-tree/verify says how, the
+# `generated` job in ci-full.yml and the certify workflow run that same script,
+# and it no longer needs the whole `make test` chain to get there: the emission
+# takes bin/schema and nothing else.
+generated-current: bin/schema build/treelock
+	@test/generated-tree/verify
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -4820,8 +4826,13 @@ tables-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/ref-ordinal-nc/log; exit 1; \
 	fi
@@ -4850,8 +4861,13 @@ tables-ref-ordinal-shared-negative-control:
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
-	@if go test -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/ref-ordinal-shared-nc/log || \
+				! grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the shared-id driver did not run (skipped), so this control is watching nothing"; \
+			cat build/ref-ordinal-shared-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
 		cat build/ref-ordinal-shared-nc/log; exit 1; \
 	fi
@@ -5654,11 +5670,15 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+# map is not a compiler backend. Include it by path so the registry wildcard
+# above stays live ports only (tables-ports-refuse-wide-scalars).
+include $(wildcard tools/agentsmap/map.mk)
 include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
+include make/checks/generated-tree.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
@@ -5876,6 +5896,26 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 # invariant the copy primitive has — every byte it reads or writes is inside the
 # run — over EVERY length from 0 to 96 rather than the lengths a schema happens
 # to produce. Exact-size heap blocks make the sanitized twin the assertion.
+# THE TWO WIRE BYTES A READER MUST NORMALISE, on their own
+# (test/tables/fixedform_hostile_bytes.cpp). A `bool` and an optional's PRESENT
+# flag are `0` or `1` on the wire and nothing else, and a reader lands them as
+# `byte != 0` (docs/FIXED-FORM-ALGORITHM.md §4.5). The reference lands both with
+# a plain one-byte copy, so a forged `0x02` becomes a C++ `bool` holding `2` --
+# an object whose every LOAD is undefined behaviour, reachable from a lawful
+# schema and ONE hostile byte with no refusal and no counter moved. The fixture
+# reads the member's byte with memcpy rather than loading it, so the case REPORTS
+# instead of being the crash, and it is RED by name against fix 2.
+build/schema_test_fixedform_hostile_bytes: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/hb -Ibuild/tables-generated/vnum \
+	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
+
+build/schema_test_fixedform_hostile_bytes_asan: build/tables-generated/.stamp test/tables/fixedform_hostile_bytes.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/hb -Ibuild/tables-generated/vnum \
+	    -I$(SERIALIZE) test/tables/fixedform_hostile_bytes.cpp -o $@
+
 build/schema_test_fixedform_runcopy: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -O2 -Ibuild/tables-generated/scalars \
@@ -5894,11 +5934,14 @@ build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tab
 # a golden nobody has read.
 tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
                   build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan \
+                  build/schema_test_fixedform_hostile_bytes build/schema_test_fixedform_hostile_bytes_asan \
                   build/fixedform-corpus/.stamp
 	./build/schema_test_fixedform build/fixedform-corpus
 	./build/schema_test_fixedform_asan build/fixedform-corpus
 	./build/schema_test_fixedform_runcopy
 	./build/schema_test_fixedform_runcopy_asan
+	./build/schema_test_fixedform_hostile_bytes
+	./build/schema_test_fixedform_hostile_bytes_asan
 
 test: tables-fixedform
 
@@ -6118,3 +6161,85 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
 include make/checks/reference-review.mk
+
+# ---------------------------------------------------------------------------
+# THE SLOW-GATE SCAN (schema#988, G5) ---------------------------------------
+#
+# internal/slowtest.Gate SKIPS a test that shells out to a foreign toolchain or
+# reads the C++ reference corpus unless SCHEMA_SLOW=1 or SCHEMA_REQUIRE_CORPUS
+# is set — AND A SKIPPED TEST MAKES `go test` EXIT 0. So a make target that runs
+# a bare `go test` on such a package GOES GREEN HAVING RUN NOTHING. Fourteen
+# positive gate targets did, for a day, while internal/slowtest's own package
+# comment said every make gate set the variable. THE COMMENT WAS THE BUG: a
+# claim about this Makefile belongs in a check.
+#
+# slow-gate-scan IS THAT CHECK and it costs milliseconds, so it rides `test`:
+# every recipe line in Makefile, make/*.mk and make/checks/*.mk that runs
+# `go test` on a package holding gated tests must set SCHEMA_SLOW=1, set
+# SCHEMA_REQUIRE_CORPUS, or go through test/slowgate/proof. Anything else fails
+# BY NAME. A line deliberately left as it is must be named in
+# make/slow-gate-exceptions.txt WITH A REASON, and an entry there that matches
+# no line any more fails too — a stale excuse is how the next bare `go test`
+# slips in behind a line nobody reads.
+.PHONY: slow-gate-scan
+slow-gate-scan:
+	go run ./tools/slowgatescan
+
+test: slow-gate-scan
+
+# AND THE ACCOUNTING, test by test rather than target by target: a plain
+# `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
+# point) is read back and every test that skipped at the gate is placed in one
+# of three buckets — run by a make target that sets the variable, run only by
+# ci-full.yml's SCHEMA_SLOW=1 steps, or run by NOBODY. The third bucket is the
+# failure. The whole table lands in build/slowgate/coverage.tsv so the
+# accounting is READ, not believed.
+#
+# It costs one plain `go test ./...` — 27 s with a warm build cache, 2 m 35 s
+# cold, measured on the Studio — so it is NOT on `test`: it rides ci-full.yml
+# beside the two steps it credits. Nothing is MOVED to nightly by this; the scan
+# above, which is the gate, is on `test`.
+#
+# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
+# which tests the gate skipped, and it must still read that when some unrelated
+# test is red. The red itself is `test`'s to report, not this target's, and the
+# accounting below exits nonzero on its own finding.
+.PHONY: slow-gate-coverage
+slow-gate-coverage:
+	@mkdir -p build/slowgate
+	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+# THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
+# so the gate both workflows run is a target here, and the retry-and-classify
+# logic is a committed script that `make test` holds to its fixtures — not
+# lines of YAML duplicated into two files, where the first divergence between
+# the copies is nobody's to notice.
+#
+# THE SCANNER'S PIN LIVES ON THE NEXT LINE AND NOWHERE ELSE, bumped by hand.
+# What has to change on its own is the DATABASE, which the tool fetches at run
+# time, so a red run can never mean the scanner moved under us.
+GOVULNCHECK_VERSION ?= v1.7.0
+
+# `make vuln` is the pull-request gate: a database still unreachable after three
+# attempts is forgiven, loudly, because a contributor's diff cannot be judged by
+# vuln.go.dev's uptime. `make vuln-strict` is the nightly certification's gate:
+# the same three attempts, and then RED, because a certificate is a full run at
+# an exact SHA and an unreachable database certifies nothing. The two differ by
+# that flag and nothing else, and both exist so an outage always leaves a red
+# SOMEWHERE rather than nowhere.
+.PHONY: vuln
+vuln:
+	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run
+
+.PHONY: vuln-strict
+vuln-strict:
+	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run --strict
+
+# The classifier's own table test (tools/vuln/testdata/cases.txt): offline, a
+# fraction of a second, and the reason the gate above can be trusted to tell an
+# outage from a failure. It rides `make test` like every other control here.
+.PHONY: vuln-selftest
+vuln-selftest:
+	tools/vuln/govulncheck.sh selftest
+
+test: vuln-selftest

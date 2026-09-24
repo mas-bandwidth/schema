@@ -126,7 +126,7 @@ or a chain of single-child entries is a stack depth the wire chooses.
 ```
 a FILE:
   0        form byte, 3
-  1 .. 7   reserved, written zero
+  1 .. 7   reserved, written zero — AND A READER REFUSES A NONZERO ONE, `malformed`
   8 .. 15  the layout hash (u64 LE)
   16 .. 19 the layout's LENGTH IN BYTES (u32 LE)
   20 ..    the layout — whose OWN first four bytes are its entry count — then
@@ -139,8 +139,8 @@ load, in order:**
 
 | # | step |
 |---|---|
-| 1 | fewer than 20 bytes: `malformed` |
-| 2 | `b[0] != 3` — refuse **by direction**: `1` is `previous_form` (the variable form is OLDER), `2` is `message_form_as_file`, anything else `newer_form`. From the other end, a form-`1` reader given `3` refuses `newer_form` |
+| 1 | no first byte at all: `malformed`. Then `b[0] != 3` — refuse **by direction**: `1` is `previous_form` (the variable form is OLDER), `2` is `message_form_as_file`, anything else `newer_form`. From the other end, a form-`1` reader given `3` refuses `newer_form`. **The form byte is read before the file's length**: a committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader that measured first would answer `malformed` for every real file of the two forms it is supposed to name |
+| 2 | fewer than 20 bytes: `malformed`. Then any of `b[1..7]` nonzero: `malformed` — the reserved bytes are REFUSED rather than ignored, which is what keeps them usable when the cook and the block form join the registry |
 | 3 | `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE layout_malformed`. **The hash is `LE(8, b+8)`, the header's own** — §5.3 took the recompute out, the definitions digest not being on the wire |
 | 4 | **`h` selects the plan (§5.3)**: this build's own hash takes the baked identity plan and record size; another hash of the lineage takes that entry's plan, its layout bytes compared and its record size read from the lock; a hash in no entry is `layout_newer` |
 | 5 | **RETIRED by §5.3**: there is no third thing to check. The byte comparison against the lock's own layout holds the header and the layout together, and a known hash over different bytes is `layout_malformed` |
@@ -225,10 +225,22 @@ struct Op {
     size  : u32   // bytes, or a bound — per op, below
     aux   : u32   // a SECOND destination, a side-table offset, or a constant
     guard : u32   // the offset of the TAG BYTE this entry is conditional on, or NO_GUARD
-    op : u8 ; arg : u8 ; meta : u8 ; dstsize : u8 ; sign : u8
+    op : u8 ; arg : u64 ; meta : u8 ; dstsize : u8 ; sign : u8 ; argw : u8
+    guard2 : u32 ; arg2 : u64 ; argw2 : u8   // the OUTER tag, CONJOINED with guard/arg
 }
 // arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT (a text flavour).
 ```
+
+**`arg` IS FULL WIDTH AND SO IS `arg2`: no byte lane anywhere** (bill §12.7). A union past 255 arms has a
+two-byte tag, and a byte lane truncated arm 256 into arm 1's guard value — arm 1's entries then ran over arm
+256's bytes. `argw` is the guard's WIDTH and the compare is made at it, never on a prefix.
+
+**`guard2` / `arg2` / `argw2` ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS TO, CONJOINED with
+`guard`/`arg`**: the entry runs when BOTH tags hold their ordinal. The outer tag stamped OVER the inner one
+fired every inner arm the moment the outer one rode, the last arm winning; the inner tag alone landed an
+inner arm's bytes beneath an outer arm that never rode. `NO_GUARD` on `guard2` is "no second condition",
+which is every entry that is not nested. A THIRD nested union has a third condition two lanes cannot carry:
+the compiled plan REFUSES BY NAME rather than drop one, and a guard CHAIN is the follow-on.
 
 **`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one.** (fix 12) A `string(N)`
 under a union arm needs both, and one lane gives whichever was stamped last: a byte string under arm `2` read as
@@ -394,12 +406,17 @@ WIDENS(a, b):                            -- b may replace a
     [Enum]T:       Enum WIDENS (its own rule); element WIDENS
     int, float:    width(a) <= width(b), same ladder, same signedness   or FAIL "narrowed | ladder | signedness"
     ranged:        range(b) ⊇ range(a), or b unranged               or FAIL "range narrowed | added"
+    compressed float:  it RIDES AS THE FLOAT (SPEC §3.4), so min/max/resolution are DEFINITIONS, never wire:
+                   range(b) ⊇ range(a) by the `ranged` row above, and resolution(b) <= resolution(a) — FINER
+                   or equal, because a writer quantized to ITS step and those values sit on a grid a finer
+                   reader lands exactly                            or FAIL "resolution coarsened (0.01 -> 0.1)"
     bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"
     fixed(I,F):    I(a) <= I(b) and F(a) == F(b)                     or FAIL "F changed"
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
     default:       default(a) == default(b)                            or FAIL "default changed"   -- SPEC §18
     reader limit:  limit(a) <= limit(b)
-    plan cap:      for every supported older entry x, PLAN(x, b) fits plan_too_large and the leaf cap
+    plan cap:      for every SUPPORTED older entry x — at or above the floor, never a retired one,
+                   whose plan §5.2 does not build at all — PLAN(x, b) fits plan_too_large and the leaf cap
                                                                     or FAIL "plan too large for lineage entry x" (bill §12.10)
     deprecated:    deprecated(a) implies deprecated(b)                 or FAIL "undeprecated" (one way, bill §12.3)
 ```
@@ -477,15 +494,24 @@ COMPILE(lock, T):
   y := T's own layout ; Hy := HASH(bytes(y), T)            -- the digest is computed AT the hash, from T
   R.own_hash := Hy
   R.identity, R.split, R.cover := the baked identity plan of §4.2, its split, the type's value bytes
+  R.floor := 1 + the highest index marked RETIRED in lock.lineage(T), or 0 when none is
+                                                                -- THE FLOOR IS COMPUTED FIRST, because the
+                                                                -- loop below needs it: a plan is built for an
+                                                                -- entry AT OR ABOVE the floor and for NO
+                                                                -- entry below it
   i := 0
   for each entry x in lock.lineage(T), OLDEST FIRST:            -- the current layout is the last of them
     R.lineage[i] := x.hash ; R.known[i] := { x.hash, x.layout_bytes, 8 + x.record_body }
                                                                 -- the lock stores the BODY; the eight hash
                                                                 -- bytes are added HERE, once, and never again
                                                                 -- by a backend
-    R.plans[i]   := (x.hash == Hy) ? IDENTITY : PLAN(x.layout_bytes, bytes(y))
+    if i < R.floor:                                             -- RETIRED. The hash stays KNOWN, so a file
+      R.plans[i] := NONE                                        -- carrying it is named layout_unsupported and
+    else:                                                       -- never layout_newer; its PLAN IS NEVER BUILT,
+      R.plans[i] := (x.hash == Hy)                              -- so it cannot fail the build and retiring is
+                     ? IDENTITY                                 -- the operator's remedy for plan_too_large
+                     : PLAN(x.layout_bytes, bytes(y))
     i := i + 1
-  R.floor := 1 + the highest index marked RETIRED, or 0 when none is
   emit R as static data: the hashes, the layout bytes, the record sizes, the plans, the floor
 ```
 
@@ -517,6 +543,12 @@ the struct from this page alone and landing a different spelling breaks a gate r
 **The file's hash lands on the report as `layout_hash`**, last on the report and zero on every other path
 (§5.9 #15).
 
+**AND THE PLAN CAP IS OVER SUPPORTED ENTRIES ONLY** (§5.1's `plan cap` row). COMPILE builds a PLAN for every
+entry AT OR ABOVE the floor and for no entry below it: a RETIRED entry's plan is never built, so it cannot fail
+the build, and a lineage entry that would not fit `plan_too_large` is retired rather than carried. That is the
+same cut in both directions — `layout_unsupported` at run time, no plan at build time — and it is why retiring
+an entry is the operator's remedy for a plan the cap will not take.
+
 **The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
 `layout_newer` (ship the reader). A retired entry stays in the lineage forever.
@@ -545,7 +577,10 @@ once — and append, per field:
 
 | the fact | the bytes |
 |---|---|
-| an integer, float or fixed-point RANGE | `'R'`, then min and max, each as an i64 LE |
+| an INTEGER range | `'R'`, then min and max, each as an i64 LE |
+| a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
+| a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
+| a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -556,11 +591,14 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
+way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — `'Q'`
+for every float range's resolution (including zero for an uncompressed range), and
 `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
 unions share one `seen` map keyed by bare name.**
 
-**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
+that range is a float's, including an uncompressed float's zero resolution, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
@@ -607,6 +645,9 @@ reader field the writer does not carry gets no entry either, and the prefill ans
 ```
 EMIT(te, their_at, me, my_at, guard, arg):
   if depth > 64:                                         REFUSE layout_malformed      -- the wire picks no recursion
+                                                                                      -- AND THE COMPILE BOUND IS THIS ONE (§6):
+                                                                                      -- ir.TableFixedMaxDepth, the same 64 every
+                                                                                      -- runtime holds (kTableFixedMaxDepth)
   if me.kind == 35 and te.kind != 35:                    -- T into ?T (bill §12.8)
       emit `present`  at the reader's present byte, under `guard`/`arg`
       EMIT(te, their_at, the wrapper's payload, my_at, guard, arg) ; return
@@ -772,9 +813,13 @@ is a bug in the lock, refused by name at build.
 
 ```
 LOAD(R, file, out, capacity, report):                  -- R the static data COMPILE laid down for T
-  1  if file is absent or len(file) < 20:               report.malformed := true ; return -1
-  2  if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
+  1  if file is absent or len(file) < 1:                report.malformed := true ; return -1
+     if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
                                                             2 message_form_as_file, otherwise newer_form
+                                                        -- THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH
+  2  if len(file) < 20:                                 report.malformed := true ; return -1
+     if any of file[1..7] != 0:                         report.malformed := true ; return -1
+                                                        -- the seven reserved bytes, so they stay usable later
   3  L := LE(4, file+16) ; if 20 + L > len(file):       REFUSE layout_malformed
      layout := file + 20
   4  h := LE(8, file+8)                                 -- THE HEADER'S HASH, TAKEN AS GIVEN.
@@ -804,6 +849,16 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      return n
 ```
 
+**THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH, so a file too short to be a form-3 header is still
+refused by the name its first byte earns.** A committed form-1 file is TEN BYTES and a form-2 batch is
+THREE. A reader that measured first would answer `malformed` for every real file of the two forms it is
+supposed to name, and SPEC-TABLES §3.4's promise — "a fixed reader given `1` answers `previous_form`,
+given `2` answers `message_form_as_file`" — would hold for no file anyone has. So **step 1 asks only
+whether there is a first byte at all, and then lets that byte earn its name**; the twenty-byte minimum
+is step 2, and **the seven reserved bytes are step 2's second half**: any of `file[1..7]` nonzero is
+`malformed`, refused rather than ignored, which is what keeps those bytes spendable when the cook and
+the block form join the registry under the same header.
+
 **The order is load-bearing and it is not §1.1's order.** A layout arriving on the wire is no longer walked,
 so the seven rules do not fire at run time: the hash is looked up, then the floor, then the bytes are
 compared. **The seven §1.1 malformations under a KNOWN hash all come back as one name**, `layout_malformed`
@@ -824,8 +879,10 @@ nothing could reach.
 
 | condition | refusal | what it reports |
 |---|---|---|
-| shorter than 20 bytes, or no bytes at all | — | `malformed`, and `-1` |
-| form byte `1` / `2` / anything else | `previous_form` / `message_form_as_file` / `newer_form` | the name |
+| no bytes at all — there is no first byte to read | — | `malformed`, and `-1` |
+| form byte `1` / `2` / anything else, **whatever the file's length** | `previous_form` / `message_form_as_file` / `newer_form` | the name |
+| shorter than 20 bytes, the form byte having already answered | — | `malformed`, and `-1` |
+| any reserved byte `1..7` nonzero | — | `malformed`, and `-1` |
 | `20 + L` past the file | `layout_malformed` | the name |
 | the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
 | the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
@@ -849,7 +906,7 @@ answer; `malformed` is the other; they are NEVER both set, and the counters are 
 | the outcome | `refused` | `reason` | `malformed` | returns | the counters |
 |---|---|---|---|---|---|
 | a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
-| a MALFORMED read — under 20 bytes, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
+| a MALFORMED read — no first byte, under 20 bytes, a nonzero reserved byte, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
 | a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
 
 **`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
@@ -1065,16 +1122,16 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
 | 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
-| 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
-| 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
-| 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
+| 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
+| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. A THIRD nested union refuses by name; the guard CHAIN is the follow-on | an arm inside an arm answers to the OUTER tag too (§4.1) |
+| 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
-| 14 | the enum remap table is CAPPED AT 255 entries, `n := min( te.children, 255 )`, and its length word is a `uint16_t` | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
+| 14 | ~~the enum remap table is CAPPED AT 255 entries~~ **LANDED** (rowan/twin-full-width-lanes): `n := te.children` on both twins, laid in the plan's own pool; past the `uint16_t` length word the plan refuses by name rather than answering a wrong value | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
 | 15 | there is no GENERATOR-SIDE COMPILE: every leg that cannot run a plan compiler at build carries the walk as emitted runtime text in its own language, so the plan is built from the lock's bytes once per process instead of being laid down as source | the plan is laid down AS DATA by the TOOLCHAIN, one shared COMPILE in the generator's language feeding every leg's emitter (§5.9 #20). **This row is the TOOLCHAIN's debt and not the C++ runtime's**, and it is the follow-on the C leg's shape names: until it exists, a leg with neither a package initializer nor a constant initializer owes the TIMING and the thread safety of its one build flag in its PR, and that is conforming |
 
 **What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is
@@ -1614,6 +1671,7 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
 | **65536 bytes of record body** | a COMPILE REFUSAL for a DECLARED fixed table, by name, naming the table and the size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
+| **64 nested LAYOUT ENTRIES** | a WARNING, always on, naming the table and its depth, and past it the table DOES NOT CARRY THE FIXED FORM — it keeps form `1`, and the `fixed` keyword still buys it the CLASS. A DECLARED fixed table is named the more loudly (the keyword is a request, and a request this form cannot serve is said out loud), but NEITHER IS EVER A SILENT DROP (fix 4). **THERE IS ONE NUMBER**: the layout's own 64 (§5.2's `layout_malformed`, docs/SPEC-TABLES.md §3.4's *"the walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*), which is what every runtime holds the wire to (`kTableFixedMaxDepth`), so the compiler cannot drop a form the wire would have carried. The root is depth 0. A nesting GROWN across it is refused at the lock, like the ceiling: the entries all widen legally while the form changes underneath |
 | **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
 
 ## 7. What a port takes, and what it must not

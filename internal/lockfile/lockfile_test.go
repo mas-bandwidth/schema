@@ -236,22 +236,30 @@ func TestNewTableRefusedUntilLocked(t *testing.T) {
 	}
 }
 
-// TestNewFieldlessTableRefusedUntilLocked is the same finding with no entry to
-// name: a table with no fields is still a table the lock does not carry, and
-// the refusal names the table alone rather than inventing an entry for it.
-func TestNewFieldlessTableRefusedUntilLocked(t *testing.T) {
+// A fieldless table still has a named stale-lock finding, but cannot be
+// appended: the emitted fixed root violates the nonzero rule in §1.1.
+func TestNewFieldlessTableCannotBeLocked(t *testing.T) {
 	after := base + "\nfixed table Marker\n{\n}\n"
-	_, paths, errs := locked(t, after)
+	dir, paths, errs := locked(t, after)
 	refuses(t, errs, "fixed table Marker is in the declaration and not in the lock",
 		"write it with `schema lock`")
 	if strings.Contains(errs[0].Error(), "entry ") {
 		t.Errorf("there is no entry to name: %v", errs[0])
 	}
-	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+	file := filepath.Join(dir, lockfile.FileName)
+	before, err := os.ReadFile(file)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
-		t.Errorf("the written lock checks clean: %v", errs)
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote || !strings.Contains(err.Error(), "layout_record_too_large") {
+		t.Fatalf("emitted zero root must refuse before append: rewrote=%v err=%v", rewrote, err)
+	}
+	afterBytes, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterBytes) != string(before) {
+		t.Fatal("refused append changed the existing lock")
 	}
 }
 

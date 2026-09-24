@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // ---- the fixture shapes ----
@@ -526,6 +527,36 @@ func TestLockRangeWidenAllows(t *testing.T) {
 	})
 }
 
+// ---- cfloat_res_refine / cfloat_res_coarsen / cfloat_range_widen ----
+//
+// A COMPRESSED FLOAT RIDES AS THE FLOAT in the fixed form (SPEC-TABLES §3.4),
+// so its min, max and resolution are DEFINITIONS: the range WIDENS like any
+// ranged scalar's, the resolution only REFINES — an old writer quantized to its
+// coarser step, and a finer reader lands those values exactly — and every other
+// move is refused.
+
+func TestLockCfloatResRefineAllows(t *testing.T) {
+	rowAllows(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.1"),
+		rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"), "Row")
+}
+
+func TestLockCfloatResCoarsenRefuses(t *testing.T) {
+	rowRefuses(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -1, max = 1, resolution = 0.1"),
+		"fixed table Row", "field aim", "resolution coarsened (0.01 -> 0.1)")
+}
+
+func TestLockCfloatRangeWidenAllows(t *testing.T) {
+	rowAllows(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -2, max = 2, resolution = 0.01"), "Row")
+}
+
+func TestLockCfloatRangeWidenRefuses(t *testing.T) {
+	rowRefuses(t, rowTable("    aim float32 | min = -1, max = 1, resolution = 0.01"),
+		rowTable("    aim float32 | min = -1, max = 0.5, resolution = 0.01"),
+		"fixed table Row", "field aim", "range narrowed", "[-1.0, 1.0]", "[-1.0, 0.5]")
+}
+
 // ---- range_added ----
 
 func TestLockRangeAddedRefuses(t *testing.T) {
@@ -647,4 +678,217 @@ func TestLockRenameWithoutWasRefuses(t *testing.T) {
 
 func TestLockRenameWithoutWasAllows(t *testing.T) {
 	rowUnchanged(t, rowTable("    a int32"), rowTable("    b int32 | was = \"a\""))
+}
+
+// ---- the form's DEPTH BOUND, which no entry of the law can see ----
+//
+// A field appended to a nested type is the `nested_append` row and a widening
+// every reader holds — until the type it appends is one that pushes the holder's
+// layout past §5.2's 64. Past the bound a fixed table DOES NOT CARRY THE FIXED
+// FORM (`layout_malformed`), so the crossing is a CHANGE OF FORM and not a
+// version, and the lock is where that is said: every monotone fact widened
+// legally, so without this refusal `schema lock` wrote the crossing down and the
+// readers compiled from the lineage were left holding a layout nothing writes.
+// It is the depth's half of the record ceiling's refusal (#938), the same fact
+// in the same place.
+
+// depthChain is a chain of `levels` nested types under `Row`, N0 the innermost,
+// beside a shallow `Leaf` the chain's innermost type can reach for. `Row`'s
+// layout then nests `levels`+1 deep: the root at 0, the chain below it, the
+// innermost scalar last.
+func depthChain(levels int, innermost string) string {
+	var b strings.Builder
+	b.WriteString("type Leaf\n{\n    w int32\n}\n\n")
+	fmt.Fprintf(&b, "type N0\n{\n%s\n}\n\n", innermost)
+	for i := 1; i < levels; i++ {
+		fmt.Fprintf(&b, "type N%d\n{\n    n N%d\n}\n\n", i, i-1)
+	}
+	return strings.TrimSuffix(b.String(), "\n\n")
+}
+
+func depthRow(levels int, innermost string) string {
+	return rowWith(depthChain(levels, innermost), fmt.Sprintf("    n N%d\n    l Leaf", levels-1))
+}
+
+// TestLockNestedAppendPastDepthBoundRefuses is the row: an append to the
+// innermost type of a chain that sits exactly at the bound, which takes the
+// holder one past it.
+func TestLockNestedAppendPastDepthBoundRefuses(t *testing.T) {
+	at := ir.TableFixedMaxDepth - 1 // the chain plus the scalar under it is the bound
+	// `rowRefusesAmong`, because the append also stands in N0's OWN block as the
+	// ordinary stale lock: the crossing is Row's and the edit is N0's.
+	rowRefusesAmong(t,
+		depthRow(at, "    v int32"),
+		depthRow(at, "    v int32\n    deeper Leaf"),
+		"fixed table Row", "nesting past the form's 64-entry depth bound (64 -> 65)")
+}
+
+// TestLockNestedAppendInsideDepthBoundAllows keeps the refusal off the ordinary
+// append: a chain that grows and stays inside the bound is `nested_append` and
+// nothing else.
+func TestLockNestedAppendInsideDepthBoundAllows(t *testing.T) {
+	rowAllows(t,
+		depthRow(8, "    v int32"),
+		depthRow(8, "    v int32\n    deeper Leaf"),
+		"N0")
+}
+
+// TestLockAlreadyPastDepthBoundAllows is the asymmetry the bound needs: a table
+// that was ALREADY past it never carried the fixed form, so it crosses nothing
+// and the lock says nothing.
+func TestLockAlreadyPastDepthBoundAllows(t *testing.T) {
+	deep := ir.TableFixedMaxDepth + 8
+	rowAllows(t,
+		depthRow(deep, "    v int32"),
+		depthRow(deep, "    v int32\n    deeper Leaf"),
+		"N0")
+}
+
+// TestLockDepthRefusesUnderSchemaLock is the LOCK-REFUSES column's other half:
+// `schema lock` itself must not write the crossing, or the one command that moves
+// the file would be the one that breaks the law.
+func TestLockDepthRefusesUnderSchemaLock(t *testing.T) {
+	at := ir.TableFixedMaxDepth - 1
+	errs := lockThen(t, depthRow(at, "    v int32"), depthRow(at, "    v int32\n    deeper Leaf"))
+	named := false
+	for _, err := range errs {
+		got := err.Error()
+		if !strings.Contains(got, "depth bound") {
+			continue
+		}
+		named = true
+		if strings.Contains(got, "write it with `schema lock`") {
+			t.Fatalf("the depth bound is a refusal, never a stale lock: %v", err)
+		}
+	}
+	if !named {
+		t.Fatalf("one refusal must be the depth bound's: %v", errs)
+	}
+}
+
+// ---- the record size is the entry's layout's ----
+
+// TestLockLineageRecordIsTheEntrysLayout is §5.9 #26 AT THE LOCK: the lineage
+// line's `record=` is the ROOT ENTRY's own size, and a hand that moves one
+// without the other is a LOCK BUG the build refuses HERE — never §5.3 step 9's
+// arithmetic over a file's tail. `record=` used to be range-checked alone, so a
+// hand-edited size rode into COMPILE and out to every leg as a record size no
+// layout accounts for.
+func TestLockLineageRecordIsTheEntrysLayout(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    x int32\n    y int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatalf("locking: %v", err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	edited := false
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		for was := range strings.FieldsSeq(line) {
+			if strings.HasPrefix(was, "record=") {
+				lines[i] = strings.Replace(line, was, "record=7", 1)
+				edited = true
+			}
+		}
+		break
+	}
+	if !edited {
+		t.Fatal("the lock must carry a lineage line to edit")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Open(paths); err == nil {
+		t.Fatal("a record size the entry's layout does not account for is a LOCK BUG and the build fails")
+	} else {
+		got := err.Error()
+		// AND THE REFUSAL NAMES THE TABLE AND THE ENTRY'S HASH (§5.9 #26). The
+		// sentence used to carry the two sizes and nothing else, so a lock with
+		// several fixed tables and several entries each said which numbers
+		// disagreed and never WHERE — and the hash is the entry's only name.
+		for _, want := range []string{"record=7", "entry 0 accounts for 8", "fixed table Row", "wire=0x" + wireOf(t, lines)} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("the refusal names the table, the entry's hash and BOTH values: want %q in %q", want, got)
+			}
+		}
+	}
+}
+
+// wireOf pulls the wire hash off the lineage line the test edited, so the
+// assertion above is over the entry's REAL name and not a spelling.
+func wireOf(t *testing.T, lines []string) string {
+	t.Helper()
+	for _, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		for tok := range strings.FieldsSeq(line) {
+			if after, ok := strings.CutPrefix(tok, "wire=0x"); ok {
+				return after
+			}
+		}
+	}
+	t.Fatal("the lock must carry a lineage line with a wire hash")
+	return ""
+}
+
+// TestLockLineageRecordBelowOneByte is §5.9 #26's OTHER half: `record=` is the
+// root entry's CONSTANT BODY LENGTH, so a number below one byte is not a size at
+// all. The parse refused only a NEGATIVE one, so `record=0` rode through the
+// lock and into COMPILE, where a zero-length record reaches §5.3's arithmetic
+// over a file's tail and a LOCK BUG is reported as a wire event. The LAYOUT is
+// cut short in the same edit, because an entry that carries an entry 0 is held
+// by the comparison above and not by the range — a FIELDLESS fixed table's body
+// is honestly zero, and the range is for the entry with nothing to compare to.
+func TestLockLineageRecordBelowOneByte(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    x int32\n    y int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatalf("locking: %v", err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	edited := false
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		edit := line
+		for was := range strings.FieldsSeq(line) {
+			if strings.HasPrefix(was, "record=") {
+				edit = strings.Replace(edit, was, "record=0", 1)
+				edited = true
+			}
+			if strings.HasPrefix(was, "bytes=") {
+				edit = strings.Replace(edit, was, "bytes=00", 1)
+			}
+		}
+		lines[i] = edit
+		break
+	}
+	if !edited {
+		t.Fatal("the lock must carry a lineage line to edit")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Open(paths); err == nil {
+		t.Fatal("`record=0` is not a record size and the build fails")
+	} else {
+		got := err.Error()
+		for _, want := range []string{"record=0", "never less than one byte", "fixed table Row", "wire=0x" + wireOf(t, lines)} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("the refusal names the table, the entry's hash and the size: want %q in %q", want, got)
+			}
+		}
+	}
 }

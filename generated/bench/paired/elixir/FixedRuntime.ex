@@ -152,25 +152,42 @@ defmodule Bench.FixedRuntime do
   """
   def read_file_header(data)
 
+  # THE SUCCESS CLAUSE SPELLS THE SEVEN RESERVED ZEROS OUT. A wildcard here
+  # matched FIRST and swallowed every nonzero reserved byte, so the refusal
+  # below was unreachable except when the layout's length overran the file: the
+  # clause that says yes must say yes to nothing the clauses below refuse.
   def read_file_header(
-        <<@form, _reserved::binary-size(@file_hash_at - 1), hash::little-unsigned-64,
-          len::little-unsigned-32, rest::binary>>
+        <<@form, 0, 0, 0, 0, 0, 0, 0, hash::little-unsigned-64, len::little-unsigned-32,
+          rest::binary>>
       )
       when byte_size(rest) >= len do
     <<layout::binary-size(^len), records::binary>> = rest
     {:ok, hash, layout, records}
   end
 
-  # STEP 1 BEFORE STEP 2 (§5.3): a file with no header in it at all is the
-  # RESIDUE — malformed, with no name — and the FORM BYTE is read only once there
-  # are bytes enough to carry one.
+  # THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3, step 1). A file with
+  # NO FIRST BYTE is the RESIDUE — malformed, with no name — but a file that HAS
+  # one has its byte earn its name whatever the file's length: a committed form-1
+  # file is TEN bytes and a form-2 batch THREE, so measuring first would answer
+  # malformed for every real file of the two forms this reader names.
+  def read_file_header(<<>>), do: {:error, :malformed}
+  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
+  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
+  def read_file_header(<<form, _::binary>>) when form != @form, do: {:error, :newer_form}
+
+  # STEP 2: THE SEVEN RESERVED BYTES, which are REFUSED and not ignored so they
+  # stay spendable later (§3.4, §5.3), and then the twenty-byte minimum. The
+  # reserved clause stands BEFORE the length clause: both answer the same name,
+  # but a clause that can only be reached past the length check is a clause that
+  # never reads a header it was written to refuse.
+  def read_file_header(<<@form, reserved::binary-size(@file_hash_at - 1), _::binary>>)
+      when reserved != <<0::size((@file_hash_at - 1) * 8)>>,
+      do: {:error, :malformed}
+
   def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
     do: {:error, :malformed}
 
-  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
-  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
-  def read_file_header(<<_form, _::binary>>), do: {:error, :newer_form}
   def read_file_header(_), do: {:error, :layout_malformed}
 
   # ---------------------------------------------------------------------------
@@ -249,6 +266,27 @@ defmodule Bench.FixedRuntime do
   """
   def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1
   def clamps(acc, _v, _lo, _hi), do: acc
+
+  @doc """
+  A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
+  from 'clamps/4' because a float32 that is not finite does not arrive here as
+  a number at all: 'f32_value/1' answers the TUPLE '{:nonfinite, bits}' for an
+  infinity or a NaN, and in Erlang's term order every tuple sorts ABOVE every
+  number, so an unguarded 'v > hi' would "clamp" a NaN to the maximum and count
+  it. The 'is_float/1' guard is the whole point of these two, and IEEE does the
+  rest: a NaN is below no min and above no max, and a negative zero is not
+  below a min of +0.
+
+  Which bound is the reader's own and not the writer's is schema#1164, ruled
+  statement B: a compressed float rides AS THE FLOAT in the fixed form, its
+  bounds are definitions in the digest, and the compiled plan carries no range.
+  """
+  def fclamp(v, lo, _hi) when is_float(v) and v < lo, do: lo
+  def fclamp(v, _lo, hi) when is_float(v) and v > hi, do: hi
+  def fclamp(v, _lo, _hi), do: v
+
+  def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1
+  def fclamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
   The count moved by an ORDINAL past the last variant the reader declares: an
@@ -823,28 +861,56 @@ defmodule Bench.FixedRuntime do
   @doc """
   Compile a plan for ANOTHER writer's layout against my own.
 
-  `{:ok, entries, made, report}` or `{:error, :plan_too_large, report}`.
+  `{:ok, entries, made, report}`, `{:error, :plan_too_large, report}` or
+  `{:error, :layout_record_too_large, report}`.
   `mine` is this build's own parsed layout and `dst` is MY SIDE of it, one
   row per entry; `made` is the entry count the capacity was measured against,
   BEFORE coalescing, which is the number a cache has to remember.
   """
   def compile(theirs, mine, dst, capacity, report) do
-    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report)
+    record = size_at(theirs, 0)
+    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report, true)
     {entries, n} = acc
 
-    if n > capacity do
-      {:error, :plan_too_large, report}
-    else
-      # THE ENTRY COUNT THE CAPACITY WAS MEASURED AGAINST RIDES BACK, so the
-      # CACHE can be checked against a later caller's capacity by the SAME
-      # NUMBER. Coalescing runs after it and can only shrink the list, so the
-      # length of the returned plan is a SMALLER number — and a cached plan
-      # admitted under that is one a caller compiling fresh would be refused.
-      {:ok, coalesce(:lists.reverse(entries)), n, report}
+    cond do
+      any_past?(entries, record) ->
+        {:error, :layout_record_too_large, report}
+
+      n > capacity ->
+        {:error, :plan_too_large, report}
+
+      true ->
+        # THE ENTRY COUNT THE CAPACITY WAS MEASURED AGAINST RIDES BACK, so the
+        # CACHE can be checked against a later caller's capacity by the SAME
+        # NUMBER. Coalescing runs after it and can only shrink the list, so the
+        # length of the returned plan is a SMALLER number — and a cached plan
+        # admitted under that is one a caller compiling fresh would be refused.
+        {:ok, coalesce(:lists.reverse(entries)), n, report}
     end
   end
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
+
+  # THE LAST SOURCE BYTE, EXCLUSIVE, an entry reads — the guard included, so a
+  # guarded entry loads the tag before anything else (docs/FIXED-FORM-ALGORITHM.md
+  # §4.2). A plan entry that reaches past the writer's declared record size
+  # refuses the plan WHOLE under layout_record_too_large.
+  defp src_end({:guard, guard, _tag, argw, entry}), do: max(guard + argw, src_end(entry))
+  defp src_end({:live, _dst, _i, entry}), do: src_end(entry)
+  defp src_end({:present, _src, entry}), do: src_end(entry)
+  defp src_end({:copy, at, _dst, size}), do: at + size
+  defp src_end({:widen, at, _dst, size, _my_size, _signed}), do: at + size
+  defp src_end({:widenf, at, _dst}), do: at + 4
+  defp src_end({:text, at, _dst, _aux, units, _meta}), do: at + 4 + units
+  defp src_end({:count, at, _aux, _n}), do: at + 4
+  defp src_end({:ordinal, at, _dst, their_size, _my_size, _remap}), do: at + their_size
+  defp src_end({:tagcount, at, tag, _arms}), do: at + tag
+  defp src_end({:const, _at, _value, _size}), do: 0
+
+  # ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§4.2). The bound
+  # is the writer's declared root size and not this reader's: an entry that
+  # reached past it would read the NEXT record's bytes.
+  defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)
 
   # A GUARD IS AN OFFSET AND A WIDTH, never an offset alone: `argw` is the
   # WRITER'S tag width in bytes, clamped to 1..8, and a zero reads as one
@@ -876,7 +942,13 @@ defmodule Bench.FixedRuntime do
   defp present_wrap_entry(e, src), do: {:present, src, e}
 
   # match_children walks a TABLE's children on both sides, BY ID.
-  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  #
+  # The census flag is whether THIS entry is the FIRST time the peer's field is
+  # seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+  # ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
+  # peer field dropped from a [4]Item is counted four times and the report says
+  # 4 where the law says 1 (the versioning tests' 5.8 row 11).
+  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_children = children_at(theirs, ti)
     my_children = children_at(mine, mi)
 
@@ -887,7 +959,7 @@ defmodule Bench.FixedRuntime do
             {acc, report}
 
           {tc, toff} ->
-            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report)
+            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report, census)
         end
       end)
 
@@ -896,7 +968,7 @@ defmodule Bench.FixedRuntime do
     report =
       Enum.reduce(offsets(theirs, ti, their_children), report, fn tc, report ->
         case find_id(mine, mi, my_children, 0, id_at(theirs, tc)) do
-          nil -> bump(report, :unknown)
+          nil -> if census, do: bump(report, :unknown), else: report
           _ -> report
         end
       end)
@@ -945,7 +1017,7 @@ defmodule Bench.FixedRuntime do
   # function's question.
   defp signed_kind?(kind), do: (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 24)
 
-  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
+  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
     row = elem(dst, mi)
@@ -973,7 +1045,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
 
       their_kind != my_kind ->
@@ -994,7 +1067,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
     end
   end
@@ -1035,7 +1109,8 @@ defmodule Bench.FixedRuntime do
          guard,
          tag,
          acc,
-         report
+         report,
+         census
        ) do
     case kind_at(mine, mi) do
       # the OPTIONAL wrapper: the present byte, then the payload WHOLE, present
@@ -1059,14 +1134,15 @@ defmodule Bench.FixedRuntime do
             guard,
             tag,
             acc,
-            report
+            report,
+            census
           )
 
         {wrap_new(acc, old_n, &present_wrap_entry(&1, their_at)), report}
 
       # a nested TABLE: match its fields
       13 ->
-        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report)
+        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report, census)
 
       # an ARRAY: the count, then min( their bound, my bound ) elements
       14 ->
@@ -1083,16 +1159,45 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census
         )
 
       # an ENUM-KEYED array: every slot, matched by the KEY's id
       16 ->
-        compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report)
+        compile_keyed(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          at,
+          row,
+          guard,
+          tag,
+          acc,
+          report,
+          census
+        )
 
       # a UNION: the tag, remapped, then each arm matched by id
       15 ->
-        compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, guard, tag, acc, report)
+        compile_union(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          at,
+          aux_at,
+          guard,
+          tag,
+          acc,
+          report,
+          census
+        )
 
       # an ENUM: the ordinal is the layout's POSITION, so it remaps
       30 ->
@@ -1137,7 +1242,8 @@ defmodule Bench.FixedRuntime do
          guard,
          tag,
          acc,
-         report
+         report,
+         census
        ) do
     their_elem = size_at(theirs, ti + 1)
     my_elem = size_at(mine, mi + 1)
@@ -1177,7 +1283,8 @@ defmodule Bench.FixedRuntime do
           guard,
           tag,
           acc,
-          report
+          report,
+          census and i == 0
         )
 
       acc =
@@ -1191,7 +1298,21 @@ defmodule Bench.FixedRuntime do
     end)
   end
 
-  defp compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report) do
+  defp compile_keyed(
+         theirs,
+         ti,
+         their_at,
+         mine,
+         mi,
+         dst,
+         at,
+         row,
+         guard,
+         tag,
+         acc,
+         report,
+         census
+       ) do
     their_keys = children_at(theirs, ti + 1)
     my_keys = children_at(mine, mi + 1)
     their_elem_at = ti + 1 + sub(theirs, ti + 1)
@@ -1216,7 +1337,8 @@ defmodule Bench.FixedRuntime do
             guard,
             tag,
             acc,
-            report
+            report,
+            census and k == 0
           )
       end
     end)
@@ -1226,12 +1348,54 @@ defmodule Bench.FixedRuntime do
     Enum.find(0..(their_keys - 1)//1, fn j -> id_at(theirs, ti + 2 + j) == id end)
   end
 
-  defp compile_union(theirs, ti, their_at, mine, mi, dst, at, aux_at, _guard, _tag, acc, report) do
+  defp compile_union(
+         theirs,
+         ti,
+         their_at,
+         mine,
+         mi,
+         dst,
+         at,
+         aux_at,
+         guard,
+         tag,
+         acc,
+         report,
+         census
+       ) do
     their_tag = tag_bytes(theirs, ti)
     my_tag = tag_bytes(mine, mi)
     their_arms = children_at(theirs, ti)
     my_arms = children_at(mine, mi)
     argw = clamp_argw(their_tag)
+
+    # THE TAG PAST THE WRITER'S ARM SET IS COUNTED HERE, AND NOTHING IS WRITTEN.
+    # Every tag value below is written under THEIR tag's guard, so a record
+    # naming an arm this build does not have -- or a tag past the writer's set
+    # entirely -- lands no write at all and is answered by the PREFILL's None.
+    # That answer was right and silent: nothing on this path ever looked at the
+    # raw tag, so the compiled plan counted zero where the identity plan's
+    # decode bound counted one (schema#1254).
+    #
+    # THIS LEG CANNOT TAKE THE c / c++ / dart SHAPE, AND THE REASON IS splice
+    # three hundred lines below: it walks the writes in ASCENDING destination
+    # and DROPS any whose dst is behind the cursor, because "a union's arms
+    # overlap only under guards of which exactly one can fire". "The ONE byte
+    # this form writes twice" is UNREPRESENTABLE here by construction. It is
+    # also unnecessary: the prefill already lands the None, and the value was
+    # never what was missing.
+    #
+    # So :tagcount is its own op, it WRITES NOTHING, and it counts. It is not a
+    # wider :const for the same reason -- the other :const, the T into ?T
+    # present byte, must not grow a source it does not read. The width it reads
+    # the raw tag at is THE WRITER'S (their_tag), because the bytes are the
+    # writer's (§5.2 THE GUARD'S WIDTH).
+    acc =
+      if their_arms >= 1 do
+        guarded(acc, guard, tag, {:tagcount, their_at, their_tag, their_arms})
+      else
+        acc
+      end
 
     Enum.reduce(
       Enum.with_index(offsets(mine, mi, my_arms)),
@@ -1259,7 +1423,8 @@ defmodule Bench.FixedRuntime do
               {their_at, argw},
               j + 1,
               acc,
-              report
+              report,
+              census
             )
         end
       end
@@ -1508,6 +1673,26 @@ defmodule Bench.FixedRuntime do
 
   defp step([{:const, dst, size, value} | rest], body, writes, report) do
     step(rest, body, [{dst, <<value::little-unsigned-size(size)-unit(8)>>} | writes], report)
+  end
+
+  # THE UNION TAG PAST THE WRITER'S ARM SET, COUNTED AND NOT WRITTEN. The
+  # prefill already lands the None this reader shows; what was missing was the
+  # COUNT, so the compiled plan counts exactly what the identity plan's decode
+  # bound counts over the same bytes (schema#1254). Writing the None here would
+  # be a SECOND write at the arm consts' own destination, which splice drops
+  # by construction -- see compile_union.
+  #
+  # A body too short to hold the tag counts nothing: a short record is the
+  # caller's verdict through the record bounds, not this op's to invent.
+  defp step([{:tagcount, src, size, arms} | rest], body, writes, report) do
+    case body do
+      <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>>
+      when raw > arms ->
+        step(rest, body, writes, bump(report, :clamped))
+
+      _ ->
+        step(rest, body, writes, report)
+    end
   end
 
   # ---------------------------------------------------------------------------

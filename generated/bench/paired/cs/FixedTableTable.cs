@@ -209,7 +209,7 @@ namespace Bench
 
         public const long FixedTableFixedBodyBytes = 1236;
         public const long FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes;
-        public const ulong FixedTableFixedHash = 0x6237c1dc195f9ec9ul;
+        public const ulong FixedTableFixedHash = 0x5f1320927e9ad910ul;
 
         public static readonly byte[] FixedTableFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -1085,7 +1085,7 @@ namespace Bench
             0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] FixedTableFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x6237c1dc195f9ec9ul, FixedTableFixedLayout0, 1244),
+            new TableFixedKnownLayout(0x5f1320927e9ad910ul, FixedTableFixedLayout0, 1244),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -1150,7 +1150,7 @@ namespace Bench
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1160,12 +1160,25 @@ namespace Bench
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)

@@ -1187,7 +1187,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1197,12 +1197,25 @@ namespace Tabledemo
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
@@ -1530,7 +1543,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1540,12 +1553,25 @@ namespace Tabledemo
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
@@ -1811,7 +1837,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1821,12 +1847,25 @@ namespace Tabledemo
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)

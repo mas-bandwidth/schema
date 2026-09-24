@@ -70,11 +70,45 @@ type versionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes every counter at zero (§5.9 #10).
 	widens bool
-	// poison fills the reader's record image with 0x5A before the load, so a
-	// prefill that never ran cannot pass as a zero default (§5.7, §5.9 #17) —
-	// in the form a BEAM binary allows: the image is a binary, so the poison is
-	// a binary of 0x5A handed to the run in place of the prefill's own bytes.
-	poison bool
+	// THERE IS NO `poison` FIELD, AND THAT IS THE POINT (§5.7, §5.9 #17). There
+	// was one. It put two lines into the probe —
+	//
+	//	poison = :binary.copy(<<0x5A>>, byte_size(prefill()))
+	//	_ = poison
+	//
+	// — which computed a poison and threw it away. Nothing was ever handed it,
+	// and NOTHING ON THIS LEG CAN BE: the destination is not the caller's here.
+	// `<row>_fixed_load/2` takes `copy:`, `plan_capacity:`, `batch_capacity:`
+	// and `plan:` and no image, and the runtime assembles the record image FROM
+	// the prefill itself (`R.run(plan, body, @<row>_prefill, report)`), so "the
+	// prefill did not run" is not a state this leg's API can be put into.
+	//
+	// WHAT CARRIES §5.9 #17 HERE IS THE ROW'S NONZERO DECLARED DEFAULT, and
+	// that is measured, not argued (2026-09-19, on space, at `fe025445`):
+	// replacing `@<row>_prefill` with `:binary.copy(<<0x5A>>, byte_size(...))`
+	// at the one line that hands it to `R.run` — a real poison, applied where
+	// the image is actually assembled — turned exactly THREE of the twenty-six
+	// rows red: `array_fixed_grow`, `keyed_array_enum_append` and
+	// `field_append`. Twenty-three stayed green, because their checks never
+	// looked at a slot the prefill owns. And deleting the two poison lines
+	// outright left the whole suite `ok 1.996s` — they asserted nothing at all.
+	//
+	// So the marker is on the rows that measurably carry it, in words, and the
+	// obligation it states is the real one: A ROW THAT MEANS TO PROVE THE
+	// PREFILL RAN MUST CHECK A SLOT WHOSE DECLARED DEFAULT IS NOT ZERO.
+	//
+	// RE-MEASURED at `c95bee90` (2026-09-19): the same mutation now turns FIVE
+	// of the twenty-six red — `nested_append` (`w int32 = 88`, appended inside
+	// the nested `Vec`) and `union_arm_payload_widen` (`y int32 = 55`, appended
+	// to the SELECTED arm's payload) joined the three. THOSE FIVE ARE ALL THE
+	// ROWS THERE CAN BE. Every remaining row either WIDENS a member the old
+	// writer already wrote — so the prefill owns no byte of it — or opens a slot
+	// whose DECLARED DEFAULT IS ZERO (`array_bounded_grow`, `bytes_grow`,
+	// `constant_grow`, `enum_append`, `flags_append`, `optional_add`,
+	// `string_grow`, `union_append`, `wstring_grow`), and over a zeroed image a
+	// zero default passes whether the prefill ran or not. Those rows owe §5.9
+	// #32 instead, and the bracket check below is how they pay it.
+	//
 	// check is Elixir source asserting the landed values, over `values`.
 	check string
 }
@@ -82,11 +116,11 @@ type versionRow struct {
 var versionRows = []versionRow{
 	{row: "array_bounded_grow"},
 	{row: "array_elem_widen", widens: true},
-	// THE POISON ROWS (§5.7): the image the prefill lands in is filled with
-	// 0x5A first, because with a zero default over a zeroed image the row passes
-	// whether the prefill ran or not — and these two are the rows whose whole
-	// subject is that it ran. The appended slots owe THE ELEMENT'S OWN DEFAULTS.
-	{row: "array_fixed_grow", poison: true, check: `
+	// A PREFILL ROW (§5.7, §5.9 #17), one of the three measured to catch a
+	// prefill that did not run. The appended slots owe THE ELEMENT'S OWN
+	// DEFAULTS, and `x == 7`/`y == 9` are NONZERO on purpose: over a zeroed
+	// image a zero default passes whether the prefill ran or not.
+	{row: "array_fixed_grow", check: `
   leadtrail(v, want_lead, want_trail)
   for i <- 4..7 do
     e = Enum.at(v.vals, i)
@@ -97,12 +131,21 @@ var versionRows = []versionRow{
 	{row: "constant_grow"},
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
+	// A PREFILL ROW TOO, and it was never marked as one: the measurement of
+	// 2026-09-19 puts it with the other two, because `w == 77` is a NONZERO
+	// declared default and a prefill that did not run cannot produce it.
 	{row: "field_append", check: `
   check(v.x == 11 and v.y == 22 and v.z == 33, "the old writer values did not land: #{inspect(v)}")
   check(v.w == 77, "the appended field is not its declared default: #{inspect(v.w)}")`},
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+  check(length(values) == 1, "the fixed_I_grow_element file carries one record, not #{length(values)}")
+  v = hd(values)
+  want = [-1, -128, 0, 112]
+  check(v.vals == want, "the RAW SCALED VALUE did not land per slot: #{inspect(v.vals)}")
+  leadtrail(v, want_lead, want_trail)`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
@@ -114,10 +157,24 @@ var versionRows = []versionRow{
     check(r.v == w, "record #{k} widened wrong: #{inspect(r.v)}")
     leadtrail(r, want_lead, want_trail)
   end)`},
-	{row: "keyed_array_enum_append", poison: true, check: `
+	// A PREFILL ROW (§5.7, §5.9 #17): `n == 7` is a NONZERO element default and
+	// the slot the appended key opened is the one the prefill owns.
+	{row: "keyed_array_enum_append", check: `
   slot = Enum.at(v.slots, 3)
   check(slot.n == 7, "the slot the appended key opened is not the element default: #{inspect(slot)}")`},
-	{row: "nested_append"},
+	// A PREFILL ROW (§5.7, §5.9 #17), and it was not marked as one until it was
+	// MEASURED on 2026-09-19 at `c95bee90`. The edit appends `w int32 = 88`
+	// INSIDE the nested `Vec`; the old writer's file carries no byte for it, so
+	// the ONLY thing that can put 88 there is the prefill. With no `check` at
+	// all this row asserted the file read and no counter moved — and it stayed
+	// GREEN with the prefill replaced by `:binary.copy(<<0x5A>>, ...)` at the
+	// one line that hands it to `R.run`. It is now one of the rows that catch
+	// that mutation, and 88 is NONZERO on purpose: over a zeroed image a zero
+	// default passes whether the prefill ran or not.
+	{row: "nested_append", check: `
+  check(v.v.x == 1 and v.v.y == 2 and v.v.z == 3, "the old writer's nested values did not land: #{inspect(v.v)}")
+  check(v.seq == 24, "the scalar after the nested table moved: #{inspect(v.seq)}")
+  check(v.v.w == 88, "the field appended INSIDE the nested table is not its declared default: #{inspect(v.v.w)}")`},
 	{row: "optional_add"},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
@@ -126,7 +183,17 @@ var versionRows = []versionRow{
 	{row: "union_append"},
 	// `union_arm_payload_widen` IS NOT A WIDEN: it appends a field INSIDE an
 	// arm, so it owes `widened == 0` like every other append (§5.7).
-	{row: "union_arm_payload_widen"},
+	//
+	// AND IT IS A PREFILL ROW (§5.7, §5.9 #17), measured the same way and on the
+	// same day as `nested_append`: `y int32 = 55` is appended to the SELECTED
+	// arm's payload, the old writer's file carries no byte for it, and 55 is
+	// NONZERO, so only the prefill can put it there. With no `check` at all this
+	// row stayed GREEN with the prefill destroyed.
+	{row: "union_arm_payload_widen", check: `
+  check(v.pick.type == 1, "pick.type is the writer's alpha arm (1), not #{inspect(v.pick.type)}")
+  check(v.pick.alpha.x == 21, "the old writer's arm payload did not land: #{inspect(v.pick.alpha.x)}")
+  check(v.seq == 18, "the scalar after the union moved: #{inspect(v.seq)}")
+  check(v.pick.alpha.y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(v.pick.alpha.y)}")`},
 	{row: "wstring_grow"},
 }
 
@@ -143,10 +210,29 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 				counters = `check(report.widened != 0, "a widening row moved no widened counter")`
 			}
 			old := versionSchema(t, "VOLD_"+r.row)
-			lead, trail := brackets(t, corpus, r.row, fixedTypeBytes(versionRoot(t, old)))
+			root := versionRoot(t, old)
+			lead, trail := brackets(t, corpus, r.row, fixedTypeBytes(root))
+			// THE ORACLE WAS COMPUTED AND THROWN AWAY, and that was the larger
+			// of this file's two vacuities (measured 2026-09-19 at `c95bee90`).
+			// `brackets` reads §5.9 #32's value oracle out of the corpus
+			// manifest FOR EVERY ROW, hands it in as `{want_lead, want_trail}`
+			// — and the body then said `_ = {v, want_lead, want_trail}`.
+			// Exactly THREE rows called `leadtrail` themselves; the other
+			// twenty-three asserted no landed value at all, only that the file
+			// read and that no counter moved. A row whose root declares the
+			// bracket pair now checks it, so a mislaid size that moves a
+			// neighbour says so by name.
+			//
+			// IT IS DERIVED FROM THE IR, not from a flag beside the row: ten of
+			// the twenty-six roots declare no `lead`/`trail` (they are the
+			// scalar and union rows), and a hand-kept list would drift the
+			// first time a schema gained or lost the pair.
+			bracket := ""
+			if hasField(root, "lead") && hasField(root, "trail") {
+				bracket = "\n  leadtrail(v, want_lead, want_trail)"
+			}
 			body := fmt.Sprintf(`  {want_lead, want_trail} = {0x%08X, 0x%08X}
   data = File.read!(file())
-%s
   {tag, values, report} = load(data)
   check(tag == :ok, "the newer reader refused the older writer file: #{inspect({tag, values})} #{why(report)}")
   check(report.malformed == false, "a clean NEW-READS-OLD is not malformed")
@@ -157,8 +243,8 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   )
   %s
   v = hd(values)
-  _ = {v, want_lead, want_trail}
-%s`, lead, trail, poisonLine(r.poison), counters, r.check)
+  _ = {v, want_lead, want_trail}%s
+%s`, lead, trail, counters, bracket, r.check)
 			out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
@@ -166,19 +252,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 		})
 	}
-}
-
-func poisonLine(poison bool) string {
-	if !poison {
-		return ""
-	}
-	// THE POISON IN THE FORM A BEAM BINARY ALLOWS (§5.9 #17): there is no byte
-	// pointer into a value here, so the destination the prefill lands in — the
-	// record IMAGE, a binary — is handed to the read filled with 0x5A instead
-	// of with the declared defaults. A prefill that never ran leaves 0x5A where
-	// a default belongs and the row's own check names it.
-	return `  poison = :binary.copy(<<0x5A>>, byte_size(prefill()))
-  _ = poison`
 }
 
 // ---- OLD-REFUSES-NEW --------------------------------------------------------
@@ -200,9 +273,31 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
   check(report.malformed == false, "an equal hash is not a version: #{why(report)}")
   _ = values`
 			} else {
-				body = `  data = File.read!(file())
+				// THE DESTINATION CLAIM, AND ITS CONTROL (§5.8 row 9's form,
+				// repaired the way #1169 repaired `refuse_writes_nothing`).
+				// The line that stood here was
+				//
+				//     fresh = fresh_value()
+				//     ...
+				//     check(fresh == fresh_value(), "REFUSE wrote destination values")
+				//
+				// and it CANNOT FAIL: `fresh` never reaches `load/1`, and two
+				// calls of `def fresh_value, do: %Struct{}` are equal whatever
+				// the reader did. It is the same vacuous line #1155 carried and
+				// #1169 replaced; this file is where it came from.
+				//
+				// On the BEAM a read's destination is the value it RETURNS, so
+				// the honest claim is about the return's SECOND SLOT, and it is
+				// only a claim when paired with a read that fills that slot:
+				// the refusal puts the reason ATOM there and no list of values,
+				// and THE SAME OLD READER on ITS OWN GENERATION — `old_<row>.bin`,
+				// the file this reader was compiled for — puts a NONEMPTY LIST
+				// of built values in exactly that slot. Neither half alone says
+				// anything: `is_atom(why)` on its own is implied by the
+				// `why == :layout_newer` check above, and the control on its own
+				// is just a backward read. The PAIR is "REFUSE built nothing".
+				body = fmt.Sprintf(`  data = File.read!(file())
   <<_::binary-size(8), want::little-unsigned-64, _::binary>> = data
-  fresh = fresh_value()
   {tag, why, report} = load(data)
   check(tag == :error, "the older reader did not refuse the newer writer file: #{inspect(tag)}")
   check(why == :layout_newer, "a hash in no lineage entry owes layout_newer, not #{inspect(why)}")
@@ -216,10 +311,13 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
       report.clamped == 0 and report.duplicate == 0,
     "REFUSE is total: no counter moves: #{why(report)}"
   )
-  # THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE, compared as VALUES
-  # and never as a struct's slack (§5.9 #17): a BEAM struct has no slack, so the
-  # comparison is the value itself against a fresh one.
-  check(fresh == fresh_value(), "REFUSE wrote destination values")`
+  check(not is_list(why), "REFUSE built a destination value: #{inspect(why)}")
+  {ok_tag, ok_values, ok_report} = load(File.read!(%s))
+  check(ok_tag == :ok, "the control read of this reader's OWN generation refuses: #{inspect(ok_tag)} #{why(ok_report)}")
+  check(
+    is_list(ok_values) and ok_values != [],
+    "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
+  )`, elixirString(filepath.Join(corpus, "old_"+r.row+".bin")))
 			}
 			out, err := runVersionProbe(t, elixirBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
@@ -554,6 +652,69 @@ func brackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32
 // The manifest is not tracked, so `ok` false is "the tree has no manifest" and
 // the caller falls back to the corpus bytes — but a manifest that IS there and
 // does not carry this file is a FAILURE BY NAME, never a silent fallback.
+// manifestFloatBits is the FLOAT half of the corpus oracle, and it exists
+// because `manifestRow` below cannot carry one: that function parses every
+// value as a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
+// CONSTRUCTION — and this leg's compressed-float rows asserted a HARDCODED
+// decimal instead of the reference's answer (schema#1164, measured 2026-09-19
+// on all nine legs; Glenn: "do whatever is needed to make sure that a new
+// reader can read an old writer").
+//
+// THE BEAM HAS ONE FLOAT TYPE AND IT IS A DOUBLE, so `v.aim == 0.30000001192092896`
+// was in fact exact — it is the f32 0.3 widened — but it was exact BY ACCIDENT
+// of a literal transcribed by hand, and nothing said so. Comparing the f32 BITS
+// says it: the probe rebuilds the value as a 32-bit float binary and reads the
+// word back, which is the only spelling on this leg that cannot be argued with.
+//
+// SECTION is "values" or "forged"; a forged key carries its byte offset, so a
+// key equal to `path` or beginning `path+"@"` is the one asked for. It FAILS
+// LOUDLY three ways — no manifest, no row, no such value.
+func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var values string
+		named := false
+		for field := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
 func manifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
 	t.Helper()
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
@@ -885,4 +1046,19 @@ func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	if fired == 0 {
 		t.Fatal("not one row read its brackets from the manifest: the branch is dead again")
 	}
+}
+
+// hasField answers whether a row's ROOT declares a member by that name. It is
+// how the bracket check knows which rows carry §5.9 #32's `lead`/`trail` pair,
+// and it is read off the IR on purpose: a flag kept by hand beside each row
+// would drift the first time a schema gained or lost the pair, and the failure
+// mode of that drift is a row that silently stops asserting a landed value —
+// which is exactly the vacuity being repaired here.
+func hasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
 }

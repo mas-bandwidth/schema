@@ -977,8 +977,29 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		// and reads anything owes a hostile writer.
 		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
 	case ir.TFloat32:
+		// A RANGED FLOAT IS HELD TO THIS READER'S OWN BOUNDS AND COUNTED,
+		// exactly as a ranged integer below is (schema#1164, ruled statement
+		// B). R.fclamp/3 and R.fclamps/4 rather than min/max and R.clamps/4
+		// because f32_value/1 answers the TUPLE {:nonfinite, bits} for an
+		// infinity or a NaN, and a tuple sorts ABOVE every number in Erlang's
+		// term order: an unguarded comparison would clamp a NaN to the maximum
+		// and count it. Both runtime clauses guard on is_float/1.
+		if lo, hi, ok := fixedFloatRangeOf(f); ok {
+			return leafDec{
+				spec:  name + "::little-unsigned-32",
+				wrap:  rawf("R.fclamp(R.f32_value(%s), %s, %s)", name, lo, hi),
+				count: rawf("R.fclamps(c, R.f32_value(%s), %s, %s)", name, lo, hi),
+			}
+		}
 		return leafDec{spec: name + "::little-unsigned-32", wrap: rawf("R.f32_value(%s)", name)}
 	case ir.TFloat64:
+		if lo, hi, ok := fixedFloatRangeOf(f); ok {
+			return leafDec{
+				spec:  name + "::little-unsigned-64",
+				wrap:  rawf("R.fclamp(R.f64_value(%s), %s, %s)", name, lo, hi),
+				count: rawf("R.fclamps(c, R.f64_value(%s), %s, %s)", name, lo, hi),
+			}
+		}
 		return leafDec{spec: name + "::little-unsigned-64", wrap: rawf("R.f64_value(%s)", name)}
 	}
 	spec := fmt.Sprintf("%s::little-unsigned-%d", name, width)

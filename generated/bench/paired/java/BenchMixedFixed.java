@@ -207,9 +207,21 @@ public final class BenchMixedFixed {
         }
         System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
         if (v.payloadLength < v.payload.length) { java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0); }
-        v.aimX = Float.intBitsToFloat(TableFixed.get32(b, at + 1165));
-        v.aimY = Float.intBitsToFloat(TableFixed.get32(b, at + 1169));
-        v.aimZ = Float.intBitsToFloat(TableFixed.get32(b, at + 1173));
+        {
+            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1165));
+            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            v.aimX = q;
+        }
+        {
+            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1169));
+            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            v.aimY = q;
+        }
+        {
+            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1173));
+            if (q < Float.intBitsToFloat(0xbf800000)) { q = Float.intBitsToFloat(0xbf800000); r.clamped++; } else if (q > Float.intBitsToFloat(0x3f800000)) { q = Float.intBitsToFloat(0x3f800000); r.clamped++; }
+            v.aimZ = q;
+        }
         v.recoil = Float.intBitsToFloat(TableFixed.get32(b, at + 1177));
         v.drift = Double.longBitsToDouble(TableFixed.get64(b, at + 1181));
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));

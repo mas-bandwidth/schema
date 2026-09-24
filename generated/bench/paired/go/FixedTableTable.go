@@ -1111,7 +1111,7 @@ func FixedTableFixedClamp(value *FixedTable, report *TableReport) {
 
 const FixedTableFixedBodyBytes = 1236
 const FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes
-const FixedTableFixedHash = 0x6237c1dc195f9ec9
+const FixedTableFixedHash = 0x5f1320927e9ad910
 
 var FixedTableFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -1278,7 +1278,7 @@ var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
 
 var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:   0x6237c1dc195f9ec9,
+		Hash:   0x5f1320927e9ad910,
 		Record: 1244,
 		Layout: []byte{
 			0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -1405,7 +1405,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -1417,6 +1417,16 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {

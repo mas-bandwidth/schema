@@ -57,9 +57,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	//
 	// THE FIXED FORM HAS LANDED HERE, so `fixedForm` is now this backend's OWN
 	// answer rather than the `false` every leg passed while none of them
-	// carried a form-3 codec. The answer is THIS LEG'S OWN ROOTS (fixedRoots,
-	// which narrows on fixedSupported), because coverage is a port's own state
-	// and every leg answers from its own roots for that reason.
+	// carried a form-3 codec. It is not ir.TableFixedAnyEmitted: that is the
+	// answer a port whose coverage is the reference's passes, and this leg
+	// narrows further, because coverage is a port's own state and every leg
+	// answers from its own roots for that reason. So the answer is THIS LEG'S
+	// OWN ROOTS (fixedRoots, which narrows on ir.TableFixedSupported — the ONE
+	// closure test, this leg holding no private copy of it).
 	// A unit whose wide kinds cost it the accelerators and
 	// that has no fixed form to put in their place still has nothing to emit
 	// and is still refused WHOLE and by name.

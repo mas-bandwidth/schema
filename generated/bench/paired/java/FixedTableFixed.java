@@ -54,7 +54,7 @@ public final class FixedTableFixed {
 
     /** fnv1a64 over the layout's bytes exactly as written, and the eight
      *  bytes every record carries. A WIRE IDENTITY and not a security claim. */
-    public static final long hash = 0x6237c1dc195f9ec9L;
+    public static final long hash = 0x5f1320927e9ad910L;
 
     /** THE LAYOUT (form 1 called this the vocabulary block): 75 entries, a
      *  PRE-ORDER walk of this type's closure in declared order — a u32 entry
@@ -158,7 +158,7 @@ public final class FixedTableFixed {
      *  against these entries, and the layout it carries is COMPARED with the
      *  bytes the lock recorded, never walked. */
     public static final TableFixed.KnownLayout[] known = {
-        new TableFixed.KnownLayout(0x6237c1dc195f9ec9L, layout, layout.length, 1244),
+        new TableFixed.KnownLayout(0x5f1320927e9ad910L, layout, layout.length, 1244),
     };
 
     /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a

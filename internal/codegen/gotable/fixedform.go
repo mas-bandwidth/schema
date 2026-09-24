@@ -119,39 +119,14 @@ func fixedElementBytes(f *ir.Field) int64 {
 	return fixedStorageBytes(f.Type)
 }
 
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
+// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// used to carry a private copy — the same function byte for byte, with its own
+// `16` where ir holds `ir.TableFixedMaxDepth` — and the private copy is what
+// SELECTED THE EMITTED FORM. The red-team read of 2026-09-11 found what that
+// costs: a fixed table nested 17 to 64 deep rode form 3 out of C++, C, C# and
+// Rust and form 1 out of this leg, the same declaration on two incompatible
+// wires. A bound a port can hold for itself is a bound the ports can disagree
+// about, so the copy is gone and the question is asked where the answer lives.
 
 type fixedLayoutEntry struct {
 	id       uint64
@@ -309,7 +284,15 @@ func (g *tableGen) isVarTable(name string) bool {
 // unit skips the form entirely, so a mixed unit's fixed-size tables keep
 // form-1 Load.
 func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
-	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !fixedSupported(st, 0) {
+	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
+		return false
+	}
+	// AND THE WALK'S DEPTH BOUND, asked where the answer lives
+	// (ir.TableFixedWithinDepth). This leg does not build its roots from
+	// ir.TableFixedFormRoots, so the bound has to be named here or it is not
+	// applied at all — which is what the red team found: a table nested 17 deep
+	// rode form 3 out of C++ and form 1 out of here, silently.
+	if !ir.TableFixedWithinDepth(st) {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
@@ -565,12 +548,27 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, tabs int) {
 	ind := strings.Repeat("\t", tabs)
-	base := off
 	if f.Type.Optional {
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s.%sPresent {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s[%d:], p)\n%s}\n",
-			ind, ind, ind, val, member(f), ind, ind, ind, buf, base, ind)
-		base += fixedPresentBytes
+			ind, ind, ind, val, member(f), ind, ind, ind, buf, off, ind)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/FIXED-FORM-ALGORITHM.md §3.1, fix 13): the payload rides WHOLE
+		// whether or not it is present, and when the flag is 0 what rides is
+		// zero. It is ONE `if` here rather than a rule anywhere else, because
+		// the template already put the zeros there — so an absent optional
+		// costs the writer the branch and not one store, and a caller's
+		// untouched payload storage never reaches the wire.
+		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
+		g.emitFixedWritePayload(f, off+fixedPresentBytes, buf, val, tabs+1)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitFixedWritePayload(f, off, buf, val, tabs)
+}
+
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	base := off
 	dest := fmt.Sprintf("%s[%d:]", buf, base)
 	switch {
 	case f.KeyEnum != "":
@@ -734,7 +732,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.
 	g.pf("\t*report = TableReport{}\n")
-	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	// STEP 1: only whether there IS a first byte. THE FORM BYTE IS READ BEFORE
+	// THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a form-2
+	// batch THREE, so a reader that measured first would answer `malformed` for
+	// every real file of the two forms it is supposed to name (§5.3).
+	g.pf("\tif len(data) < 1 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
 	// gets its OWN name, and `newer_form` — "a form byte this reader does not
@@ -749,6 +751,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
+	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
+	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treport.Malformed = true\n\t\t\treturn -1\n\t\t}\n\t}\n")
 	// STEP 3: the layout's length, and the bytes behind it.
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")

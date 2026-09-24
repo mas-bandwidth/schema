@@ -64,7 +64,8 @@ public final class TableFixed {
     // writer's layout adds.
     /** move size bytes from the record body to the image. */
     public static final byte opCopy = 0;
-    /** a count: clamp it to this reader's own bound, count one clamped if it fired. */
+    /** a count: clamp it to the ENTRY's bound -- which the compiled plan sets to
+     *  the WRITER's (5.3 step 11) -- and count one clamped if it fired. */
     public static final byte opCount = 1;
     /** a length, then the units, at this reader's own bound. */
     public static final byte opText = 2;
@@ -222,12 +223,22 @@ public final class TableFixed {
      *  never rides the wire, so the hash cannot be re-derived at all. What holds
      *  a header to its layout is step 7's byte comparison against the lock. */
     public static boolean readHeader(byte[] data, Header out, Report report) {
-        if (data == null || data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
+        // THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed
+        // form-1 file is TEN bytes and a form-2 batch THREE, so a reader that
+        // measured first would answer malformed for every real file of the two
+        // forms it is supposed to name. Only a file with NO FIRST BYTE is
+        // malformed before the byte is read.
+        if (data == null || data.length < 1) { report.malformed = true; return false; }
         if (data[0] != form) {
             report.refuse(data[0] == variableForm ? Reason.previousForm
                     : data[0] == messageForm ? Reason.messageFormAsFile
                     : Reason.newerForm);
             return false;
+        }
+        if (data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
+        // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+        for (int i = 1; i < hashAt; i++) {
+            if (data[i] != 0) { report.malformed = true; return false; }
         }
         final long length = get32(data, fileHeaderBytes) & 0xFFFFFFFFL;
         if (length + fileHeaderBytes + 4 > data.length) { report.refuse(Reason.layoutMalformed); return false; }
@@ -518,6 +529,25 @@ public final class TableFixed {
                 }
                 case opConst: {
                     putUint(image, p.dst, p.aux & 0xFFFFFFFFL, p.size);
+                    // AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM
+                    // COUNT: a tag past that set lands None (already written
+                    // just above) and COUNTS, so the compiled plan counts it
+                    // exactly as the identity plan's decode bound does and the
+                    // SAME forged bytes land the SAME clamped == 1 on either
+                    // plan (schema#1254, 5.4, 5.8 row 12).
+                    //
+                    // THE BOUND IS HERE AND NOT AT THE PUSH, and that is stated
+                    // rather than left to be found: opReach returns 0 for
+                    // opConst -- "reads no record byte at all" -- which is true
+                    // of every other const and is why the compile-time bound
+                    // cannot cover this one. The entry that reads a record byte
+                    // carries its own check, in the same shape the neighbouring
+                    // cases use.
+                    if (p.aux == 0 && p.dstsize != 0 && p.guard == noGuard) {
+                        if (p.src < 0 || p.src + p.size > srcLength) { report.malformed = true; return; }
+                        final long raw = tagAt(src, srcAt + p.src, p.size);
+                        if (raw > (p.dstsize & 0xFFL)) { report.clamped++; }
+                    }
                     break;
                 }
                 default: break;
@@ -861,7 +891,7 @@ public final class TableFixed {
          *  writer's own declared record. */
         static int opReach(byte op, int size) {
             switch (op) {
-                case opCount: return 4;          // the live count, and the bound is MINE
+                case opCount: return 4;          // the live count; the bound is the PLAN's
                 case opText: return 4 + size;    // the length word, then the units
                 case opWidenF: return 4;         // an f32 on the wire
                 case opConst: return 0;          // reads no record byte at all
@@ -908,8 +938,15 @@ public final class TableFixed {
     }
 
     // matchChildren walks a TABLE's children on both sides, by NAME.
+    //
+    // The census flag is whether THIS entry is the FIRST time the peer's field is
+    // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
+    // ONCE PER FIELD PER PEER (5.4), so only element 0 censuses. Without it a
+    // peer field dropped from a [4]Item is counted four times and the report
+    // says 4 where the law says 1.
     private static void matchChildren(Compiler c, Layout theirs, int ti, int theirAt,
-                                      Layout mine, int mi, int myAt, int guard, long arg) {
+                                      Layout mine, int mi, int myAt, int guard, long arg,
+                                      boolean census) {
         final long theirKids = theirs.children(ti);
         final long myKids = mine.children(mi);
         int myChild = mi + 1;
@@ -919,7 +956,7 @@ public final class TableFixed {
             int theirOff = theirAt;
             for (long j = 0; j < theirKids; j++) {
                 if (theirs.id(theirChild) == myId) {
-                    compileEntry(c, theirs, theirChild, theirOff, mine, myChild, myAt, guard, arg);
+                    compileEntry(c, theirs, theirChild, theirOff, mine, myChild, myAt, guard, arg, census);
                     break;
                 }
                 theirOff += (int) theirs.size(theirChild);
@@ -937,13 +974,14 @@ public final class TableFixed {
                 if (mine.id(mcAt) == tid) { named = true; break; }
                 mcAt += mine.subtree(mcAt);
             }
-            if (!named && c.report != null) { c.report.unknown++; }
+            if (!named && census && c.report != null) { c.report.unknown++; }
             tcAt += theirs.subtree(tcAt);
         }
     }
 
     private static void compileEntry(Compiler c, Layout theirs, int ti, int theirAt,
-                                     Layout mine, int mi, int myAt, int guard, long arg) {
+                                     Layout mine, int mi, int myAt, int guard, long arg,
+                                     boolean census) {
         final int theirKind = theirs.kind(ti);
         final int myKind = mine.kind(mi);
         final int theirSize = (int) theirs.size(ti);
@@ -966,7 +1004,7 @@ public final class TableFixed {
         // payload lands under that same guard.
         if (myKind == 35 && theirKind != 35) {
             c.push(0, auxAt, 1, 1, guard, opConst, arg, (byte) 0, (byte) 0);
-            compileEntry(c, theirs, ti, theirAt, mine, mi + 1, myAt, guard, arg);
+            compileEntry(c, theirs, ti, theirAt, mine, mi + 1, myAt, guard, arg, census);
             return;
         }
         if (theirKind != myKind) {
@@ -983,11 +1021,11 @@ public final class TableFixed {
         switch (myKind) {
             case 35: { // the OPTIONAL WRAPPER: the present byte, then the payload whole
                 c.push(theirAt, auxAt, 1, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
-                compileEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg);
+                compileEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg, census);
                 break;
             }
             case 13: { // a nested table: match its fields
-                matchChildren(c, theirs, ti, theirAt, mine, mi, at, guard, arg);
+                matchChildren(c, theirs, ti, theirAt, mine, mi, at, guard, arg, census);
                 break;
             }
             case 14: { // an array: the count, then min( their bound, my bound ) elements
@@ -996,14 +1034,21 @@ public final class TableFixed {
                 final int head = live ? 4 : 0;
                 final int theirN = theirElem != 0 ? (theirSize - head) / theirElem : 0;
                 final int myN = myElem != 0 ? (mySize - head) / myElem : 0;
-                if (live) {
-                    c.push(theirAt, auxAt, myN, 0, guard, opCount, arg, (byte) 0, (byte) 0);
-                }
                 final int n = Math.min(theirN, myN);
+                if (live) {
+                    // THE COUNT'S BOUND IS THE WRITER'S theirN (5.2 EMIT kind 14,
+                    // 5.3 step 11: BOUNDS runs against the PLAN's bounds). The
+                    // reader's own myN is the wrong number: a forged 7 from a
+                    // writer bounded at 4 must land 4 AND COUNT, not be admitted
+                    // because THIS reader grew to 8. n is theirN held to this
+                    // reader's storage, which is theirN itself on every legal
+                    // widening.
+                    c.push(theirAt, auxAt, n, 0, guard, opCount, arg, (byte) 0, (byte) 0);
+                }
                 final int step = stride != 0 ? stride : myElem;
                 for (int i = 0; i < n; i++) {
                     compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,
-                            mine, mi + 1, at + i * step, guard, arg);
+                            mine, mi + 1, at + i * step, guard, arg, census && i == 0);
                 }
                 break;
             }
@@ -1019,7 +1064,7 @@ public final class TableFixed {
                     for (long j = 0; j < theirKeys; j++) {
                         if (theirs.id(ti + 2 + (int) j) != keyId) { continue; }
                         compileEntry(c, theirs, theirElemAt, theirAt + (int) j * theirElem,
-                                mine, myElemAt, at + (int) k * step, guard, arg);
+                                mine, myElemAt, at + (int) k * step, guard, arg, census && k == 0);
                         break;
                     }
                 }
@@ -1030,6 +1075,22 @@ public final class TableFixed {
                 final int myTag = mine.tagBytes(mi);
                 final long theirArms = theirs.children(ti);
                 final long myArms = mine.children(mi);
+                // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, and it is
+                // pushed HERE, before c.argw is retuned to this union's tag
+                // width, so it is stamped at the OUTER width: None answers to
+                // the OUTER tag (bill 12.7). Every tag value below is written
+                // under THEIR tag's guard, so a record naming an arm this build
+                // does not have -- or a tag past the writer's arm set entirely
+                // -- landed no tag at all from the plan and was answered by the
+                // PREFILL over the hole. That answer was right and silent:
+                // dstsize carries THE WRITER'S ARM COUNT for this one entry, and
+                // the read loop counts a clamp for a raw tag past that set, so
+                // the compiled plan counts what the identity plan's decode bound
+                // counts (schema#1254, 5.4, 5.8 row 12). Entries apply in push
+                // order, so the arm that matches overwrites this one and it
+                // stands when none does -- at the same value the prefill wrote.
+                c.push(theirAt, auxAt, myTag, 0, guard, opConst, arg,
+                        (byte) ((theirArms >= 1 && theirArms <= 255) ? theirArms : 0), (byte) 0);
                 // THE GUARD'S WIDTH IS THIS UNION'S TAG WIDTH, for the tag
                 // entry itself and for every entry under an arm, restored on the
                 // way out so a nested union does not leak its width upward.
@@ -1045,7 +1106,7 @@ public final class TableFixed {
                             c.push(theirAt, auxAt, myTag, (int) (k + 1), theirAt,
                                     opConst, j + 1, (byte) 0, (byte) 0);
                             compileEntry(c, theirs, theirArm, theirAt + theirTag,
-                                    mine, myArm, at, theirAt, j + 1);
+                                    mine, myArm, at, theirAt, j + 1, census);
                             break;
                         }
                         theirArm += theirs.subtree(theirArm);
@@ -1133,7 +1194,7 @@ public final class TableFixed {
         // THE WRITER'S OWN DECLARED RECORD BODY, out of its root entry's size,
         // and nothing from the file: every entry is bounded against it.
         c.theirBytes = (int) theirs.size(0);
-        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, 0L);
+        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, 0L, true);
         if (c.recordTooLarge) {
             if (report != null) { report.refuse(Reason.layoutRecordTooLarge); }
             return -1;

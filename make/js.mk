@@ -466,7 +466,7 @@ tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/j
 # first and SCHEMA_REQUIRE_CORPUS=1 makes the skip a FAILURE.
 .PHONY: tables-js-versioning
 tables-js-versioning: build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 ./internal/codegen/jstable/ -run 'TestJSFixedVersioning|TestJSFixedLineageLockBugFailsTheBuild'
 	@echo 'tables JS versioning: every row of §5.7 over the reference own bytes, both columns'
 
 test-js: tables-js-versioning

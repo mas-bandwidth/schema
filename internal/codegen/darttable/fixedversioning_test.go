@@ -33,11 +33,14 @@ package darttable
 // against the lineage and compares the bytes it already holds.
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -96,6 +99,14 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+  const want = <int>[-1, -128, 0, 112];
+  for (var i = 0; i < 4; i++) {
+    check(values[0].vals[i] == want[i],
+        'slot $i is not the raw scaled value the writer packed: ${values[0].vals[i]}');
+  }
+  check(values[0].lead == 0xAAAAAAAA && values[0].trail == 0xBBBBBBBB,
+      'fixed_I_grow_element moved a neighbour: ${values[0].lead} ${values[0].trail}');`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
@@ -126,6 +137,21 @@ var versionRows = []versionRow{
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
+//
+// THE SHARED BODY ASSERTED NO LANDED VALUE FOR 21 OF 26 ROWS: it read the file,
+// refused nothing and demanded that no counter move, but only five rows carried
+// their own check, so a mislaid size that moved a neighbour stayed green across
+// the other twenty-one. Every row whose root declares the `lead`/`trail` pair
+// now asserts it by name.
+//
+// THE ORACLE IS THE CORPUS MANIFEST (§5.9 #32), read PER FILE and in DECIMAL,
+// not from the bytes under test. The brackets are not constant across rows —
+// 30 files use lead=2863311530 / trail=3149642683 and 8 use lead=1 / trail=2 —
+// and one row has two sides with different values, so the key is the file.
+//
+// THE GATE IS DERIVED FROM THE IR AND NOT FROM A FLAG: a hand-kept list drifts
+// the first time a schema gains or loses the pair, and that drift fails as a
+// row silently stops asserting a value.
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -133,6 +159,14 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
+			root := versionRoot(t, versionSchema(t, "VOLD_"+r.row))
+			lead, trail := versionBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
+			bracket := ""
+			if versionHasField(root, "lead") && versionHasField(root, "trail") {
+				bracket = fmt.Sprintf(`
+  check(values[0].lead == 0x%08X && values[0].trail == 0x%08X,
+      'the row moved a neighbour: lead=${values[0].lead} trail=${values[0].trail}');`, lead, trail)
+			}
 			counters := `check(report.widened == 0, 'widened ${report.widened}, and an append is not an event');`
 			if r.widens {
 				counters = `check(report.widened != 0, 'a widening row moved no widened counter');`
@@ -152,7 +186,8 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
     'counters moved on a clean backward read: ${why(report)}',
   );
   %s
-%s`, poison, counters, r.check)
+%s
+%s`, poison, counters, bracket, r.check)
 			out, err := runVersionProbe(t, dartBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
@@ -432,6 +467,192 @@ func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 	return roots[len(roots)-1]
 }
 
+// versionBrackets is §5.9 #32's value oracle: per row the `lead` and `trail`
+// the corpus brackets it with, so a mislaid size moves a neighbour and the row
+// says so by name. THE MANIFEST is read when the tree carries one
+// (`build/fixedform-corpus/manifest.txt`, §5.7 step 1's one line per row), and
+// where it does not the values the manifest would carry are taken FROM THE
+// CORPUS BYTES — which is where the manifest itself reads them: the lead is the
+// first four bytes of the first record's body and the trail the last four.
+func versionBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
+	t.Helper()
+	if lead, trail, ok := versionManifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
+	}
+	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
+	if err != nil || len(data) < 20 {
+		t.Fatalf("the corpus row %s is not readable: %v", row, err)
+	}
+	at := 20 + int(binary.LittleEndian.Uint32(data[16:20])) + 8
+	if int64(at)+bodyBytes > int64(len(data)) {
+		t.Fatalf("the corpus row %s is shorter than its own record", row)
+	}
+	body := data[at : int64(at)+bodyBytes]
+	return binary.LittleEndian.Uint32(body[:4]),
+		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// versionManifestBrackets reads ONE FILE'S row out of the corpus manifest, which
+// is the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead: it never fired and every row read its oracle
+// from the very .bin it was asserting.
+//
+// The manifest is not tracked, so `ok` false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+// versionManifestFloatBits is the FLOAT half of the corpus oracle, and it exists because this
+// file's `...ManifestRow` cannot carry one: that function parses every value as
+// a uint64 and SILENTLY SKIPS anything else, so the manifest's own
+// `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
+// CONSTRUCTION — and every leg's compressed-float row asserted a HARDCODED
+// literal instead of the reference's answer (schema#1164, measured 2026-09-19
+// across all nine legs; Glenn: "do whatever is needed to make sure that a new
+// reader can read an old writer").
+//
+// THIS LEG ALREADY COMPARED BITS, which is the right comparison and is why it
+// is one of the cheap three. What it did not do is take the number from the
+// REFERENCE: a literal in a test is an oracle written by the same hand as the
+// code under test, and it agrees with a requantizing reader the moment somebody
+// "fixes" it to match.
+//
+// SECTION is "values" or "forged"; a forged key carries its byte offset, so a
+// key equal to `path` or beginning `path+"@"` is the one asked for. It FAILS
+// LOUDLY three ways — no manifest, no row, no such value — because a float
+// oracle that can degrade to "not checked" is the vacuity this repairs.
+func versionManifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var values string
+		named := false
+		for field := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				named = v == file
+			case section:
+				values = v
+			}
+		}
+		if !named {
+			continue
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
+				continue
+			}
+			_, hexPart, ok := strings.Cut(v, "|0x")
+			if !ok {
+				t.Fatalf("the manifest's %s for %s is %q, which carries no |0x<bits> half: a decimal alone is not a bit-exact oracle", path, file, v)
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 32)
+			if err != nil {
+				t.Fatalf("the manifest's %s for %s has unreadable bits %q: %v", path, file, hexPart, err)
+			}
+			return uint32(bits)
+		}
+		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0
+}
+
+func versionManifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := versionManifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// versionManifestRow answers one line's `values=` map when its `file=` is the
+// one asked for. The values are `<path>=<number>` pairs separated by commas,
+// and a pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func versionManifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
+}
+
+// versionHasField answers whether a row's ROOT declares a member by that name.
+// It is how the bracket check knows which rows carry §5.9 #32's `lead`/`trail`
+// pair, and it is read off the IR on purpose: a flag kept by hand beside each
+// row would drift the first time a schema gained or lost the pair, and the
+// failure mode of that drift is a row that silently stops asserting a landed
+// value — which is exactly the vacuity being repaired here.
+func versionHasField(st *ir.Struct, name string) bool {
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // runVersionProbe generates the READER's Dart with the OLDER units' locked
 // entries handed to it as its lineage — oldest first, the reader's own layout
 // last — marks the first `retire` entries retired (which is what moves the
@@ -543,4 +764,54 @@ void main() {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// ---- A TAG NO ARM LANDS (§5.2 EMIT kind 15, §5.9 #42) -----------------------
+
+// TestFixedCompiledPlanTagPastArmSet is the two-record probe the unguarded None
+// entry exists for. THE IMAGE IS REUSED RECORD TO RECORD, and on a COMPILED plan
+// every union tag value used to be written by a GUARDED const — one per arm pair
+// the two layouts share. So a record whose tag named no arm landed NO TAG AT ALL
+// and the decode read the PREVIOUS record's, reporting a live arm for a record
+// that has none; the prefill could not answer for it either, because those bytes
+// are named by the guarded entries and are therefore not in its ranges.
+//
+// The file is the corpus's own `old_union_append.bin` — one record, tag 1, the
+// alpha arm live — with a SECOND record appended that is the first with its tag
+// forged to 9, past the writer's two arms. The newer reader holds three arms, so
+// this is the COMPILED plan and not the identity one.
+func TestFixedCompiledPlanTagPastArmSet(t *testing.T) {
+	corpus := fixedCorpus(t)
+	dartBin := dartBinary(t)
+	body := `  final data = File(FILE).readAsBytesSync();
+  final head = ByteData.sublistView(data);
+  final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);
+  final at0 = t.TableFixedLimits.layoutAt + layoutBytes;
+  final recordBytes = data.length - at0;
+  check(recordBytes > 8, 'the row file carries exactly one record: $recordBytes');
+  // RECORD TWO IS RECORD ONE WITH ITS TAG FORGED PAST THE WRITER'S ARM SET. The
+  // tag is the body's first value byte, which is the record's ninth: the eight
+  // before it are the layout hash.
+  final forged = Uint8List(at0 + 2 * recordBytes);
+  forged.setRange(0, data.length, data);
+  forged.setRange(at0 + recordBytes, forged.length, data, at0);
+  forged[at0 + recordBytes + 8] = 9;
+  final n = LOAD(values, values.length, forged, forged.length, plan, report);
+  check(n == 2, 'the two-record file did not read: n=$n ${why(report)}');
+  check(report.refused == 0 && !report.malformed,
+      'a forged TAG is not a refusal and not malformed: ${why(report)}');
+  check(values[0].pick.type == 1 && values[0].pick.alpha.m == 7,
+      'record 0 lost the arm the writer named: ${values[0].pick.type} '
+      '${values[0].pick.alpha.m}');
+  check(values[1].pick.type == 0,
+      'a tag past the arm set reported an arm — the PREVIOUS record\'s: '
+      '${values[1].pick.type}');
+  check(report.clamped == 1,
+      'a tag past the writer\'s arm set is counted exactly once: ${why(report)}');
+`
+	out, err := runVersionProbe(t, dartBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0,
+		filepath.Join(corpus, "old_union_append.bin"), body)
+	if err != nil {
+		t.Fatalf("a tag past the arm set: %v\n%s", err, out)
+	}
 }

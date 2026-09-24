@@ -538,11 +538,18 @@ const tableFixedWireSource = `
             }
         }
 
+        // 'census' is whether THIS entry is the FIRST time the peer's field is
+        // seen. An array compiles its element ONCE PER SLOT, and the unknown count
+        // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
+        // Without it a peer field dropped from a [4]Item is counted FOUR times and
+        // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
+        // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
+        // reason; this leg had no row 11 at all, so nothing here ever said so.
         private static void MatchChildren(
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg)
+            uint guard, byte arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -557,7 +564,7 @@ const tableFixedWireSource = `
                     TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
                     if (tc.Id == mc.Id)
                     {
-                        CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg);
+                        CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census);
                         break;
                     }
                     their_off += tc.Size;
@@ -576,7 +583,7 @@ const tableFixedWireSource = `
                     if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
                     mc_at += Subtree(mine, mc_at);
                 }
-                if (!named && c.Report != null) { c.Report.Unknown++; }
+                if (!named && census && c.Report != null) { c.Report.Unknown++; }
                 tc_at += Subtree(theirs, tc_at);
             }
         }
@@ -585,7 +592,7 @@ const tableFixedWireSource = `
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg)
+            uint guard, byte arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -616,7 +623,7 @@ const tableFixedWireSource = `
             if (me.Kind == 35 && te.Kind != 35)
             {
                 c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
-                CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg);
+                CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census);
                 return;
             }
             switch (me.Kind)
@@ -625,12 +632,12 @@ const tableFixedWireSource = `
                 {
                     TableFixedEntry e = new TableFixedEntry(their_at, aux_at, 1, 0, guard, Copy, arg, 0);
                     c.Push(e);
-                    CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg);
+                    CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census);
                     break;
                 }
                 case 13: // Nested table
                 {
-                    MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg);
+                    MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census);
                     break;
                 }
                 case 14: // Array
@@ -651,7 +658,14 @@ const tableFixedWireSource = `
                     uint their_base = their_at + head;
                     if (d.Counted != 0)
                     {
-                        TableFixedEntry e = new TableFixedEntry(their_at, aux_at, my_n, 0, guard, Count, arg, 0);
+                        // THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
+                        // §5.3 step 11: BOUNDS runs against the PLAN'S bounds). The
+                        // reader's own my_n is the wrong number -- a forged 7 from a
+                        // writer bounded at 4 must land 4 and COUNT, not be admitted
+                        // because this reader grew to 8. their_n held to this reader's
+                        // storage is their_n itself on every legal widening, which is
+                        // what go spells 'n' and rust spells 'their_n.min(my_n)'.
+                        TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                         c.Push(e);
                     }
                     uint n = Math.Min(their_n, my_n);
@@ -683,7 +697,7 @@ const tableFixedWireSource = `
                     for (uint i = 0; i < n; ++i)
                     {
                         CompileEntry(ref c, theirs, ti + 1, their_base + i * tel.Size,
-                                     mine, mi + 1, dst, at + i * d.Stride, guard, arg);
+                                     mine, mi + 1, dst, at + i * d.Stride, guard, arg, census && i == 0);
                     }
                     break;
                 }
@@ -701,7 +715,7 @@ const tableFixedWireSource = `
                         {
                             if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
                             CompileEntry(ref c, theirs, tel, their_at + j * tee.Size,
-                                         mine, mel, dst, at + k * d.Stride, guard, arg);
+                                         mine, mel, dst, at + k * d.Stride, guard, arg, census && k == 0);
                             break;
                         }
                     }
@@ -738,7 +752,7 @@ const tableFixedWireSource = `
                                     their_at, aux_at, my_tag, k + 1, their_at, Const, (byte)(j + 1), 0);
                                 c.Push(tag);
                                 CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
-                                             mine, my_arm, dst, at, their_at, (byte)(j + 1));
+                                             mine, my_arm, dst, at, their_at, (byte)(j + 1), census);
                                 break;
                             }
                             their_arm += Subtree(theirs, their_arm);
@@ -821,7 +835,7 @@ const tableFixedWireSource = `
                 Report = report,
                 ArgW = 1
             };
-            MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
+            MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
             if (c.Overflow) { return -1; }
             return c.Count;
         }

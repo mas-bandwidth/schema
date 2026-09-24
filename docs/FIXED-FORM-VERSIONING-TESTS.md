@@ -49,6 +49,9 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the width |
 | `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the range |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
+| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and `clamped == 0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_newer` |
+| `cfloat_res_coarsen` | `float32 \| min = -1, max = 1, resolution = 0.01` | — | `resolution = 0.1`: "resolution coarsened (0.01 -> 0.1)" | — | — |
+| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, `clamped == 0` — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the width |
 | `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the width |
 | `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the element width |
@@ -83,7 +86,8 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-33 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
+36 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the
+`union_unselected_arm` row that schema#1157 settled, the floor and hash
 tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
@@ -95,6 +99,33 @@ writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5
 a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
 wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
 a value the old writer could not have written. Named `<row>_hostile_case()`.
+
+**The compressed-float rows take a hostile pass too, and it is NOT the one above: the bounds pass is the
+READER's** (schema#1164, ruled 2026-09-19 — statement B; reversible by Glenn). A compressed float is the one
+bounded kind whose bound the PLAN DOES NOT CARRY: `emitFixedClamp` emits a single pass over the reader's own
+`FMin`/`FMax` and the compiled plan carries no range at all, so the old writer's bound has nowhere to live
+once the record is resolved. Two forged files say it, and the pair is the point:
+
+- `hostile_cfloat_range_widen.bin` is `old_cfloat_range_widen.bin` with `aim` forged to `1.5` — OUTSIDE the
+  old writer's `[-1, 1]`, INSIDE the new reader's `[-2, 2]`. It lands WHOLE and UNCOUNTED: `aim == 1.5`,
+  `clamped == 0`, every other counter `0`. The new definition has made lawful what the old one would have
+  clamped, and that is the widening's stated price. This is the file that tells the two readings apart: a
+  plan that carried the WRITER's range instead would land `1.0` and count `clamped == 1`.
+- `past_cfloat_range_widen.bin` is that same old file with `aim` forged to `5.0`, outside the NEW READER's
+  `[-2, 2]` as well. It clamps to the READER's bound and COUNTS: `aim == 2.0` exactly, `clamped == 1`
+  exactly, every other counter `0`. This is the file that proves the bounds pass runs at all — without it
+  "lands whole, uncounted" is indistinguishable from no pass.
+
+The resolution takes no hostile row of its own: a value off the old grid is still a float32 the
+reader lands, and the law's refusal for a moved step is the LOCK's and the HASH's, not a counter's.
+
+**"A min that moves outward changes what the stored value MEANS" is form 1's concern, not this wire's.** In
+the variable form a compressed float rides as a QUANTIZED INDEX — the integer `round((v - min) / res)` — so
+moving `min` or `res` reads every stored index as a different number and nothing can be refused after the
+fact. In the FIXED form the field rides as the float32 itself (SPEC §3.4: "it rides as the float, not as a
+quantized index"), so min, max and resolution are DEFINITIONS in the digest: the stored bytes mean the same
+float whatever the bounds say, which is exactly why the range may WIDEN and the resolution may REFINE here
+and may not there.
 
 ## The divergence rows: §5.8's 4, 9, 11, 12
 
@@ -152,3 +183,120 @@ handed to `GenerateLineage` directly. Under §5.8 row 1's INTERIM — the backen
 schema files by the `VOLD_`/`VNEW_` convention — naming the two files the convention's way is all the handing-in
 the row needs, because the convention never runs `BASELINE`. **The day row 1 closes and the lineage comes from
 the lock, this row needs the explicit test-only entry**, and a leg says which of the two its probe used.
+
+## A union's UNSELECTED ARMS after a read that returns: RULED LAWFUL AS IS (schema#1157)
+
+**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, in Glenn's own word: "as designed it is 'undefined'".**
+After a read that RETURNS, an arm the landed tag did not select is **UNDEFINED** — one word, for every
+target, with no second word for overlaid storage. A union read DEFINES the tag and the SELECTED arm and
+nothing else; an unselected arm is undefined, and a consumer that reads one has a bug whatever those bytes
+hold.
+
+**What each leg happens to do is an OBSERVATION AND NOT A GUARANTEE, and nothing may be relied on it.**
+Go and rust happen to land the declared default in every unselected arm; java, dart, js and cs happen to
+leave the caller's bytes; c and cpp overlay, so the question cannot even be put to them. None of those six
+sentences is a promise, none is testable, and a row that asserted any of them would be asserting something
+this repo does not define. **The row `union_unselected_arm` below is what this ruling lands, and its whole
+content is the assertion it REFUSES to make.** The rest of this section is the evidence the ruling was made on, kept because a reversal would
+need it.
+
+**How it surfaced.** The java probe's poison (§5.9 #35's form (iii), "the unit's own value surface, field by
+field ... every field set to the poison value its type can hold") skipped every Java `final` field, and a
+nested value and a union arm are both emitted `final`. Made TOTAL, the poison survives a returning read in
+two rows:
+
+```
+union_append:             pick.beta.n  = 1515870810 (0x5A5A5A5A), the writer wrote 0
+                          pick.gamma.p = 1515870810, where its declared default 0 belongs
+union_arm_payload_widen:  pick.beta.n  = 1515870810, the writer wrote 0
+```
+
+**The mechanism, and it is the scatter and not the prefill.** Every union entry is GUARDED, so `holes` leaves
+the whole union — tag and overlay — a hole, and the record image does take the defaults arm by arm in declared
+order (§5.2, §5.9 #38). The image-to-value scatter is where it stops: the generated union decode is a switch on
+the landed tag, and its own comment says so — `the tag, then the selected arm; an unselected arm keeps what it
+held`. The appended arm matches no writer arm and gets **no plan entry at all**. No prefill change reaches
+this; only a per-arm reset in the scatter, or §5.9 #38's named alternative of per-arm images selected by the
+landed tag, would.
+
+**The legs already disagree, observably — AND EVERY SENTENCE IN THIS PARAGRAPH IS AN OBSERVATION, NOT A
+GUARANTEE; nothing may be relied on any of it.** Go and Rust happen to land the declared default in every
+unselected arm on every record (rust's own words: "an unselected union arm keeps the default rather than the
+previous record"). Java, Dart, JS and C# happen to leave the caller's bytes. C and C++ overlay their arms by
+construction — a real C union has no other arm to reset — so the question cannot be put to them at all. The
+ruling is one word for all nine: undefined.
+
+**What the documents say.** `SPEC.md` §4.8 settles it for the VARIABLE form, naming these targets by name:
+
+> in mutable targets whose storage lays every arm out separately (Go, C#, JS, Dart, Java) an unselected arm
+> keeps whatever it last held — the reused-storage discipline
+
+and §5 repeats it as a carve-out from "read success fully initializes it". **`SPEC-TABLES.md` carries no
+"fully initializes" sentence of its own** — the phrase does not occur in it — so the fixed form neither
+inherits that promise nor overrides the carve-out. §3.4's own prefill line is still a bare `Reset( value )`,
+under which Java WOULD restore every arm; Glenn's fix 15 ("prefill the bytes the plan does not write;
+identity's list is empty") is what opened the gap, and its cost to unions was never priced.
+
+**This page has never claimed it.** Every sibling row that owes a default says so in its own cell —
+`field_append`'s "w = default", `array_bounded_grow`'s "slots 4..7 default", `array_fixed_grow`'s "4 at the
+ELEMENT DEFAULT". `union_append`'s NEW-READS-OLD cell says "an `a` record lands a; the tag width equal" and
+stops. Nor does the C++ reference assert it: `union_append_case()` reads `pick.type`, `pick.alpha.m`, the
+ordinal and `seq`, and never reads `beta` or `gamma`. **No assertion about an unselected arm exists anywhere
+in the tree.**
+
+**One caution about the evidence.** `pick.beta.n` is the weaker half. The java probe poisons only the `reads`
+column (`probeSource(class, pkg, root.Name, side.key != "refuses")`), and `beta` is a SHARED field compared
+old-value against new-value — so the unpoisoned older build's constructor zero against the poisoned newer
+build's `0x5A` reds it whatever the codec does. **`pick.gamma.p` is the honest half**: a NEW-only field
+compared against the probe's own `FRESH` dump, red because the read genuinely never writes it.
+
+**WHY IT WAS RULED LAWFUL.** The only statement the project has made on the subject says exactly this
+behaviour and names Java in the list; this page declined to claim otherwise in the one cell where it would
+have; and the C++ reference never reads `beta` or `gamma`. Ruling the other way would make the FIXED form
+the stricter of the two on exactly the path that exists to be the fast one, and it would cost a per-record,
+per-arm reset on the hot path in four legs — and could not be stated at all for c and cpp, where the arms
+overlay. The promise worth making is the one every leg can keep: the tag and the selected arm.
+
+**THE ROW, AND IT IS SETTLED. Its whole content is the assertion it REFUSES to make** — a row that exists
+so that no leg writes the other one by accident, and so that a leg which "fixes" this on its own is seen to
+have guessed:
+
+| row | the rule | the oracle | which legs |
+|---|---|---|---|
+| `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, Glenn: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands, every counter `0` — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
+
+**IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
+re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's
+own declared defaults (unselected)*, delivered in the scatter because the flat image provably cannot carry
+two arms' defaults at one byte (§5.9 #38). That is a scatter shape change in four legs, a per-record
+per-arm reset on the hot path, and unstatable for C and C++ — so the rule would have to be worded for
+separate-storage targets only, which is precisely what §4.8 already does in the other direction. The row
+above would then assert `pick.gamma.p == 0` on the separate-storage legs and the four that leave the
+caller's bytes would go red, which is the whole of what changes.
+
+**THE PROBE'S TWO OBLIGATIONS, because a row made of an absence is one edit from being vacuous:**
+
+1. **The poison must be PROVED TO HAVE REACHED THE DESTINATION.** A poison computed and discarded asserts
+   nothing — that exact bug stood on the elixir leg until #1212.
+
+   **The receipt is the UNSELECTED arm, and it is only available on some legs.** Add, temporarily, the very
+   assertion this row refuses — `pick.gamma.p == 0` — and run it. On a leg that keeps the caller's bytes
+   (java, dart, js, cs) it comes back **red naming the poison**, and that is the proof: on js, at `37d4c1ca`,
+   `FAIL: pick.gamma.p is its declared default 0, not 1515870810` — `1515870810` is `0x5A5A5A5A`, so the
+   destination really was poisoned and the read really did leave that arm alone. **Then take the line back
+   out**; it must not be in the committed file.
+
+   **What does NOT work, stated because this page said it did until #1218 corrected it**: demanding
+   `pick.alpha` be the poison instead of the writer's value. That control goes red — but it goes red whether
+   the destination was poisoned or not, because `alpha` is the SELECTED arm and the read overwrites it
+   either way; with no poison at all the field is constructor-zero, then the writer's value, and the failure
+   line is identical. It is not a receipt.
+
+   **On go and rust the poison has NO receipt, and the row must say so rather than imply one.** Those legs
+   happen to land the declared default in every arm, so the temporary assertion passes there and the poison
+   is invisible from the value surface. That is not a defect — it is "undefined" being exercised the other
+   way — but a go or rust probe that carries a poison it cannot observe is decoration, and its comment
+   should state that the poison is present for uniformity with the other legs and is not load-bearing here.
+2. **BOTH COLUMNS are poisoned**, not just the `reads` one. The caution above is why: with only the reads
+   column poisoned, `beta` — a SHARED field — reds against the older build's constructor zero whatever the
+   codec does, and the row would be measuring the harness.

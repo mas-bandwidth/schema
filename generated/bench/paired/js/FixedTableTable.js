@@ -39,8 +39,8 @@ export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
 // fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
-export const FixedTableFixedHashLo = 0x195f9ec9;
-export const FixedTableFixedHashHi = 0x6237c1dc;
+export const FixedTableFixedHashLo = 0x7e9ad910;
+export const FixedTableFixedHashHi = 0x5f132092;
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
@@ -311,7 +311,7 @@ const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 // bytes per wire byte where base64 is four per three. The reader's OWN
 // layout is the array above, not a second copy.
 const FixedTableFixedKnown = [
-  new TableFixedKnownLayout(0x195f9ec9, 0x6237c1dc, FixedTableFixedLayout, 1279, 1244),
+  new TableFixedKnownLayout(0x7e9ad910, 0x5f132092, FixedTableFixedLayout, 1279, 1244),
 ];
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
@@ -377,16 +377,22 @@ export function FixedTableFixedSave(values, count, bytes) {
 // one. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
-  if (bytes === null || byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }
+  if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
   // the registry is ordered, so a byte this reader does not carry is named
   // by where it sits relative to this form and never by one word for both.
+  // AND IT IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed form-1 file
+  // is TEN bytes and a form-2 batch THREE, so a reader that measured first
+  // would answer `malformed` for every real file of the two forms it names.
   if (bytes[0] !== TableFixedForm) {
     report.refused = bytes[0] === TableFixedVariableForm ? TableFixedRefusal.PreviousForm
                    : bytes[0] === TableFixedMessageForm ? TableFixedRefusal.MessageFormAsFile
                    : TableFixedRefusal.NewerForm;
     return -1;
   }
+  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }
+  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.malformed = true; return -1; } }
   const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const layoutBytes = (bytes[TableFixedHeaderBytes] | (bytes[TableFixedHeaderBytes + 1] << 8) |
                        (bytes[TableFixedHeaderBytes + 2] << 16) | (bytes[TableFixedHeaderBytes + 3] << 24)) >>> 0;

@@ -666,6 +666,27 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 		  cat build/c-keyed-max-sabotage/log; exit 1; }
 	@echo "negative control: the None-only compare turns the C past-Max refusal gate red"
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS. The C
+# example in docs/USAGE.md is not a sketch beside the code: the gate pulls the
+# marked fragment out of the page, wraps it in a translation unit against the
+# real generated `tables/examples` unit, compiles it under the leg's own
+# -Wall -Wextra -Werror, and runs it — so the day the emitted surface moves,
+# the page goes red with it rather than a release later.
+.PHONY: tables-c-usage
+tables-c-usage: build/tables-generated-c/.stamp docs/USAGE.md
+	@mkdir -p build/c-usage
+	printf '#include "KeyedTable.h"\n\nint main( void )\n{\n' > build/c-usage/usage.c
+	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/c-usage/usage.c
+	printf '    return 0;\n}\n' >> build/c-usage/usage.c
+	grep -q 'SCHEMA_TABLE_KEYED_AT' build/c-usage/usage.c || \
+		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/examples -I$(SERIALIZE_C) \
+		build/c-usage/usage.c build/tables-generated-c/examples/KeyedTable.c \
+		-o build/c-usage/usage -lm
+	./build/c-usage/usage
+	@echo "usage: docs/USAGE.md's C example compiles and runs against tables/examples"
+
 # THE VARIABLE-LENGTH CLASS, end to end (docs/SPEC-TABLES.md §2, §6, §9). The
 # conformance corpus reaches every FIXED surface and none of this one: its
 # instances are all fixed, because the harness's wire goldens are. So the
@@ -793,8 +814,13 @@ tables-c-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/build/c-ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
-	@if go test -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-ref-ordinal-nc/log || \
+				! grep -q -- '--- PASS' build/c-ref-ordinal-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
+			cat build/c-ref-ordinal-nc/log; exit 1; \
+		fi; \
 		echo "NEGATIVE CONTROL FAILED: the rewind leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/c-ref-ordinal-nc/log; exit 1; \
 	fi
@@ -977,6 +1003,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform
 	$(MAKE) tables-c-versioning
+	$(MAKE) tables-c-usage
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.
@@ -1117,7 +1144,12 @@ tables-c-message-negative-control:
 	@mkdir -p build/c-message-negative
 	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
-	@if go test -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-message-negative/log || \
+				! grep -q -- '--- PASS' build/c-message-negative/log; then \
+			echo 'NEGATIVE CONTROL FAILED: the wire comparison did not run (skipped), so this control is watching nothing'; \
+			cat build/c-message-negative/log; exit 1; \
+		fi; \
 		echo 'NEGATIVE CONTROL FAILED: the message slot changed without failing the wire comparison'; exit 1; \
 	fi
 	@grep -q -- '--- FAIL: TestCTableMessageSave' build/c-message-negative/log
@@ -1128,7 +1160,9 @@ test-c tables-c: tables-c-message-negative-control
 
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	go test ./compiler -run '^TestCTableRetain' -count=1
+	sh test/slowgate/proof tables-c-retain \
+		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
@@ -1136,7 +1170,12 @@ tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
 	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
-	@if go test -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-retain-negative/log || \
+				! grep -q -- '--- PASS' build/c-retain-negative/log; then \
+			echo 'NEGATIVE CONTROL FAILED: the public round-trip report did not run (skipped), so this control is watching nothing'; \
+			cat build/c-retain-negative/log; exit 1; \
+		fi; \
 		echo 'NEGATIVE CONTROL FAILED: silently dropped C retained field passed'; exit 1; fi
 	@grep -q -- '--- FAIL: TestCTableRetainFile' build/c-retain-negative/log
 	@grep -q -- 'report.retained==13' build/c-retain-negative/log

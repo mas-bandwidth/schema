@@ -389,13 +389,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
-	g.pf("   then the arms: the entries that are nearly all of a plan never test a\n")
-	g.pf("   guard at all. */\n")
+	g.pf("   destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.pf("   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
+	g.pf("   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
+	g.pf("   test a guard at all. */\n")
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for _, e := range plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -406,8 +408,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, e.Note)
+		argw2 := e.ArgW2
+		if argw2 == 0 {
+			argw2 = 1
+		}
+		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
+		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
+		guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
+		if e.Guard2 != ir.TableFixedNoGuard {
+			guard2 = fmt.Sprintf("%du", e.Guard2)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
@@ -594,6 +606,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
 	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
 	g.pf("    int32_t pick;\n")
+	g.pf("    int32_t reserved_at;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
@@ -607,17 +620,26 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    memset( &local, 0, sizeof( local ) );\n")
 	g.pf("    if ( report == NULL ) { report = &local; }\n")
 	// STEP 1.
-	g.pf("    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }\n")
-	// STEP 2.
-	g.pf("    /* 2. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is\n")
+	g.pf("    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }\n")
+	// STEP 1's second half: THE FORM BYTE, BEFORE THE LENGTH.
+	g.pf("    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is\n")
 	g.pf("       ordered, so a byte this reader does not carry is named by where it sits\n")
-	g.pf("       relative to this form and never by one word for both. */\n")
+	g.pf("       relative to this form and never by one word for both. IT IS READ BEFORE\n")
+	g.pf("       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2\n")
+	g.pf("       batch THREE, so measuring first would answer malformed for every real\n")
+	g.pf("       file of the two forms this reader is supposed to name. */\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = 1;\n")
 	g.pf("        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM\n")
 	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
 	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
 	g.pf("        return -1;\n    }\n")
+	// STEP 2: the length, then the seven reserved bytes.
+	g.pf("    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are\n")
+	g.pf("       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }\n")
+	g.pf("    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )\n")
+	g.pf("    {\n        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }\n    }\n")
 	// STEP 3.
 	g.pf("    /* 3. the layout's length, and the bytes behind it. */\n")
 	g.pf("    layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );\n")
@@ -696,6 +718,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedCount"
 	case ir.TableFixedOpText:
 		return "kTableFixedText"
+	case ir.TableFixedOpBool:
+		return "kTableFixedBool"
 	}
 	return "kTableFixedCopy"
 }

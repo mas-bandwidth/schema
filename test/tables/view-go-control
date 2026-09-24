@@ -13,7 +13,14 @@ source=internal/codegen/gotable/$source
 go run ./tools/sabotage -name "$sabotage" -out "$out/source.gotext" "$source"
 root=$(pwd)
 printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-if go test -overlay "$out/overlay.json" "$package" -run "^$test\$" -count=1 > "$out/log" 2>&1; then echo "view control stayed green: $mode" >&2;exit 1;fi
+# SCHEMA_SLOW=1 IS THE FIX, and the scan under it is a DIAGNOSTIC on a branch
+# that already failed — see the block in test/tables/reference-review-control.
+if SCHEMA_SLOW=1 go test -v -overlay "$out/overlay.json" "$package" -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+ if grep -q -- '--- SKIP' "$out/log" || ! grep -q -- '--- PASS' "$out/log"; then
+  echo "NEGATIVE CONTROL FAILED: the gate did not run (skipped, or no test matched $test), so this control is watching nothing: $mode" >&2; cat "$out/log" >&2; exit 1
+ fi
+ echo "view control stayed green: $mode" >&2;exit 1
+fi
 if grep -q '\[build failed\]' "$out/log";then cat "$out/log";exit 1;fi
 grep -Fq "$expected" "$out/log" || { cat "$out/log";exit 1; }
 echo "Go view control: $mode detected"

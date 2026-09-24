@@ -5561,11 +5561,18 @@ namespace Benchtable
                     }
                 }
 
+                // 'census' is whether THIS entry is the FIRST time the peer's field is
+                // seen. An array compiles its element ONCE PER SLOT, and the unknown count
+                // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
+                // Without it a peer field dropped from a [4]Item is counted FOUR times and
+                // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
+                // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
+                // reason; this leg had no row 11 at all, so nothing here ever said so.
                 private static void MatchChildren(
                     ref Compiler c,
                     TableFixedLayoutView theirs, int ti, uint their_at,
                     TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-                    uint guard, byte arg)
+                    uint guard, byte arg, bool census)
                 {
                     TableFixedLayoutEntry te = EntryAt(theirs, ti);
                     TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -5580,7 +5587,7 @@ namespace Benchtable
                             TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
                             if (tc.Id == mc.Id)
                             {
-                                CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg);
+                                CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census);
                                 break;
                             }
                             their_off += tc.Size;
@@ -5599,7 +5606,7 @@ namespace Benchtable
                             if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
                             mc_at += Subtree(mine, mc_at);
                         }
-                        if (!named && c.Report != null) { c.Report.Unknown++; }
+                        if (!named && census && c.Report != null) { c.Report.Unknown++; }
                         tc_at += Subtree(theirs, tc_at);
                     }
                 }
@@ -5608,7 +5615,7 @@ namespace Benchtable
                     ref Compiler c,
                     TableFixedLayoutView theirs, int ti, uint their_at,
                     TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-                    uint guard, byte arg)
+                    uint guard, byte arg, bool census)
                 {
                     TableFixedLayoutEntry te = EntryAt(theirs, ti);
                     TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -5639,7 +5646,7 @@ namespace Benchtable
                     if (me.Kind == 35 && te.Kind != 35)
                     {
                         c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
-                        CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg);
+                        CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census);
                         return;
                     }
                     switch (me.Kind)
@@ -5648,12 +5655,12 @@ namespace Benchtable
                         {
                             TableFixedEntry e = new TableFixedEntry(their_at, aux_at, 1, 0, guard, Copy, arg, 0);
                             c.Push(e);
-                            CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg);
+                            CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census);
                             break;
                         }
                         case 13: // Nested table
                         {
-                            MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg);
+                            MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census);
                             break;
                         }
                         case 14: // Array
@@ -5674,7 +5681,14 @@ namespace Benchtable
                             uint their_base = their_at + head;
                             if (d.Counted != 0)
                             {
-                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, my_n, 0, guard, Count, arg, 0);
+                                // THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
+                                // §5.3 step 11: BOUNDS runs against the PLAN'S bounds). The
+                                // reader's own my_n is the wrong number -- a forged 7 from a
+                                // writer bounded at 4 must land 4 and COUNT, not be admitted
+                                // because this reader grew to 8. their_n held to this reader's
+                                // storage is their_n itself on every legal widening, which is
+                                // what go spells 'n' and rust spells 'their_n.min(my_n)'.
+                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                                 c.Push(e);
                             }
                             uint n = Math.Min(their_n, my_n);
@@ -5706,7 +5720,7 @@ namespace Benchtable
                             for (uint i = 0; i < n; ++i)
                             {
                                 CompileEntry(ref c, theirs, ti + 1, their_base + i * tel.Size,
-                                             mine, mi + 1, dst, at + i * d.Stride, guard, arg);
+                                             mine, mi + 1, dst, at + i * d.Stride, guard, arg, census && i == 0);
                             }
                             break;
                         }
@@ -5724,7 +5738,7 @@ namespace Benchtable
                                 {
                                     if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
                                     CompileEntry(ref c, theirs, tel, their_at + j * tee.Size,
-                                                 mine, mel, dst, at + k * d.Stride, guard, arg);
+                                                 mine, mel, dst, at + k * d.Stride, guard, arg, census && k == 0);
                                     break;
                                 }
                             }
@@ -5761,7 +5775,7 @@ namespace Benchtable
                                             their_at, aux_at, my_tag, k + 1, their_at, Const, (byte)(j + 1), 0);
                                         c.Push(tag);
                                         CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
-                                                     mine, my_arm, dst, at, their_at, (byte)(j + 1));
+                                                     mine, my_arm, dst, at, their_at, (byte)(j + 1), census);
                                         break;
                                     }
                                     their_arm += Subtree(theirs, their_arm);
@@ -5844,7 +5858,7 @@ namespace Benchtable
                         Report = report,
                         ArgW = 1
                     };
-                    MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
+                    MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
                     if (c.Overflow) { return -1; }
                     return c.Count;
                 }
@@ -8170,7 +8184,7 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8180,12 +8194,25 @@ namespace Benchtable
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
@@ -8431,7 +8458,7 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8441,12 +8468,25 @@ namespace Benchtable
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
@@ -8587,7 +8627,7 @@ namespace Benchtable
 
         public const long TableMixedFixedBodyBytes = 1224;
         public const long TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes;
-        public const ulong TableMixedFixedHash = 0x66b51fa9ec65d701ul;
+        public const ulong TableMixedFixedHash = 0x301b55c58e640302ul;
 
         public static readonly byte[] TableMixedFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -9465,7 +9505,7 @@ namespace Benchtable
             0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableMixedFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x66b51fa9ec65d701ul, TableMixedFixedLayout0, 1232),
+            new TableFixedKnownLayout(0x301b55c58e640302ul, TableMixedFixedLayout0, 1232),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -9530,7 +9570,7 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
-            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            if (data.Length < 1)
             {
                 if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -9540,12 +9580,25 @@ namespace Benchtable
                 if (report != null)
                 {
                     report.Refused = true;
-                    report.Reason = data[0] == 2 ? "message_form_as_file"
-                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                    report.Reason = data[0] == 1 ? "previous_form"
+                                  : data[0] == 2 ? "message_form_as_file"
                                   : "newer_form";
                     report.Verdict = TableWire.Verdict.Refused;
                 }
                 return -1;
+            }
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
+            {
+                if (data[reserved] != 0)
+                {
+                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    return -1;
+                }
             }
             uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
             if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)

@@ -57,10 +57,16 @@
 #include "VNEW_float_widenTable.h"
 #include "VOLD_range_widenTable.h"
 #include "VNEW_range_widenTable.h"
+#include "VOLD_cfloat_range_widenTable.h"
+#include "VNEW_cfloat_range_widenTable.h"
+#include "VOLD_cfloat_res_refineTable.h"
+#include "VNEW_cfloat_res_refineTable.h"
 #include "VOLD_bits_growTable.h"
 #include "VNEW_bits_growTable.h"
 #include "VOLD_fixed_I_growTable.h"
 #include "VNEW_fixed_I_growTable.h"
+#include "VOLD_fixed_I_grow_elementTable.h"
+#include "VNEW_fixed_I_grow_elementTable.h"
 #include "VOLD_optional_addTable.h"
 #include "VNEW_optional_addTable.h"
 #include "VOLD_floorTable.h"
@@ -70,6 +76,8 @@
 #include "VBRA_lineage_mergeTable.h"
 #include "VBRB_lineage_mergeTable.h"
 #include "VNEW_lineage_mergeTable.h"
+#include "VOLD_unknown_censusTable.h"
+#include "VNEW_unknown_censusTable.h"
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
 // docs/FIXED-FORM-VERSIONING-TESTS.md: two schemas per row, one table name,
@@ -132,10 +140,12 @@ struct ManifestRow
     std::string file, row, side, root;
     long long records = 0;
     std::vector<std::string> values;
+    std::string forged; // the forged=<path>@<byte>=<value> field, empty when none
 };
 
 static std::vector<ManifestRow> g_manifest;     // the rows, in the order written
 static std::vector<std::string> g_values;       // the row being written
+static std::string g_forged;                    // the pending row's forged= field, if any
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
 // an enum takes the value the call site hands over, in order, so the path holds
@@ -368,8 +378,13 @@ static void man_row_and_side( const std::string & file, std::string & row, std::
 {
     const size_t dot = file.rfind( ".bin" );
     const std::string stem = dot == std::string::npos ? file : file.substr( 0, dot );
-    const char * sides[5] = { "old_", "new_", "mid_", "a_", "b_" };
-    for ( int k = 0; k < 5; ++k )
+    // `past_` (schema#1164) is the compressed float's second forged side: a
+    // value past the READER's own bound, where `hostile_` is past the WRITER's.
+    // `many_` (R16) is the side that holds SEVERAL records of a row whose
+    // ordinary file holds one, so a once-per-peer claim can be told from a
+    // once-per-record one.
+    const char * sides[8] = { "old_", "new_", "mid_", "a_", "b_", "hostile_", "past_", "many_" };
+    for ( int k = 0; k < 8; ++k )
     {
         const std::string p( sides[k] );
         if ( stem.size() > p.size() && stem.compare( 0, p.size(), p ) == 0 )
@@ -390,6 +405,8 @@ static void man_finish( const char * file, const char * root, long long records 
     r.root = root;
     r.records = records;
     man_row_and_side( r.file, r.row, r.side );
+    r.forged = g_forged;
+    g_forged.clear();
     r.values.swap( g_values );
     g_manifest.push_back( r );
 }
@@ -401,8 +418,16 @@ static bool man_write( const char * dir )
     {
         const ManifestRow & r = g_manifest[i];
         char head[512];
-        std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld values=",
-                       r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records );
+        if ( r.forged.empty() )
+        {
+            std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld values=",
+                           r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records );
+        }
+        else
+        {
+            std::snprintf( head, sizeof( head ), "file=%s row=%s side=%s root=%s records=%lld forged=%s values=",
+                           r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records, r.forged.c_str() );
+        }
         text += head;
         for ( size_t k = 0; k < r.values.size(); ++k )
         {
@@ -878,6 +903,96 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vnew_range_widen, RangeWiden, "new_range_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 150 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
+    // §5.8 — `cfloat_range_widen`: a compressed float's range widened -1..1 to
+    // -2..2. The field rides AS THE FLOAT (SPEC §3.4), so min, max and
+    // resolution are DEFINITIONS in the digest and widening is LAWFUL here —
+    // the row's whole point, not a bug to "fix", and not the variable form's
+    // unlawful move of min. `aim` is the OLD value on the old grid (0.5).
+    VROW( vold_cfloat_range_widen, CfloatRangeWiden, "old_cfloat_range_widen.bin",
+          MS( v[0].lead, 1u ); MS( v[0].aim, 0.5f ); MS( v[0].trail, 2u ); );
+    VROW( vnew_cfloat_range_widen, CfloatRangeWiden, "new_cfloat_range_widen.bin",
+          MS( v[0].lead, 1u ); MS( v[0].aim, 1.5f ); MS( v[0].trail, 2u ); );
+
+    // THE HOSTILE PASS (docs "## Hostile rows"), and for a compressed float it
+    // is NOT the pass the bounded rows above take. schema#1164, ruled
+    // 2026-09-19 as statement B: THE BOUNDS PASS IS THE READER'S. A compressed
+    // float is the one bounded kind whose bound the plan does NOT carry —
+    // `emitFixedClamp` emits one pass over the reader's own FMin/FMax and the
+    // compiled plan carries no range at all — so the OLD writer's bound has
+    // nowhere to live once the record is resolved. Two forged files, and the
+    // PAIR is the point:
+    //
+    //   hostile_cfloat_range_widen.bin — `aim` forged to 1.5: outside the old
+    //     writer's [-1, 1], INSIDE the new reader's [-2, 2]. It lands WHOLE and
+    //     UNCOUNTED (aim == 1.5, clamped == 0). This is the file that tells the
+    //     two readings apart: a plan carrying the WRITER's range would land 1.0
+    //     and count 1.
+    //   past_cfloat_range_widen.bin — `aim` forged to 5.0, outside the NEW
+    //     READER's [-2, 2] as well. It clamps to the READER's bound and COUNTS
+    //     (aim == 2.0, clamped == 1 exactly). Without it, "lands whole,
+    //     uncounted" cannot be told from no bounds pass at all.
+    //
+    // `values=` below is what the OLD writer wrote, before the forge.
+    {
+        std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].aim, 0.5f );
+        MS( v[0].trail, 2u );
+        const int64_t aim_at = vold_cfloat_range_widen::kTableFixedHeaderBytes + 4
+                             + vold_cfloat_range_widen::CfloatRangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vold_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_cfloat_range_widen.bin: save refused\n" );
+            return false;
+        }
+        const float forged = 1.5f;
+        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
+        if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
+    }
+    // The second forged file: PAST THE READER'S OWN BOUND (schema#1164, B).
+    // Same old-generation bytes, `aim` forged to 5.0 — outside [-2, 2] as well
+    // as [-1, 1] — so the reader's pass clamps it to the READER's max 2.0 and
+    // counts exactly one. This is the file that proves the pass runs.
+    {
+        std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].aim, 0.5f );
+        MS( v[0].trail, 2u );
+        const int64_t aim_at = vold_cfloat_range_widen::kTableFixedHeaderBytes + 4
+                             + vold_cfloat_range_widen::CfloatRangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vold_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "past_cfloat_range_widen.bin: save refused\n" );
+            return false;
+        }
+        const float forged = 5.0f;
+        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        man_finish( "past_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
+        if ( !spill( dir, "past_cfloat_range_widen.bin", out ) ) { return false; }
+    }
+    // THE RESOLUTION REFINEMENT (row `cfloat_res_refine`): the old step 0.1 is
+    // a whole multiple of the new step 0.01, so every old value lands exactly
+    // and nothing requantizes. The float rides as the float32 itself in the
+    // fixed form (SPEC §3.4), so the resolution moves the digest ('Q', bill
+    // §13) and the hash, not the bytes — this row takes no hostile file.
+    VROW( vold_cfloat_res_refine, CfloatResRefine, "old_cfloat_res_refine.bin",
+          MS( v[0].lead, 1 ); MS( v[0].aim, 0.3f ); MS( v[0].trail, 2 ); );
+    VROW( vnew_cfloat_res_refine, CfloatResRefine, "new_cfloat_res_refine.bin",
+          MS( v[0].lead, 1 ); MS( v[0].aim, 0.33f ); MS( v[0].trail, 2 ); );
+
     VROW( vold_bits_grow, BitsGrow, "old_bits_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xFFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_bits_grow, BitsGrow, "new_bits_grow.bin",
@@ -887,6 +1002,14 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MSFX( v[0].v, -1, 4 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_fixed_i_grow, FixedIGrow, "new_fixed_I_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MSFX( v[0].v, 1000, 4 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // THE ARRAY-ELEMENT PORT, per slot: the OLD element's raw floor, -1 (the
+    // value a zero-extension gets wrong), zero, and its raw ceiling.
+    VROW( vold_fixed_i_grow_element, FixedIGrowElement, "old_fixed_I_grow_element.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSI( v[0].vals[0], -1, 0 ); MSI( v[0].vals[1], -128, 1 );
+          MSI( v[0].vals[2], 0, 2 ); MSI( v[0].vals[3], 112, 3 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vnew_fixed_i_grow_element, FixedIGrowElement, "new_fixed_I_grow_element.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSI( v[0].vals[0], 1000, 0 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_optional_add, OptionalAdd, "old_optional_add.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].link.value, 777 ); MS( v[0].trail, 0xBBBBBBBBu ); );
@@ -905,6 +1028,46 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vbra_lineage_merge, Merged, "a_lineage_merge.bin", MS( v[0].anchor, 100 ); MS( v[0].from_a, 111 ); );
     VROW( vbrb_lineage_merge, Merged, "b_lineage_merge.bin", MS( v[0].anchor, 200 ); MS( v[0].from_b, 222 ); );
     VROW( vnew_lineage_merge, Merged, "new_lineage_merge.bin", MS( v[0].anchor, 300 ); MS( v[0].from_a, 1 ); MS( v[0].from_b, 2 ); );
+
+    // §5.8 ROW 11 — `unknown_census`: the census of unknown fields on a read.
+    // There is deliberately NO `new_unknown_census.bin` — the NEW side removes
+    // Item.drop, which §5.1 refuses, so the row's only read column is
+    // NEW-READS-OLD and the NEW side is a schema generated but never dumped.
+    // The pair is unlawful by design (row 11's LOCK column), not a bug to fix.
+    VROW( vold_unknown_census, Census, "old_unknown_census.bin",
+          MS( v[0].lead, 1 );
+          for ( int i = 0; i < 4; ++i ) { MSI( v[0].items[i].a, 10 + i, (long long) ( i ) ); MSI( v[0].items[i].drop, 900 + i, (long long) ( i ) ); }
+          MS( v[0].trail, 2 ); );
+
+    // ROW 11'S SECOND FILE, AND IT IS WHAT CLOSES R16 (§5.4: the compile census
+    // lands "once per peer AND NEVER PER RECORD"). `old_unknown_census.bin`
+    // holds ONE record, and with one record "once per peer" and "once per
+    // record" are THE SAME NUMBER — 1 — so no test reading it can tell them
+    // apart, and the clause has never been under a gate. A per-record
+    // `Unknown++` exists in these runtimes (the union-tag path) and row 11
+    // never reaches it.
+    //
+    // `many_unknown_census.bin` holds THREE records. The NEW reader, which
+    // dropped `Item.drop`, must count `unknown == 1` — not 3. The three
+    // records carry DISTINCT `a` values (10.., 20.., 30..) so a reader that
+    // lost, duplicated or reordered a record cannot pass by accident.
+    {
+        std::vector<vold_unknown_census::Census> m( 3 );
+        vold_unknown_census::CensusReset( m[0] );
+        MS( m[0].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[0].items[i].a, 10 + i, (long long) ( i ) ); MSI( m[0].items[i].drop, 900 + i, (long long) ( i ) ); }
+        MS( m[0].trail, 2 );
+        vold_unknown_census::CensusReset( m[1] );
+        MS( m[1].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[1].items[i].a, 20 + i, (long long) ( i ) ); MSI( m[1].items[i].drop, 910 + i, (long long) ( i ) ); }
+        MS( m[1].trail, 2 );
+        vold_unknown_census::CensusReset( m[2] );
+        MS( m[2].lead, 1 );
+        for ( int i = 0; i < 4; ++i ) { MSI( m[2].items[i].a, 30 + i, (long long) ( i ) ); MSI( m[2].items[i].drop, 920 + i, (long long) ( i ) ); }
+        MS( m[2].trail, 2 );
+        if ( !emit( dir, "many_unknown_census.bin", m, vold_unknown_census::CensusFixedMeasure,
+                    vold_unknown_census::CensusFixedSave ) ) { return false; }
+    }
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------

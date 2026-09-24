@@ -529,6 +529,116 @@ static void layout_validation()
 
 // ---------------------------------------------------------------------------
 
+// THE FORM BYTE IS READ BEFORE THE TWENTY-BYTE MINIMUM (docs/FIXED-FORM-ALGORITHM.md
+// §5.3 step 1, docs/SPEC-TABLES.md §3.4). The five cases below are the exact
+// inputs the Elixir model carries (test/elixir-fixedform/main.exs): a file with
+// no first byte, the REAL ten- and three-byte lengths of the two forms this
+// reader names, the unassigned byte `0` with an otherwise valid tail, and a
+// reserved byte set nonzero on a valid form-3 file. A short-form case asserted
+// on a FULL-LENGTH buffer would prove nothing about the order, so each uses the
+// exact input and nothing longer.
+//
+// EVERY CASE ALSO ASSERTS THE REPORT'S TWO ANSWERS JOINTLY and that REFUSE
+// writes nothing: the destination is poisoned first and compared unchanged.
+static void form_header_cases()
+{
+    tblfx1::FxRoot own;
+    tblfx1::FxRootReset( own );
+    std::vector<uint8_t> good( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &own, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
+           "form header: the valid form-3 fixture saves" );
+    std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+
+    // EMPTY FILE — zero bytes, so there is no first byte to earn a name: the
+    // residue, `malformed`, with nothing decoded and nothing written.
+    {
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.malformed && !r.refused, "empty-file: zero bytes is malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "empty-file: malformed moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "empty-file: malformed writes nothing to the destination" );
+    }
+
+    // SHORT-FORM1 — a committed form-1 file is TEN bytes: `previous_form`, the
+    // VARIABLE form being OLDER, and never `malformed`.
+    {
+        const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::previous_form && !r.malformed,
+               "short-form1: a ten-byte form-1 file is previous_form, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "short-form1: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "short-form1: the refusal writes nothing to the destination" );
+    }
+
+    // SHORT-FORM2 — a form-2 batch is THREE bytes: `message_form_as_file`, not
+    // `malformed`, and not `newer_form` either.
+    {
+        const uint8_t short2[3] = { 2, 1, 0 };
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::message_form_as_file && !r.malformed,
+               "short-form2: a three-byte form-2 batch is message_form_as_file, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "short-form2: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "short-form2: the refusal writes nothing to the destination" );
+    }
+
+    // UNASSIGNED-FORM0 — the byte `0` is one no form defines, and the registry
+    // is ORDERED, so it is named by where it sits and not by its value:
+    // `newer_form`, on an otherwise valid fixture tail.
+    {
+        std::vector<uint8_t> zero = good;
+        zero[0] = 0;
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused && r.reason == tblfx1::newer_form && !r.malformed,
+               "unassigned-form0: form byte 0 is newer_form, not malformed" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "unassigned-form0: the refusal moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "unassigned-form0: the refusal writes nothing to the destination" );
+    }
+
+    // RESERVED-BYTE3 — the seven bytes after the form byte are refused and not
+    // ignored, so that they stay spendable later. Byte 3 set nonzero on a valid
+    // form-3 file is `malformed`, with no name.
+    {
+        std::vector<uint8_t> reserved = good;
+        reserved[3] = 1;
+        tblfx1::FxRoot v;
+        std::memset( &v, 0xAB, sizeof( v ) );
+        const tblfx1::FxRoot poison = v;
+        tblfx1::TableReport r;
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.malformed && !r.refused,
+               "reserved-byte3: a nonzero reserved byte 3 is malformed, not a named refusal" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+               "reserved-byte3: malformed moves no counter" );
+        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
+               "reserved-byte3: malformed writes nothing to the destination" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 static void fuzz_case()
 {
     // A LAYOUT IS A STRANGER'S BYTES, AND THAT IS THIS FORM'S WHOLE RISK. The
@@ -1146,7 +1256,7 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblfx1::kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedBool ) { past_the_set++; }
         }
         check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
@@ -1254,7 +1364,7 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblv1::kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[(size_t) i].op > tblv1::kTableFixedBool ) { past_the_set++; }
         }
         check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 
@@ -1872,10 +1982,13 @@ static void plan_partition_case()
 // W16: AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG
 // (docs/FIXED-FORM-ALGORITHM.md §4.1). A union's guard is stamped over
 // EVERYTHING its arm produced, and a nested union's own arm selection must
-// survive that stamp. So every entry an INNER union contributes — its own tag
-// byte included — is guarded by the OUTER tag's byte and never by the inner
-// one, or a record whose outer tag selects the other arm would run the inner
-// arm's entries over storage that arm does not own. The #864 read found JS's
+// SURVIVE that stamp — so the two tags are CONJOINED (§5.8 row 6): an inner
+// arm's entries answer to the inner tag on the first lane and to the OUTER tag
+// on the second, and they run only when BOTH hold their ordinal. Neither half
+// stands alone: under the outer tag alone every inner arm fires the moment the
+// outer one rides, and under the inner tag alone a record whose outer tag
+// selects the other arm runs the inner arm's entries over storage that arm does
+// not own. The #864 read found JS's
 // inner union overwriting the outer guard; FU1/FU2 are the C leg's pair and are
 // not this shape. FH1/FH2 on the tip are the compiled pair (owed 7); FG1 is the
 // identity-plan fixture this PR carries.
@@ -1885,15 +1998,18 @@ static void plan_partition_case()
 // what makes the assertion sharp.
 static void nested_union_case()
 {
-    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag, and
-    //    not one to the inner tag's own byte.
+    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag — on
+    //    the first lane when it is the outer union's own, on the SECOND when it
+    //    belongs to an arm inside an arm — and not one answers to the inner tag
+    //    alone.
     uint32_t outer_tag_at = 0xFFFFFFFFu;
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
         if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = e.guard; }
-        check( e.guard == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE tag" );
+        const uint32_t outer = e.guard2 == tblfg1::kTableFixedNoGuard ? e.guard : e.guard2;
+        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = outer; }
+        check( outer == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE OUTER tag" );
     }
     check( outer_tag_at != 0xFFFFFFFFu, "W16: the plan really has guarded entries" );
     // the inner union's OWN tag rides as a guarded entry, whose SOURCE is the
@@ -1906,9 +2022,9 @@ static void nested_union_case()
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
         if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = e.arg; }
-        check( e.guard != e.src || e.src == outer_tag_at,
-               "W16: an inner entry is never guarded by the INNER tag's own byte" );
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = (uint8_t) e.arg; }
+        check( e.guard == outer_tag_at || e.guard2 == outer_tag_at,
+               "W16: an inner entry answers to the inner tag AND the outer one, never the inner alone" );
     }
     check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
 
@@ -1921,7 +2037,7 @@ static void nested_union_case()
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
-        if ( e.guard == tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        if ( e.guard != outer_tag_at || e.guard2 != tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
         other_arm_dst = e.dst;
     }
     check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
@@ -1981,20 +2097,13 @@ static void nested_union_case()
     // 3. THE OTHER WAY: the outer tag selects A, and the inner union's arm lands
     //    whole — the stamp does not cost the inner selection.
     //
-    //    AND THIS HALF IS BLUNT, and a different schema does not sharpen it. The
-    //    inner union's two arms are each a single int32, so the plan's two inner
-    //    arm entries are the same copy of the same source bytes to the same
-    //    destination: a read that ran BOTH is indistinguishable from one that
-    //    ran only the selected arm. Giving the arms different SHAPES was tried
-    //    (int16 + int8 against int32) and changes nothing — the stamp leaves both
-    //    inner arms guarded by the OUTER tag alone, so both entries still run,
-    //    and because each copies the same record offsets to the same storage
-    //    offsets the overlapping bytes are IDENTICAL and the selected arm still
-    //    reads back whole. Only an arm whose storage image maps the wire to
-    //    DIFFERENT offsets could separate the two, and that is a finding for the
-    //    card (an inner arm selection that is not guarded by the inner tag) and
-    //    not something this fixture can assert. What the case below holds is
-    //    that the inner selection ARRIVES.
+    //    THIS HALF WAS BLUNT WHILE THE STAMP REPLACED THE INNER GUARD: both
+    //    inner arms ran whenever the outer one rode, and because each copied the
+    //    same record offsets to the same storage offsets the overlapping bytes
+    //    were IDENTICAL and the selected arm read back whole either way. The
+    //    conjunction (§5.8 row 6) ends that: part 1 above is now the assertion
+    //    that the inner tag is a condition of its own, and what the case below
+    //    holds is that the inner selection ARRIVES through both conditions.
     {
         tblfg1::FhRoot one;
         tblfg1::FhRootReset( one );
@@ -2532,6 +2641,7 @@ int main( int argc, char ** argv )
     guard_width_case();
     cache_case();
     layout_validation();
+    form_header_cases();
     record_bound_case();
     count_clamp_case();
     plan_partition_case();

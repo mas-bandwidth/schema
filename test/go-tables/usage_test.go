@@ -34,6 +34,9 @@ func TestUsage(t *testing.T) {
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if out, err := exec.Command("go", "vet", path).CombinedOutput(); err != nil {
+		t.Fatalf("documented Go surface does not vet: %v\n%s", err, out)
+	}
 	if out, err := exec.Command("go", "run", path).CombinedOutput(); err != nil {
 		t.Fatalf("documented Go surface: %v\n%s", err, out)
 	}

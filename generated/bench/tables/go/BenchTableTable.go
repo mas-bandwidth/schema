@@ -1800,6 +1800,30 @@ func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	return v
 }
 
+// THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9
+// item 42): every UNGUARDED entry first, then every guarded one, and the
+// split — the NUMBER OF UNGUARDED ENTRIES, the index the second half starts
+// at, not a count of guarded ones — is a property of that order. The emitter
+// lays entries down in field order, so a field past a union would land an
+// unguarded entry behind a guarded one; the builders repair that here, each
+// in its own half, and never coalesce across the split. The run loop still
+// tests the guard per entry, which item 42 allows outright: what a leg may
+// not do is skip the partition. tableFixedPartition stable-partitions the
+// built entries in place and returns the split; a plan with no guarded entry
+// has its split at the END, not at zero.
+func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
+	split := int32(0)
+	for i := int32(0); i < n; i++ {
+		if plan[i].Guard == tableFixedNoGuard {
+			e := plan[i]
+			copy(plan[split+1:i+1], plan[split:i])
+			plan[split] = e
+			split++
+		}
+	}
+	return split
+}
+
 func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
 	raw := make([]TableFixedEntry, n)
 	written := emit(raw, 0, 0)
@@ -1816,7 +1840,9 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		raw[out] = raw[i]
 		out++
 	}
-	return tableFixedPlan{Entries: raw[:out], Count: int32(out)}
+	n = out
+	tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
 }
 
 func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
@@ -1979,6 +2005,22 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			aux := p.Aux
 			for i := uint32(0); i < p.Size; i++ {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
+			}
+			// AN UNGUARDED None CONST WITH DstSize = THE WRITER'S ARM COUNT:
+			// a tag past that set lands None (already written just above) and
+			// COUNTS, so the compiled plan counts it exactly as the identity
+			// plan's decode bound does and the SAME forged bytes land the SAME
+			// Clamped == 1 on either plan (schema#1254, §5.4, §5.8 row 12).
+			// tableFixedSrcEnd gives this one entry a source reach, so the
+			// record bound has already refused a plan that would read past it.
+			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
+				var raw uint64
+				for i := uint32(0); i < p.Size; i++ {
+					raw |= uint64(src[p.Src+i]) << (8 * i)
+				}
+				if raw > uint64(p.DstSize) {
+					report.Clamped++
+				}
 			}
 		}
 	}
@@ -2323,6 +2365,14 @@ func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 	switch e.Op {
 	case tableFixedConst:
 		end = 0 // a constant reads no source at all
+		if e.Aux == 0 && e.DstSize != 0 {
+			// EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
+			// to count a clamp past DstSize arms (schema#1254). It has a source
+			// reach, so one past the writer's record refuses the plan whole
+			// like every other entry — and the read loop needs no bound of its
+			// own.
+			end = uint64(e.Src) + uint64(e.Size)
+		}
 	case tableFixedCount:
 		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
 	case tableFixedText:
@@ -2508,6 +2558,23 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	case 15:
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
+		// THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed
+		// BEFORE c.argW is retuned below so it is stamped at the OUTER width:
+		// None answers to the OUTER tag (bill §12.7). Every tag value below is
+		// written under THEIR tag's guard, so a record naming an arm this build
+		// does not have — or a tag past the writer's arm set entirely — landed
+		// no tag at all from the plan and was answered by the prefill. That
+		// answer was right and silent: DstSize carries THE WRITER'S ARM COUNT
+		// for this one entry, and the read loop counts a clamp for a raw tag
+		// past that set, so the compiled plan counts what the identity plan's
+		// decode bound counts (schema#1254, §5.4, §5.8 row 12). Entries apply in
+		// push order, so the arm that matches overwrites this one and it stands
+		// when none does.
+		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
+		if te.Children > 0 && te.Children <= 255 {
+			none.DstSize = uint8(te.Children)
+		}
+		tableFixedPush(c, none)
 		// THE WRITER'S TAG WIDTH IS THE GUARD'S (§5.2 THE GUARD'S WIDTH): every
 		// entry pushed beneath this union is compared at it, whole.
 		savedW := c.argW
@@ -2626,6 +2693,12 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		plan[out] = plan[i]
 		out++
 	}
+	// THE PARTITION, same as the identity builder above: the walk pushes
+	// guarded and unguarded entries in field order, and a field past a union
+	// would land behind a guarded one. §5.9 item 42 owes the order on this
+	// path too, and the lineage plans below are compiled here, so they are
+	// partitioned by construction.
+	tableFixedPartition(plan, out)
 	return out
 }
 
@@ -10828,7 +10901,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -10840,6 +10913,16 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
@@ -11006,7 +11089,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -11018,6 +11101,16 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
@@ -11114,7 +11207,7 @@ func TableMixedFixedClamp(value *TableMixed, report *TableReport) {
 
 const TableMixedFixedBodyBytes = 1224
 const TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes
-const TableMixedFixedHash = 0x66b51fa9ec65d701
+const TableMixedFixedHash = 0x301b55c58e640302
 
 var TableMixedFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -11281,7 +11374,7 @@ var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
 
 var TableMixedFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:   0x66b51fa9ec65d701,
+		Hash:   0x301b55c58e640302,
 		Record: 1232,
 		Layout: []byte{
 			0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -11408,7 +11501,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		report = &local
 	}
 	*report = TableReport{}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < 1 {
 		report.Malformed = true
 		return -1
 	}
@@ -11420,6 +11513,16 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			return -1
+		}
 	}
 	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
 	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
