@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"go/format"
 	"go/token"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -98,34 +101,142 @@ func Scaffold(root, lang, ext, comment string) ([]string, error) {
 	}
 
 	// render everything first, so a refusal or a template fault writes nothing
-	type out struct {
-		rel  string
-		data []byte
-	}
-	var outs []out
+	var outs []planned
 	for _, f := range files {
-		rel := f.path(l)
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
-			return nil, fmt.Errorf("%s already exists — new-leg lays down a new leg and never overwrites a file", rel)
-		}
 		data, err := render(f.template, l)
 		if err != nil {
 			return nil, err
 		}
-		outs = append(outs, out{rel, data})
+		outs = append(outs, planned{f.path(l), data})
 	}
-	var written []string
+	return write(root, outs)
+}
+
+// planned is one rendered file and where it lands, slash-separated and
+// relative to the checkout.
+type planned struct {
+	rel  string
+	data []byte
+}
+
+// beforeCreate runs between the preflight and each file's creation; it is nil
+// outside the tests, which use it to race a file in where one is about to land.
+var beforeCreate func(rel string)
+
+// write lays the planned files into root, confined to it. Every output goes
+// through an os.Root, so no path — a symlink planted in the tree or raced in
+// later included — resolves outside --root; a preflight refuses, by name, any
+// output whose path is or passes through a symlink, and any file that already
+// exists, before anything is written; and each file is then created with
+// O_CREATE|O_EXCL, so one that appears after the preflight (a file or a
+// dangling symlink alike) is refused rather than written through. Only "does
+// not exist" counts as free: any other lookup error is reported. A failure
+// part-way removes what this run created, so a refusal leaves the tree as it
+// found it.
+func write(root string, outs []planned) (written []string, err error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = r.Close() }()
 	for _, o := range outs {
-		path := filepath.Join(root, filepath.FromSlash(o.rel))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := preflight(r, o.rel); err != nil {
+			return nil, err
+		}
+	}
+	var made []string // directories this run created, outermost first
+	defer func() {
+		if err == nil {
+			return
+		}
+		for i := len(written) - 1; i >= 0; i-- {
+			_ = r.Remove(filepath.FromSlash(written[i]))
+		}
+		for i := len(made) - 1; i >= 0; i-- {
+			_ = r.Remove(filepath.FromSlash(made[i])) // fails, harmlessly, on one not empty
+		}
+		written = nil
+	}()
+	for _, o := range outs {
+		if err := mkdirs(r, path.Dir(o.rel), &made); err != nil {
 			return written, err
 		}
-		if err := os.WriteFile(path, o.data, 0o644); err != nil {
-			return written, err
+		if beforeCreate != nil {
+			beforeCreate(o.rel)
+		}
+		f, err := r.OpenFile(filepath.FromSlash(o.rel), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, fs.ErrExist) {
+			return written, fmt.Errorf("%s appeared while new-leg was writing — it never overwrites a file", o.rel)
+		}
+		if err != nil {
+			return written, fmt.Errorf("%s: %w", o.rel, err)
 		}
 		written = append(written, o.rel)
+		_, werr := f.Write(o.data)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return written, fmt.Errorf("%s: %w", o.rel, werr)
+		}
 	}
 	return written, nil
+}
+
+// preflight walks rel one element at a time with Lstat, so no link is
+// followed: a symlink anywhere on the path is refused, as is a file where a
+// directory goes and a final file that already exists; the first element that
+// does not exist ends the walk (everything below it is free too).
+func preflight(r *os.Root, rel string) error {
+	elems := strings.Split(rel, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		info, err := r.Lstat(filepath.FromSlash(p))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("%s: cannot tell whether it exists: %w", rel, err)
+		}
+		switch {
+		case info.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("%s is a symlink — new-leg writes %s only as a real file under --root and never through a link", p, rel)
+		case i == len(elems)-1:
+			return fmt.Errorf("%s already exists — new-leg lays down a new leg and never overwrites a file", rel)
+		case !info.IsDir():
+			return fmt.Errorf("%s is not a directory, and %s goes under it", p, rel)
+		}
+	}
+	return nil
+}
+
+// mkdirs creates dir and its missing parents inside r, one element at a time,
+// recording each it created; an element that is already there must be a real
+// directory (a symlink raced in after the preflight is refused).
+func mkdirs(r *os.Root, dir string, made *[]string) error {
+	if dir == "." {
+		return nil
+	}
+	elems := strings.Split(dir, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		err := r.Mkdir(filepath.FromSlash(p), 0o755)
+		if err == nil {
+			*made = append(*made, p)
+			continue
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		info, err := r.Lstat(filepath.FromSlash(p))
+		if err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s is not a real directory — new-leg never writes through a link", p)
+		}
+	}
+	return nil
 }
 
 // render executes one template; Go output is gofmt'd, so the skeleton lands
