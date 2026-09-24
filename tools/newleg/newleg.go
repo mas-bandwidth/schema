@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -149,11 +150,11 @@ func write(root string, outs []planned) (written []string, err error) {
 		if err == nil {
 			return
 		}
-		for i := len(written) - 1; i >= 0; i-- {
-			_ = r.Remove(filepath.FromSlash(written[i]))
+		for _, w := range slices.Backward(written) {
+			_ = r.Remove(filepath.FromSlash(w))
 		}
-		for i := len(made) - 1; i >= 0; i-- {
-			_ = r.Remove(filepath.FromSlash(made[i])) // fails, harmlessly, on one not empty
+		for _, d := range slices.Backward(made) {
+			_ = r.Remove(filepath.FromSlash(d)) // fails, harmlessly, on one not empty
 		}
 		written = nil
 	}()
