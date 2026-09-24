@@ -32,10 +32,10 @@ func TestRowC14(t *testing.T) {
 
 	// Three values out of range — but Items[4] is in the slack
 	// (ItemsCount=1), so the pass must NOT clamp it.
-	v.Mode = 99          // enum past {Alpha=1, Beta=2}; will clamp
+	v.Mode = 99 // enum past {Alpha=1, Beta=2}; will clamp
 	v.ItemsCount = 1
-	v.Items[0] = 300     // ranges 0..255; will clamp (live, index < ItemsCount)
-	v.Items[4] = 500     // ranges 0..255; in SLACK — must NOT clamp
+	v.Items[0] = 300 // ranges 0..255; will clamp (live, index < ItemsCount)
+	v.Items[4] = 500 // ranges 0..255; in SLACK — must NOT clamp
 
 	buf := make([]byte, tblv2.CfgFixedMeasure(1))
 	n := tblv2.CfgFixedSave([]tblv2.Cfg{v}, buf)

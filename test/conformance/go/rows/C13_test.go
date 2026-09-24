@@ -13,7 +13,7 @@ import (
 // built from the law: the same value with the flag false and true differs in exactly
 // one byte, the presence byte; forge 0x02 there and the reader must land Go's true.
 func TestRowC13(t *testing.T) {
-// zero link body keeps the record payload identical in both saves, so the
+	// zero link body keeps the record payload identical in both saves, so the
 	// only differing byte is the presence byte itself
 	link := tblp3.Link{}
 	saveFile := func(present bool) []byte {
