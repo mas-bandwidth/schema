@@ -2275,7 +2275,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -5607,6 +5613,7 @@ struct TableMessageRetainIn
     TableBitReader * r;
     const TableVocabulary * vocabulary;
     int64_t index_bits;
+    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
 };
 
 // THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
@@ -5648,6 +5655,25 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 5: case 9: case 11: case 23: case 28: return 8;
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
+    }
+}
+
+// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
+// count against the caller's remaining record before one element is converted.
+// A scalar takes its storage width whatever its announced value bits, an opaque
+// takes at least its zero length, a body at least its terminator, and a union
+// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
+// bytes per element cannot fit the record at all, and a zero-bit count is
+// refused here rather than walked (§6.6, THE SECURITY BOUND).
+inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
+{
+    const int64_t width = TableMessageRetainWidth( kind );
+    if ( width > 0 ) { return width; }
+    switch ( kind )
+    {
+        case 12: case 31: case 32: case 33: return 1;
+        case 13: case 14: case 16: case 15: case 30: return 8;
+        default: return 1;
     }
 }
 
@@ -5852,6 +5878,16 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
     const TableMessageEntry element = TableMessageRetainElement( entry );
     TableRetainInRaw( s.out, &entry.elem_kind, 1 );
     TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
+    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
+    // count is tested against the caller's remaining record BEFORE one element
+    // is converted: a count no record can hold refuses here rather than four
+    // billion times through the loop (§6.6, THE SECURITY BOUND).
+    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
+    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
+    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
+    {
+        return -1;
+    }
     for ( uint64_t i = 0; i < n; i++ )
     {
         if ( entry.kind == 16 )
@@ -5869,7 +5905,7 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
 
 inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -5892,6 +5928,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
 
 inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
+    if ( s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -5969,6 +6006,10 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     probe.r = &walk;
     probe.vocabulary = &vocabulary;
     probe.index_bits = index_bits;
+    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
+    // after this record's header and path, which bounds the walk before it
+    // converts a count the record could never hold (§6.6).
+    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
     const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
     if ( payload < 0 || walk.offset != end )
     {
