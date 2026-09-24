@@ -1,0 +1,21 @@
+# make/[[.Lang]].mk — the [[.Lang]] leg (docs/CONTRIBUTING.md, "Adding a language").
+# SKELETON, laid down by `schema new-leg [[.Lang]]`. Included by the Makefile's
+# wildcard include; the Makefile names no language. The leg registers itself
+# at the end of this file.
+#
+# test-[[.Lang]] is the leg's whole `make test` half. As laid down it is the
+# skeleton's three checks: the backend's Go test, a generate over the one
+# fixture, and the emitted file present. A port grows it the way make/dart.mk
+# grew: a pinned toolchain (TOOLCHAIN_LEGS, TOOLCHAIN_PINS_[[.Lang]],
+# toolchain-[[.Lang]]), the generated trees compiled and run against
+# testdata/wire/, a conformance driver under test/conformance/[[.Lang]]/, and a
+# negative control for every gate.
+.PHONY: test-[[.Lang]]
+test-[[.Lang]]: bin/schema
+	go test ./internal/codegen/[[.Lang]]/
+	./bin/schema generate --lang [[.Lang]] --out build/[[.Lang]]-skeleton test/[[.Lang]]
+	@test -s build/[[.Lang]]-skeleton/Fixture[[.Ext]] || \
+		{ echo "[[.Lang]] leg: generate emitted no Fixture[[.Ext]]"; exit 1; }
+	@echo "[[.Lang]] leg skeleton: builds, tests, and generates its fixture"
+
+TEST_LEGS += test-[[.Lang]]

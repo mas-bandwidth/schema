@@ -261,6 +261,16 @@ touches and two ports landing in one week do not conflict:
 | the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |
 | the goldens | `testdata/golden/<lang>/`, `testdata/golden/tables/<unit>-<lang>/` | the tests that pin them |
 
+**Start with `schema new-leg <lang>`.** In a checkout it lays down the first
+five of those files from templates in `tools/newleg/` — `compiler/target_<lang>.go`,
+the backend and its one fixture test under `internal/codegen/<lang>/`,
+`make/<lang>.mk` registering `test-<lang>`, and `test/<lang>/Fixture.schema` —
+so the tree builds, `go test ./internal/codegen/<lang>/` passes and
+`make test-<lang>` runs green before a line of the real emitter is written.
+The skeleton backend only names each declaration and refuses every construct
+it does not carry, by name; the port replaces it. The verb never overwrites a
+file, and a name a target already answers to is refused.
+
 `make registry` prints what the build discovered, and the registry gate
 (`test/conformance/harness/registry_test.go`) plants a fake language in a copy
 of the tree and requires the harness, the CI matrix, the bench pass and the
