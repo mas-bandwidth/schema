@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #759: packet C stored bool as int, four bytes, while table C stored
@@ -125,6 +127,7 @@ func TestIssue759PacketBoolUnchangedWhenATableIsAdded(t *testing.T) {
 
 func issue759SyntaxCheckWire(t *testing.T, files map[string][]byte) {
 	t.Helper()
+	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("generated C syntax check requires cc")

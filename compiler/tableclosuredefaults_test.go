@@ -11,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Packet construction starts a positive-minimum count at that minimum (SPEC
@@ -86,6 +88,7 @@ fixed table Root {
 					t.Fatalf("generated Go: %v\n%s", err, out)
 				}
 			case "cs":
+				slowtest.Gate(t, "dotnet")
 				dotnet := findDotnet()
 				if dotnet == "" {
 					t.Skip("dotnet unavailable")
