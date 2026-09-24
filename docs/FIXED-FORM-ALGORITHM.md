@@ -85,6 +85,12 @@ set and a stranger may send them; a pointer inside a fixed table's own closure i
 
 ### 1.1 The seven rules, before a single record byte
 
+**These seven are the LOCK's validation of what it records, and the oracle's of the corpus — they do not fire
+at run time.** A layout arriving on the wire is never walked (§5.3, §5.6): the hash is looked up, the floor is
+checked, the bytes are compared, and under a KNOWN hash every one of the seven malformations comes back as one
+name, `layout_malformed`. "Before a single record byte" is where the lock and the oracle stand, not a gate on
+the load path.
+
 | # | rule | refusal |
 |---|---|---|
 | 1 | `4 + 17*count` equals the layout's stated length, and `count != 0` | `layout_count_mismatch` |
@@ -113,11 +119,13 @@ or a chain of single-child entries is a stack depth the wire chooses.
 | `13` table | `== sum` | — |
 | `14` array | `size % elem == 0`, **or** `size >= 4 and (size-4) % elem == 0` | 1 child, `elem != 0` |
 | `15` union | `size > widest`, and `size - widest` is an ordinal width | at least 1 child |
-| `16` enum-keyed array | `size % elem == 0` and `size / elem >= key.children` | 2 children, first kind `30` |
+| `16` enum-keyed array | `size % elem == 0` and `size / elem == key.children` | 2 children, first kind `30` |
 | `30` enum / `32` variant or empty arm | an ordinal width / `0` | `30`'s children are all kind `32`, or none; `32` has none |
 | `35` optional | `== sum + 1` | exactly 1 child |
 
-`>= key.children` and not `==`: an enum widened by an explicit `max` has more slots than names.
+`== key.children` and not `>=`: a headroom value has no NAME, and the compiler refuses an enum whose
+`| max = K` reserves values above its variants the moment a table reaches it (SPEC-TABLES §5) — so a keyed
+array has exactly one slot per variant, and the old headroom tolerance went with C11 (bill §12.12).
 
 ## 2. The file and the framings
 
@@ -250,7 +258,7 @@ to this build's own records; only to a peer's.
 | op | `src` | `dst` | `size` | `aux` | other |
 |---|---|---|---|---|---|
 | `copy` | source offset | destination offset | bytes | — | — |
-| `count` | the count field | the count's storage | **the reader's own bound, in ELEMENTS** | — | — |
+| `count` | the count field | the count's storage | **the bound THE PLAN CARRIES — the writer's own, in ELEMENTS** (bill §12.5) | — | — |
 | `text` | the length; payload at `src+4` | the length's storage | the payload's BYTE span, `min(mine, theirs)` | **the buffer's offset** | `meta` = flavour |
 | `ordinal` | the source ordinal | the destination | the source ordinal's width | the remap table's offset | `dstsize` |
 | `widen` | source | destination | the source width | — | `dstsize`, `sign` |
@@ -329,7 +337,7 @@ The reader validates on load in **every** build, release included, and a clamp c
 | case | what it does, and what it validates |
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
-| `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is the READER's own `Max`, in ELEMENTS |
+| `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
 | `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
@@ -348,10 +356,16 @@ counted array's LIVE elements and never its slack, an optional's payload only wh
 because the prefill's defaults are in range by construction, and clamping storage nobody wrote would count a
 clamp on every clean read. A type that bounds nothing emits no pass at all.
 
-- **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
-  VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
-- **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
-  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
+**THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
+for** (bill §12.5), and never the reader's: the reader's range is the wider one, so clamping to it would land a
+value the old writer could not have written. The reference carries them per entry for ranges and still owes the
+rest (§5.8 row 4).
+
+- **A RANGED SCALAR** clamps to the min and max the plan carries, `COUNT clamped`. **A fixed-point field's
+  bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)`
+  clamps to `2^N - 1`.
+- **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant, lands `None`** —
+  the same nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
@@ -484,10 +498,11 @@ and the rule phrase is the clause a person greps for.
 
 **The reference reads none of it yet.** `internal/codegen/cpptable/lineage.go` builds its lineage from SIBLING
 SCHEMA FILES at generate time by filename convention — `VOLD_`/`VNEW_`, the numbered evolution sets, and
-`ir.TableFixedFixtureLineage` for the pairs no convention can name (`Scalars2` lives in a different directory
-from `Scalars`) — and its floor is hard-coded for one test package. **That is the interim, and it is named as
-an interim**: the convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and
-until then §5.8 holds it as a divergence. A port implements THIS page against the lock, never the convention.
+`fixtureLineage` — `internal/codegen/cpptable/lineage.go`, TEST-ONLY, read only when the unit has NO lock —
+for the pairs no convention can name (`Scalars2` lives in a different directory from `Scalars`) — and its
+floor is hard-coded for one test package. **That is the interim, and it is named as an interim**: the
+convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and until then §5.8 holds
+it as a divergence. A port implements THIS page against the lock, never the convention.
 
 ```
 COMPILE(lock, T):
@@ -999,15 +1014,16 @@ the version.** The floor owes three: a file AT the floor reads, a file ONE BELOW
 **The properties gate carries the pairs too.** `test/tables/fixedform_properties.cpp` runs its save / load /
 compare properties over every fixture — `P1` among them — and then ONE PAIR RUN per lineage pair: `FX1`/`FX2`,
 `P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, **`UT1`/`UT2`** (the guard and flavour lanes, which §7 item 6
-already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `ir.TableFixedFixtureLineage`
-(`ir/fixedform.go:685-693`) is the list, the one place to read it. That is §5.7's two columns inside the
-gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the older file through
-its lineage and returns one record. REVERSE: the older reader given the newer file refuses, and the refusal is
-`layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not bent** — a reader that
-compiled a stranger's layout in either direction was the thing this section replaced. The pairs resolve
-through `ir.TableFixedFixtureLineage`, the map from a newer fixture's basename to its older files, which is
-what lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join
-the gate at all.
+already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `fixtureLineage`
+(`internal/codegen/cpptable/lineage.go`, TEST-ONLY) is the list, the one place to read it. That is §5.7's two
+columns inside the gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the
+older file through its lineage and returns one record. REVERSE: the older reader given the newer file refuses,
+and the refusal is `layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not
+bent** — a reader that compiled a stranger's layout in either direction was the thing this section replaced.
+The pairs resolve through `fixtureLineage`, the TEST-ONLY map from a newer fixture's basename to its older
+files — reached only when the unit has no lock, production COMPILE reading `lockfile.Lineage` — which is what
+lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join the
+gate at all.
 
 **The gate's own record check is the READER'S COMPILED HASH CONSTANT**, never a hash of the layout bytes it
 just read. The digest is not on the wire, so `hash_of(layout)` is the wrong identity for any table carrying a
@@ -1078,7 +1094,7 @@ unopened) ran it this way and nothing in it is optional.
 
 | # | the step |
 |---|---|
-| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. **A ROW ID KEEPS ITS CASE IN A FILE NAME**: `fixed_I_grow` carries a CAPITAL `I` (it is the `I` of `fixed(I,F)`), so the pair is `old_fixed_I_grow.bin` / `new_fixed_I_grow.bin` and a leg lower-casing the row id finds no file. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default, **with the one exception of a payload under a `present` companion that is `0`, where the bytes are the template's ZEROS** (§5.9 #32) |
 | 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch. **EVERY HASH THE RUNTIME HOLDS IS A HANDED CONSTANT** — the leg computes none from layout bytes, on the identity lane or anywhere else (§5.9 #47) |
 | 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time. **`record_bytes` ARRIVES WHOLE**, `8 + body`, and the leg adds nothing to it (§5.9 #46). **A TABLE PAST §3.4's CEILING GETS NO STATIC DATA AT ALL** — no lineage consulted, no entry parsed, only the line naming the missing form (§5.9 #48) |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
@@ -1118,10 +1134,10 @@ each row the bill's ruling is the second column, and **the reference owes this**
 
 | # | what the reference does | what this page says — the reference owes this |
 |---|---|---|
-| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `ir.TableFixedFixtureLineage`) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
+| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `fixtureLineage`, TEST-ONLY and reached only when the unit has no lock) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
-| 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
+| 4 | the VARIANT and ARM counts are the READER's, and the reader's own clamp runs over every bounded field beside the writer's ranges | the bounds are the WRITER's, per plan (bill §12.5). **The `count` op's bound LANDED** — `e.size = their_n`, the writer's, at `cpptable/fixedruntime.go` — and the writer's RANGES are carried per lineage entry (`TableFixedKnownRange`) and clamped first. What still owes, on the reference and on every port: the variant and arm counts a `None` is decided by |
 | 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
 | 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. A THIRD nested union refuses by name; the guard CHAIN is the follow-on | an arm inside an arm answers to the OUTER tag too (§4.1) |
 | 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
@@ -1422,16 +1438,43 @@ file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=
 
 — where `row` and `side` come from the FILE NAME, `root` from the record's own TYPE and `records` from the
 vector the dump saved, and every value is stored through one helper that performs the assignment AND records the
-line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` — the `I` pair take the
-SUBSCRIPT the call site is looping over, so the path holds the index the bytes hold and never the variable's
-name), so the manifest cannot drift from the corpus: a changed value changes both or neither. `values=` is the
+line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` / `MWCPYI` / `MSFX` /
+`MSFXI` — the `I` forms take **THE INDEX THE BYTES CARRY, which is the 0-BASED SLOT and never the key**: a keyed
+array's accessor takes the enum KEY and its storage index is `key - 1`, so a call site looping over the keys
+records `KSLOT( key )` and a call site looping over the raw container records the subscript it already holds, and
+both land the same number), so the manifest cannot drift from the corpus: a changed value changes both or
+neither. `values=` is the
 LAST field and runs to the end of the line: split the head on spaces, then take everything after `values=` whole
 — a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
 rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
 per-file name. A record's values are prefixed `r<i>.`, nested fields are
-dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide, `\uXXXX` for
-anything not printable ASCII), a float is given as digits AND bits (`nan|0x7F8ABCDE` — a signalling NaN's
-payload is the value), and a field the dump did not set carries its schema default. **The manifest is the
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide — **ONE encoding
+for wide text everywhere, both sides of a pair included, and never a column of per-code-unit hex** — and
+`\uXXXX`, never `\xNN`, for anything not printable ASCII), a float is given as digits AND bits
+(`nan|0x7F8ABCDE` — a signalling NaN's payload is the value), **a `fixed(I,F)` as `<real>|raw=<int>`** — the
+scaled integer the bytes hold beside the real it means, because a bare number says neither — **a `bool` and the
+`present` companion as the wire's `1`/`0` and never C++'s `true`/`false`** (§5.9 #40 speaks of `1`), and a field
+the dump did not set carries its schema default.
+
+**FOUR THINGS THE MANIFEST MUST NOT SAY, each one a thing an audit of the corpus caught it saying.** A line is
+what A READER WILL PRODUCE from the bytes, not a transcript of the stores the dump made.
+
+- **A VALUE UNDER AN ABSENT OPTIONAL IS NOT RECORDED.** The writer emits an optional's payload only where the
+  flag says present; where it says absent **the bytes are the TEMPLATE'S ZEROS and not the declared default** —
+  the one place "a field absent from a line carries its schema default" does not hold, and the reason the rule
+  is written here rather than left to be inferred. A dump may store under a false flag on purpose (`p3`'s second
+  record does, to pin exactly this), and the RECORD drops it: the companion is stored FIRST and every path at or
+  below a companion that is `0` is skipped.
+- **A PATH IS A DOTTED SCHEMA PATH AND CARRIES NO C++ MEMBER NAME.** A keyed field is a `TableKeyed<>` in the
+  reference and its storage sits behind `.slots`, so `r0.teams.slots[0].spawn_count` was the C++ spelling of
+  `r0.teams[0].spawn_count`; the wrapper's member is stripped. A schema field actually NAMED `slots` keeps its
+  name (`keyed_array_enum_append`'s root declares one).
+- **A KEYED INDEX IS THE 0-BASED BYTE SLOT.** Not the 1-based enum member, anywhere: `keyed_array_enum_append`'s
+  four slots are `[0]` to `[3]` while `Tier`'s members are `1` to `4`.
+- **NOTHING LEAKS FROM ONE FILE'S LINE TO THE NEXT.** A refused save finishes (or clears) the row before it
+  returns; otherwise the values belong to the next file written.
+
+`manifest_case` checks each of these against every line. **The manifest is the
 card's source and the dump is off limits**; `manifest_case` in `test/tables/fixedform_main.cpp` is what keeps it
 honest — every `.bin` in the corpus has a line, and every `root=` names a table the generator emitted — and
 nothing under `build/` is committed.
@@ -1745,4 +1788,8 @@ the CALLER's own storage, sixty-four slots keyed by the file's hash
 `internal/codegen/cpptable/fixedform.go:524-545`), so a second load under the same hash compiles nothing. The
 line that stood here, saying the reference recompiles on every load with a non-matching hash, was FALSE and is
 withdrawn. What remains is not a cache miss but §5.8 row 3: **nothing should compile at run time at all**, and
-then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
+then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no
+§2.10 on the tip. **(d)** The reference's layout validator still admits `size / elem >= key.children` for a
+keyed array where §1.2 now says `==`; it is a tolerance over layouts the compiler cannot produce, since a
+headroom enum in a table closure is refused, so it costs a read nothing and is recorded rather than fixed
+here.

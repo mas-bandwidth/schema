@@ -2,7 +2,6 @@ package cpptable
 
 import (
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,8 +17,14 @@ import (
 
 // fixedKnown is one COMPILE'd lineage entry (algorithm §5.2): the hash the
 // file carries, the layout bytes LOAD memcmps, and the writer's record size.
-// Plans for older entries are compiled from these trusted bytes at first load;
-// the file's own layout is never parsed (bill §12.4, algorithm §5.3).
+//
+// THE LAW IS THAT EVERY PLAN IS LAID DOWN AT BUILD TIME, off the load path
+// (algorithm §5.9 #3, bill §12.5): the supported set is finite and known from
+// the lock, so nothing compiles at run time and there is no cache to miss.
+// This reference still compiles an older entry's plan from these trusted bytes
+// at FIRST LOAD, keyed by hash in a caller-supplied cache — a standing debt,
+// algorithm §5.8 row 3, and not the contract a port implements. Either way the
+// file's own layout is never parsed (bill §12.4, algorithm §5.3).
 type fixedKnownRange struct {
 	dst    uint32
 	width  uint8
@@ -302,12 +307,21 @@ func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnow
 		if ir.TableKindSigned(ir.TableScalarKind(wf)) {
 			sgn = 1
 		}
+		// THE WRITER'S BOUNDS ON THE RAW SCALE (schema#1811): the pass compares
+		// the stored raw, so a fixed field's whole-unit bounds are shifted by F
+		// first (ir.TableRawRange, the helper every other clamp uses). A bound
+		// that does not fit the int64 lanes bounds nothing here: skip it rather
+		// than clamp to a zero it never declared.
+		lo, hi, ok := ir.TableRawRange(wf)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			continue
+		}
 		out = append(out, fixedKnownRange{
 			dst:    uint32(fl.Offset),
 			width:  uint8(w),
 			signed: sgn,
-			lo:     bigInt64(wf.IntMin),
-			hi:     bigInt64(wf.IntMax),
+			lo:     lo.Int64(),
+			hi:     hi.Int64(),
 		})
 	}
 	return out
@@ -323,16 +337,6 @@ func knownRangeField(st *ir.Struct, name string) *ir.Field {
 		}
 	}
 	return nil
-}
-
-func bigInt64(n *big.Int) int64 {
-	if n == nil {
-		return 0
-	}
-	if n.IsInt64() {
-		return n.Int64()
-	}
-	return 0
 }
 
 func peerTable(u *ir.Unit, wireName string) *ir.Struct {
