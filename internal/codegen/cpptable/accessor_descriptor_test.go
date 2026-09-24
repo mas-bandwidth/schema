@@ -2,6 +2,7 @@ package cpptable
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,9 +223,7 @@ func runCppGeneratedEdited(t *testing.T, schema, mainSource string, edit func(ma
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	if edit != nil {
 		edit(files)
 	}
