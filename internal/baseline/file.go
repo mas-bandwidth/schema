@@ -189,7 +189,9 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		if err != nil {
 			live.History = salvageHistory(data)
 			live.Retired = salvageRetired(data)
-			revived = ackRevivals(live, ldate)
+			// the salvaged ledger still acknowledges a resurrection; the regenerated
+			// entry below carries no per-edit lines, so the list itself is unused
+			ackRevivals(live, ldate)
 			// the committed file carries no machine paths: the reader of this
 			// history is on another machine, years later
 			entry = []string{
