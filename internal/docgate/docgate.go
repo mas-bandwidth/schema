@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -119,7 +120,7 @@ func Check(root string) ([]Problem, error) {
 				return nil
 			}
 			pg := &page{slugs: map[string]bool{}, numbers: map[string]bool{}}
-			for _, line := range strings.Split(string(data), "\n") {
+			for line := range strings.SplitSeq(string(data), "\n") {
 				m := headingRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
 				if m == nil {
 					continue
@@ -164,12 +165,7 @@ func Check(root string) ([]Problem, error) {
 }
 
 func isBinary(data []byte) bool {
-	for _, b := range data {
-		if b == 0 {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(data, 0)
 }
 
 // checkLinks scans one page line by line, skipping fenced code blocks so a Go
