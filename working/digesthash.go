@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	aw := func(format string, args ...any) { fmt.Fprintf(os.Stdout, format+"\n", args...) }
+	aw := func(format string, args ...any) { fmt.Printf(format+"\n", args...) }
 
 	type pick struct {
 		schema  string
