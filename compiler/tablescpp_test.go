@@ -80,3 +80,66 @@ func TestCppRuntimeNameScanGoesRed(t *testing.T) {
 		t.Fatal("TableProbe is registered, so the control proves nothing — pick a name the registry does not hold")
 	}
 }
+
+// keyedValueInitSrc carries BOTH halves #335 turns on: a keyed array whose
+// element is a SELF-INITIALISING table (Cell) and one whose element is a
+// SCALAR (int32). The two take opposite answers, so one probe cannot pass by
+// agreeing with whichever the emitter happened to write.
+const keyedValueInitSrc = `package probe
+
+enum Kind { Alpha, Beta }
+
+fixed table Cell
+{
+    score int32 = 7
+    ratio float32 = 1.5
+}
+
+fixed table Board
+{
+    cells [Kind]Cell
+}
+
+fixed table Numbers
+{
+    cells [Kind]int32
+}
+`
+
+// TestCppKeyedSelfInitializingSlotsCarryNoValueInit is the last #320 residual
+// (#335): TableKeyed's slot array must NOT value-initialise itself for a
+// self-initialising element type — cl expands a whole-array value-init element
+// by element in its front end, at O(bytes) — while a scalar element, which has
+// no member initializer of its own, keeps the ` = {}` that supplies its zero.
+// `<Name>Reset` already fills both from one element (schema#322, docs/SPEC-TABLES.md §8.1).
+func TestCppKeyedSelfInitializingSlotsCarryNoValueInit(t *testing.T) {
+	header := tableHeader(t, keyedValueInitSrc)
+	if strings.Contains(header, "T slots[kSlots] = {};") {
+		t.Errorf("TableKeyed's slot array still carries the redundant `= {}` (#335)")
+	}
+	if !strings.Contains(header, "    T slots[kSlots];") {
+		t.Errorf("TableKeyed's slot array is not the bare form (#335):\n%s", tableKeyedLines(header))
+	}
+	// the self-initialising element drops the member's `= {}`
+	if !strings.Contains(header, "TableKeyed<Cell, Kind> cells; //") {
+		t.Errorf("a keyed array of a self-initialising table lost its member or grew an initializer (#335):\n%s", tableKeyedLines(header))
+	}
+	// the NEGATIVE CONTROL: a scalar element cannot state its own zero, so the
+	// member keeps the braces.
+	if !strings.Contains(header, "TableKeyed<int32_t, Kind> cells = {}; //") {
+		t.Errorf("a keyed array of a scalar dropped the zero its element cannot state:\n%s", tableKeyedLines(header))
+	}
+}
+
+// tableKeyedLines returns the TableKeyed declarations a header carries, for a
+// failure message that shows the shape rather than only the needle.
+func tableKeyedLines(header string) string {
+	var b strings.Builder
+	for line := range strings.SplitSeq(header, "\n") {
+		if strings.Contains(line, "TableKeyed") || strings.Contains(line, "slots[kSlots]") {
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
