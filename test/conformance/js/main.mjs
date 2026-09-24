@@ -104,24 +104,26 @@ function opens(open, bytes) {
   }
 }
 
-function openBlock(name, source, extent) {
+function openBlock(name, source, extent, lead) {
   // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION: `place` copies what fits
-  // and zeroes the rest, so the buffer is the claim in that direction too.
+  // and zeroes the rest, so the buffer is the claim in that direction too. And
+  // `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes past
+  // one, because an unaligned base is a pointer fact and not a file fact.
   const claim = extent < 0 ? source.length : extent;
   const block = blockNamed(name);
-  return opens((b) => block.Open(b), place(source, claim, 0)) ? "open\n" : "refuse\n";
+  return opens((b) => block.Open(b), place(source, claim, lead)) ? "open\n" : "refuse\n";
 }
 
 function surfaceBlock(lines, outDir) {
   for (const f of kind(lines, "block")) {
-    writeFileSync(join(outDir, f[1]), openBlock(f[1], new Uint8Array(readFileSync(f[3])), -1));
+    writeFileSync(join(outDir, f[1]), openBlock(f[1], new Uint8Array(readFileSync(f[3])), -1, 0));
   }
 }
 
 function surfaceForgery(lines, outDir) {
   for (const f of kind(lines, "forgery")) {
     if (f[2] !== "block") { continue; } // the cook's battery is its own
-    writeFileSync(join(outDir, f[1]), openBlock(f[3], new Uint8Array(readFileSync(f[4])), Number(f[5])));
+    writeFileSync(join(outDir, f[1]), openBlock(f[3], new Uint8Array(readFileSync(f[4])), Number(f[5]), f[6] === "null" ? 0 : Number(f[6])));
   }
 }
 
@@ -144,7 +146,7 @@ function foreign(source) {
 
 function surfaceBlockForeign(lines, outDir) {
   for (const f of kind(lines, "block")) {
-    writeFileSync(join(outDir, f[1]), openBlock(f[1], foreign(new Uint8Array(readFileSync(f[3]))), -1));
+    writeFileSync(join(outDir, f[1]), openBlock(f[1], foreign(new Uint8Array(readFileSync(f[3]))), -1, 0));
   }
 }
 

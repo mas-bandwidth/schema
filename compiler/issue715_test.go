@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #715: Table JSON Base64 reader wipes declared defaults on malformed input
@@ -208,6 +210,7 @@ func TestIssue715(t *testing.T) {
 	})
 
 	t.Run("cs", func(t *testing.T) {
+		slowtest.Gate(t, "dotnet")
 		dotnet := findDotnet()
 		if dotnet == "" {
 			// Without dotnet on PATH, this behavioral test covers C++, C, and Go (3 languages); CI runs all 4.
@@ -281,10 +284,10 @@ class Program {
 
 	t.Run("emitted_text", func(t *testing.T) {
 		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n after int32 }\n")
-		// Rust, Dart, JavaScript, Elixir and Java emit no text form: their previous-form
+		// Rust, Dart, Elixir and Java emit no text form: their previous-form
 		// table wire was removed; only the block and cook readers remain
-		// (#518, #514, #516, #515, #517).
-		for _, lang := range []string{"cpp", "c", "go", "cs"} {
+		// (#518, #514, #515, #517).
+		for _, lang := range []string{"cpp", "c", "go", "cs", "js"} {
 			files, err := c.Generate(uNoDefault, lang, Options{})
 			if err != nil {
 				t.Fatalf("generate %s: %v", lang, err)
@@ -321,6 +324,7 @@ func findDotnet() string {
 
 func issue715CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
+	slowtest.Gate(t, "a C/C++ compiler")
 	if _, err := exec.LookPath(compiler); err != nil {
 		t.Skipf("%s unavailable: %v", compiler, err)
 	}

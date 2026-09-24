@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestCTableViewOutsideClosure(t *testing.T) {
@@ -42,6 +44,7 @@ int main(void) {
 }
 
 func TestCTableViewListing(t *testing.T) {
+	slowtest.Gate(t, "the C compiler, once per corpus unit")
 	for _, path := range []string{"../tables/examples", "../tables/pointers", "../tables/maps", "../tables/lists", "../tables/arms", "../examples", "../examples-wide"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			c := New()
