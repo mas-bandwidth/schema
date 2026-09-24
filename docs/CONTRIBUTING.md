@@ -23,6 +23,103 @@ in [COMPARISON.md](COMPARISON.md) are measured by a committed script. If we
 modelled one of those formats inefficiently, say so — the script is there so
 the claim can be checked rather than believed.
 
+## Rules a working session must not break
+
+Root [AGENTS.md](../AGENTS.md) is a generated map of the tree, not the home of
+these rules. OpenCode and Codex read AGENTS.md natively; Claude Code **2.1.277
+and later** reads it when the folder has no `CLAUDE.md`. On an older Claude
+Code nothing loads it, so open the session with `read AGENTS.md first`.
+**There is no `CLAUDE.md`, no pointer file and no symlink** — Glenn's ruling
+of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
+[MAINTAINERS.md](MAINTAINERS.md).
+
+**Who this repo is for.** Schema is the data language for games: you declare
+constants, enums, flags, types and tables once, and the compiler generates
+bit-packed serialization code in **nine languages** — C, C++, C#, Dart, Elixir,
+Go, Java, JavaScript and Rust. The compiler is Go (`cmd/` + `internal/`, public
+API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
+yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
+
+1. **The specs are normative.** [SPEC.md](SPEC.md) is the source of
+   truth for the type wire and [SPEC-TABLES.md](SPEC-TABLES.md) for
+   the table wire. Where the code and a spec disagree, one of them has a bug and
+   the tests decide which. **Read the spec before the code.**
+2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
+   `testdata/golden/`; every one of the other eight legs byte-compares against
+   them. Cross-language wire identity is a standing gate, and so is
+   fixed(I, F)/int128/uint128 identity in the ludicrous legs.
+3. **The wire is law.** A change that moves shipped bytes is a deliberate,
+   documented act ([VERSIONING.md](VERSIONING.md)), never a silent
+   re-pin of a golden to make a leg go green.
+4. **Write-side checks are DEBUG ONLY.** No runtime ever promises to keep write
+   asserts in a release build — removing them is the point. Seven targets compile
+   them out (`serialize_assert` under `NDEBUG`, `debug_assert!`,
+   `Debug.Assert`/`[Conditional("DEBUG")]`, `assert` under `-ea` and
+   `--enable-asserts`, the JS checked/production fork); Go and Elixir hold theirs
+   in every build because their languages have no debug-only idiom, and that is
+   deliberate. **No target panics and none throws.**
+5. **The read side is untouched by that doctrine.** A read faces untrusted data
+   and keeps every mandated check, in every build; the tolerant read IS the
+   verifier, and the wire fuzzer is the gate on that claim.
+6. **`make` is the one entry** for build, generate, test and bench. A leg is
+   added as a target, never as a script somebody remembers to run.
+7. **`schema fmt` is the only command that writes a `.schema` file.** Everything
+   else reads and leaves your files alone, so a read-only checkout, a sandboxed
+   build and an editor integration all work.
+8. **The public Go API is `compiler/` and `ir/`; everything else stays
+   `internal/`.** An export is a semver commitment, and it justifies itself on
+   schema's own needs or it stays internal. `cmd/schema` is a client of that API.
+9. **Never bench ungated, and never optimize on a vibe.** A runner byte-compares
+   every pinned instance and round-trips it BEFORE producing a number, and
+   refuses to bench on a mismatch. Unit test → soak → profile → optimize on a
+   profile conviction, with predictions banked before measuring and paired
+   before/after in one sitting. **A lever proven in one language is only a
+   THEORY in the next.**
+10. **The protocol layer stays out of the language.** Schema is types,
+    bitpacking, enums, constants and tables. `message` and `object` are reserved
+    words the parser refuses by name; build your own message types from the
+    primitives.
+
+**Two more that are about this tree, not the wire.** The corpus in `examples/`
+must always compile under the spec as written — that invariant is `make check`
+and it has caught a real gap every time it ran. And **this repo describes our own
+work**: external collaborators, their people and their codebases are not named in
+the tree; feedback is folded in as learnings and as evidence on a spec section.
+
+**How work lands.** Branch, open a pull request, and let the checks run — the
+CI badge in [README.md](../README.md) is the gate. **PRs into `main` get the
+full treatment.** An optimization PR additionally carries the convicting
+profile or codegen evidence, the predictions written before the measurement,
+the paired before/after, and its refutations reported plainly; a wrong-magnitude
+prediction is a refutation, not a rounding error. Suspected vulnerabilities
+follow [SECURITY.md](SECURITY.md).
+
+**When the compiler refuses.** Every refusal the language can produce is a case
+in the break-the-language suite (`internal/check/diagnostics_test.go`, and
+`tables_test.go` for the table half): an illegal schema and the substring its
+diagnostic must carry. A diagnostic is meant to say what the input WANTS, not
+only what was wrong. Do what it says rather than working around it. If it does
+not say enough, that is a bug in the diagnostic: open an issue with the schema
+text, the command and the exact sentence it printed.
+
+## The agent map
+
+Root [AGENTS.md](../AGENTS.md) is generated. It is a map of directory →
+purpose → guarding test → one command, kept under 3 KB. The big trees
+(`bench/`, `internal/`, `internal/codegen/`, `tables/`, `test/`, `testdata/`,
+`tools/`) have their own `AGENTS.md` with the same shape. `generated/` stays
+on the root map only — it is compiler output, and a page there would fight
+the clean-room emission gate. Do not edit those files.
+
+```bash
+make map                  # regenerate every AGENTS.md page
+go test ./tools/agentsmap # fails when a page is stale or a mapped directory is uncatalogued
+```
+
+The catalog is `tools/agentsmap/catalog.go`. Adding a directory means adding a
+row there and running `make map`. Editing a mapped directory without
+regenerating is a red test; `make map` makes it green.
+
 ## Building
 
 Needs Go 1.26+, a C++17 compiler, a C99 compiler, and — for the full

@@ -112,7 +112,20 @@ var versionRows = []versionRow{
 	}`},
 	{row: "keyed_array_enum_append"},
 	{row: "nested_append"},
-	{row: "optional_add"},
+	{row: "optional_add", check: `
+	// THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A DEFAULT
+	// (§5.9 #40, bill §12.8): the writer sent a T, so the ?T this reader
+	// declares IS present and the constant is the plan's. A leg that prefills
+	// the companion and emits no present entry reads a value the writer sent as
+	// ABSENT — and every value check still passes, which is why this one is its
+	// own line. The old writer sent Link.value = 777 (versioning_numbers.cpp's
+	// optional_add_case), bracketed by lead/trail.
+	if !back[0].LinkPresent {
+		t.Fatalf("T into ?T owes present = 1, not the fresh value's false: %+v", back[0])
+	}
+	if back[0].Link.Value != 777 {
+		t.Fatalf("the payload beside the present companion is not the writer's value: %+v", back[0])
+	}`},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
 	{row: "string_grow"},

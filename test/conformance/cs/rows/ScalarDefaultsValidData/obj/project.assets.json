@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "targets": { "net10.0": {} },
+  "libraries": {},
+  "projectFileDependencyGroups": { "net10.0": [] },
+  "packageFolders": {},
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "cell-cs-scalar-defaults-valid-data", "projectName": "cell-cs-scalar-defaults-valid-data",
+      "projectPath": "ScalarDefaultsValidData.csproj", "outputPath": "obj/",
+      "projectStyle": "PackageReference",
+      "originalTargetFrameworks": ["net10.0"],
+      "frameworks": { "net10.0": { "projectReferences": {} } }
+    },
+    "frameworks": { "net10.0": {} }
+  }
+}

@@ -111,11 +111,14 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  duplicateNeverRaised(check, bench, fixed);
   fixedPointShiftBits(check, bench, fixed);
   formHeaderProbes(check, fx1, fx1home);
   refuseTotalProbe(check, fx1, fx1home);
   guardComparedAtArgW(check, fx1home);
+  planPartition(check, ut1, ut1home, fx1, fx1home);
   wideTextCodeUnits(check, fx1home);
+  ordinalWidth8ReadWhole(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
   retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
@@ -233,6 +236,66 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const r = read(bytes);
     check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
       "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// E9: `duplicate` NEVER RAISED
+// ---------------------------------------------------------------------------
+//
+// §0 states the closed counter set in the form's own words — "The §4 counters
+// are `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and
+// `malformed`; this form raises all but `duplicate`" — and footnote 29 states
+// what the fixture owes: "`duplicate` is the TEXT form's — the fixed wire never
+// raises it — so a leg whose report has no such member is not missing one, and
+// a fixture asserts the counters that EXIST on that leg's report, all of them,
+// by name."
+//
+// THE REPORT HAS THE MEMBER: fixedruntime.go's TableFixedReport carries
+// `duplicate` because a caller has one report type and not two, exactly as the
+// C++ report says. So E9 owes an assertion BY NAME, not a composite that folds
+// it in beside the counters that can move. §5.5 is why there is no path to it
+// here: the only wire event that raises `duplicate` is a MAP's repeated key
+// (SPEC-TABLES.md §16.2), and "a pointer, map or unbounded array" in a fixed
+// table's closure "is a compile refusal". This case holds the counter at zero
+// on this build's own record read back, and again on a record that DOES move
+// another counter, so it cannot pass by reading a report that is silent for
+// every reason.
+export function duplicateNeverRaised(check, bench, fixed) {
+  const count = 1;
+  const out = new Uint8Array(fixed.FixedTableFixedMeasure(count));
+  const values = [new bench.FixedTable()];
+  check(fixed.FixedTableFixedSave(values, count, out) === out.length,
+    "E9 duplicate: the fixture's own record saves to a full file");
+
+  // the first record's body, past the file header, the layout and its hash, and
+  // the entities offset forgedCounts already plants counts at
+  const body = LAYOUT_AT + fixed.FixedTableFixedLayoutBytes + 8;
+  const atEntities = 52; // entities [1..8]MixedEntity
+
+  const read = (bytes) => {
+    const v = [new bench.FixedTable()];
+    const report = new bench.TableFixedReport();
+    const n = fixed.FixedTableFixedLoad(v, 1, bytes, bytes.length,
+      fixed.FixedTableFixedNewPlan(), report);
+    return { n, report };
+  };
+
+  // THE CLEAN READ: the form's own writer, read back, raises no duplicate.
+  {
+    const r = read(out);
+    check(r.n === 1 && r.report.duplicate === 0,
+      `E9 duplicate: a clean fixed read raises no duplicate (got ${r.report.duplicate})`);
+  }
+
+  // NOT VACUOUS: the SAME member on a read that moves another counter — a
+  // forged count clamps — with `duplicate` still at zero.
+  {
+    const forged = Uint8Array.from(out);
+    new DataView(forged.buffer).setInt32(body + atEntities, 9999, true);
+    const r = read(forged);
+    check(r.report.clamped === 1 && r.report.duplicate === 0,
+      `E9 duplicate: a forged count moves clamped and NOT duplicate (clamped ${r.report.clamped}, duplicate ${r.report.duplicate})`);
   }
 }
 
@@ -544,6 +607,99 @@ function guardComparedAtArgW(check, home) {
 }
 
 // ---------------------------------------------------------------------------
+// W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §5.9 #42, §4.2, §4.4)
+// ---------------------------------------------------------------------------
+//
+// THE SPLIT IS A PROPERTY OF THE PLAN'S ORDER, OWED BY EVERY LEG. Every
+// UNGUARDED entry first, then every guarded one, and the plan states where the
+// second half starts — `split` is the NUMBER OF UNGUARDED ENTRIES and not a
+// count of guarded ones (§4.4). A leg whose run loop tests `guard != NONE` per
+// entry still owes it, because the partition is what makes COALESCING ACROSS
+// THE SPLIT ILLEGAL: two `copy` entries that merge while one is guarded and the
+// other is not produce a run that lands a guarded arm's bytes unconditionally.
+// The C++ reference holds the same property (test/tables/fixedform_main.cpp,
+// plan_partition_case); this is its twin.
+//
+// THE PLAN THIS LEG ACTUALLY BUILDS IS THE COMPILED ONE. On this leg identity's
+// plan is ONE COPY of the whole body (ut1/UT1Table.js, `UtRootFixedIdentity`), so
+// it has no guarded half to test and the partition is what the compiler owes the
+// lineage plans it lays down at module load. TableFixedCompile IS that compiler
+// and it is exported, so the case compiles a reader's own layout against itself
+// and reads the guard lane and `split` off the plan object — the same walk a
+// lineage entry takes.
+//
+// THE DESTINATION ROWS ARE NOT THE ASSERTION. `dst` carries the reader's landing
+// offsets, which place bytes and never choose a half; the partition is a fact of
+// the GUARD lane and `split` alone, so the rows are zero here. A plan entry is
+// nine int32 lanes (TableFixedLanes) and the guard is lane 5; TableFixedNoGuard
+// is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
+function partitionIsHeld(check, home, layout, bodyBytes, who) {
+  const LANES = 9, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
+  const NO_GUARD = -1, COPY = 0;
+
+  const theirs = new home.TableFixedLayoutView();
+  check(home.TableFixedParseLayout(layout, 0, layout.length, theirs),
+    `W6: ${who} — the layout parses`);
+  const dst = new Int32Array(theirs.count * 5);
+  const plan = new home.TableFixedPlan(256, bodyBytes, 4096);
+  const report = new home.TableFixedReport();
+  const made = home.TableFixedCompile(theirs, layout, dst, plan, report);
+  check(made >= 0 && made === plan.count,
+    `W6: ${who} — the plan compiled (${made})`);
+  if (made < 0) { return null; }
+
+  const e = plan.entries, count = plan.count, split = plan.split;
+  check(split >= 0 && split <= count, `W6: ${who} — split is in range`);
+  // EVERY ENTRY BELOW THE SPLIT CARRIES NO GUARD; EVERY ENTRY AT OR ABOVE IT
+  // CARRIES ONE — which is the same as saying split is the number of unguarded
+  // entries and not a count of guarded ones.
+  let unguarded = 0;
+  for (let i = 0; i < count; i++) {
+    const guarded = e[i * LANES + GUARD] !== NO_GUARD;
+    if (!guarded) { unguarded++; }
+    if (i < split && guarded) {
+      check(false, `W6: ${who} — entry ${i} is below the split and carries a GUARD`);
+    }
+    if (i >= split && !guarded) {
+      check(false, `W6: ${who} — entry ${i} is above the split and carries NO guard`);
+    }
+  }
+  check(unguarded === split,
+    `W6: ${who} — split is the count of UNGUARDED entries (split ${split}, unguarded ${unguarded})`);
+
+  // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+  // below it and the entry at it would be one entry. They are two, and this
+  // says why they have to be.
+  if (split > 0 && split < count) {
+    const a = (split - 1) * LANES, b = split * LANES;
+    const mergeable = e[a + OP] === COPY && e[b + OP] === COPY &&
+      e[a + GUARD] === e[b + GUARD] && e[a + ARG] === e[b + ARG] && e[a + ARGW] === e[b + ARGW] &&
+      e[a + SRC] + e[a + SIZE] === e[b + SRC] && e[a + DST] + e[a + SIZE] === e[b + DST];
+    check(!mergeable, `W6: ${who} — the pair at the split was not coalesced across it`);
+  }
+  return { count, split };
+}
+
+export function planPartition(check, ut1, ut1home, fx1, fx1home) {
+  // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
+  // guarded and the scalars around them are not.
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
+  if (u !== null) {
+    check(u.split > 0 && u.split < u.count,
+      `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
+  }
+
+  // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
+  // `split` being a count of UNGUARDED entries rather than of guarded ones is
+  // what makes that come out right.
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
+  if (f !== null) {
+    check(f.split === f.count,
+      `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // C5: WIDE TEXT CODE UNITS (schema#876; docs/FIXED-FORM-ALGORITHM.md §4.5's
 // text row, fix 7 — "wide code units over v, never 2N, an astral pair
 // counting two").
@@ -618,6 +774,66 @@ export function wideTextCodeUnits(check, home) {
       `C5: a length of ${input} units over wstring(8) lands ${wantLength} with ${wantClamped} clamped — the cap is CODE UNITS, never the 2N bytes (got length ${got.length}, clamped ${got.clamped})`);
   };
   forged(12, 8, 1);
+}
+
+// ---------------------------------------------------------------------------
+// A WIDTH-8 ORDINAL IS READ WHOLE — THROUGH SIXTY-FOUR BITS, NOT THIRTY-TWO.
+//
+// docs/FIXED-FORM-ALGORITHM.md §4.5's `ordinal` row reads `raw := LE(size,
+// record+src)` "through a 64-bit temporary, an ordinal width of `8` being
+// admissible", and the versioning bill's fix 7 records the defect this pins: a
+// `uint32_t raw` truncated a width-8 ordinal to its low four bytes. The
+// JavaScript twin of the C++ reference's `owed8_width8_ordinal_read_whole_case`
+// (test/tables/fixedform_main.cpp:1089-1118).
+//
+// ONE PATH: this drives TableFixedRun directly — the same loop the identity and
+// compiled plans both run — with an ordinal entry built by hand, an eight-byte
+// tag lane remapping through a one-entry table, exactly as the reference builds
+// its plan entry. The site under test is fixedruntime.go's ordinal op, whose
+// width-8 read is two u32 lanes and whose `hi !== 0` arm is the whole fact.
+// ---------------------------------------------------------------------------
+export function ordinalWidth8ReadWhole(check, home) {
+  // THE PLAN ENTRY IS NINE int32 LANES, in the order this loop reads them:
+  //   [op, src, dst, size, aux, guard, arg, meta, argw]
+  // op 3 is TableFixedOpOrdinal (fixedruntime.go:98); guard -1 is
+  // TableFixedNoGuard (fixedruntime.go:107), an unguarded top-level entry;
+  // meta's low byte is the ordinal's DESTINATION width, 8 here; size is the
+  // SOURCE width, 8, the width-8 lane this case is about. aux 0 is the remap
+  // table's offset. Nothing here is read out of the code under test.
+  const run = (srcBytes) => {
+    const src = new Uint8Array(srcBytes);
+    const srcView = new DataView(src.buffer);
+    const dst = new Uint8Array(8);
+    dst.fill(0xAB); // poison, so a lane the op never writes is visible
+    const dstView = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    // the table's slot 0 is its length (one entry), slot 1 is variant 1's own
+    // ordinal — the same shape as the reference's uint16 map { 1, 1 }
+    const remap = new Int32Array([1, 1]);
+    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1];
+    home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, remap, r);
+    return { landed: dstView.getBigUint64(0, true), clamped: r.clamped };
+  };
+
+  // 1. THE FORGED VALUE: 2^32 = 0x0000000100000000, whose LOW four bytes are
+  //    zero and whose HIGH four carry the one. A 32-bit temporary reads 0,
+  //    lands None and COUNTS NOTHING — the truncation this case pins. Through
+  //    all sixty-four bits it is an ordinal past the writer's one variant, so
+  //    it lands None AND is counted once (§4.5, §4.6).
+  {
+    const { landed, clamped } = run([0, 0, 0, 0, 1, 0, 0, 0]);
+    check(landed === 0n, `ORDINAL WIDTH 8: a 2^32 ordinal lands None (got ${landed})`);
+    check(clamped === 1,
+      `ORDINAL WIDTH 8: the HIGH LANE is seen — a 32-bit temporary would have read 0 and counted nothing (got ${clamped})`);
+  }
+
+  // 2. THE LEGITIMATE VALUE THE RULE ADMITS — the negative control. Ordinal 1
+  //    is inside the one-entry table, so it remaps to 1 and moves no counter.
+  {
+    const { landed, clamped } = run([1, 0, 0, 0, 0, 0, 0, 0]);
+    check(landed === 1n, `ORDINAL WIDTH 8: ordinal 1 remaps through the table (got ${landed})`);
+    check(clamped === 0, `ORDINAL WIDTH 8: an admitted ordinal moves no counter (got ${clamped})`);
+  }
 }
 
 // ---------------------------------------------------------------------------

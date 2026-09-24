@@ -1330,6 +1330,21 @@ Leg.check(
   {wrong.narrow, wrong.renamed_to} != {40000, 321}
 )
 
+# P4 IN THE DOC'S OWN WORDS (docs/FIXED-FORM-ALGORITHM.md §7 item 4): "the
+# wrong plan must go red". The check above proves the two fields the widen and
+# the rename move do not land; this one names the rule and holds the NESTED
+# offsets to it ON THEIR OWN. A wrong plan's symptom is a wrong value that
+# looks right — the offsets are all arithmetic, so every field comes back a
+# number, and a reader that watched only `narrow` and `renamed_to` would miss a
+# plan that slid `nested` and nothing else. The tuple is `nested` alone on
+# purpose: folded into one tuple with `narrow` and `renamed_to`, the check
+# above would already decide it and a `nested` that reproduced {111, 222}
+# would still pass.
+Leg.check(
+  "the wrong plan must go red: this build's identity plan over another schema's record does NOT reproduce `nested`",
+  {wrong.nested.a, wrong.nested.b} != {111, 222}
+)
+
 # A FORM BYTE THIS BUILD DOES NOT CARRY, AND THE DIRECTION IT SITS IN. The
 # registry is ORDERED (§3), so one word for both directions was one word too
 # few: the VARIABLE form is older and a batch handed to a file reader is neither.
@@ -1880,6 +1895,145 @@ Leg.check(
 )
 
 # ---------------------------------------------------------------------------
+# THE BYTE-FLIP SWEEP: EVERY BYTE OF THE FILE, ONE BIT AT A TIME, IS ANSWERED
+# ONE OF THREE WAYS AND NEVER A FOURTH
+# ---------------------------------------------------------------------------
+#
+# §7 item 5, IN THE DOC'S OWN WORDS: "a byte-flip fuzz over the whole file,
+# under a sanitizer, and it is not optional — every offset is arithmetic over
+# sizes a stranger wrote down, so every byte, one bit at a time, is answered one
+# of three ways and never a fourth: a refusal by name, a malformed read, or a
+# read that lands values".
+#
+# THIS LEG HAS NO SANITIZER, AND IT NEEDS NONE, AND THAT IS A FACT ABOUT THE
+# LEG RATHER THAN A GAP. The BEAM is memory-safe and every read here is a
+# binary match: a size past its buffer is a FAILED MATCH that falls to a named
+# clause, not a load past the end. So the sweep cannot prove an out-of-bounds
+# read away with an ASan report; what it proves is the closure itself, BY NAME —
+# every one of the flips lands in exactly one of the three buckets, and a raise,
+# a throw, an exit, or a shape outside the table is the FOURTH answer §7 item 5
+# forbids. That is weaker than ASan on lifetime and alignment and stronger on
+# nothing else; it is stated that way here on purpose.
+#
+# THE SITE (§5.3 step 1, `FixedRuntime.read_file_header`): the one length that
+# comes OFF THE WIRE and drives an offset on this leg is the four-byte LAYOUT
+# LENGTH at file offset 16 — `<<layout::binary-size(^len), records::binary>> =
+# rest`, admitted only by `when byte_size(rest) >= len`. Without that guard a
+# bumped length is a MatchError, which is the fourth answer. THE LAYOUT ITSELF
+# IS NEVER PARSED ON A READ: §5.3 step 7 compares its bytes against the lock's,
+# so a bent layout is the one named refusal `layout_malformed`; and every RECORD
+# offset is the BUILD's `record_bytes`, never the file's. So the wire arithmetic
+# this sweep attacks is the LENGTH word, and the records behind it are attacked
+# as values rather than as offsets — both stated, neither hidden.
+Leg.section("the byte-flip sweep: every byte, one bit at a time, answers three ways")
+
+sweep_clean = read.("fx1.bin")
+
+# CONTROL 1, THE BASELINE: the harness is not measuring itself. The UNTOUCHED
+# file must read CLEAN and LAND VALUES before a single bit is flipped — a sweep
+# whose baseline already refuses is a sweep of its own harness.
+{:ok, sweep_values, sweep_report} = Tblfx1.FX1Fixed.fx_root_fixed_load(sweep_clean)
+
+Leg.check(
+  "sweep CONTROL 1: the untouched fx1.bin reads clean and lands its values",
+  sweep_report.malformed == false and length(sweep_values) == 2 and
+    hd(sweep_values).keep == 4242
+)
+
+# THE CLASSIFICATION, BY NAME. §5.3's report is two answers and they are NEVER
+# both set: a named refusal carries `malformed` false, and `:malformed` is the
+# one error that sets the flag. A read that RETURNS carries `:malformed` only as
+# the damaged projection of a positional record, which is the second answer
+# here. Anything outside the table is the fourth.
+classify = fn
+  {:error, :malformed, %{malformed: true}} -> :malformed
+  {:error, name, %{malformed: false}} when name != :malformed -> {:refusal, name}
+  {:ok, _values, %{malformed: false}} -> :landed
+  {:ok, _values, %{malformed: true}} -> :malformed
+  other -> {:fourth, other}
+end
+
+# ONE BIT, FLIPPED. The XOR is `:binary.at/2` and a shift so the byte is read
+# and rebuilt in place; no offset is hard-coded and nothing outside the binary
+# is touched.
+flip_bit = fn data, at, bit ->
+  b = Bitwise.bxor(:binary.at(data, at), Bitwise.bsl(1, bit))
+
+  <<binary_part(data, 0, at)::binary, b,
+    binary_part(data, at + 1, byte_size(data) - at - 1)::binary>>
+end
+
+sweep = fn clean ->
+  size = byte_size(clean)
+
+  Enum.reduce(
+    0..(size - 1),
+    %{refusal: 0, malformed: 0, landed: 0, visited: 0, fourth: []},
+    fn at, acc ->
+      Enum.reduce(0..7, acc, fn bit, acc ->
+        hit = flip_bit.(clean, at, bit)
+
+        outcome =
+          try do
+            Tblfx1.FX1Fixed.fx_root_fixed_load(hit)
+          rescue
+            e -> {:raised, e}
+          catch
+            kind, v -> {:caught, kind, v}
+          end
+
+        case classify.(outcome) do
+          {:refusal, _name} ->
+            %{acc | refusal: acc.refusal + 1, visited: acc.visited + 1}
+
+          :malformed ->
+            %{acc | malformed: acc.malformed + 1, visited: acc.visited + 1}
+
+          :landed ->
+            %{acc | landed: acc.landed + 1, visited: acc.visited + 1}
+
+          {:fourth, what} ->
+            %{acc | visited: acc.visited + 1, fourth: [{at, bit, what} | acc.fourth]}
+        end
+      end)
+    end
+  )
+end
+
+sweep_size = byte_size(sweep_clean)
+sweep_counts = sweep.(sweep_clean)
+sweep_total = sweep_size * 8
+
+# WHAT RAN, BY COUNT: the sweep visited every byte, one bit at a time.
+Leg.eq(
+  "the sweep visited every byte of fx1.bin, one bit at a time (#{sweep_size} x 8)",
+  sweep_counts.visited,
+  sweep_total
+)
+
+# THE ASSERTION, AND IT NAMES THE RULE. The failure text below is the doc's own
+# three answers; a non-empty `fourth` is the one thing §7 item 5 forbids, and it
+# carries the offset, the bit and what came back instead.
+Leg.eq(
+  "a byte flip is answered a refusal by name, a malformed read, or a read that " <>
+    "lands values — never a fourth",
+  sweep_counts.fourth,
+  []
+)
+
+Leg.eq(
+  "every one of the #{sweep_total} flips is one of the three lawful answers",
+  sweep_counts.refusal + sweep_counts.malformed + sweep_counts.landed,
+  sweep_total
+)
+
+IO.puts(
+  "  fuzz: #{sweep_size} bytes x 8 bits — #{sweep_counts.refusal} refused by name, " <>
+    "#{sweep_counts.malformed} malformed, #{sweep_counts.landed} records read, " <>
+    "#{length(sweep_counts.fourth)} divergences"
+)
+
+# ---------------------------------------------------------------------------
 # C5 — WIDE TEXT CODE UNITS (docs/FIXED-FORM-ALGORITHM.md §4.5, the `text` row)
 # ---------------------------------------------------------------------------
 #
@@ -1993,6 +2147,144 @@ Leg.eq(
   "C5: and the field is a GAP, so the prefill answers",
   wide_len.(lone_image),
   <<0::little-signed-32>>
+)
+
+# ---------------------------------------------------------------------------
+# W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+# (docs/FIXED-FORM-ALGORITHM.md §4.2 fix 3)
+# ---------------------------------------------------------------------------
+#
+# The plan's source offsets are arithmetic over sizes a WRITER wrote down, so a
+# layout that passes every rule of §1.1 and still names a byte past `root.size`
+# is refused WHOLE, never partly compiled, under `layout_record_too_large`.
+#
+# THE LAYOUT HERE IS INTERNALLY VALID, hand-built out of this build's own field
+# ids and passing all seven rules. After COMPILE-from-lock (§5.3), LOAD never
+# parses a stranger — an unknown hash is `layout_newer` — so the bound is
+# asserted on `FixedRuntime.compile/5` directly, which is the path a known older
+# writer still takes through the lineage harness. THE FINDING IS THAT THIS LEG
+# CARRIES NO SUCH BOUND: the `layout_record_too_large` refusals in
+# FixedRuntime.parse_layout/1 are the 65536-byte / `@record_max` overflow arm
+# (fixedruntime.go:617,730,768) and the compile path answers `{:ok, plan, n,
+# report}` where the reference answers -2. The three checks below say so.
+#
+# WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+# `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+# of no elements — and the compiler takes the head from the READER's own row
+# (`counted`, so `head = 4`), so a reader whose field carries a live count
+# subtracts four from zero. The elements then land at `their_at + 4`, past a
+# record that ends at four.
+Leg.section("W10: an entry past the writer's declared record size is refused WHOLE")
+
+# THE IDS ARE READ OUT OF THIS BUILD'S OWN LAYOUT rather than spelled as hashes,
+# so the case does not quietly stop naming the fields it means.
+{:ok, w10_mine} = Tblfx1.FixedRuntime.parse_layout(Tblfx1.FX1Fixed.fx_root_fixed_layout())
+w10_root_id = elem(elem(w10_mine.entries, 0), 0)
+
+w10_keep_id =
+  Enum.reduce(1..(w10_mine.count - 1)//1, 0, fn i, acc ->
+    case elem(w10_mine.entries, i) do
+      {id, 8, 4, _} when acc == 0 -> id
+      _ -> acc
+    end
+  end)
+
+w10_label_id =
+  Enum.reduce(1..(w10_mine.count - 1)//1, 0, fn i, acc ->
+    case elem(w10_mine.entries, i) do
+      {id, 12, _, _} when acc == 0 -> id
+      _ -> acc
+    end
+  end)
+
+# `blob` is the ARRAY whose element is a u8 (kind 6, size 1), which is what
+# separates `bytes(6)` from `marks`, whose element is an int32.
+{w10_blob_id, w10_blob_elem_id} =
+  Enum.reduce(1..(w10_mine.count - 2)//1, {0, 0}, fn i, {b, be} ->
+    case {elem(w10_mine.entries, i), elem(w10_mine.entries, i + 1)} do
+      {{bid, 14, _, _}, {beid, 6, 1, _}} when b == 0 -> {bid, beid}
+      _ -> {b, be}
+    end
+  end)
+
+Leg.check(
+  "W10: the ids this case names are the ids this build's own layout carries",
+  w10_root_id != 0 and w10_keep_id != 0 and w10_blob_id != 0 and w10_label_id != 0
+)
+
+w10_entry = fn id, kind, size, children ->
+  <<id::little-unsigned-64, kind::unsigned-8, size::little-unsigned-32,
+    children::little-unsigned-32>>
+end
+
+# 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`: a record body of FOUR
+#    bytes, `keep` (kind 8, size 4) at 0, then a bytes/array entry of size ZERO
+#    at offset 4.
+w10_hostile =
+  IO.iodata_to_binary([
+    <<4::little-unsigned-32>>,
+    w10_entry.(w10_root_id, 13, 4, 2),
+    w10_entry.(w10_keep_id, 8, 4, 0),
+    w10_entry.(w10_blob_id, 14, 0, 1),
+    w10_entry.(w10_blob_elem_id, 6, 1, 0)
+  ])
+
+w10_hostile_parsed = Tblfx1.FixedRuntime.parse_layout(w10_hostile)
+
+Leg.check(
+  "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND",
+  match?({:ok, _}, w10_hostile_parsed)
+)
+
+{:ok, w10_hostile_mine} = w10_hostile_parsed
+
+w10_compiled =
+  Tblfx1.FixedRuntime.compile(
+    w10_hostile_mine,
+    w10_mine,
+    Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+    4096,
+    Tblfx1.FixedRuntime.report()
+  )
+
+Leg.check(
+  "W10: COMPILE refuses an entry past the writer's record size, naming layout_record_too_large",
+  match?({:error, :layout_record_too_large, _}, w10_compiled)
+)
+
+# 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the overrun —
+#    a text entry whose length word and payload END EXACTLY at `root.size` — is
+#    a layout with nothing wrong with it, and a bound that refused it would be a
+#    bound that refuses the wire. It must pass all seven rules and must COMPILE.
+w10_boundary =
+  IO.iodata_to_binary([
+    <<3::little-unsigned-32>>,
+    w10_entry.(w10_root_id, 13, 16, 2),
+    w10_entry.(w10_keep_id, 8, 4, 0),
+    w10_entry.(w10_label_id, 12, 12, 0)
+  ])
+
+w10_boundary_parsed = Tblfx1.FixedRuntime.parse_layout(w10_boundary)
+
+Leg.check(
+  "W10: the boundary layout passes all seven rules of §1.1",
+  match?({:ok, _}, w10_boundary_parsed)
+)
+
+{:ok, w10_boundary_mine} = w10_boundary_parsed
+
+w10_boundary_compiled =
+  Tblfx1.FixedRuntime.compile(
+    w10_boundary_mine,
+    w10_mine,
+    Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+    4096,
+    Tblfx1.FixedRuntime.report()
+  )
+
+Leg.check(
+  "W10: a text entry ending EXACTLY at root.size is not a refusal",
+  match?({:ok, _, _, _}, w10_boundary_compiled)
 )
 
 Leg.verdict()

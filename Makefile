@@ -5670,6 +5670,9 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+# map is not a compiler backend. Include it by path so the registry wildcard
+# above stays live ports only (tables-ports-refuse-wide-scalars).
+include $(wildcard tools/agentsmap/map.mk)
 include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
