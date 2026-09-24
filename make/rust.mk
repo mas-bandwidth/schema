@@ -203,7 +203,7 @@ tables-rust-names-negative-control:
 		{ echo "NEGATIVE CONTROL: the name-claim sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/rust-names-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-names-control/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/rust-names-control/overlay.json \
+	@if go test -count=1 -overlay=build/rust-names-control/overlay.json \
 			-run 'TestRustConstantSpaceIsClaimedForEveryRuntimeConstant|TestTableRefusals' \
 			./internal/check/ > build/rust-names-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the Rust constant-space claim removed"; \
