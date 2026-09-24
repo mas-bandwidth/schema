@@ -78,6 +78,37 @@ in the `go-test` job of `ci.yml`.
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
 
+## How to run the tests, and the rule that sets their shape
+
+The owner's rule: anything we iterate on answers in **one minute ideally, two
+at most**. Anything over two minutes runs **once at the end as a check, or
+nightly** — never in the loop.
+
+A unit test that shells out to a foreign toolchain — `cc`, `c++`, `dotnet`, or
+the Go toolchain compiling the generated unit — costs one to thirty SECONDS of
+somebody else's compiler, every run. Two packages carried almost all of it:
+
+| command | before | after |
+| --- | --- | --- |
+| `go test ./compiler/` | 261 s | **4.6 s** |
+| `go test ./internal/codegen/gotable/` | 41 s | **3.0 s** |
+| `go test ./...` | 5:34-9:10 | **~6 s** (default), minutes with `SCHEMA_SLOW=1` |
+
+Nothing was dropped. `internal/slowtest` gates the toolchain half:
+
+- **the default, for the loop** — `go test ./compiler/`,
+  `go test ./internal/codegen/<leg>table/`, `go test ./...`: every pure-Go
+  test, the IR, the emitters' text, the goldens, the refusals.
+- **the full set, for the check** — `SCHEMA_SLOW=1 go test ./...`: the same
+  plus every toolchain test. Run it once before you open a pull request, not
+  between edits.
+- **`make test`** sets `SCHEMA_SLOW=1` itself, so the certification chain in
+  `certify.yml` proves exactly what it proved before.
+
+A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
+therefore never reads whether a toolchain is present; absence still fails where
+the gate is required to run.
+
 ## The gates a change has to pass
 
 CI runs on Linux and macOS, and both must be green:
@@ -229,6 +260,16 @@ touches and two ports landing in one week do not conflict:
 | the tables bench leg | `bench/tables/<lang>/leg` | `bench/tables/run.sh` runs every leg |
 | the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |
 | the goldens | `testdata/golden/<lang>/`, `testdata/golden/tables/<unit>-<lang>/` | the tests that pin them |
+
+**Start with `schema new-leg <lang>`.** In a checkout it lays down the first
+five of those files from templates in `tools/newleg/` — `compiler/target_<lang>.go`,
+the backend and its one fixture test under `internal/codegen/<lang>/`,
+`make/<lang>.mk` registering `test-<lang>`, and `test/<lang>/Fixture.schema` —
+so the tree builds, `go test ./internal/codegen/<lang>/` passes and
+`make test-<lang>` runs green before a line of the real emitter is written.
+The skeleton backend only names each declaration and refuses every construct
+it does not carry, by name; the port replaces it. The verb never overwrites a
+file, and a name a target already answers to is refused.
 
 `make registry` prints what the build discovered, and the registry gate
 (`test/conformance/harness/registry_test.go`) plants a fake language in a copy

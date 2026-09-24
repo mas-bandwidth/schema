@@ -1068,10 +1068,19 @@ build/schema_test_c_fixedform_asan: build/tables-generated-c-fixed/.stamp $(C_FI
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
 
-.PHONY: tables-c-fixedform
+.PHONY: tables-c-fixedform tables-c-fixedform-fast
 tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
 	./build/schema_test_c_fixedform
 	./build/schema_test_c_fixedform_asan
+
+# THE FAST HALF (issue #857): the PLAIN C harness alone. `tables-c-fixedform`
+# runs the plain build and its sanitized twin, which is the pair `make test`
+# runs in nightly certification; the pull-request job pays checkout, the
+# sibling clones and the generated tree inside the two-minute rule and runs
+# this half so the build that a loader change can break is compiled on the
+# diff. The C++ leg's twin is `tables-fixedform-fast` in the root Makefile.
+tables-c-fixedform-fast: build/schema_test_c_fixedform
+	./build/schema_test_c_fixedform
 
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
@@ -1104,6 +1113,23 @@ TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += build/conformance-c
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
+
+# THE C TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is the
+# language's formatting authority, so an emitter that has to be hand-reflowed is
+# an emitter that drifts. The gate holds every generated C table unit to what
+# the formatter would write, and SKIPS cleanly where clang-format is not on PATH.
+.PHONY: tables-c-clean
+tables-c-clean: build/tables-generated-c/.stamp
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-c-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
+	fi; \
+	drift=0; \
+	for f in $$(find build/tables-generated-c -name '*.h' -o -name '*.c'); do \
+		$(CLANG_FORMAT) "$$f" | cmp -s "$$f" - || { echo "clang-format drift in $$f"; drift=1; }; \
+	done; \
+	[ $$drift -eq 0 ] || exit 1; \
+	echo "tables C: clang-format clean over the generated table units"
+test-c: tables-c-clean
 
 # The file-wire differential: the compiler's independent engine owns every
 # expected byte and report. Unsupported roster entries are named absent.

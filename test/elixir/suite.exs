@@ -1197,6 +1197,76 @@ defmodule SchemaTestElixir do
     pin_arrangements.("clauses", clause_shapes)
     pin_arrangements.("joins", join_shapes)
 
+    # ---- read_<name>_bits: the BITS CONSUMED entry (SPEC §5, §6.1) ----
+    #
+    # A binary carries no position, so Elixir's "Read reports bits consumed"
+    # is a SECOND ENTRY and not an out-parameter. The count is what frames a
+    # second object behind the first in ONE buffer: the next one begins at
+    # div(bits_read + 7, 8) bytes in, which is the whole of what the caller
+    # could not compute for itself on a branching body.
+    two_headers = [
+      %Example.ProbeHeader{version: 3, probe_id: 0x0123456789ABCDEF},
+      %Example.ProbeHeader{version: 5, probe_id: 0xFEDCBA9876543210}
+    ]
+
+    framed =
+      two_headers
+      |> Enum.map(&Example.Wire.write_probe_header/1)
+      |> IO.iodata_to_binary()
+
+    rest_headers =
+      Enum.reduce(two_headers, framed, fn want, acc ->
+        case Example.Wire.read_probe_header_bits(acc, byte_size(acc) * 8) do
+          {:ok, got, bits_read} ->
+            check(got == want, "read_probe_header_bits: the object reads back")
+
+            check(
+              bits_read == Example.Wire.measure_probe_header(want),
+              "read_probe_header_bits: the count is the written bits"
+            )
+
+            check(
+              Example.Wire.read_probe_header(acc, byte_size(acc) * 8) == {:ok, got},
+              "read_probe_header/2 is the same read with the count dropped"
+            )
+
+            n = div(bits_read + 7, 8)
+            binary_part(acc, n, byte_size(acc) - n)
+
+          :error ->
+            check(false, "read_probe_header_bits")
+            <<>>
+        end
+      end)
+
+    check(
+      rest_headers == <<>>,
+      "two objects in one buffer: the counts consume it exactly"
+    )
+
+    # The seven-bit union above, twice in one buffer — the count is NOT a
+    # whole number of bytes, so the ceiling to the next byte is the thing
+    # under test and not an accident of this type's width.
+    arm_two = <<0x51, 0x51>>
+
+    {:ok, arm_first, arm_bits} =
+      Example.ArmDefaults.read_default_choice_bits(arm_two, byte_size(arm_two) * 8)
+
+    check(arm_bits == 7, "read_default_choice_bits: seven bits consumed, not eight")
+
+    check(
+      Example.ArmDefaults.read_default_choice_bits(
+        binary_part(arm_two, div(arm_bits + 7, 8), 1),
+        7
+      ) == {:ok, arm_first, 7},
+      "the second seven-bit object reads back from the ceiling of the first"
+    )
+
+    check(
+      Example.Wire.read_probe_header_bits(<<0, 0>>, 16) == :error,
+      "read_probe_header_bits refuses by the same verdict, with no count"
+    )
+
     if Process.get(:schema_test_failed, false) do
       System.halt(1)
     end

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #611: a json-hostile verdict is COUNTERS AND A VERDICT ONLY, so a port
@@ -29,6 +31,7 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
+		slowtest.Gate(t, "the Go toolchain")
 		files, err := c.Generate(u, "go", Options{})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
@@ -73,6 +76,7 @@ func TestIssue611(t *testing.T) {
 	})
 
 	t.Run("cs", func(t *testing.T) {
+		slowtest.Gate(t, "dotnet")
 		dotnet := findDotnet()
 		if dotnet == "" {
 			t.Skip("dotnet unavailable")

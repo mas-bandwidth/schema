@@ -27,8 +27,8 @@ what proves them across releases, #463, named in its section below.
    it is skipped and counted. The edits the wire cannot report, the *silent
    class* (the bold cells in the table below), are refused at compile time by
    a committed baseline, so commit one before the first build whose data
-   leaves the building; the one the repository cannot refuse today, a retired
-   name reused, is #441.
+   leaves the building; the one the repository could not refuse until the
+   retired-names ledger landed, a retired name reused, is #441.
 3. **Identity is the name.** A field, an enum variant, a union arm and a
    table are identified on the table wire by the hash of their name. Add
    anywhere, remove, reorder. A rename that must keep its data declares the
@@ -87,9 +87,10 @@ what proves them across releases, #463, named in its section below.
     or `malformed` still loses what those counters name. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
     SPEC-TABLES.md §6.6. The C++ reference carries it; the eight ports do not.
-11. **This page moves with the facts.** No mechanical gate reads this page
-    today; #446 adds one, the evolution table's fixtures, and the rest is
-    review.
+11. **This page moves with the facts.** #446's golden now reads the evolution
+    table below — `TestEvolutionTableFrames` in `internal/baseline` runs one
+    fixture per row through all three frames and pins the verdicts — and the
+    rest is review.
 
 ## Two wires, two stories
 
@@ -272,11 +273,11 @@ Three mechanisms judge an edit, and each sees what the others cannot:
   wrote is still this build's.
 
 One table reconciles them. It is the single statement of what an edit does;
-SPEC-TABLES.md §4, §18.2 and §20.4 will derive from it once it has a fixture
-per row, each edit run through all three frames with the verdicts pinned
-(#446), so that it can go red. Every cell was run against the tool; the rows
-that name an issue describe the committed rule and say what the repository
-does today.
+SPEC-TABLES.md §4, §18.2 and §20.4 derive from it by citation, and #446 gives
+it a golden — one fixture per row, each edit run through all three frames with
+the verdicts pinned (`TestEvolutionTableFrames`), so that it can go red. Every
+cell was run against the tool; the rows that name an issue describe the
+committed rule and say what the repository does today.
 
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
@@ -316,7 +317,7 @@ does today.
 | a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
 | a table renamed bare | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves |
 | a table renamed under `was` | nothing: the node type id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the declared name beside the wire name | **nothing**, and the protocol id does not move either |
-| a retired name re-added with a new meaning | **silent** | **passes today**; the ledger is #441 | moves |
+| a retired name re-added with a new meaning | **silent** | **refuses**: the retired-names ledger records the name and id and names the entry, until `--update --reason` acknowledges the resurrection (#441) | moves |
 | a language added to the build | nothing | nothing | nothing |
 
 Enum, flags and union declarations are shared by both wires, which is why some
@@ -414,9 +415,11 @@ untouched, and committing one silences it.
 intended is accepted with `--update --reason "..."`, which rewrites the file
 and appends a dated entry to its history section naming every edit, old value
 to new. `--update` without a reason is refused. The history survives every
-later `--update` verbatim. Today it records only the edits that were refused
-or warned: a plain removal writes "no compatibility-affecting edits," so the
-history is not yet a record of retired names; that is #441.
+later `--update` verbatim. A plain removal writes "no compatibility-affecting
+edits" in the history, because the wire absorbs it, and leaves a `## retired`
+ledger entry beside it: the retired section records the name, id, vocabulary
+and date, `--update` appends to it and never drops it, and a re-added name or
+id is refused until `--update --reason` acknowledges the resurrection (#441).
 
 **Merging two branches of one schema.** Merge the `.schema` text; keep either
 parent's baseline; run the check, whose refusals name every semantic
@@ -430,7 +433,8 @@ read, salvaging the history. The window during which that repair runs is the
 one window the check is off, marked in the history as "could not be diffed";
 review the schema diff of that commit by hand.
 
-**Before 3.0.0's evolution claims:** the retired-names ledger (#441).
+**Before 3.0.0's evolution claims:** the retired-names ledger (#441) is in
+the baseline, and the reuse of a retired name or id now refuses.
 
 ## The build version
 
@@ -892,8 +896,9 @@ years, and several of the answers are patterns rather than syntax.
   every frame.
 - **Retire a field.** Removal is free and reported; there is no deprecation
   marker because removal is what deprecation exists to fake elsewhere. Do not
-  re-add the name with a new meaning; until the ledger (#441) refuses it,
-  nothing records that the name is haunted, so keep your own list.
+  re-add the name with a new meaning: the baseline's retired-names ledger
+  (#441) records the name and id and refuses the reuse until you acknowledge
+  it with `--update --reason`.
 - **Ship a schema change to a mixed fleet.** A table-body edit never forces a
   redeploy, and neither does an edit to an enum or a union no `type` reaches,
   which is where content lives. A type or flags edit always does, and so does

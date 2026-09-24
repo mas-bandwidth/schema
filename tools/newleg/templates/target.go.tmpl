@@ -1,0 +1,50 @@
+// One built-in target, registered from its own init so a target is one file
+// and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
+//
+// SKELETON, laid down by `schema new-leg [[.Lang]]`. The backend names each
+// declaration and carries no wire yet, so every construct the other legs
+// refuse by name is refused here too, and tables are refused whole until the
+// [[.Lang]] table backend lands.
+package compiler
+
+import (
+	[[.Lang]]backend "github.com/mas-bandwidth/schema/v2/internal/codegen/[[.Lang]]"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// [[.Lang]]Target emits [[.Lang]].
+type [[.Lang]]Target struct{}
+
+func ([[.Lang]]Target) Names() []string { return []string{"[[.Lang]]"} }
+
+func ([[.Lang]]Target) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	// THE WIDE-SCALAR REFUSAL first: the Makefile's
+	// tables-ports-refuse-wide-scalars gate runs every discovered leg over
+	// tables/scalars and accepts this refusal, by name, and no other.
+	if err := ir.RefuseWideTableKinds(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseTables(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseWideText(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseUnported(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseOptionalArrays(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseMaps(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	if err := refuseLists(u, "[[.Lang]]"); err != nil {
+		return nil, err
+	}
+	return [[.Lang]]backend.Generate(u)
+}
+
+func init() {
+	registerBuiltin([[.Lang]]Target{}, false, false, false, false)
+}

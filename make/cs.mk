@@ -427,6 +427,21 @@ tables-cs-bench-gate: generated/bench/tables/cs/.stamp
 	bench/tables/cs/leg run --gate
 test-cs: tables-cs-bench-gate
 
+# THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
+# "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
+# and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
+# counter, GC.GetAllocatedBytesForCurrentThread. Setup (the golden, the value,
+# the save buffer and the caller-supplied TableReport) is separated from steady
+# work (the replay loop over that storage); the read with a supplied report,
+# the read with NO report, Measure, Save and the round trip must each measure
+# exactly zero, and the leg's own sensitivity check plants escapes on the read
+# row and on the save row and requires each installed row to move while the
+# row beside it stays green. The generator's null-report read caches one
+# ignored TableReport rather than constructing one per call.
+.PHONY: tables-cs-alloc
+tables-cs-alloc: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
@@ -450,6 +465,28 @@ tables-cs-pack-negative-control: bin/schema
 .PHONY: tables-cs-message-blob-endian-negative-control
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
+
+# J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421), the C#
+# half. The generated managed class's public fields and the generated
+# descriptor's delegates are two independent derivations of one layout, and a
+# reading tier that only ever walks the descriptor could read it twice and never
+# know. Go holds unsafe.Offsetof against f.Offset; C# has no f.Offset — its
+# TableFieldInfo carries DELEGATES (§8.1), so this leg holds the named public
+# field against the GetRaw/GetChild delegate and requires agreement, field by
+# field, by name. A scalar accessor (codecs.go:826) and a pointer slot
+# (codecs.go:814) are each sabotaged through a `go build -overlay` on the
+# emitter, and each must turn the gate red on its own message.
+.PHONY: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
+tables-cs-accessor-descriptor-agreement: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" agreement
+
+tables-cs-accessor-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" scalar
+
+tables-cs-slot-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" slot
+
+test-cs: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
 
 # THE C# PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
 # target by name, so the expensive half lands by adding it here and nothing
@@ -478,6 +515,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-alloc
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz
 	$(MAKE) tables-cs-builder-fuzz
@@ -503,6 +541,20 @@ TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
+
+# THE C# TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `dotnet format` is the
+# language's formatting authority over the generated table units the conformance
+# project compiles, so an emitter that drifts from what it writes goes red here
+# rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
+.PHONY: tables-cs-clean
+tables-cs-clean: build/tables-generated-cs/.stamp
+	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
+		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
+	fi
+	$(DOTNET) format test/conformance/cs/schemaconformance.csproj \
+		--verify-no-changes --include $(CURDIR)/build/tables-generated-cs
+	@echo "tables C#: dotnet format clean over the generated table units"
+test-cs: tables-cs-clean
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema

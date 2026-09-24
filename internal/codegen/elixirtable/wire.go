@@ -8,9 +8,10 @@ import (
 )
 
 // TableRuntimeModule is the shared module a unit with tables grows for the
-// id-table wire's framing, beside the block and cook runtimes (docs/SPEC-
-// TABLES.md §3). It is a file basename as well as a module name, so it is
-// claimed the way every other generated spelling is (docs/SPEC-TABLES.md §11).
+// id-table wire's framing, beside the block and cook runtimes
+// (docs/SPEC-TABLES.md §3). It is a file basename as well as a module name, so
+// it is claimed the way every other generated spelling is
+// (docs/SPEC-TABLES.md §11).
 const TableRuntimeModule = "TableRuntime"
 
 // tableRuntimeModule emits <Package>.TableRuntime: the primitives the wire's
