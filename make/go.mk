@@ -605,7 +605,7 @@ test-go: tables-go-usage
 # base.
 .PHONY: tables-go-text-differential tables-go-text-differential-negative-control
 tables-go-text-differential:
-	go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
 tables-go-text-differential-negative-control:
-	go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential
