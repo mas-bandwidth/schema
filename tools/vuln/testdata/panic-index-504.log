@@ -1,0 +1,6 @@
+panic: runtime error: index out of range [504] with length 504
+
+goroutine 1 [running]:
+golang.org/x/vuln/internal/scan.runSource(...)
+	golang.org/x/vuln@v1.7.0/internal/scan/run.go:61
+exit status 2

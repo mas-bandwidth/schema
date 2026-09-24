@@ -1,0 +1,1 @@
+govulncheck: loading vulnerability db: Get "https://vuln.go.dev/index/db.json": dial tcp: lookup vuln.go.dev on 127.0.0.53:53: no such host
