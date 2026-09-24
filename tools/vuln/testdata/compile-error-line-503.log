@@ -1,0 +1,6 @@
+govulncheck: loading packages: there are errors with the provided package patterns:
+
+internal/codegen/go/gen.go:503:14: undefined: foo
+internal/codegen/go/gen.go:504:2: missing return
+
+For details on package patterns, see https://pkg.go.dev/cmd/go#hdr-Package_lists_and_patterns.
