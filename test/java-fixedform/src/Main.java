@@ -380,12 +380,11 @@ public final class Main {
         check(utSame(viaPlan, id[0]),
                 "arm text: a COMPILED plan lands exactly what the identity plan lands");
 
-        // A TAG PAST THE LAST ARM: None on both paths, and the identity path
-        // counts one clamped. THE COMPILED PLAN COUNTS NOTHING HERE and that
-        // is not an oversight: a plan says what a SELECTED arm does, so
-        // "no arm fired" is not an event any entry of it can see. The tag
-        // still lands None, because the prefill put None there and no entry
-        // wrote over it.
+        // A TAG PAST THE LAST ARM: None on both paths, and BOTH paths count
+        // ONE clamped (schema#1254, §5.4, §5.8 row 12). The compiled plan
+        // pushes the tag's None UNGUARDED with the writer's arm count in its
+        // dstsize lane, so a tag past that set lands None and counts, exactly
+        // as the identity plan's decode bound does (javatable, #1278).
         {
             final byte[] bad = wire.clone();
             final int body = utBodyAt(bad);
@@ -403,7 +402,7 @@ public final class Main {
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
             final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
             check(bent.pick.type == tblut.UtPickFixed.none, "tag past the last arm: the compiled plan lands None too");
-            check(r2.clamped == 0, "tag past the last arm: no entry of a plan can see an arm that did not fire");
+            check(r2.clamped == 1, "tag past the last arm: the compiled plan counts ONE clamped too");
         }
 
         // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH

@@ -216,6 +216,65 @@ tables-rust-names-negative-control:
 	@grep -m1 "was accepted beside a table" build/rust-names-control/log
 	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
 
+# THE RUNTIME HOME IS THE PACKAGE (docs/SPEC-TABLES.md §19.2). A unit's shared
+# Rust table runtimes — the block form's runtime in block_runtime.rs, the cooked
+# form's in cook_runtime.rs, and the build version in build_version.rs — are
+# emitted ONCE, keyed by the module CONSTANTS (rusttable.go:26-30), so no file's
+# name can reach them. Every earlier rule picked WHERE off the file order:
+# adding a file that sorts earlier relocated the whole runtime (issue #347) —
+# correct output, and a diff nobody can read.
+#
+# A unit is a CRATE here (make/rust.mk:214-215), so the crate name already IS
+# the package and a module does not repeat it; a module constant off the crate
+# is this leg's spelling of "named by the PACKAGE", and cook.go:113-118 says so.
+#
+# The gate adds exactly such a file to a COPY of tables/examples — Aaa.schema,
+# ahead of Guarded.schema — and requires the homes not to move, by name and by
+# byte. The added file DECLARES NOTHING: a declared type would move the unit's
+# protocol id, which the build version folds in, so a moved runtime would then
+# be correct rather than a defect (rusttable_test.go:190-194). What it changes
+# is the FILE ORDER and nothing else.
+.PHONY: tables-rust-runtime-home
+tables-rust-runtime-home: bin/schema
+	@rm -rf build/runtime-home-rust && mkdir -p build/runtime-home-rust/src
+	@cp tables/examples/*.schema build/runtime-home-rust/src/
+	@printf 'package tabledemo\n\n// a file that declares nothing, so the only thing it changes is which basename sorts first\n' > build/runtime-home-rust/src/Aaa.schema
+	@./bin/schema generate --lang rust --out build/runtime-home-rust/base tables/examples
+	@./bin/schema generate --lang rust --out build/runtime-home-rust/added build/runtime-home-rust/src
+	@for home in "block_runtime:shared runtime (docs/SPEC-TABLES.md §19)" "cook_runtime:shared runtime (docs/SPEC-TABLES.md §7)" "build_version:BUILD VERSION (docs/SPEC-TABLES.md §20)"; do \
+		mod=$${home%%:*}; needle=$${home#*:}; \
+		base=$$(cd build/runtime-home-rust/base && grep -l "$$needle" *.rs); \
+		added=$$(cd build/runtime-home-rust/added && grep -l "$$needle" *.rs); \
+		if [ "$$base" != "$$mod.rs" ] || [ "$$added" != "$$mod.rs" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$mod runtime is in $$base before the added file and $$added after — expected $$mod.rs both times"; exit 1; \
+		fi; \
+	done
+	@for mod in block_runtime cook_runtime build_version; do \
+		cmp -s build/runtime-home-rust/base/$$mod.rs build/runtime-home-rust/added/$$mod.rs || \
+			{ echo "RUNTIME HOME GATE FAILED: $$mod.rs's bytes moved when the unit gained a file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Rust): the block, cook and build-version runtimes stay in block_runtime.rs, cook_runtime.rs and build_version.rs when an earlier-sorting file joins the unit"
+
+.PHONY: tables-rust-runtime-home-negative-control
+tables-rust-runtime-home-negative-control: bin/schema tables-rust-runtime-home
+	@rm -rf build/rust-runtime-home-control && mkdir -p build/rust-runtime-home-control
+	@sed 's|out\[BlockRuntimeModule+".rs"\]|out[strings.ToLower(ir.ProtocolIdHome(u))+"_block_runtime.rs" /* SABOTAGED: back to the file order */]|' \
+		internal/codegen/rusttable/block.go > build/rust-runtime-home-control/block.go.txt
+	@[ "$$(grep -c SABOTAGED build/rust-runtime-home-control/block.go.txt)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the file-order sabotage did not apply exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/block.go":"%s/build/rust-runtime-home-control/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-runtime-home-control/overlay.json
+	@go build -overlay=build/rust-runtime-home-control/overlay.json -o build/schema-rustruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-rust/base-sabotage build/runtime-home-rust/added-sabotage
+	@./build/schema-rustruntime-sabotaged generate --lang rust --out build/runtime-home-rust/base-sabotage tables/examples
+	@./build/schema-rustruntime-sabotaged generate --lang rust --out build/runtime-home-rust/added-sabotage build/runtime-home-rust/src
+	@base=$$(cd build/runtime-home-rust/base-sabotage && grep -l "shared runtime (docs/SPEC-TABLES.md §19)" *.rs); \
+	 added=$$(cd build/runtime-home-rust/added-sabotage && grep -l "shared runtime (docs/SPEC-TABLES.md §19)" *.rs); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the block runtime in $$base - the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "rust runtime home negative control: the file-order rule moves the block runtime from $$base to $$added"
+
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
 	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
@@ -376,6 +435,8 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.
 	$(MAKE) tables-rust-fixed-matched
+	$(MAKE) tables-rust-runtime-home
+	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
