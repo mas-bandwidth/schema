@@ -82,6 +82,9 @@ exit 0
 		"BENCH_CPU=0",
 		"PGO_TEST_LOG="+filepath.Join(root, "compiler.log"),
 		"PGO_PROFILER_LOG="+filepath.Join(root, "profiler.log"),
+		// Pin the merge tool to the PATH fake: on macOS run.sh would otherwise
+		// prefer `xcrun llvm-profdata`, which never writes profiler.log.
+		"LLVM_PROFDATA="+filepath.Join(root, "bin", "llvm-profdata"),
 	)
 	return root, env
 }
@@ -95,12 +98,12 @@ func pgoRun(t *testing.T, root string, env []string, args ...string) {
 	}
 }
 
-// TestPgoIsATwoPassNativeBuildForCAndCpp (#176): --pgo must compile the leg
+// TestPGOIsATwoPassNativeBuildForCAndCpp (#176): --pgo must compile the leg
 // with -fprofile-instr-generate, run the instrumented binary once to write a
 // profile, merge it with llvm-profdata, and rebuild with -fprofile-instr-use
 // and -mcpu=native. Before the flag existed the driver refused it outright
 // ("unknown argument: --pgo"), so this test is the red half of the card.
-func TestPgoIsATwoPassNativeBuildForCAndCpp(t *testing.T) {
+func TestPGOIsATwoPassNativeBuildForCAndCpp(t *testing.T) {
 	root, env := pgoFixture(t)
 	pgoRun(t, root, env, "--pgo", "--only", "cpp", "--out", filepath.Join(root, "cpp.csv"))
 	pgoRun(t, root, env, "--pgo", "--only", "c", "--out", filepath.Join(root, "c.csv"))
@@ -122,7 +125,7 @@ func TestPgoIsATwoPassNativeBuildForCAndCpp(t *testing.T) {
 		{"bench/c/bench_main.c", "c"},
 	} {
 		var gen, use int
-		for _, line := range strings.Split(string(log), "\n") {
+		for line := range strings.SplitSeq(string(log), "\n") {
 			if !strings.Contains(line, leg.source) {
 				continue
 			}
