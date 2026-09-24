@@ -1,0 +1,33 @@
+Governing sentence: docs/FIXED-FORM-ALGORITHM.md:862-864:
+  "The order is load-bearing and it is not §1.1's order. ... The seven §1.1
+   malformations under a KNOWN hash all come back as one name, layout_malformed"
+
+Condition table row at docs/FIXED-FORM-ALGORITHM.md:889:
+  "a known hash, different layout length or bytes | layout_malformed | the name"
+
+Production path: build/tables-generated-c/v1/V1Table.h:7033-7095
+  cell_fixed_load() calls table_fixed_select() to find the hash in the lineage,
+  then at lines 7093-7095 compares layout length and bytes with memcmp against
+  the lock's entry. A mismatch sets report->refused=1, reason=SCHEMA_TABLE_LAYOUT_MALFORMED.
+
+Test output (GREEN):
+ok make correct buffer
+ok correct buffer: green
+ok make length-mismatch buffer
+ok layout length mismatch: layout_malformed
+ok make bytes-mismatch buffer
+ok layout bytes mismatch: layout_malformed
+ok make re-check buffer
+ok re-check correct buffer: green (negative control)
+
+Negative control (broken cell_fixed_known[0].hash = 0x1111111111111111):
+FAIL: correct buffer: green
+FAIL: layout length mismatch: layout_malformed
+FAIL: layout bytes mismatch: layout_malformed
+FAIL: re-check correct buffer: green (negative control)
+
+Run command (from ./repo):
+  cc -std=c11 -Wall -Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c \
+    -Itest/conformance/c test/conformance/c/rows/R9.c \
+    build/tables-generated-c/v1/V1Table.c -o build/rows-c-R9 -lm \
+  && ./build/rows-c-R9

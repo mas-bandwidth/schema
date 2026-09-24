@@ -862,6 +862,76 @@ jobs:
         run: make ${{ matrix.target }}
 
 
+  # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
+  # pull-request job at all — it was reached only through `make test` and the
+  # nightly certification — and on 2026-09-08 #728's pull-request checks were
+  # all green while its head had this leg red across five SharedVocabSplice
+  # checks (the fix landed as #734). Nothing on the gate named it, so nothing
+  # said a word.
+  #
+  # It is sharded one matrix row per build configuration because the owner's
+  # rule is per job and a matrix row is a job: Debug and Release are the two
+  # commands the leg's recipe already runs, so each row fits the rule on its
+  # own rather than the leg being cut to fit as a whole. Measured on this
+  # bench, the leg ran both configurations in 7m51s wall clock (1m48s user) on
+  # a one-core runner carrying a ~17 load from sibling jobs, so a single
+  # configuration measured over the two-minute rule here — that is a contention
+  # artifact, not a reason to stay nightly; the issue's nightly branch is the
+  # owed alternative if it proves real on a dedicated runner. The umbrella
+  # target still runs both halves in order for `make test` and the nightly;
+  # this job runs one half per row.
+  #
+  # internal/ci/tableslegs_test.go is what keeps this job from being quietly
+  # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
+  # with no pull-request coverage.
+  cs-tables:
+    name: C# tables leg (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: generate the C# table corpus once
+        run: make -j"$(nproc)" bin/schema build/tables-generated-cs/.stamp
+
+      - name: run the leg
+        run: make tables-cs-leg-${{ matrix.config }}
+
+
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any

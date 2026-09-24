@@ -1,77 +1,101 @@
 // THE DART LEG's F4 cell: layout_malformed, truncated (docs/FIXED-FORM-ALGORITHM.md:144).
 //
-// A standalone test for the law: `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE layout_malformed`.
+// The law, load step 3: `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE
+// layout_malformed` (docs/FIXED-FORM-ALGORITHM.md:144).
 //
-// This test constructs a minimal byte vector that triggers the condition:
-// - form byte 3 (fixed form)
-// - 7 reserved zero bytes
-// - 8-byte hash
-// - 4-byte layout length L
-// - L bytes of layout
-// - but the total file length is < 20 + L, making it truncated
+// THE VECTOR is a genuinely truncated fixed-form FILE: a complete header and
+// layout for RootConfig — form byte 3, seven reserved zeros, the header's own
+// hash (rootConfigFixedHash), L := rootConfigFixedLayoutBytes = 1245, and the
+// layout's true 1245 bytes — handed to the reader ONE BYTE SHORT (byteLength
+// 1264 = 20 + L - 1). The derivation is mechanical: 20 + 1245 = 1265 > 1264.
+//
+// WHY THE VECTOR NAMES THE TRUE LAYOUT: the file must be indistinguishable
+// from a valid one except for the truncation, so the refusal can only come
+// from the `20 + L > bytes` check and not from the later `L !=
+// known.layoutBytes` or byte-compare branches, which a shorter or foreign
+// layout would trip first. A control that breaks the truncation check's
+// constant must therefore turn this test red — with L == the lock's length
+// the read runs on, computes rest = 1264 - 20 - 1245 = -1, answers malformed
+// with no refusal, and the assert below fails.
+//
+// THE CLEAN HALF loads the same file COMPLETE (byteLength 1265, one record),
+// so the truncation is the vector's only damage and the control's red is
+// localised to the law.
 
 import 'dart:io';
 import 'dart:typed_data';
 
-// Import the generated fixed form runtime
 import '../../../../build/tables-generated-dart/examples/TabledemoFixed.dart';
 import '../../../../build/tables-generated-dart/examples/TablesFixed.dart';
 
 void main() {
-  // The smallest layout is 4 bytes (just the entry count of 0)
-  // So L = 4, and we need 20 + 4 = 24 bytes total
-  // A truncated file has fewer than 24 bytes
-  
-  // Build a file with:
-  // - form byte: 3
-  // - 7 reserved zero bytes
-  // - hash: 8 bytes (we'll use rootConfigFixedHash)
-  // - layout length: 4 bytes (L = 4)
-  // - layout: 4 bytes (entry count of 0)
-  // Total should be 24 bytes, but we'll make it 23 bytes (truncated by 1)
-  
-  // Use rootConfigFixedHash as a known hash
-  final hash = rootConfigFixedHash;
-  
-  // Build the header: form byte (3) + 7 zeros + hash (8 bytes) + layout length (4 bytes = 4)
-  final header = Uint8List.fromList([
-    3, // form byte
-    0, 0, 0, 0, 0, 0, 0, // 7 reserved zeros
-    ..._uint64ToBytes(hash), // hash at offset 8
-    4, 0, 0, 0, // layout length L = 4 at offset 16
-  ]);
-  
-  // The layout should be 4 bytes (entry count of 0)
-  final layout = Uint8List.fromList([0, 0, 0, 0]);
-  
-  // A valid file would be: header (20 bytes) + layout (4 bytes) = 24 bytes
-  // A truncated file has only 23 bytes (missing the last byte of layout)
-  final truncatedFile = Uint8List.fromList([
-    ...header,
-    ...layout.sublist(0, 3), // only 3 bytes of layout instead of 4
-  ]);
-  
-  // Now try to load it
-  final report = TableFixedReport();
-  final values = List<RootConfig>.filled(1, RootConfig());
-  final plan = TableFixedPlan(100, 1000, 100);
-  
-  final count = rootConfigFixedLoad(values, 1, truncatedFile, truncatedFile.length, plan, report);
-  
-  // Should refuse with layoutMalformed
-  if (report.refused == TableFixedRefusal.layoutMalformed) {
-    stdout.writeln('GREEN: truncated file (20+L > bytes) refuses layout_malformed');
-    exit(0);
-  } else {
-    stdout.writeln('RED: expected layoutMalformed, got ${TableFixedRefusal.name(report.refused)}');
+  // A complete form-3 file for one RootConfig: the writer lays the header and
+  // the layout down, and one record behind them.
+  final whole = Uint8List(rootConfigFixedMeasure(1));
+  final v = RootConfig();
+  v.weaponsCount = 1;
+  v.weapons[0].damage = 33.5;
+  final saved = rootConfigFixedSave(<RootConfig>[v], 1, whole);
+  if (saved != whole.length) {
+    stdout.writeln('RED: F4 save wrote $saved of ${whole.length}');
     exit(1);
   }
-}
 
-// Helper to convert a 64-bit unsigned int to little-endian bytes
-List<int> _uint64ToBytes(int value) {
-  final bytes = Uint8List(8);
-  final view = ByteData.sublistView(bytes);
-  view.setUint64(0, value, Endian.little);
-  return bytes;
+  // THE CLEAN HALF: the same file, read whole, is not damage.
+  {
+    final back = List<RootConfig>.filled(1, RootConfig());
+    final r = TableFixedReport();
+    final n = rootConfigFixedLoad(
+      back,
+      1,
+      whole,
+      whole.length,
+      rootConfigFixedNewPlan(),
+      r,
+    );
+    if (n != 1 || r.refused != TableFixedRefusal.none || r.malformed) {
+      stdout.writeln(
+        'RED: F4 the complete file must load (n=$n '
+        'refused=${TableFixedRefusal.name(r.refused)} '
+        'malformed=${r.malformed})',
+      );
+      exit(1);
+    }
+    if (back[0].weaponsCount != 1 || back[0].weapons[0].damage != 33.5) {
+      stdout.writeln('RED: F4 the complete file must read its values');
+      exit(1);
+    }
+  }
+
+  // THE TRUNCATED VECTOR: 20 + L = 1265 bytes standing, the reader given 1264.
+  final bytes = Uint8List(whole.length);
+  bytes.setAll(0, whole);
+  const truncated = TableFixedLimits.layoutAt + rootConfigFixedLayoutBytes - 1;
+  final report = TableFixedReport();
+  final values = List<RootConfig>.filled(1, RootConfig());
+  try {
+    final n = rootConfigFixedLoad(
+      values,
+      1,
+      bytes,
+      truncated,
+      rootConfigFixedNewPlan(),
+      report,
+    );
+    if (report.refused == TableFixedRefusal.layoutMalformed) {
+      stdout.writeln(
+        'GREEN: F4 truncated layout (20+L > bytes) refuses layout_malformed',
+      );
+      exit(0);
+    }
+    stdout.writeln(
+      'RED: F4 expected layout_malformed for the truncated file, got '
+      'n=$n refused=${TableFixedRefusal.name(report.refused)} '
+      'malformed=${report.malformed}',
+    );
+    exit(1);
+  } catch (e) {
+    stdout.writeln('RED: F4 the truncated file must refuse, it threw: $e');
+    exit(1);
+  }
 }
