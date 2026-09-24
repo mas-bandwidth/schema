@@ -21,26 +21,6 @@ import (
 	"testing"
 )
 
-// findRepoRoot walks up from the current directory to find the repo root
-// (identified by the presence of bin/schema).
-func findRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "bin", "schema")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find repo root (bin/schema)")
-		}
-		dir = parent
-	}
-}
-
 func TestRowR6(t *testing.T) {
 	// Write a minimal schema with two fixed tables: Small (within the ceiling)
 	// and Huge (one byte past).
