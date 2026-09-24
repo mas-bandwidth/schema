@@ -165,8 +165,24 @@ const blockRuntimeSource = `  @moduledoc """
   # An array is ITERATED, not indexed by hand: the accessor yields each row
   # where it lies, at the pitch the INSTANCE gives, for count rows. A call site
   # never spells the pitch arithmetic itself (§19.2).
+  #
+  # THE WALK IS LAZY (docs/PORTING.md M7): a Stream over the range builds no
+  # list, so reaching the array costs the cursor and reaching row i costs the
+  # row — never a cons cell per row. A caller that wants one row by index uses
+  # the count/at pair the block accessors expose beside this.
   def rows(data, offset_of, count, stride) do
-    Enum.map(0..(count - 1)//1, fn i -> slice(data, offset_of + i * stride, stride) end)
+    Stream.map(0..(count - 1)//1, fn i -> slice(data, offset_of + i * stride, stride) end)
+  end
+
+  # ONE ROW at the pitch the INSTANCE gives, bounds-checked against the count
+  # the instance carries: the read half of the count/at pair, and what makes
+  # reaching a row cost the row rather than the whole array.
+  def row(data, offset_of, count, stride, index) do
+    if index >= 0 and index < count do
+      slice(data, offset_of + index * stride, stride)
+    else
+      nil
+    end
   end
 `
 
@@ -315,6 +331,20 @@ func (b *blockGen) emitBlockRows(bl *ir.BlockLayout) {
 		b.pf("  # %s's rows, at the pitch the INSTANCE gives. The pitch IS the element's\n", a.Field.Name)
 		b.pf("  # size rounded to its alignment — derived, always (§2.7) — so the rows are\n")
 		b.pf("  # contiguous and each is a sub-binary over the block, copied by nothing.\n")
+		b.pf("  #\n")
+		b.pf("  # THE ALLOCATION-FREE PAIR (docs/PORTING.md M7): the row count and ONE row\n")
+		b.pf("  # by index, both read from the INSTANCE, so reaching row i costs the row\n")
+		b.pf("  # and not the array. %s/1 beside them is the lazy convenience — a\n", a.Field.Name)
+		b.pf("  # Stream, so a walk builds no list.\n")
+		b.pf("  def %s_%s_count(block) do\n", lo, a.Field.Name)
+		b.pf("    data = block.base\n")
+		b.pf("    B.u32(data, %d)\n", a.CountOffset)
+		b.pf("  end\n\n")
+		b.pf("  def %s_%s_at(block, index) do\n", lo, a.Field.Name)
+		b.pf("    data = block.base\n")
+		b.pf("    B.row(data, B.u64(data, %d), B.u32(data, %d), B.u32(data, %d), index)\n",
+			a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
+		b.pf("  end\n\n")
 		b.pf("  def %s_%s(block) do\n", lo, a.Field.Name)
 		b.pf("    data = block.base\n")
 		b.pf("    B.rows(data, B.u64(data, %d), B.u32(data, %d), B.u32(data, %d))\n",
