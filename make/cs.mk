@@ -466,6 +466,28 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
+# J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421), the C#
+# half. The generated managed class's public fields and the generated
+# descriptor's delegates are two independent derivations of one layout, and a
+# reading tier that only ever walks the descriptor could read it twice and never
+# know. Go holds unsafe.Offsetof against f.Offset; C# has no f.Offset — its
+# TableFieldInfo carries DELEGATES (§8.1), so this leg holds the named public
+# field against the GetRaw/GetChild delegate and requires agreement, field by
+# field, by name. A scalar accessor (codecs.go:826) and a pointer slot
+# (codecs.go:814) are each sabotaged through a `go build -overlay` on the
+# emitter, and each must turn the gate red on its own message.
+.PHONY: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
+tables-cs-accessor-descriptor-agreement: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" agreement
+
+tables-cs-accessor-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" scalar
+
+tables-cs-slot-negative-control: bin/schema
+	sh test/cs-tables/accessor-descriptor-control "$(DOTNET)" slot
+
+test-cs: tables-cs-accessor-descriptor-agreement tables-cs-accessor-negative-control tables-cs-slot-negative-control
+
 # THE C# PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
 # target by name, so the expensive half lands by adding it here and nothing
 # else: the four wire-fuzz bindings at five times the shared N under a second
