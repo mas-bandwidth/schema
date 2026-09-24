@@ -59,6 +59,16 @@ lang=cpp
 case "$*" in *bench_main.c\ *|*bench_main.c) lang=c;; esac
 cat > "$out" <<EOF
 #!/bin/bash
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    --gate|--csv|--quick) shift;;
+    --round|--iterations|--wire-dir|--variant-dir)
+      [ \$# -ge 2 ] || { echo "missing value for \$1" >&2; exit 1; }
+      shift 2
+      ;;
+    *) echo "unexpected runner argument: \$1" >&2; exit 1;;
+  esac
+done
 if [ -n "\$LLVM_PROFILE_FILE" ]; then : > "\$LLVM_PROFILE_FILE"; fi
 echo "$lang,bench_mixed,round_trip,1,10,1,1,1,1,1,0,0123456789abcdef,gen,hdr,contract,O3,unknown"
 EOF

@@ -457,7 +457,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = cpp ]; then
         echo "== cpp: pgo pass 1 (instrumented build) ==" >&2
         $CXX_BIN $RELEASE_FLAGS -fprofile-instr-generate bench/cpp/bench_main.cpp -o build/bench/schema_bench_cpp_pgo
         echo "== cpp: pgo profile run ==" >&2
-        LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/cpp.profraw" $PIN ./build/bench/schema_bench_cpp_pgo --csv --quick --bare >/dev/null
+        LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/cpp.profraw" $PIN ./build/bench/schema_bench_cpp_pgo --csv --quick >/dev/null
         echo "== cpp: pgo merge ==" >&2
         $PROF_DATA merge -output="$PGO_PROFILE_DIR/cpp.profdata" "$PGO_PROFILE_DIR/cpp.profraw"
         echo "== cpp: build (Release, PGO) ==" >&2
@@ -495,7 +495,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = c ]; then
             echo "== c: pgo pass 1 (instrumented build) ==" >&2
             $CC_BIN $C_RELEASE_FLAGS -fprofile-instr-generate bench/c/bench_main.c "$SERIALIZE_C/serialize.c" -o build/bench/schema_bench_c_pgo -lm
             echo "== c: pgo profile run ==" >&2
-            LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/c.profraw" $PIN ./build/bench/schema_bench_c_pgo --csv --quick --bare >/dev/null
+            LLVM_PROFILE_FILE="$PGO_PROFILE_DIR/c.profraw" $PIN ./build/bench/schema_bench_c_pgo --csv --quick >/dev/null
             echo "== c: pgo merge ==" >&2
             $PROF_DATA merge -output="$PGO_PROFILE_DIR/c.profdata" "$PGO_PROFILE_DIR/c.profraw"
             echo "== c: build (Release, PGO) ==" >&2
