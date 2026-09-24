@@ -770,8 +770,9 @@ rt and bits rows the same runner emits are not part of the window gate.
 
 Recorded as `# control_delta_pct: 2.3` and `# window: OK | INVALID`.
 
-**§2.6.1 — the window gate's second instrument (adopted 2026-08-17, from the
-write-demand-collapse investigation).** A control leg certifies a window only for
+#### §2.6.1 — the window gate's second instrument (adopted 2026-08-17, from the write-demand-collapse investigation)
+
+A control leg certifies a window only for
 its own binary's shape. State that is row- and binary-selective walks through the
 gate undetected — measured this campaign: three rows sat collapsed 4–8x at exact,
 reproducible plateaus across two windows whose control deltas read 0.0–0.3%, on a
