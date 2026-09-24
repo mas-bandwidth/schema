@@ -363,6 +363,29 @@ tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp doc
 		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
 	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
 
+# THE ALLOCATION GATE (docs/PORTING.md I14). The gate reads the JDK's feature
+# version and the JVM's per-thread allocation counter, and refuses to certify on
+# any JDK other than the pin — or with no counter at all — without measuring.
+# SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative control;
+# SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does not
+# certify.
+.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control
+tables-java-allocator: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Main allocator
+
+tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
+	@mkdir -p build/java-allocator-runtime-negative-control
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator > build/java-allocator-runtime-negative-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
+		cat build/java-allocator-runtime-negative-control/log; exit 1; \
+	fi
+	@grep -Fq 'allocation certification requires JDK 17, running 21' build/java-allocator-runtime-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
+	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
@@ -505,6 +528,22 @@ TOOLCHAIN_LEGS     += java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 CONFORMANCE_ENV    += JAVA=$(JAVA)
+
+# THE JAVA TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `google-java-format`
+# is the language's one formatting authority, so an emitter that has to be
+# hand-reflowed is an emitter that drifts. The gate holds every generated Java
+# table unit to what the formatter would write, and SKIPS cleanly where the
+# formatter is not on PATH.
+GOOGLE_JAVA_FORMAT ?= google-java-format
+.PHONY: tables-java-clean
+tables-java-clean: build/tables-generated-java/.stamp
+	@if ! command -v $(GOOGLE_JAVA_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-java-clean: $(GOOGLE_JAVA_FORMAT) is not installed"; exit 0; \
+	fi
+	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java')
+	@echo "tables Java: google-java-format clean over the generated table units"
+test-java: tables-java-clean
+
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/java/source

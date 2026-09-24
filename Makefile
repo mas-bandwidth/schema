@@ -32,6 +32,9 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
+# The formatting authority the C++ and C table legs are held to (issue #424).
+CLANG_FORMAT ?= clang-format
+
 # the classic serialize runtime the generated C++ targets (header-only), a
 # sibling checkout. Every other language's runtime checkout and toolchain pin
 # is that language's own: make/<lang>.mk (docs/CONTRIBUTING.md, "Adding a
@@ -2764,6 +2767,22 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
+# THE C++ STEADY READ-PATH ALLOCATION GATE (docs/PORTING.md I1). The counting
+# global operator new in test/tables/main.cpp is live across Load, the indexed
+# and iterated reads, Measure and Save on the richest FIXED root; the run
+# prints the count and its in-process control plants one allocation and
+# requires the instrument to see it. #562's list audit and #615/#679's retain
+# counters hold their own paths; `make test` reaches this one through
+# build/schema_test_tables.
+.PHONY: tables-cpp-alloc
+tables-cpp-alloc: build/schema_test_tables
+	@./build/schema_test_tables > build/tables-cpp-alloc.log 2>&1 || { cat build/tables-cpp-alloc.log; exit 1; }
+	@grep -q "^tables allocation audit: 0 allocation" build/tables-cpp-alloc.log || \
+		{ echo "C++ allocation gate FAILED: the steady read path allocated"; cat build/tables-cpp-alloc.log; exit 1; }
+	@echo "C++ allocation gate: Load, the reads, Measure and Save leave the global allocation count at zero"
+
+test: tables-cpp-alloc
+
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
 # read through self-relative deltas, a cooked file Open validates by walking
@@ -4632,6 +4651,44 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
+# THE PYTHON LEG'S ROW GATE (mas-bandwidth/schema#1400). The python port is one
+# matrix row at a time, each row a self-checking script under
+# test/py-packet/<row>/test_<row>.py that exits non-zero on the first failed
+# assertion. The target runs EVERY such script, so the next row is gated the
+# day it lands without a line here, and it goes red if it ran none: a glob that
+# matches nothing is a gate that ran nothing (#1315). PYTHONDONTWRITEBYTECODE
+# keeps a run from leaving __pycache__ in the tree. The go-test job in ci.yml
+# runs it on every pull request, and `make test` carries it.
+PY_PACKET_ROWS = $(sort $(wildcard test/py-packet/*/test_*.py))
+
+.PHONY: tables-py-packet
+tables-py-packet:
+	@n=0; for f in $(PY_PACKET_ROWS); do \
+		echo "== $$f"; PYTHONDONTWRITEBYTECODE=1 python3 "$$f" || exit 1; n=$$((n+1)); \
+	done; \
+	if [ $$n -eq 0 ]; then echo "tables-py-packet: no test/py-packet/*/test_*.py ran" >&2; exit 1; fi; \
+	echo "tables-py-packet: $$n row(s) passed"
+
+test: tables-py-packet
+
+# Its control: a copy of the leg with F11's plan-capacity check removed
+# (python/packet.py's `if entry_count > len(plan):` becomes `if False:`) must
+# turn the F11 row red, or the gate above is not watching the rule it names.
+.PHONY: tables-py-packet-negative-control
+tables-py-packet-negative-control:
+	@rm -rf build/py-packet-negative && mkdir -p build/py-packet-negative/python build/py-packet-negative/test/py-packet
+	@cp python/packet.py build/py-packet-negative/python/
+	@cp -R test/py-packet/f11 build/py-packet-negative/test/py-packet/
+	@sed -i.orig 's/if entry_count > len(plan):/if False:/' build/py-packet-negative/python/packet.py
+	@if cmp -s python/packet.py build/py-packet-negative/python/packet.py; then \
+		echo "tables-py-packet-negative-control: the sabotage patched nothing" >&2; exit 1; fi
+	@if PYTHONDONTWRITEBYTECODE=1 python3 build/py-packet-negative/test/py-packet/f11/test_f11.py >build/py-packet-negative/out.txt 2>&1; then \
+		cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 stayed green without the plan-capacity check" >&2; exit 1; fi
+	@grep -q 'Expected count=-1' build/py-packet-negative/out.txt || { cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 went red for the wrong reason" >&2; exit 1; }
+	@echo "tables-py-packet-negative-control: F11 went red without the plan-capacity check (ok)"
+
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
 # plan-driven reader running its identity plan against straight-line
@@ -5012,6 +5069,23 @@ tables-cpp-names-negative-control:
 		  cat build/cpp-names-nc/log; exit 1; }
 	@grep -m1 "TableBogusUnregistered" build/cpp-names-nc/log
 	@echo "negative control: one unregistered runtime struct turns the C++ name-claim test RED"
+# THE C++ TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is
+# the language's formatting authority, so an emitter that has to be hand-reflowed
+# is an emitter that drifts. The gate holds every generated C++ table unit to
+# what the formatter would write, and SKIPS cleanly where clang-format is not on
+# PATH rather than passing unchecked text off as clean.
+.PHONY: tables-cpp-clean
+tables-cpp-clean: build/tables-generated/.stamp
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-cpp-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
+	fi; \
+	drift=0; \
+	for f in $$(find build/tables-generated -name '*.h' -o -name '*.cpp'); do \
+		$(CLANG_FORMAT) "$$f" | cmp -s "$$f" - || { echo "clang-format drift in $$f"; drift=1; }; \
+	done; \
+	[ $$drift -eq 0 ] || exit 1; \
+	echo "tables C++: clang-format clean over the generated table units"
+test: tables-cpp-clean
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
@@ -6047,9 +6121,18 @@ tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
 	./build/schema_test_fixedform_asan
 
+# THE FAST HALF (issue #857): the PLAIN C++ harness alone. `tables-fixedform`
+# runs the plain build and its sanitized twin, which is the pair `make test`
+# runs in nightly certification; the pull-request job pays checkout, the
+# sibling clones and the generated tree inside the two-minute rule and runs
+# this half so the build that a loader change can break is compiled on the
+# diff. The C leg's twin is `tables-c-fixedform-fast` in make/c.mk.
+tables-fixedform-fast: build/schema_test_fixedform
+	./build/schema_test_fixedform
+
 test: tables-fixedform
 
-.PHONY: tables-fixedform
+.PHONY: tables-fixedform tables-fixedform-fast
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc

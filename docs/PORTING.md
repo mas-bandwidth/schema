@@ -951,8 +951,9 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an
 instrument the emitter cannot influence: the runtime's own allocation counter
-(Go `AllocsPerRun`, Java `getCurrentThreadAllocatedBytes`, a Rust counting
-global allocator, C's interposed `malloc`), or where the platform has no
+(Go `AllocsPerRun`, Java `getCurrentThreadAllocatedBytes`, C#'s
+`GC.GetAllocatedBytesForCurrentThread`, a Rust counting global allocator, C++
+and C interposed `operator new`/`malloc`), or where the platform has no
 per-thread counter, its garbage collector observed over a steady phase against
 an idle loop of the same shape (JavaScript's sampled heap at a calibrated
 interval, warmed until the rate settles; Dart's scavenge count under
@@ -965,27 +966,35 @@ cites why.
 **Reference.** `test/go-tables/alloc_test.go:1-13` (why a grep proves
 nothing); `test/java-tables/src/Main.java:209-223`;
 `test/js-tables/main.mjs:1124-1153` (settle); `test/dart-tables/gcgate.dart`
-and `DART_GC_FLAGS` in the Makefile.
+and `DART_GC_FLAGS` in the Makefile; C++'s counting `operator new` and
+`test_allocation_audit` in `test/tables/main.cpp` (with `tables-cpp-alloc`);
+C#'s `test/cs-tables/src/AllocGateChecks.cs` (with `tables-cs-alloc`).
 
-**Proven in.** Go; the managed forms in Java, JavaScript and Dart.
+**Proven in.** Go, C++ and C#; the managed forms in Java, JavaScript and Dart.
 
 **Measured effect.** Go: exact 0 on six paths. Java: wire read/save exactly
 0, block row walk and cook read exactly 0, open one handle per file. JavaScript:
 0.0 bytes per iteration on the KeyedConfig rows, 67 on RootConfig Load (a
 stated ceiling of 512). Dart: 0/0/0/0/0 scavenges under AOT over 20,000 × 8
-records.
+records. C++: 0 allocations over Load, the indexed and iterated reads,
+Measure and Save on the root. C#: 0 bytes on the wire read with a supplied
+report and with no report, on Measure, on Save and on the round trip.
 
 **Negative control.** One planted allocation per record, and LOCALIZATION:
 the row it was planted in goes red and the row beside it stays green
 (Java's `tables-java-alloc-negative-control` required wire-read red and
 wire-save green until it went with the previous-form wire; Go's
-`TestAllocationGateCanGoRed` plants two escapes and must see both).
+`TestAllocationGateCanGoRed` plants two escapes and must see both; C#'s
+`TestAllocationGateCanGoRed` plants on the read row and on the save row and
+requires each installed row to move while the other stays green; C++'s
+`test_allocation_audit_can_go_red` requires the counting `operator new` to see
+a planted allocation).
 
 **Targets:** alloc, alloc-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ✅ `tables-cpp-alloc` (a counting global `operator new` over Load, the indexed/iterated reads, Measure and Save on the root; #562's `tables-lists` and #615/#679's `tables-retain` hold the list and retain paths, and the cook WRITE is under `tables-cook-write`) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ✅ `tables-cs-alloc` (`GC.GetAllocatedBytesForCurrentThread` per path, the read with a supplied report and with none, Measure, Save and the round trip gated at zero; the sensitivity check plants on the read and save rows) | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1132,7 +1141,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1452,12 +1461,17 @@ so and passes.
 **Method.** Every generated table unit is held to what the language's
 analyzer or linter accepts and what its formatter writes, as a gate — so an
 emitter that drifts from the language's own conventions goes red on the
-diff rather than on a reviewer.
+diff rather than on a reviewer. Each leg runs its own authority over the
+generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
+Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
+JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
+and `mix format` for Elixir.
 
 **Reference.** `tables-dart-clean` (analyzer and `dart format
 --set-exit-if-changed`); `tables-rust-clippy`.
 
-**Proven in.** Dart.
+**Proven in.** Dart; carried to every other leg by the targets in the row
+below.
 
 **Measured effect.** Structural.
 
@@ -1467,7 +1481,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ✅ `tables-cpp-clean` (`clang-format`) | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format`) | ✅ `tables-java-clean` (`google-java-format`) | ✅ `tables-js-clean` (`eslint`) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
