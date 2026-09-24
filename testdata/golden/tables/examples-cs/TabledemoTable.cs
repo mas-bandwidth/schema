@@ -2654,6 +2654,13 @@ namespace Tabledemo
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
+            // A null report is DISCARDED, not created: one cached instance carries the
+            // ledger for a caller who supplies no report, so a null-report read
+            // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
+            // resets it exactly as it resets a caller-supplied report, so no earlier
+            // read's verdict leaks into the next.
+            public static readonly TableReport Ignored = new TableReport();
+
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
             // look up stable references, so a nested length never needs patching.
@@ -5050,7 +5057,7 @@ namespace Tabledemo
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
-                if (report == null) { report = new TableReport(); }
+                if (report == null) { report = Ignored; }
                 type.Reset(value);
                 report.Refused = false; report.Reason = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
