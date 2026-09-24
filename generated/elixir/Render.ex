@@ -85,10 +85,12 @@ defmodule Example.Render do
     <<data::binary, scratch>>
   end
 
-  # read_render_sprite decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_render_sprite(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_render_sprite_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_render_sprite_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -122,8 +124,6 @@ defmodule Example.Render do
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
       v_team = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.RenderSprite{
         sort_key: v_sort_key,
@@ -133,9 +133,18 @@ defmodule Example.Render do
         team: v_team
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_render_sprite is read_render_sprite_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_render_sprite(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_render_sprite_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -189,10 +198,12 @@ defmodule Example.Render do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_render_block decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_render_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_render_block_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_render_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -218,8 +229,6 @@ defmodule Example.Render do
       n = v
       if bits_read + n * 138 > num_bits, do: throw(:invalid)
       {bits_read, v_sprites} = r_render_block_sprites(n, [], data, num_bits, bits_read)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Example.RenderBlock{
         worker_index: v_worker_index,
@@ -227,9 +236,18 @@ defmodule Example.Render do
         sprites: v_sprites
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_render_block is read_render_block_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_render_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_render_block_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

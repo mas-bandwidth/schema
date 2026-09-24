@@ -239,6 +239,14 @@ jobs:
       - name: the toolchain gate goes red without the toolchains it pins
         run: make toolchain-negative-control
 
+      # THE PYTHON LEG (#1400). Each ported row is a self-checking script, and
+      # until this step no job ran one: the row was documentation of a rule,
+      # not a gate over it. The runner's own python3 is enough; the target
+      # refuses a run that found no rows. Its control is in the base group of
+      # make/negative-controls.json.
+      - name: the python leg's rows pass
+        run: make tables-py-packet
+
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
       # so that what it uploads is the cache AFTER vet and the whole test
       # suite have filled it, which is the widest cache this tree produces.
@@ -509,7 +517,7 @@ jobs:
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -595,6 +603,62 @@ jobs:
 
       - name: run C# ${{ matrix.name }} fuzz
         run: make ${{ matrix.target }}
+
+
+  # THE FIXED-FORM HARNESSES ON EVERY PULL REQUEST (issue #857).
+  #
+  # `make tables-fixedform` (the C++ reference) and `make tables-c-fixedform`
+  # (the C leg) are the two binaries that read the fixed form's versioning
+  # conformance corpus (docs/SPEC-TABLES.md §3.4). Until this job no
+  # pull-request job built either: both lived in `make test`, which only
+  # certification runs, and on 2026-09-10 that left the tip of fixed-table-form
+  # red at `test/tables/fixedform_main.cpp:984` and
+  # `test/c-tables/fixedform_v1.c:75` — too few arguments to `*FixedLoad` —
+  # while the two pull requests that caused it (#855 added the plan-cache
+  # argument, #856 added a caller) were each green at their own head. It is
+  # issue #744's class: a gate that exists, is green wherever it runs, and is
+  # invoked by no pull-request job.
+  #
+  # THE FAST TARGETS AND ONE JOB, under the two-minute rule. Each language's
+  # plain harness is `tables-…-fast`; the sanitized twin stays in `make test`,
+  # which certification runs nightly. The two targets share one job so the
+  # generated tables are written once — sharding them into a matrix would make
+  # each row pay the whole generated tree again — and `internal/ci`'s
+  # TestTheFixedFormHarnessesRunPerPullRequest holds this job to the listing.
+  fixedform:
+    name: fixed-form harnesses
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C++ and C serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: the C++ and C fixed-form harnesses
+        run: make tables-fixedform-fast tables-c-fixedform-fast
 
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
@@ -833,25 +897,23 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # THE PIN AND THE RETRIES LIVE IN THE TREE, NOT IN THIS FILE. `make vuln`
-      # runs tools/vuln/govulncheck.sh, which carries the scanner's pin (the
-      # Makefile's GOVULNCHECK_VERSION, bumped by hand), three attempts 15 s
-      # then 45 s apart, and the classifier that decides whether a red one is
-      # this tree's fault. `make` is the one entry (AGENTS.md rule 6), and a
-      # classifier that lives in the tree is one `make test` can hold to its
-      # fixtures — which is what tools/vuln/testdata/cases.txt does, including
-      # the two log excerpts a looser classifier read as an outage.
+      # THE PIN LIVES IN THE TREE, NOT IN THIS FILE. `make vuln` runs the
+      # scanner PINNED AND DIRECT (the Makefile's GOVULNCHECK_VERSION, bumped
+      # by hand), with no retry and no classifier: any failure — an unreachable
+      # database included — is RED. A PR-tier gate that forgives an outage is
+      # one that has silently stopped watching, and a new CVE is the one
+      # verdict that changes with no commit here. `make` is the one entry
+      # (AGENTS.md rule 6).
       #
-      # ONLY THE TRANSPORT IS RETRIED AND ONLY THE TRANSPORT IS EVER FORGIVEN:
-      # a finding fails on the first attempt, and so does any other failure.
-      # THIS gate forgives a database that never answers, because a
-      # contributor's diff cannot be judged by vuln.go.dev's uptime; the
-      # nightly in certify.yml runs `make vuln-strict` and goes RED on the same
-      # outage, so an outage is never green everywhere at once.
+      # The nightly in certify.yml runs `make vuln-strict` instead: the same
+      # pin through the classifying script (tools/vuln/govulncheck.sh), three
+      # attempts against a transient blip and then RED, because a certificate
+      # is a full run at an exact SHA and an unreachable database certifies
+      # nothing. The classifier is held to its fixtures by `make test`, in
+      # tools/vuln/testdata/cases.txt.
       #
-      # INSIDE THE 10-MINUTE CAP with room to spare: the scan measures 35 s on
-      # this runner and 9.4 s on a 64-core bench, so three attempts and two
-      # sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst case. The cap is there for
+      # INSIDE THE 10-MINUTE CAP with room to spare: the direct scan measures
+      # 35 s on this runner and 9.4 s on a 64-core bench. The cap is there for
       # a scan that HANGS instead of failing, and it still ends the job.
       - name: govulncheck
         run: make vuln
@@ -1336,7 +1398,7 @@ jobs:
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         if: matrix.java != ''
         with:
           distribution: 'temurin'

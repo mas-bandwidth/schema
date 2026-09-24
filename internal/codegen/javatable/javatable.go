@@ -10,13 +10,16 @@
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
 // declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE itself —
+// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE's codecs —
 // measure, save, load, the reflection descriptors and the JSON text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Java. The port that once stood here wrote the form that preceded
-// the id-table wire, which the current specification does not describe and the
-// C++ reference does not open; it was removed rather than carried (schema#517
-// is the row that brings the wire to Java). ROADMAP.md marks the cells.
+// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — are not
+// emitted for Java yet; the port that once stood here wrote the form that
+// preceded the id-table wire, which the current specification does not describe
+// and the C++ reference does not open, and it was removed rather than carried
+// (schema#517 is the row that brings the wire to Java; ROADMAP.md marks the
+// cells). What IS emitted is the form's foundation: TableIds.java carries the
+// form byte, fnv1a64 identity at sixty-four bits, the canonical LEB128 reader
+// and writer, and the first-use id table every body is built from.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
 // backend (internal/codegen/cstable) is the worked managed-language port for
@@ -207,6 +210,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		"TableBytes.java":   tableBytesFile(u),
 		"BuildVersion.java": buildVersionFile(u),
 	}
+	maps.Copy(out, wireRuntimeFiles(u))
 	maps.Copy(out, emitRowFiles(u, set, blocks, ck))
 	withBlock := anyBlockForm(u, blocks)
 	if withBlock {
@@ -279,6 +283,7 @@ func isClassRef(t ir.FieldType) bool {
 func runtimeFileNames() []string {
 	return []string{
 		"TableBytes",
+		"TableIds",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
 		"BuildVersion",
