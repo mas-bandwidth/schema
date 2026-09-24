@@ -59,6 +59,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // headerProbeWideFields is the nested table's field count. It is above 127 on
@@ -432,6 +434,7 @@ int main()
 // main's emitter wrote, over values that ride BOTH arms of the field header and
 // carry 128-bit fields under every framing the emitter has for them.
 func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")

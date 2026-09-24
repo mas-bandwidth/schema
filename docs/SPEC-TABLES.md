@@ -7387,6 +7387,12 @@ semantic edit to every stored file**, and `was` does not cover it: `was`
 preserves an identity, not a value. Change a default the way you would
 change data, or add a new field and leave the old one alone.
 
+**This section is the §4.1 table's READ REPORT column.** Its rows and the
+verdicts beside them are a golden — one fixture per row, written under one
+declaration and read under another, with all three frames pinned
+(`TestEvolutionTableFrames`) — so an edit whose read report changes under an
+unchanged schema is stop-the-line.
+
 ### 4.1 The silent class, in full
 
 Almost every edit lands in the read report. **Exactly four do not**, and
@@ -7515,7 +7521,7 @@ only.
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, `clamped` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | **moves** |
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
+| a field moved to or from `*T` | `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
@@ -7526,6 +7532,8 @@ only.
 | an enum VARIANT or a union ARM renamed under `was` (§5) | silent, and nothing is lost: the id is the old name's hash | passes, and the file records the alias beside the id | no |
 | an enum VARIANT or a union ARM renamed BARE | `unknown`: a stored value reads `None`, a stored body reads `None`, a keyed slot is dropped | **warns** that the old name was removed | **moves** |
 | a VARIANT or an ARM renamed a SECOND time, the new `was` naming the INTERMEDIATE spelling | `unknown` for every stored value or body | **refuses**: `was` names the first wire name, forever (§5) | **moves** |
+
+**The table is a GOLDEN.** One fixture per row, each edit written under the row's base schema and run through all three frames — the read report, the baseline check and the build version — with the three verdicts pinned, holds this table from going stale: `TestEvolutionTableFrames` in `internal/baseline`, whose fixtures are the pin and whose negative control is a flipped verdict. §4, §18.2 and §20.4 derive from this table by citation rather than restating it, and `TestEvolutionTableDocsAgreeWithTheGolden` reads the cells back out of this page.
 
 ### 4.2 The read is the verifier: the wire fuzzer
 
@@ -14500,10 +14508,11 @@ are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
 **Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, but
-a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
-in silence. Recording a fact and judging it are two different things, and
-this one is only recorded.
+companion is a fact in the file so a person reading a diff can see it, and a
+field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
+A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
+edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
+judging it are two different things, and presence alone is only recorded.
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -14584,9 +14593,14 @@ committed file whenever one is there, and:
   ranges grown, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
   reverse; a field moved
-  between `T`, `?T` and `*T`.
+  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
+  refused above, because a pointer is kind 17).
 
-**The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
+**These are the §4.1 table's BASELINE column, and its fixtures are the pin**
+(`TestEvolutionTableFrames`): this subsection derives its list from that table
+rather than restating it, and a verdict that moves there and not here is the
+drift the golden exists to catch. **The BLOCK FORM takes no row here at all**
+(§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
 offset, a size or a pitch is a build error on both generated sides before it
 is anything else; a baseline row would only repeat the compiler, and a
@@ -14696,6 +14710,21 @@ break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
 rewrites nothing.
 
+**A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
+reused** (issue #441). The `## retired` section records every field, enum
+variant and union arm a `--update` removes — its vocabulary, its
+fully-qualified name, the wire id it rode under and the day it was retired —
+and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
+history, so this is the one record in the file the live projection cannot
+regenerate. A declaration re-added under a retired name — or under a NEW name
+whose wire id is a retired one, which a `was` naming the old spelling produces
+— decodes old bytes as plausible new values, and the reader keys stored data on
+exactly that name hash, so the check REFUSES and names the ledger entry. The
+reuse is legal once it is deliberate: `--update --reason "..."` writes
+`revived=<date>` on the entry, which is the acknowledgment, and the entry
+itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
+cost.
+
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one
 clock is the only workable choice — and an unlabelled date is read in the
@@ -14707,10 +14736,11 @@ rewrite, and nothing reads a date back.
 **`--update` works on a baseline the checker cannot read.** A corrupt file,
 another unit's file, or one written under a rendering version this compiler
 does not write, all refuse on check and name `--update` as the remedy — so
-the remedy runs: it salvages the `## history` lines verbatim, regenerates
-the projection from the unit as it stands, and records in the history that
-the previous projection could not be diffed. The one artifact in the file
-that cannot be regenerated is never the price of repairing it.
+the remedy runs: it salvages the `## history` lines and the `## retired`
+ledger verbatim, regenerates the projection from the unit as it stands, and
+records in the history that the previous projection could not be diffed. The
+one artifact in the file that cannot be regenerated is never the price of
+repairing it.
 
 ### 18.5 What it does not cover
 
@@ -16085,6 +16115,10 @@ wrong fails to build instead of degrading.
 
 
 ### 20.4 What moves it, and what does not
+
+**This is the §4.1 table's BUILD VERSION column**, whose fixtures are the pin
+(`TestEvolutionTableFrames`); the list is a derivation from that table rather
+than a second statement of it.
 
 **It MOVES on:**
 

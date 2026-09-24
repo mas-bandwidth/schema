@@ -29,6 +29,15 @@
 # leg in SCHEMA_SKIP_LEGS and requires the same gate to go green with each
 # skip printed by name.
 
+# EVERY GO TEST MAKE RUNS IS THE WHOLE TEST (issue #1025). internal/slowtest
+# holds the toolchain half of `go test` behind SCHEMA_SLOW=1 so a bare
+# `go test ./...` stays inside the one-to-two-minute rule; nothing make drives
+# may take that shortcut. A leg gate that ran its gotable tests with the half
+# skipped would pass on nothing, and a negative control whose test skipped
+# would stay green under its sabotage. So make exports it, once, for every
+# recipe and every control script it runs. `SCHEMA_SLOW=0 make ...` opts out.
+export SCHEMA_SLOW ?= 1
+
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
@@ -345,6 +354,24 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	fi
 	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
 	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
+
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
+# technique (docs/PORTING.md, schema#421): the generated accessor and the
+# generated descriptor are two independent derivations of one layout, so the
+# leg reads every field of a block and of a cook both ways and requires
+# agreement — including a pointer's SLOT, whose position is what a
+# self-relative delta is relative to (§6.3). The two controls move one
+# derivation — a generated block projection scalar four bytes, a cook pointer
+# slot eight — and each must turn the gate red, or the accessor half could be
+# reading the descriptors twice and nobody would know. The C++ half generates,
+# compiles and runs a probe of the reference emitter.
+.PHONY: tables-accessor-descriptor-agreement tables-accessor-negative-control tables-slot-negative-control
+tables-accessor-descriptor-agreement:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
+tables-accessor-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
+tables-slot-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
@@ -3372,6 +3399,13 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-message-form-negative-control
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-zero-cost-negative-control
+	# THE ACCESSOR/DESCRIPTOR AGREEMENT (docs/PORTING.md J1, schema#421): the
+	# generated accessor and the generated descriptor are two independent
+	# derivations of one layout, read both ways on a block and a cook, with a
+	# scalar and a pointer-slot control that must each go red.
+	$(MAKE) tables-accessor-descriptor-agreement
+	$(MAKE) tables-accessor-negative-control
+	$(MAKE) tables-slot-negative-control
 	$(MAKE) tables-maps
 	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
@@ -3492,7 +3526,11 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 			continue ;; \
 		esac; \
 		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
-	go test ./...
+	# SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT HERE (issue #1025). `make test` is
+	# the full chain and must prove the toolchain half too; a bare `go test
+	# ./...` is the fast core a child runs between edits, and internal/slowtest
+	# keeps the cc/c++/dotnet/Go-compiler tests out of it.
+	SCHEMA_SLOW=1 go test ./...
 
 
 # ---------------------------------------------------------------------------
@@ -4535,7 +4573,7 @@ update-goldens: build/schema_test_retain build/schema_test build/schema_test_lud
 	# Cook-write snapshots carry the build version too; update both byte orders
 	# through the engine after the reference wire pins have been regenerated.
 	./build/conformance-harness generate
-	go test ./...
+	SCHEMA_SLOW=1 go test ./...
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
 # runs whichever language runners are available, Release flags, results CSV
@@ -4724,9 +4762,18 @@ generated-current: test
 	fi
 	@echo "generated/ tree is current"
 
+# The link-and-citation gate (schema#337): every relative markdown link in the
+# tree resolves to a file and, where anchored, to a heading slug, and every
+# "PAGE.md §N.M" citation resolves to a numbered heading in that page. It was
+# scratch when docs/ moved (#336); internal/docgate is the standing form, and
+# `go test ./...` runs it too.
+.PHONY: docs-check
+docs-check:
+	go test ./internal/docgate -run TestPagesResolve -count=1
+
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
-check: bin/schema
+check: bin/schema docs-check
 	./bin/schema check examples
 	./bin/schema check examples128
 	./bin/schema check examples-wide
@@ -5951,6 +5998,26 @@ include make/checks/table-base64.mk
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
+
+# THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
+# manifest in the tree, docs/matrix.json, by the Go tool at tools/matrix. The
+# page is the board's table at the moment of the release — the
+# feature-by-language cells and one maturity state per language — and it ships
+# red: a ❌ cell and a language marked coming are honest states, never reasons
+# to hold a release or to hide a column.
+#
+# `matrix-check` is the CI gate (tools/matrix/matrix_test.go): it regenerates
+# the page and refuses when the committed one differs, so the published table
+# cannot drift from what the tree ships. `go test ./...`, which `make test`
+# runs, carries it too. `matrix-print` is what the release notes call: the
+# page's state line per language, in manifest order.
+.PHONY: matrix matrix-check matrix-print
+matrix:
+	go run ./tools/matrix write
+matrix-check:
+	go run ./tools/matrix check
+matrix-print:
+	@go run ./tools/matrix states
 
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE

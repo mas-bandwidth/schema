@@ -9,9 +9,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGoUnitViewCorpus(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain, once per corpus unit")
 	printer, err := os.ReadFile("../test/tables/view_go.gotext")
 	if err != nil {
 		t.Fatal(err)

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestCTableRetainFile(t *testing.T) {
@@ -164,6 +166,7 @@ CHECK(root_load_retain_messages(roots,&count,region,need,&vocabulary,batch,sizeo
 }
 
 func TestCTableRetainRefusedByName(t *testing.T) {
+	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("requires C compiler")

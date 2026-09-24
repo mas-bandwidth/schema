@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -64,6 +65,7 @@ int main(){
 // so the wall clock is part of the assertion.
 func runCppTableProbe(t *testing.T, files map[string][]byte, source string) {
 	t.Helper()
+	slowtest.Gate(t, "a C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("generated C++ execution requires c++")
