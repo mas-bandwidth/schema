@@ -98,7 +98,7 @@ func yamlJobs(wf string) map[string]string {
 }
 
 func jobSkippedBelowMain(job string) bool {
-	for _, raw := range strings.Split(job, "\n") {
+	for raw := range strings.SplitSeq(job, "\n") {
 		if strings.HasPrefix(raw, "    if:") && strings.Contains(raw, "github.base_ref == 'main'") {
 			return true
 		}
@@ -161,7 +161,7 @@ func makeTargetSelectsCardAdded(t *testing.T) bool {
 	const prefix = "tables-go-fixedform:"
 	in := false
 	var recipe strings.Builder
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(line, prefix) {
 			in = true
 			continue
@@ -182,7 +182,7 @@ func makeTargetSelectsCardAdded(t *testing.T) bool {
 	if recipe.Len() == 0 {
 		t.Fatal("make/go.mk has no recipe for tables-go-fixedform")
 	}
-	for _, line := range strings.Split(recipe.String(), "\n") {
+	for line := range strings.SplitSeq(recipe.String(), "\n") {
 		cmd, ok := parseGoTestLine(strings.TrimSpace(line), true)
 		if ok && cmd.armed && cmd.coversGotable() && cmd.selects(cardAddedGoFixedFormTest) {
 			return true
