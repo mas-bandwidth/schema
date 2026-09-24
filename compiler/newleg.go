@@ -5,6 +5,7 @@ import (
 	"go/format"
 	"go/token"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -73,10 +74,8 @@ func checkNewLegName(lang string) error {
 		return err
 	}
 	for _, g := range builtins() {
-		for _, n := range g.Names() {
-			if n == lang {
-				return fmt.Errorf("new-leg %s: %s is already a live target (%s)", lang, lang, englishList(New().Targets()))
-			}
+		if slices.Contains(g.Names(), lang) {
+			return fmt.Errorf("new-leg %s: %s is already a live target (%s)", lang, lang, englishList(New().Targets()))
 		}
 	}
 	if token.IsKeyword(lang) {
