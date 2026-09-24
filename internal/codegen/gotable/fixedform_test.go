@@ -1516,6 +1516,160 @@ func TestOldArgLaneControl(t *testing.T) {
 `)
 }
 
+// TestFixedFormPlanPartition is W6 (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,
+// §5.9 item 42): THE PLAN IS PARTITIONED — every entry below `split` carries
+// NO guard, every entry above it carries one, and no run coalesces across the
+// split. The C++ reference holds it in test/tables/fixedform_main.cpp's
+// plan_partition_case; this is the same case in this leg's spelling.
+//
+// THE SPLIT ON THIS LEG IS READ OFF THE PLAN, not carried beside it: the plan
+// object is Entries+Count (tableFixedPlan), the run loop tests the guard per
+// entry — which item 42 allows outright — and the builders (tableFixedBuildPlan
+// for identity, tableFixedCompile for a peer's layout, both in the emitted
+// runtime) stable-partition unguarded-first before they hand the plan over. So
+// the split is the index of the first guarded entry, and a plan with no
+// guarded entry has its split at the END, not at zero. The case runs in the
+// generated probe package because that is where the plan symbols live.
+func TestFixedFormPlanPartition(t *testing.T) {
+	runGenerated(t, `package probe
+type ArmA { n int32 }
+type ArmB {
+    s string(8)
+    m int32
+}
+type ArmM { q int32 }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+union PickWide
+{
+    a ArmA
+    m ArmM
+    b ArmB
+}
+fixed table Writer {
+    head int32
+    pick Pick
+    tail int32
+}
+fixed table Flat {
+    x int32
+    y int32
+}
+fixed table Reader {
+    head int32
+    pick PickWide
+    tail int32
+    extra int32 = 5
+}
+`, `package probe
+import ("testing")
+
+// partitionSplit is the reference's partition_is_held: split is in range,
+// every entry below it carries NO guard, every entry above it carries one,
+// and the pair at the split was NOT coalesced across it. It returns the split.
+func partitionSplit(t *testing.T, who string, plan []TableFixedEntry, n int32) int32 {
+	t.Helper()
+	if n < 0 || int64(len(plan)) < int64(n) {
+		t.Fatalf("W6: %s — split is in range (n=%d)", who, n)
+	}
+	split := n
+	for i := int32(0); i < n; i++ {
+		if plan[i].Guard != tableFixedNoGuard {
+			split = i
+			break
+		}
+	}
+	for i := int32(0); i < n; i++ {
+		guarded := plan[i].Guard != tableFixedNoGuard
+		if i < split && guarded {
+			t.Fatalf("W6: %s — entry %d is below the split and carries a GUARD", who, i)
+		}
+		if i >= split && !guarded {
+			t.Fatalf("W6: %s — entry %d is above the split and carries NO guard", who, i)
+		}
+	}
+	// THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+	// below it and the entry at it would be one entry. They are two, and this
+	// says why they have to be.
+	if split > 0 && split < n {
+		a, b := plan[split-1], plan[split]
+		if a.Op == tableFixedCopy && b.Op == tableFixedCopy &&
+			a.Guard == b.Guard && a.Arg == b.Arg &&
+			a.Src+a.Size == b.Src && a.Dst+a.Size == b.Dst {
+			t.Fatalf("W6: %s — the pair at the split was coalesced across it", who)
+		}
+	}
+	return split
+}
+
+func TestPlanPartition(t *testing.T) {
+	// A PLAN WITH BOTH HALVES: Writer carries a union in the middle, so the
+	// arms' entries are guarded and the scalars around them — including the
+	// tail PAST the union — are not.
+	split := partitionSplit(t, "Writer identity plan", WriterFixedPlan.Entries, WriterFixedPlan.Count)
+	if split <= 0 || split >= WriterFixedPlan.Count {
+		t.Fatalf("W6: Writer's identity plan really has a guarded half (split=%d of %d), so the case is not vacuous", split, WriterFixedPlan.Count)
+	}
+
+	// A PLAN WITH NO GUARDED HALF AT ALL: the split is then the whole plan,
+	// and split being a count of UNGUARDED entries rather than of guarded
+	// ones is what makes that come out right.
+	flat := partitionSplit(t, "Flat identity plan", FlatFixedPlan.Entries, FlatFixedPlan.Count)
+	if FlatFixedPlan.Count <= 0 || flat != FlatFixedPlan.Count {
+		t.Fatalf("W6: a plan with no guarded entry has its split at the END, not at zero (split=%d of %d)", flat, FlatFixedPlan.Count)
+	}
+
+	// The reordered plan still READS: the partition moves entries, never
+	// their guards, so arm B and the tail past the union land together.
+	one := Writer{}
+	WriterReset(&one)
+	one.Head = 41
+	one.Pick.Type = PickTypeB
+	copy(one.Pick.B.S[:], "seven77")
+	one.Pick.B.SLength = 7
+	one.Pick.B.M = 1234
+	one.Tail = 99
+	buf := make([]byte, WriterFixedMeasure(1))
+	if n := WriterFixedSave([]Writer{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	got := make([]Writer, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 64)
+	if n := WriterFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("partitioned identity read n=%d %+v", n, r)
+	}
+	if got[0].Head != 41 || got[0].Pick.Type != PickTypeB || string(got[0].Pick.B.S[:got[0].Pick.B.SLength]) != "seven77" || got[0].Pick.B.M != 1234 || got[0].Tail != 99 {
+		t.Fatalf("partitioned identity read lost the record: %+v", got[0])
+	}
+
+	// AND A COMPILED PLAN, which is the half an identity plan cannot speak
+	// for: Reader inserts an arm in the middle (the string moves from arm 2
+	// to arm 3) and trails an extra field past the union, so the walk pushes
+	// guarded entries before unguarded ones. The caller never sees the split,
+	// so the property is read off the plan itself — once a guarded entry has
+	// been seen, no unguarded entry follows.
+	parsed, why := tableFixedParseLayout(WriterFixedLayout)
+	if why != "" {
+		t.Fatalf("writer layout does not parse: %s", why)
+	}
+	cplan := make([]TableFixedEntry, 256)
+	var cr TableReport
+	made := tableFixedCompile(parsed, ReaderFixedLayout, ReaderFixedDst, cplan, &cr)
+	if made <= 0 {
+		t.Fatalf("compile made %d %+v", made, cr)
+	}
+	csplit := partitionSplit(t, "compiled plan", cplan, made)
+	if csplit <= 0 || csplit >= made {
+		t.Fatalf("W6: the compiled plan really has guarded entries (split=%d of %d), so the case is not vacuous", csplit, made)
+	}
+}
+`)
+}
+
 // TestFixedFormRecordBound is the Go twin of the C++ reference's
 // record_bound_case() (test/tables/fixedform_main.cpp): W10 — EVERY COMPILED
 // ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
@@ -3022,6 +3176,220 @@ func TestWriteSideClampsNothingRefusesNothing(t *testing.T) {
 	}
 	if got := tableFixedGet32(body[32:]); got != 7 {
 		t.Fatalf("the field past the out-of-contract count and length moved: %d, want the writer's 7", got)
+	}
+}
+`)
+}
+
+// TestFixedFormIdentityEqualsCompiled is the row P1 of schema#876:
+// IDENTITY == COMPILED, FIELDS AND COUNTERS. The reference is
+// test/tables/fixedform_properties.cpp:459 -- "P1: identity == compiled,
+// fields and counters" -- and the rule it asserts is
+// docs/FIXED-FORM-ALGORITHM.md §5.7: "test/tables/fixedform_properties.cpp
+// runs its save / load / compare properties over every fixture -- `P1` among
+// them". The identity plan is the baked XFixedPlan; the compiled plan is
+// tableFixedCompile over THIS BUILD'S OWN LAYOUT bytes. They are two
+// independent constructions of the same read, and the row is that a lawful
+// record lands the same fields and moves the same counters through both.
+//
+// The identity read is XFixedLoad over a file carrying this build's own hash,
+// which selects the baked plan. The compiled read parses XFixedLayout back into
+// a layout view and compiles it against XFixedDst, then runs the plan. The
+// record is LAWFUL: every value in bound, the ordinal in set, the text valid
+// UTF-8, the optional present -- so the whole comparison is an equality of the
+// two values AND of the two reports, and no counter is a repair.
+//
+// The compiled plan is run with RootReset first (the destination image the
+// emitted prefill copies from) and RootFixedClamp after the run (the same
+// storage pass the generated load calls), because the schema declares a bound.
+// A lawful record clamps nothing, so both reports stay zero: the equality is
+// not two copies of one shared counter bug.
+//
+// CONTROL 2 sabotages tableFixedCompileEntry's copy op for a same-width field
+// and this row must go RED. Measured on this leg: the failure is a SILENTLY
+// WRONG REPORT -- the read still returns one record and raises no refusal, and
+// the two landed values differ (and the counters move), which is exactly what
+// the row exists to catch.
+func TestFixedFormIdentityEqualsCompiled(t *testing.T) {
+	runGenerated(t, `package probe
+enum Grade { Bronze, Gold }
+fixed table Root {
+    n     int32 = 5 | min = 0, max = 1000
+    on    bool
+    grade Grade
+    xs    [..4]int32
+    note  ?int32
+    label string(8)
+    tail  int32 = 7
+}
+`, `package probe
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestIdentityEqualsCompiled(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.N = 424
+	one.On = true
+	one.Grade = GradeGold
+	one.XsCount = 2
+	one.Xs[0] = 11
+	one.Xs[1] = 22
+	one.NotePresent = true
+	one.Note = -3
+	copy(one.Label[:], "p1")
+	one.LabelLength = 2
+	one.Tail = 99
+
+	buf := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("P1: save wrote %d, want %d", n, len(buf))
+	}
+
+	// THE IDENTITY PATH: this build's own hash selects the baked RootFixedPlan.
+	id := make([]Root, 1)
+	var ri TableReport
+	iplan := make([]TableFixedEntry, 4096)
+	if n := RootFixedLoad(id, buf, iplan, &ri); n != 1 {
+		t.Fatalf("P1: the identity read returned %d (%+v), want one record", n, ri)
+	}
+	if ri != (TableReport{}) {
+		t.Fatalf("P1: a lawful record moved the identity counters: %+v", ri)
+	}
+
+	// THE COMPILED PATH: THE SAME layout bytes, compiled by tableFixedCompile.
+	parsed, why := tableFixedParseLayout(RootFixedLayout)
+	if why != "" {
+		t.Fatalf("P1: this build's own layout does not parse: %s", why)
+	}
+	cplan := make([]TableFixedEntry, 4096)
+	var rc TableReport
+	made := tableFixedCompile(parsed, RootFixedLayout, RootFixedDst, cplan, &rc)
+	if made <= 0 {
+		t.Fatalf("P1: tableFixedCompile made %d (%+v)", made, rc)
+	}
+	co := Root{}
+	RootReset(&co)
+	rc = TableReport{}
+	record := buf[len(buf)-RootFixedRecordBytes:]
+	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
+	RootFixedClamp(&co, &rc)
+
+	if co != id[0] {
+		t.Fatalf("P1: identity and compiled landed different fields:\n identity %+v\n compiled %+v", id[0], co)
+	}
+	if ri != rc {
+		t.Fatalf("P1: identity and compiled moved different counters: identity %+v compiled %+v", ri, rc)
+	}
+}
+`)
+}
+
+// TestFixedFormZeroBehindNarrowerArm is item W3 of schema#876, "zero behind a
+// narrower arm", asserted BY NAME on this leg (docs/FIXED-FORM-ALGORITHM.md
+// §3.1: "**A union** writes the tag and the taken arm only, zero behind a
+// narrower one"; docs/SPEC-TABLES.md §3.4, the union row: "ZERO on write behind
+// a narrower arm, IGNORED on read, never a refusal"). The rule has no C++
+// reference case of its own — the reference's slack_case() is the TEXT and
+// ARRAY rows, and its absent_optional_case() is the `?T` row — so the case is
+// written from the two docs, and it names them.
+//
+// HOW THE SLACK IS MADE OBSERVABLE. The union's slot is a one-byte tag then the
+// WIDEST arm (WideArm, an int64), so NarrowArm's single byte is followed by
+// SEVEN bytes of declared slack. The Go writer supplies those seven bytes from
+// the template: `clear(at[8:8+RootFixedBodyBytes])` before `RootFixedWriteBody`
+// (internal/codegen/gotable/fixedform.go:710, emitted into every FixedSave).
+// The case stains the OUTPUT buffer 0x5A before the save, so a writer that left
+// the template uncleared would copy the stain onto the wire — the failure is a
+// WRONG WIRE CONTENT, not a crash and not a refusal. The same stain is in the
+// wide-arm half, whose slot is legitimately full, so the zero check is a fact
+// about the NARROW arm and not a buffer that is universally zero.
+func TestFixedFormZeroBehindNarrowerArm(t *testing.T) {
+	runGenerated(t, `package probe
+type NarrowArm { a int8 = 0 }
+type WideArm { b int64 = 0 }
+union Pick
+{
+    narrow NarrowArm
+    wide   WideArm
+}
+fixed table Root {
+    pick Pick
+    tail int32 = 7
+}
+`, `package probe
+import ("testing")
+
+// narrowLive is the narrow arm's LIVE byte. It is a named constant so the case
+// can be pointed at the legitimate value the rule admits (zero) with ONE edit.
+const narrowLive = 0x7E
+
+func TestZeroBehindNarrowerArm(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.Pick.Type = PickTypeNarrow
+	one.Pick.Narrow.A = narrowLive
+	one.Tail = 7
+
+	// the union slot is a one-byte tag, one byte of arm, SEVEN of slack
+	if RootFixedBodyBytes != 13 {
+		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", RootFixedBodyBytes)
+	}
+
+	buf := make([]byte, RootFixedMeasure(1))
+	// THE CANARY: the destination is stained before the save, so a writer that
+	// copies storage instead of zero-filling a template carries the stain.
+	for i := range buf {
+		buf[i] = 0x5A
+	}
+	if n := RootFixedSave([]Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	body := buf[len(buf)-RootFixedRecordBytes+8:]
+	if body[0] != byte(PickTypeNarrow) {
+		t.Fatalf("the tag is %d, want the narrow arm %d", body[0], byte(PickTypeNarrow))
+	}
+	if body[1] != narrowLive {
+		t.Fatalf("the narrow arm's LIVE byte is %#x, not the %#x written", body[1], narrowLive)
+	}
+	for i := 2; i < 9; i++ {
+		if body[i] != 0 {
+			t.Fatalf("W3: the slack behind the narrow arm is not zero at body[%d]=%#x; the %#x template stain reached the wire", i, body[i], 0x5A)
+		}
+	}
+	if body[9] != 7 || body[10] != 0 || body[11] != 0 || body[12] != 0 {
+		t.Fatalf("the field past the union is not the writer's 7: %v", body[9:13])
+	}
+
+	// CONTROL 1 (not vacuous): the SAME slot written with the WIDEST arm fills
+	// the bytes that were zero above. So the zero check above is a fact about
+	// the NARROW arm and not a slot that is universally zero.
+	wide := Root{}
+	RootReset(&wide)
+	wide.Pick.Type = PickTypeWide
+	wide.Pick.Wide.B = 0x0102030405060708
+	wide.Tail = 7
+	wbuf := make([]byte, RootFixedMeasure(1))
+	for i := range wbuf {
+		wbuf[i] = 0x5A
+	}
+	if n := RootFixedSave([]Root{wide}, wbuf); n != int64(len(wbuf)) {
+		t.Fatalf("wide save %d", n)
+	}
+	wbody := wbuf[len(wbuf)-RootFixedRecordBytes+8:]
+	if wbody[0] != byte(PickTypeWide) {
+		t.Fatalf("the wide tag is %d", wbody[0])
+	}
+	live := false
+	for i := 1; i < 9; i++ {
+		if wbody[i] != 0 {
+			live = true
+		}
+	}
+	if !live {
+		t.Fatal("CONTROL 1 FAILED: the widest arm left its whole slot zero, so the narrow-arm zeros are vacuous")
 	}
 }
 `)

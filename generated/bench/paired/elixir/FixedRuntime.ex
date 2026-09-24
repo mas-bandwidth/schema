@@ -861,28 +861,56 @@ defmodule Bench.FixedRuntime do
   @doc """
   Compile a plan for ANOTHER writer's layout against my own.
 
-  `{:ok, entries, made, report}` or `{:error, :plan_too_large, report}`.
+  `{:ok, entries, made, report}`, `{:error, :plan_too_large, report}` or
+  `{:error, :layout_record_too_large, report}`.
   `mine` is this build's own parsed layout and `dst` is MY SIDE of it, one
   row per entry; `made` is the entry count the capacity was measured against,
   BEFORE coalescing, which is the number a cache has to remember.
   """
   def compile(theirs, mine, dst, capacity, report) do
+    record = size_at(theirs, 0)
     {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report, true)
     {entries, n} = acc
 
-    if n > capacity do
-      {:error, :plan_too_large, report}
-    else
-      # THE ENTRY COUNT THE CAPACITY WAS MEASURED AGAINST RIDES BACK, so the
-      # CACHE can be checked against a later caller's capacity by the SAME
-      # NUMBER. Coalescing runs after it and can only shrink the list, so the
-      # length of the returned plan is a SMALLER number — and a cached plan
-      # admitted under that is one a caller compiling fresh would be refused.
-      {:ok, coalesce(:lists.reverse(entries)), n, report}
+    cond do
+      any_past?(entries, record) ->
+        {:error, :layout_record_too_large, report}
+
+      n > capacity ->
+        {:error, :plan_too_large, report}
+
+      true ->
+        # THE ENTRY COUNT THE CAPACITY WAS MEASURED AGAINST RIDES BACK, so the
+        # CACHE can be checked against a later caller's capacity by the SAME
+        # NUMBER. Coalescing runs after it and can only shrink the list, so the
+        # length of the returned plan is a SMALLER number — and a cached plan
+        # admitted under that is one a caller compiling fresh would be refused.
+        {:ok, coalesce(:lists.reverse(entries)), n, report}
     end
   end
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
+
+  # THE LAST SOURCE BYTE, EXCLUSIVE, an entry reads — the guard included, so a
+  # guarded entry loads the tag before anything else (docs/FIXED-FORM-ALGORITHM.md
+  # §4.2). A plan entry that reaches past the writer's declared record size
+  # refuses the plan WHOLE under layout_record_too_large.
+  defp src_end({:guard, guard, _tag, argw, entry}), do: max(guard + argw, src_end(entry))
+  defp src_end({:live, _dst, _i, entry}), do: src_end(entry)
+  defp src_end({:present, _src, entry}), do: src_end(entry)
+  defp src_end({:copy, at, _dst, size}), do: at + size
+  defp src_end({:widen, at, _dst, size, _my_size, _signed}), do: at + size
+  defp src_end({:widenf, at, _dst}), do: at + 4
+  defp src_end({:text, at, _dst, _aux, units, _meta}), do: at + 4 + units
+  defp src_end({:count, at, _aux, _n}), do: at + 4
+  defp src_end({:ordinal, at, _dst, their_size, _my_size, _remap}), do: at + their_size
+  defp src_end({:tagcount, at, tag, _arms}), do: at + tag
+  defp src_end({:const, _at, _value, _size}), do: 0
+
+  # ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§4.2). The bound
+  # is the writer's declared root size and not this reader's: an entry that
+  # reached past it would read the NEXT record's bytes.
+  defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)
 
   # A GUARD IS AN OFFSET AND A WIDTH, never an offset alone: `argw` is the
   # WRITER'S tag width in bytes, clamped to 1..8, and a zero reads as one

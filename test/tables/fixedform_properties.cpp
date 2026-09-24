@@ -56,12 +56,8 @@ struct KnownRed
 static KnownRed known_red[] = {
     { "optional/absent-payload-residue-is-copied",
       "the ?T payload gated on the present byte (§3.4: IGNORED on read)", 0, 0 },
-    { "bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool",
-      "a ruling on a bool byte outside {0,1}, and a normalise on the read side", 0, 0 },
     { "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant",
       "identity and compiled must agree on an ordinal that names no variant", 0, 0 },
-    { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm",
-      "identity and compiled must agree on a tag that names no arm", 0, 0 },
 };
 
 static KnownRed * find_red( const char * key )
