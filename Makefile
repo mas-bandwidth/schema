@@ -4651,6 +4651,44 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
+# THE PYTHON LEG'S ROW GATE (mas-bandwidth/schema#1400). The python port is one
+# matrix row at a time, each row a self-checking script under
+# test/py-packet/<row>/test_<row>.py that exits non-zero on the first failed
+# assertion. The target runs EVERY such script, so the next row is gated the
+# day it lands without a line here, and it goes red if it ran none: a glob that
+# matches nothing is a gate that ran nothing (#1315). PYTHONDONTWRITEBYTECODE
+# keeps a run from leaving __pycache__ in the tree. The go-test job in ci.yml
+# runs it on every pull request, and `make test` carries it.
+PY_PACKET_ROWS = $(sort $(wildcard test/py-packet/*/test_*.py))
+
+.PHONY: tables-py-packet
+tables-py-packet:
+	@n=0; for f in $(PY_PACKET_ROWS); do \
+		echo "== $$f"; PYTHONDONTWRITEBYTECODE=1 python3 "$$f" || exit 1; n=$$((n+1)); \
+	done; \
+	if [ $$n -eq 0 ]; then echo "tables-py-packet: no test/py-packet/*/test_*.py ran" >&2; exit 1; fi; \
+	echo "tables-py-packet: $$n row(s) passed"
+
+test: tables-py-packet
+
+# Its control: a copy of the leg with F11's plan-capacity check removed
+# (python/packet.py's `if entry_count > len(plan):` becomes `if False:`) must
+# turn the F11 row red, or the gate above is not watching the rule it names.
+.PHONY: tables-py-packet-negative-control
+tables-py-packet-negative-control:
+	@rm -rf build/py-packet-negative && mkdir -p build/py-packet-negative/python build/py-packet-negative/test/py-packet
+	@cp python/packet.py build/py-packet-negative/python/
+	@cp -R test/py-packet/f11 build/py-packet-negative/test/py-packet/
+	@sed -i.orig 's/if entry_count > len(plan):/if False:/' build/py-packet-negative/python/packet.py
+	@if cmp -s python/packet.py build/py-packet-negative/python/packet.py; then \
+		echo "tables-py-packet-negative-control: the sabotage patched nothing" >&2; exit 1; fi
+	@if PYTHONDONTWRITEBYTECODE=1 python3 build/py-packet-negative/test/py-packet/f11/test_f11.py >build/py-packet-negative/out.txt 2>&1; then \
+		cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 stayed green without the plan-capacity check" >&2; exit 1; fi
+	@grep -q 'Expected count=-1' build/py-packet-negative/out.txt || { cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 went red for the wrong reason" >&2; exit 1; }
+	@echo "tables-py-packet-negative-control: F11 went red without the plan-capacity check (ok)"
+
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
 # plan-driven reader running its identity plan against straight-line
