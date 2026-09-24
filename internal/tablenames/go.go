@@ -401,6 +401,7 @@ func init() {
 		Name{Name: "tableFixedGet64", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCopyRun", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedRun", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedPartition", What: "the fixed form: the plan partitioned so no run coalesces across the split"},
 		Name{Name: "tableFixedLayoutEntry", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedLayoutView", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryAt", What: "the fixed form (form 3)"},
