@@ -458,7 +458,8 @@
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
-        "tables-rust-names-negative-control"
+        "tables-rust-names-negative-control",
+        "tables-rust-runtime-home-negative-control"
       ],
       "rust": "stable"
     },
@@ -531,6 +532,7 @@
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
+        "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-versioning-negative-control"
       ],
       "otp": "29.0.5",
@@ -559,7 +561,8 @@
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control",
         "tables-go-measure-negative-controls",
-        "tables-go-fixed-form-negative-control"
+        "tables-go-fixed-form-negative-control",
+        "tables-go-text-differential-negative-control"
       ]
     },
     {
