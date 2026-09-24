@@ -5652,7 +5652,8 @@ tables-ports-refuse-wide-scalars: bin/schema
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
-		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log; then \
+		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log && \
+		   [ "$$(sed -n '1p' compiler/target_$$lang.go 2>/dev/null)" = "//go:build schema_leg_$$lang" ]; then \
 			echo "tables wide-scalar: $$lang has no --lang yet (schema new-leg skeleton)"; \
 			continue; \
 		fi; \

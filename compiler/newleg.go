@@ -358,15 +358,12 @@ const newLegCISrc = `{"targets": "build/conformance-harness build/conformance-{{
 
 const newLegBenchSrc = `#!/bin/sh
 # THE {{LANGUP}} LEG of the tables bench (bench/tables/README.md).
-# Scaffolded by ` + "`schema new-leg {{LANG}}`" + `.
+# Scaffolded by ` + "`schema new-leg {{LANG}}`" + `. There is no table codec to
+# build or measure yet, so both actions report ABSENT without producing rows.
 set -e
 case "$1" in
-build)
-	exit 0
-	;;
-run)
-	echo '{{LANG}},bench_table,write,1,1,1,1,1,1,1,0,0,table,pkg,contract,default,unknown'
-	echo '{{LANG}},bench_table,round_trip,1,1,1,1,1,1,1,0,0,table,pkg,contract,default,unknown'
+build|run)
+	exit 2
 	;;
 *)
 	echo "usage: $0 build | run [args...]" >&2

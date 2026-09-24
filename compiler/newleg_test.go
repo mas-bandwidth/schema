@@ -116,6 +116,31 @@ func TestNewLegLuaFixturePasses(t *testing.T) {
 	}
 }
 
+func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
+	files, err := NewLeg("lua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leg := filepath.Join(t.TempDir(), "leg")
+	if err := os.WriteFile(leg, files["bench/tables/lua/leg"], 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"build", "run"} {
+		cmd := exec.Command(leg, action)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("%s exited 0, want unavailable exit 2", action)
+		}
+		exit, ok := err.(*exec.ExitError)
+		if !ok || exit.ExitCode() != 2 {
+			t.Fatalf("%s: err=%v, want exit 2", action, err)
+		}
+		if len(out) != 0 {
+			t.Fatalf("%s emitted output for an unavailable scaffold: %q", action, out)
+		}
+	}
+}
+
 func TestNewLegZigOmitsLuaHarness(t *testing.T) {
 	files, err := NewLeg("zig")
 	if err != nil {
