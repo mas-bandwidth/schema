@@ -325,7 +325,7 @@ var ciMakeInvocation = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
 // variable assignments and shell substitutions are not targets.
 func ciMakeTargetsAfter(args string) []string {
 	var out []string
-	for _, tok := range strings.Fields(args) {
+	for tok := range strings.FieldsSeq(args) {
 		if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "=$\"'{}") {
 			continue
 		}
