@@ -245,10 +245,12 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_fixed_probe decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_fixed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_fixed_probe_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_fixed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -286,8 +288,6 @@ defmodule Ludicrous.Ludicrous do
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
       {bits_read, v_samples} = r_fixed_probe_samples(2, [], data, num_bits, bits_read)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Ludicrous.FixedProbe{
         angle: v_angle,
@@ -297,9 +297,18 @@ defmodule Ludicrous.Ludicrous do
         samples: v_samples
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_fixed_probe is read_fixed_probe_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_fixed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_fixed_probe_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -427,10 +436,12 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_unsigned_probe decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_unsigned_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_unsigned_probe_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_unsigned_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -478,8 +489,6 @@ defmodule Ludicrous.Ludicrous do
       v = rv &&& 0xFF
       bits_read = bits_read + 8
       v_tail = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Ludicrous.UnsignedProbe{
         angle: v_angle,
@@ -491,9 +500,18 @@ defmodule Ludicrous.Ludicrous do
         tail: v_tail
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_unsigned_probe is read_unsigned_probe_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_unsigned_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_unsigned_probe_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -616,10 +634,12 @@ defmodule Ludicrous.Ludicrous do
     <<data::binary, scratch>>
   end
 
-  # read_wide_probe decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_wide_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_wide_probe_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_wide_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -695,8 +715,6 @@ defmodule Ludicrous.Ludicrous do
       bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_seed = w
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Ludicrous.WideProbe{
         entity_id: v_entity_id,
@@ -706,9 +724,18 @@ defmodule Ludicrous.Ludicrous do
         seed: v_seed
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_wide_probe is read_wide_probe_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_wide_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_wide_probe_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1034,10 +1061,12 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_ludicrous_state decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_ludicrous_state(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_ludicrous_state_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_ludicrous_state_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1204,9 +1233,6 @@ defmodule Ludicrous.Ludicrous do
           {bits_read, v_target_id}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-
       value = %Ludicrous.LudicrousState{
         mode: v_mode,
         probe: v_probe,
@@ -1216,9 +1242,18 @@ defmodule Ludicrous.Ludicrous do
         target_id: v_target_id
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_ludicrous_state is read_ludicrous_state_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_ludicrous_state(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_ludicrous_state_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1282,10 +1317,12 @@ defmodule Ludicrous.Ludicrous do
     data
   end
 
-  # read_degenerate_probe decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_degenerate_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_degenerate_probe_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_degenerate_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1301,8 +1338,6 @@ defmodule Ludicrous.Ludicrous do
       v = rv
       bits_read = bits_read + 8
       v_tail = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Ludicrous.DegenerateProbe{
         locked_fixed: v_locked_fixed,
@@ -1311,9 +1346,18 @@ defmodule Ludicrous.Ludicrous do
         tail: v_tail
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_degenerate_probe is read_degenerate_probe_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_degenerate_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_degenerate_probe_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1392,10 +1436,12 @@ defmodule Ludicrous.Ludicrous do
     <<data::binary, scratch>>
   end
 
-  # read_fixed_vec decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_fixed_vec(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_fixed_vec_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_fixed_vec_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1434,12 +1480,19 @@ defmodule Ludicrous.Ludicrous do
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_z = w - 6_553_600_000
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Ludicrous.FixedVec{x: v_x, y: v_y, z: v_z}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_fixed_vec is read_fixed_vec_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_fixed_vec(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_fixed_vec_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1517,10 +1570,12 @@ defmodule Ludicrous.Ludicrous do
     data
   end
 
-  # read_fixed_quat decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_fixed_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_fixed_quat_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_fixed_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1553,12 +1608,19 @@ defmodule Ludicrous.Ludicrous do
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_w = v - 1_073_741_824
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Ludicrous.FixedQuat{x: v_x, y: v_y, z: v_z, w: v_w}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_fixed_quat is read_fixed_quat_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_fixed_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_fixed_quat_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
