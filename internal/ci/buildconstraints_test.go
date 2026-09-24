@@ -40,7 +40,7 @@ func TestNoGoFileIsIgnoredByItsNameAlone(t *testing.T) {
 		ignored []string
 	}
 	var packages []pkg
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		dir, rest, ok := strings.Cut(line, "|")
 		if !ok {
 			continue
@@ -77,7 +77,7 @@ func hasExplicitBuildConstraint(t *testing.T, path string) bool {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(line, "package ") {
 			return false
 		}

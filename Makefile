@@ -2778,6 +2778,8 @@ tables-cpp-alloc: build/schema_test_tables
 		{ echo "C++ allocation gate FAILED: the steady read path allocated"; cat build/tables-cpp-alloc.log; exit 1; }
 	@echo "C++ allocation gate: Load, the reads, Measure and Save leave the global allocation count at zero"
 
+test: tables-cpp-alloc
+
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
 # read through self-relative deltas, a cooked file Open validates by walking
