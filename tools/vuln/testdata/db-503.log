@@ -1,0 +1,1 @@
+govulncheck: fetching vulnerabilities: HTTP GET https://vuln.go.dev/index/modules.json.gz returned unexpected status: 503 Service Unavailable

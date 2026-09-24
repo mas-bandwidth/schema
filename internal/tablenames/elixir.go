@@ -2,10 +2,11 @@ package tablenames
 
 // Elixir is the Elixir table backend (internal/codegen/elixirtable).
 //
-// The Elixir backend emits the BLOCK and COOK read halves only (the table wire
-// it once wrote was the form that preceded the id-table wire and was removed;
-// schema#515 brings the current wire), so it claims no TableRuntime: that name
-// is another backend's.
+// The Elixir backend emits the BLOCK and COOK read halves and the id-table
+// wire's SHARED framing runtime (TableRuntime.ex; the per-file codecs the wire
+// it once wrote are still owed, schema#515), so it claims BlockRuntime,
+// CookRuntime, TableRuntime and BuildVersion: each is another backend's name
+// too, and the claim is the union.
 const Elixir Backend = 1 << 6
 
 func init() {
@@ -21,6 +22,7 @@ func init() {
 		// unit gets no table runtime at all (§11) and still has both of them.
 		Name{Name: "BlockRuntime", What: "the BLOCK form's shared runtime module (docs/SPEC-TABLES.md §19)"},
 		Name{Name: "CookRuntime", What: "the COOKED form's shared runtime module (docs/SPEC-TABLES.md §7)"},
+		Name{Name: "TableRuntime", What: "the id-table wire's shared framing runtime module (docs/SPEC-TABLES.md §3, §5)"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)
 }
