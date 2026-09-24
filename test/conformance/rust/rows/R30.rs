@@ -19,17 +19,21 @@
 //   test/tables/VNEW_cfloat_res_refine.schema: aim float32 | min = -1, max = 1, resolution = 0.01
 //   test/tables/VOLD_cfloat_res_refine.schema: aim float32 | min = -1, max = 1, resolution = 0.1
 //
-// To run: rustc --edition 2021 --test \
-//   -L build/tables-generated-rust \
-//   --extern vnew_cfloat_res_refine=build/tables-generated-rust/vnew_cfloat_res_refine \
-//   --extern vold_cfloat_res_refine=build/tables-generated-rust/vold_cfloat_res_refine \
-//   test/conformance/rust/rows/R30.rs -o build/rows-rust-R30 && ./build/rows-rust-R30
+// The generated BUILD_VERSION constants are pulled in via #[path] includes,
+// matching the C10 pattern, so this test needs no --extern flags and no
+// serialize-official crate.
 
-use vnew_cfloat_res_refine::BUILD_VERSION as FINE_VERSION;
-use vold_cfloat_res_refine::BUILD_VERSION as COARSE_VERSION;
+// -- the two build_version modules, each a single pub const BUILD_VERSION: u64 --
+#[path = "../../../../build/tables-generated-rust/vnew_cfloat_res_refine/build_version.rs"]
+mod vnew_bv;
+#[path = "../../../../build/tables-generated-rust/vold_cfloat_res_refine/build_version.rs"]
+mod vold_bv;
+
+use vnew_bv::BUILD_VERSION as FINE_VERSION;
+use vold_bv::BUILD_VERSION as COARSE_VERSION;
 
 #[test]
-fn test_resolution_moves_the_hash() {
+fn r30_resolution_moves_the_hash() {
     // Two schemas with the same float32 range [min = -1, max = 1] but different
     // resolutions (0.01 vs 0.1) must have different BUILD_VERSIONs, proving the
     // resolution is in the digest under 'Q'.
@@ -41,7 +45,6 @@ fn test_resolution_moves_the_hash() {
 }
 
 fn main() {
-    // Run the test
-    test_resolution_moves_the_hash();
+    r30_resolution_moves_the_hash();
     println!("PASS: resolution moves the hash");
 }
