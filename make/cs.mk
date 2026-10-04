@@ -106,6 +106,8 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema
+	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema
+	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema
 	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema
 	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema
 	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema

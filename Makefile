@@ -6355,9 +6355,10 @@ slow-gate-coverage:
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
 
-# THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
-# so the gate both workflows run is a target here, and the retry-and-classify
-# logic is a committed script that `make test` holds to its fixtures — not
+# THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
+# run are targets here: `vuln` runs the scanner pinned and direct, and the
+# retry-and-classify logic behind the nightly is a committed script
+# (tools/vuln/govulncheck.sh) that `make test` holds to its fixtures — not
 # lines of YAML duplicated into two files, where the first divergence between
 # the copies is nobody's to notice.
 #
