@@ -1,0 +1,52 @@
+// The [[.Lang]] leg's one passing fixture, laid down by `schema new-leg
+// [[.Lang]]`: test/[[.Lang]]/Fixture.schema through the public driver, the way
+// `schema generate --lang [[.Lang]]` runs it. The port keeps this test and
+// adds the goldens beside it.
+package [[.Lang]]_test
+
+import (
+	"bytes"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	[[.Lang]]backend "github.com/mas-bandwidth/schema/v2/internal/codegen/[[.Lang]]"
+)
+
+func TestFixtureGeneratesThroughTheDriver(t *testing.T) {
+	c := compiler.New()
+	if !slices.Contains(c.Targets(), "[[.Lang]]") {
+		t.Fatalf("--lang [[.Lang]] is not registered: %v", c.Targets())
+	}
+	paths, err := compiler.GatherPaths([]string{filepath.Join("..", "..", "..", "test", "[[.Lang]]")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit, err := c.Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.Generate(unit, "[[.Lang]]", compiler.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, ok := files["Fixture"+[[.Lang]]backend.Ext]
+	if !ok {
+		t.Fatalf("no Fixture%s among the emitted files: %d files", [[.Lang]]backend.Ext, len(files))
+	}
+	for _, want := range []string{"const MaxHealth", "enum Team", "type Thing"} {
+		if !strings.Contains(string(src), want) {
+			t.Errorf("Fixture%s does not name %q:\n%s", [[.Lang]]backend.Ext, want, src)
+		}
+	}
+	// deterministic to the byte (SPEC §6.1): the golden gate compares it
+	again, err := c.Generate(unit, "[[.Lang]]", compiler.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(src, again["Fixture"+[[.Lang]]backend.Ext]) {
+		t.Error("two generates of one unit differ")
+	}
+}

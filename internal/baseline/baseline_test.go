@@ -1736,3 +1736,127 @@ func TestReplacementUnionArmsCompareAsFields(t *testing.T) {
 		t.Errorf("a union that carries every arm under the same facts should stand in, got:%s", summary(got))
 	}
 }
+
+// TestRetiredNamesLedger is issue #441 (docs/SPEC-TABLES.md §18, the
+// retired-names ledger): a legal removal is recorded in a retired section that
+// `--update` appends to and never drops, and a re-added name — or a new name
+// riding the retired wire id — is REFUSED, naming the entry, until an
+// acknowledged `--update --reason` records the resurrection. The wire cannot
+// report the reuse, so without the ledger the old bytes decode as plausible
+// new values with no counter.
+func TestRetiredNamesLedger(t *testing.T) {
+	dir, paths := writeUnit(t, baseSrc)
+	if _, _, err := baseline.Update(unit(t, baseSrc), paths, "the first baseline"); err != nil {
+		t.Fatal(err)
+	}
+
+	// a legal removal: the wire absorbs it, and the ledger is what remembers
+	// the name
+	removed := editOf(t, baseSrc, "    damage  float32 = 21.0\n", "")
+	if err := os.WriteFile(paths[0], []byte(removed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := baseline.Update(unit(t, removed), paths, "damage is retired; saves keep the old default"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, baseline.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "## retired") || !strings.Contains(string(data), "field Config.damage") {
+		t.Fatalf("the baseline must keep a retired-names ledger naming the removed field (#441):\n%s", data)
+	}
+
+	// the resurrection by NAME: the field comes back with the same name and id
+	resurrect := editOf(t, removed, "    heading int16\n", "    heading int16\n    damage  float32 = 21.0\n")
+	live := unit(t, resurrect)
+	_, errs := baseline.Check(live, paths)
+	if len(errs) != 1 {
+		t.Fatalf("a re-added retired name must be refused exactly once, got: %v", errs)
+	}
+	for _, want := range []string{"Config.damage", "retired", "--update --reason"} {
+		if !strings.Contains(errs[0].Error(), want) {
+			t.Errorf("the refusal must mention %q, got: %v", want, errs[0])
+		}
+	}
+
+	// the collision by ID: a NEW name riding the retired field's wire id
+	collide := editOf(t, removed, "    heading int16\n", "    heading int16\n    hp  float32 = 99.0 | was = \"damage\"\n")
+	if _, errs := baseline.Check(unit(t, collide), paths); len(errs) == 0 {
+		t.Error("a new name riding the retired field's wire id must be refused")
+	}
+
+	// the ATTRIBUTION control: with the retired row removed the reuse passes
+	base, err := baseline.Parse(filepath.Join(dir, baseline.FileName), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseline.Diff(base, baseline.Render(live), without("retired")); find(got, baseline.Refuse, "Config.damage", "retired") {
+		t.Errorf("with the retired rule removed the reuse should pass, got:%s", summary(got))
+	}
+
+	// the acknowledgment: `--update --reason` records the resurrection and the
+	// check is silent again; the entry is never dropped
+	if _, rewrote, err := baseline.Update(live, paths, "damage returns; the ledger entry is acknowledged"); err != nil || !rewrote {
+		t.Fatalf("the acknowledging update: %v (rewrote=%v)", err, rewrote)
+	}
+	if warns, errs := baseline.Check(live, paths); len(warns) != 0 || len(errs) != 0 {
+		t.Errorf("after the acknowledgment the reuse must pass: %v %v", warns, errs)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, baseline.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(after), "Config.damage") {
+		t.Errorf("the ledger entry must never drop the retired name:\n%s", after)
+	}
+}
+
+// TestRetiredNamesLedgerVariantsAndArms: the ledger covers an enum variant and
+// a union arm, not only a field, and each reuse refuses by its own entry
+// (issue #441).
+func TestRetiredNamesLedgerVariantsAndArms(t *testing.T) {
+	dir, paths := writeUnit(t, baseSrc)
+	if _, _, err := baseline.Update(unit(t, baseSrc), paths, "the first baseline"); err != nil {
+		t.Fatal(err)
+	}
+
+	// drop an enum variant and a union arm: both removals pass the wire
+	cut := editOf(t, baseSrc, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver }")
+	cut = editOf(t, cut, "    debuff Debuff\n", "")
+	if err := os.WriteFile(paths[0], []byte(cut), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := baseline.Update(unit(t, cut), paths, "a variant and an arm are retired"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, baseline.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"enum-variant Grade.Gold", "union-arm Effect.debuff"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("the ledger must record %q:\n%s", want, data)
+		}
+	}
+
+	// each comes back: each is refused by its own ledger entry (the Debuff
+	// type left the closure with the arm, so its field is retired too)
+	back := editOf(t, cut, "enum Grade { Bronze, Silver }", "enum Grade { Bronze, Silver, Gold }")
+	back = editOf(t, back, "    buff   Buff\n", "    buff   Buff\n    debuff Debuff\n")
+	_, errs := baseline.Check(unit(t, back), paths)
+	if len(errs) < 2 {
+		t.Fatalf("both re-adds must refuse, got: %v", errs)
+	}
+	for _, want := range []string{"Grade.Gold", "Effect.debuff"} {
+		found := false
+		for _, e := range errs {
+			if strings.Contains(e.Error(), want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("the refusal must name %q, got: %v", want, errs)
+		}
+	}
+}

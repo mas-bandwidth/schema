@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <new>
+#include <atomic>
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -52,6 +53,28 @@
 #include "wirebuilder.h"
 
 static int failures = 0;
+
+// ---- THE STEADY READ-PATH ALLOCATION AUDIT (docs/SPEC-TABLES.md "What
+// allocates, and what never does"; docs/PORTING.md I1) ----
+//
+// #562's list audit (test/tables/lists_main.cpp) holds the list paths and
+// #615/#679's counters hold NodeLoadRetain and NodeLoadRetainMessages; this
+// is the general FIXED-class corpus path measured at RUN TIME through the one
+// channel a source scan cannot see: a counting global operator new. Load,
+// Measure, the indexed and iterated reads and Save on the richest root must
+// leave the count where they found it. The control plants one allocation and
+// requires the count to move, so a gate that is watching nothing fails.
+static std::atomic<long long> table_allocations( 0 );
+
+void * operator new( size_t bytes )
+{
+    table_allocations.fetch_add( 1, std::memory_order_relaxed );
+    void * p = malloc( bytes != 0 ? bytes : 1 );
+    if ( p == NULL ) { abort(); }
+    return p;
+}
+void operator delete( void * p ) noexcept { free( p ); }
+void operator delete( void * p, size_t ) noexcept { free( p ); }
 
 #define CHECK( condition )                                                    \
     do                                                                        \
@@ -7262,9 +7285,10 @@ static void test_form_byte_refusals()
 // and the byte counts say which walk ran.
 //
 // The other half of §3.1's sentence — a pointer inside an ABSENT OPTIONAL —
-// has no declaration yet: `?T` over a variable-length closure is a named
-// follow-on (§2.3, §15), and the walks gating on the presence companion, which
-// this change adds, is the precondition its diagnostic names.
+// is the same walk one field over: `Wrapped` holds a pointer and is
+// variable-length, `Guarded.optional` is `?Wrapped`, and the numbering, the
+// pack measure and the pack gate on the presence companion, so an absent
+// optional's table is not descended (schema#526, test_absent_optional_is_not_descended).
 static void test_unwritten_fields_are_not_edges()
 {
     static uint8_t wire[512];
@@ -7322,6 +7346,78 @@ static void test_unwritten_fields_are_not_edges()
     }
     // and the REGION is the same walk: a locked region holds the nodes the
     // numbering visited and no others, so its size moves with them
+    CHECK( control_need > need );
+}
+
+// ---- AN ABSENT OPTIONAL'S TABLE IS NOT DESCENDED (§3.1, schema#440, #526) --
+//
+// The second half of §3.1's sentence, declared now that the walks gate on the
+// presence companion. `Wrapped` holds a pointer and is variable-length, and
+// `Guarded.optional` is `?Wrapped`: an ABSENT optional's table is not
+// descended, so a pointer left in its slots costs no record — the writer and
+// the region `Lock` lays out both skip it. A PRESENT optional's table is an
+// edge like any other by-value nesting, and the pointer inside it is numbered.
+//
+// The control is the same value with the optional PRESENT: two records where
+// the absent one writes a single record, and the byte counts say which walk
+// ran. The pins are the tool's, so a plain conformance run holds the rule.
+static void test_absent_optional_is_not_descended()
+{
+    static uint8_t wire[512];
+    int64_t one = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = false;
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->optional_present = false;                 // ABSENT
+        root->optional.node = b.Alloc<tblg1::Node>();   // set, inside the absent table
+        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        one = tblg1::GuardedSave( b, wire, sizeof( wire ) );
+        CHECK( one > 0 );
+        CHECK( tblg1::GuardedMeasure( b ) == one );
+        pin_table_golden( "optional_absent_no_edge", wire, one );
+    }
+    // the numbering wrote ONE record, so exactly one node's body rides
+    tblg1::TableReport report;
+    int64_t need = tblg1::GuardedLoadMeasure( wire, one );
+    CHECK( need > 0 );
+    std::vector<uint8_t> region( (size_t) need );
+    const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    if ( loaded != NULL )
+    {
+        CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
+        CHECK( tblg1::NodeAt( loaded->optional.node ) == NULL ); // never written, never read
+    }
+
+    // THE CONTROL: the same value with the optional PRESENT
+    static uint8_t two_wire[512];
+    int64_t two = 0;
+    {
+        tblg1::GuardedBuilder b;
+        tblg1::Guarded * root = b.GetRoot();
+        root->at_rest = false;
+        root->always = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->always )->value = 1;
+        root->optional_present = true;
+        root->optional.node = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        two = tblg1::GuardedSave( b, two_wire, sizeof( two_wire ) );
+        CHECK( two > 0 );
+        pin_table_golden( "optional_present_edge", two_wire, two );
+    }
+    CHECK( two > one ); // two records against one
+    tblg1::TableReport control;
+    int64_t control_need = tblg1::GuardedLoadMeasure( two_wire, two );
+    std::vector<uint8_t> control_region( (size_t) control_need );
+    const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, two_wire, two, &control );
+    CHECK( all != NULL && !control.malformed );
+    if ( all != NULL )
+    {
+        CHECK( tblg1::NodeAt( all->optional.node ) != NULL && tblg1::NodeAt( all->optional.node )->value == 2 );
+    }
     CHECK( control_need > need );
 }
 
@@ -9151,6 +9247,43 @@ static void test_wasrows_vocabulary()
     }
 }
 
+// ---- the steady read path allocates nothing (docs/PORTING.md I1) ----
+
+static void test_allocation_audit()
+{
+    static tabledemo::RootConfig root;
+    static uint8_t wire[1u << 20];
+    build_golden_root( root );
+    const int64_t bytes = tabledemo::RootConfigSave( root, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+
+    const long long before = table_allocations.load();
+    static tabledemo::RootConfig out;
+    tabledemo::TableReport report;
+    CHECK( tabledemo::RootConfigLoad( out, wire, bytes, &report ) );
+    long long sum = 0;
+    for ( int32_t i = 0; i < out.weapons_count; i++ ) { sum += out.weapons[i].channel; }
+    for ( int32_t i = 0; i < out.profiles_count; i++ ) { sum += out.profiles[i].experience; }
+    CHECK( tabledemo::RootConfigMeasure( out ) == bytes );
+    CHECK( tabledemo::RootConfigSave( out, wire, sizeof( wire ) ) == bytes );
+    CHECK( sum != 0 );
+    const long long moved = table_allocations.load() - before;
+    CHECK( moved == 0 ); // not one allocation across Load, the reads, Measure and Save
+    printf( "tables allocation audit: %lld allocation(s) over the steady read path\n", moved );
+}
+
+// The control: the counting operator new must SEE an allocation. Without this
+// the audit above could read zero because it is measuring nothing.
+static void test_allocation_audit_can_go_red()
+{
+    static void * volatile planted = NULL;
+    const long long before = table_allocations.load();
+    planted = new int( 7 );
+    CHECK( table_allocations.load() > before ); // the instrument sees a real allocation
+    delete (int *) planted;
+    planted = NULL;
+}
+
 int main()
 {
     test_golden_wire();
@@ -9158,6 +9291,8 @@ int main()
     pin_graph_goldens();
     test_golden_reload();
     test_round_trip();
+    test_allocation_audit();
+    test_allocation_audit_can_go_red();
     test_exact_capacity();
     test_storage_invariants();
     test_bounded_elements();
@@ -9253,6 +9388,7 @@ int main()
     test_pointer_arrays_elision();
     test_form_byte_refusals();
     test_unwritten_fields_are_not_edges();
+    test_absent_optional_is_not_descended();
     test_enum_kind_against_the_raw_integer();
     test_escape_and_payload_free_kinds();
     test_arm_kind_pins();

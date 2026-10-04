@@ -86,6 +86,35 @@ const MinReserve = 3
 	}
 }
 
+// TestCppNativeQualifiedNameEmitsVerbatim pins the namespaced form of the
+// native type mapping (schema#451): `cpp_native = math::Vec2` names the global
+// engine type directly, and each reference emits it `::`-qualified verbatim —
+// no global alias in the consumer's own header required.
+func TestCppNativeQualifiedNameEmitsVerbatim(t *testing.T) {
+	u := unitFromSources(t, map[string]string{
+		"Native.schema": `package t
+type Vec2 | cpp_native = math::Vec2, cpp_include = "math/vec2.h" { x float32
+                                                                      y float32 }
+`,
+		"Body.schema": `package t
+type Body { p Vec2 }
+`,
+	})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(files["Body.h"])
+	for _, want := range []string{
+		"::math::Vec2 p;",
+		`#include "math/vec2.h"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Body.h lost the qualified native mapping: want %q\n%s", want, body)
+		}
+	}
+}
+
 func TestUnionPlacementIncludeStaysInWireHeader(t *testing.T) {
 	u := unitFromSources(t, map[string]string{
 		"Payload.schema": `package t

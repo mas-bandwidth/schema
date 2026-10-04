@@ -13,26 +13,26 @@ import (
 )
 
 // TestElixirEmitsTableModules: the elixir target adds the BLOCK and COOK read
-// halves, <Base>Block.ex and <Base>Cook.ex with their runtime modules and the
-// unit's BuildVersion, beside the packet ones for a unit with tables, and adds
-// NOTHING for a unit without. It emits no <Base>Table.ex and no
-// TableRuntime.ex at all: the table wire's Elixir port wrote the form that
-// preceded the id-table wire and was removed rather than carried (schema#515
-// brings the current wire to Elixir).
+// halves, <Base>Block.ex and <Base>Cook.ex with their runtime modules, the
+// id-table wire's SHARED framing runtime (TableRuntime.ex) and the unit's
+// BuildVersion, beside the packet ones for a unit with tables, and adds
+// NOTHING for a unit without. It emits no <Base>Table.ex yet: the per-file
+// codecs are the port the previous form was removed rather than carried
+// (schema#515 brings the current wire's coders to Elixir).
 func TestElixirEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "elixir", Options{})
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex"} {
+	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex", "TableRuntime.ex"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang elixir emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	for name := range with {
-		if strings.HasSuffix(name, "Table.ex") || name == "TableRuntime.ex" {
-			t.Errorf("--lang elixir emitted %s: the previous-form table wire was removed and nothing emits it", name)
+		if strings.HasSuffix(name, "Table.ex") {
+			t.Errorf("--lang elixir emitted %s: the per-file table wire is not carried yet (schema#515)", name)
 		}
 	}
 
@@ -57,6 +57,55 @@ func TestElixirEmitsTableModules(t *testing.T) {
 		if string(got) != string(data) {
 			t.Errorf("elixir module %s changed when a table was added — tables must move no packet byte", name)
 		}
+	}
+}
+
+// TestElixirBlockRowsAreReachedWithoutAllocatingTheArray: docs/PORTING.md M7 —
+// a block row is reached by stride with no per-row object. Elixir's first
+// spelling materialized an eager list of count sub-binaries every time an
+// array was reached (rows/4 was Enum.map), so reaching any row cost the whole
+// array's cons cells. The carry is the count/at pair beside a LAZY walk: the
+// block accessor exposes <F>_count(block) and <F>_at(block, index), and
+// <F>(block) is a Stream — so a per-frame walk pays the row and not the array,
+// and a caller with an index still reaches exactly one row.
+func TestElixirBlockRowsAreReachedWithoutAllocatingTheArray(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, tableSrc), "elixir", Options{})
+	if err != nil {
+		t.Fatalf("--lang elixir: %v", err)
+	}
+
+	runtime := string(files["BlockRuntime.ex"])
+	if runtime == "" {
+		t.Fatal("no BlockRuntime.ex")
+	}
+	// the walk is lazy: a Stream over the range, never an eager Enum.map list
+	if !strings.Contains(runtime, "Stream.map") {
+		t.Errorf("BlockRuntime.rows/4 builds no Stream — reaching an array still " +
+			"materializes a list; docs/PORTING.md M7 wants the row, not the array")
+	}
+	if strings.Contains(runtime, "Enum.map") {
+		t.Errorf("BlockRuntime still reaches rows with Enum.map — the eager list of " +
+			"count sub-binaries is exactly the per-array allocation M7 excludes")
+	}
+	if !strings.Contains(runtime, "def row(") {
+		t.Errorf("BlockRuntime exposes no single-row read (the count/at pair's at half)")
+	}
+
+	block := string(files["ProbeBlock.ex"])
+	for _, want := range []string{
+		"def config_points_count(block)",
+		"def config_points_at(block, index)",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the Config block form has no %q: the allocation-free count/at "+
+				"pair is what reaches one row without the array", want)
+		}
+	}
+	// and the at half goes through the runtime's single-row read rather than
+	// re-deriving the pitch at the call site
+	if !strings.Contains(block, "B.row(") {
+		t.Errorf("config_points_at does not read through B.row/5 — the pitch arithmetic " +
+			"must stay inside the generated pair, not at the call site (§19.2)")
 	}
 }
 
@@ -96,12 +145,7 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 		mine[name] = true
 	}
 	for _, f := range u.Files {
-		// "Fixed" is the FIXED FORM's per-file module (docs/SPEC-TABLES.md
-		// §3.4), which is FILE-derived like Block and Cook: no unit-level
-		// registry can hold a name a schema file's basename makes, so the
-		// emitter refuses the collision itself (TestElixirRefusesFileModuleCollision)
-		// and this scan treats it as the author's own segment.
-		for _, suffix := range []string{"", "Table", "Block", "Cook", "Fixed"} {
+		for _, suffix := range []string{"", "Table", "Block", "Cook"} {
 			mine[ir.GoExportName(f.Base)+suffix] = true
 		}
 	}
@@ -187,7 +231,7 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 // unit-level registry can hold, so the backend refuses them by name.
 func TestElixirRefusesFileModuleCollision(t *testing.T) {
 	c := New()
-	for _, suffix := range []string{"Block", "Cook", "Fixed"} {
+	for _, suffix := range []string{"Block", "Cook"} {
 		t.Run(suffix, func(t *testing.T) {
 			u := unitFromSource(t, tableSrc+"\ntype Probe"+suffix+"\n{\n    x int32\n}\n")
 			_, err := c.Generate(u, "elixir", Options{})
@@ -261,163 +305,45 @@ fixed table Holder
 	}
 }
 
-// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----------------
-
-// elixirFixedSrc reaches every shape §3.4's constant-size table names that this
-// port lays out: a leaf of every width, a bool, an enum, a flags mask, text of
-// all three flavours, a fixed array, a counted array, a nested table, an
-// enum-keyed array, an optional and a union.
-//
-// NO `wstring(N)`: compiler/widetext.go refuses wide text in a TABLE closure for
-// every target but C, C++, C# and Go, and this leg does not move that refusal —
-// the fixed form's LAYOUT and PLAN carry kind 33 so a PEER's wide text reads
-// here, but a declaration of one is still the named follow-on it already was.
-const elixirFixedSrc = `package probe
-
-enum Slot { Alpha, Beta, Gamma }
-
-flags Mark { One, Two }
-
-fixed table Leaf
-{
-    a int32 = 7 | min = 0, max = 1000
-    b uint16 = 3
-}
-
-type Boost
-{
-    power int32 = 2
-}
-
-type Ward
-{
-    charge float32 = 1.5
-}
-
-union Effect
-{
-    boost Boost
-    ward  Ward
-}
-
-fixed table FixedProbe
-{
-    small    uint8 = 5
-    wide     uint64 = 9
-    negative int16 = -4
-    fl       float32 = 2.5
-    db       float64 = 1.25
-    yes      bool = true
-    slot     Slot = Beta
-    mark     Mark
-    label    string(12)
-    raw      bytes(6)
-    trio     [3]uint32
-    counted  [1..4]Leaf
-    nested   Leaf
-    perslot  [Slot]Leaf
-    maybe    ?Leaf
-    effect   Effect
-}
-`
-
-// TestElixirFixedFormLayoutIsTheCppReferenceByteForByte is what keeps this
-// port's §3.4 layout walk from becoming a SECOND WIRE.
-//
-// The LAYOUT is the form's whole self-description and its fnv1a64 is the eight
-// bytes every record carries, so two backends whose layouts differ anywhere are
-// two backends that never read each other's records — silently, as `no_layout`,
-// which looks like a deployment problem and is not one. The C++ backend is the
-// REFERENCE for this form (internal/codegen/cpptable/fixedform.go), so this
-// generates the SAME unit for both and requires the bytes and the hash to be
-// identical, per root.
-//
-// It is the both-directions form the registry scans already use: every root
-// Elixir emits a layout for is compared against the reference's, and the
-// comparison set has to be non-empty or the test, not the emitter, is what
-// broke.
-func TestElixirFixedFormLayoutIsTheCppReferenceByteForByte(t *testing.T) {
-	cppFiles, err := New().Generate(unitFromSource(t, elixirFixedSrc), "cpp", Options{})
-	if err != nil {
-		t.Fatalf("--lang cpp: %v", err)
-	}
-	exFiles, err := New().Generate(unitFromSource(t, elixirFixedSrc), "elixir", Options{})
+// TestElixirEmitsTheIdTableWireRuntime: the Elixir backend grows the shared
+// module the id-table wire's framing needs (docs/SPEC-TABLES.md §3), and it is
+// this backend's first piece of the CURRENT wire: the form byte, the canonical
+// LEB128 every length, count, index and reference rides as, the sixty-four-bit
+// fnv1a64 identity, and the id table a reader locates from the END. The port
+// that once wrote the previous form was removed (schema#515); this runtime is
+// the framing that port left behind, emitted once per unit rather than once
+// per file.
+func TestElixirEmitsTheIdTableWireRuntime(t *testing.T) {
+	c := New()
+	files, err := c.Generate(unitFromSource(t, tableSrc), "elixir", Options{})
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	cppLayouts, cppHashes := cppFixedLayoutsSnake(joinFiles(cppFiles))
-	exLayouts, exHashes := elixirFixedLayouts(joinFiles(exFiles))
-	if len(exLayouts) == 0 {
-		t.Fatal("the Elixir backend emitted no fixed-form layout at all for a unit of fixed tables — " +
-			"the scan, or the emitter, is what broke")
+	runtime, ok := files["TableRuntime.ex"]
+	if !ok {
+		t.Fatalf("--lang elixir emitted no TableRuntime.ex for a unit with tables; got %d files", len(files))
 	}
-	names := make([]string, 0, len(exLayouts))
-	for name := range exLayouts {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	compared := 0
-	for _, name := range names {
-		want, ok := cppLayouts[name]
-		if !ok {
-			t.Errorf("the Elixir backend emits a fixed-form layout for %s and the C++ REFERENCE does not — "+
-				"a port may carry fewer shapes than the reference, never more", name)
-			continue
-		}
-		compared++
-		if want != exLayouts[name] {
-			t.Errorf("%s's layout differs from the C++ reference's:\n  cpp    %s\n  elixir %s",
-				name, want, exLayouts[name])
-		}
-		if cppHashes[name] != exHashes[name] {
-			t.Errorf("%s's fixed-form hash differs from the C++ reference's: cpp %s, elixir %s — "+
-				"a record written by one is `no_layout` to the other", name, cppHashes[name], exHashes[name])
+	src := string(runtime)
+	for _, want := range []string{
+		"defmodule Probe.TableRuntime do",
+		"@form 1",
+		"def form, do: @form",
+		"def leb_encode",
+		"def leb_decode",
+		"def fnv1a64",
+		"def id_table_count",
+		"def id_table(",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the emitted TableRuntime.ex does not carry %q", want)
 		}
 	}
-	if compared == 0 {
-		t.Fatal("no root was compared against the reference at all")
+	// a TABLE-FREE unit emits none of it: the wire is zero-cost or it is not
+	without, err := c.Generate(unitFromSource(t, packetSrc), "elixir", Options{})
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-// joinFiles, cppFixedLayoutRe and cppFixedByteRe are the Java leg's
-// (compiler/tablesjava_test.go); they are one package and the scan of the C++
-// reference is the same scan. Only the SNAKE-keyed rendering below is this
-// leg's own, so only it is spelled separately.
-var (
-	// The Java leg's cppFixedHashRe captures the `0x` with the digits; this
-	// scan wants the digits alone, so it keeps its own pattern.
-	cppFixedHashSnakeRe = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = 0x([0-9a-f]+)ull;`)
-	exFixedLayoutRe     = regexp.MustCompile(`@(\w+)_layout "((?:\\x[0-9A-F]{2})+)"`)
-	exFixedHashRe       = regexp.MustCompile(`@(\w+)_hash 0x([0-9A-F]{16})`)
-)
-
-// The two scans key on the SNAKE spelling, which is the one shape both targets
-// map onto without either one's naming rules leaking into the other's.
-func cppFixedLayoutsSnake(text string) (map[string]string, map[string]string) {
-	layouts, hashes := map[string]string{}, map[string]string{}
-	for _, m := range cppFixedLayoutRe.FindAllStringSubmatch(text, -1) {
-		bytes := cppFixedByteRe.FindAllString(m[2], -1)
-		layouts[ir.RustSnake(m[1])] = strings.ToLower(strings.Join(bytes, " "))
+	if _, ok := without["TableRuntime.ex"]; ok {
+		t.Error("--lang elixir emitted TableRuntime.ex for a table-free unit")
 	}
-	for _, m := range cppFixedHashSnakeRe.FindAllStringSubmatch(text, -1) {
-		hashes[ir.RustSnake(m[1])] = strings.ToLower(m[2])
-	}
-	return layouts, hashes
-}
-
-func elixirFixedLayouts(text string) (map[string]string, map[string]string) {
-	layouts, hashes := map[string]string{}, map[string]string{}
-	for _, m := range exFixedLayoutRe.FindAllStringSubmatch(text, -1) {
-		var bytes []string
-		for esc := range strings.SplitSeq(m[2], `\x`) {
-			if esc != "" {
-				bytes = append(bytes, "0x"+strings.ToLower(esc))
-			}
-		}
-		layouts[m[1]] = strings.Join(bytes, " ")
-	}
-	for _, m := range exFixedHashRe.FindAllStringSubmatch(text, -1) {
-		hashes[m[1]] = strings.ToLower(strings.TrimLeft(m[2], "0"))
-	}
-	return layouts, hashes
 }

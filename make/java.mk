@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -96,35 +96,6 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
-	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
-	# old side and FX2 the new, and every edit between them lands through a
-	# plan compiled from the other side's layout.
-	./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
-	# TEXT AND AN ENUM UNDER A UNION'S SECOND ARM: the shape the compiled plan
-	# had no fixture for, and the one that catches an op borrowing the guard's
-	# own byte (test/tables/UT.schema).
-	./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
-	# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
-	# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
-	# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
-	# to agree on the text (reference-fix 12). C++ already generates the pair;
-	# this stamp did not.
-	./bin/schema generate --lang java --out build/tables-generated-java/fu1 test/tables/FU1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/fu2 test/tables/FU2.schema
-	# THE WIDE-KIND UNIT (docs/SPEC-TABLES.md §15): its int128, uint128 and
-	# fixed-point fields cost it the two ACCELERATORS, so the FIXED FORM is the
-	# whole of its generated table surface — and that form spells a 128-bit
-	# value `new UInt128(hi, lo)`, so the unit is also where the emitter's
-	# Int128/UInt128 support files have to land or the package does not compile.
-	# The C, C# and Go legs have generated this unit all along; the Java leg is
-	# the one that did not, which is why nothing here said so.
-	./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
-	# K1/K2 is the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md §3, §4):
-	# K1 writes grade=Grade, raw=uint16; K2 reads grade=uint16, raw=Grade.
-	# Both fields produce kind_mismatch == 2 in both directions.
-	./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -162,6 +133,75 @@ tables-java-zero-cost: bin/schema
 	@cmp -s build/tables-java-zero/Types.java generated/java/Types.java || \
 		{ echo "ZERO-COST GATE FAILED: a table-free unit's packet output is not the committed one"; exit 1; }
 	@echo "tables Java zero-cost gate: a table-free unit emits no table code at all"
+
+# THE RUNTIME HOME IS FILE-ORDER-PROOF ON JAVA BY CONSTRUCTION, AND NOW IT IS
+# ASSERTED (docs/PORTING.md:1412, J2 — "The runtime home, with a file-order
+# control"). In every port a unit's shared runtime is named by the PACKAGE and
+# never by the file that happens to sort first (docs/SPEC-TABLES.md §19.2), so a
+# schema file that sorts earlier relocates nothing. Java meets that by
+# construction rather than by a rule: a public type lives in a file of its own
+# name, so the shared runtime is ONE FILE PER TYPE — TableBytes.java,
+# TableBlockInfo.java, TableCookStorage.java and the rest — and javatable has no
+# expression that computes a home a file-order rule could reach (no
+# `capitalize(u.Package)`, no `ProtocolIdHome` on this surface). The gate
+# therefore asserts the ten literal names runtimeFileNames() gives, not a grepped
+# marker: on Java the file name IS the claim. The packet surface's protocol-id
+# home is file-ordered ON PURPOSE (ir.ProtocolIdHome is u.Files[0].Base — the
+# trap at internal/codegen/java/java.go:71), and that is not what this gate
+# watches.
+#
+# Seven of the ten bodies are CONSTANT SOURCE — TableBytes, TableBlockRows,
+# TableBlockInfo, TableBlockFieldInfo, TableCookStorage, TableCookInfo and
+# TableCookFieldInfo — so the gate byte-compares those across the two trees. The
+# other three (BuildVersion, TableBlockLayout, TableCookLayout) carry unit facts
+# that a new table legitimately moves, and are asserted by name only.
+.PHONY: tables-java-runtime-home
+tables-java-runtime-home: bin/schema
+	@rm -rf build/runtime-home-java && mkdir -p build/runtime-home-java/src
+	@cp tables/examples/*.schema build/runtime-home-java/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-java/src/Aaa.schema
+	@./bin/schema generate --lang java --out build/runtime-home-java/base tables/examples
+	@./bin/schema generate --lang java --out build/runtime-home-java/added build/runtime-home-java/src
+	@n=0; for t in TableBytes TableBlockRows TableBlockInfo TableBlockFieldInfo TableBlockLayout TableCookInfo TableCookFieldInfo TableCookStorage TableCookLayout BuildVersion; do \
+		b=0; a=0; \
+		[ -f build/runtime-home-java/base/$$t.java ] && b=1 && n=$$((n+1)); \
+		[ -f build/runtime-home-java/added/$$t.java ] && a=1; \
+		if [ "$$b" != "$$a" ]; then \
+			echo "RUNTIME HOME GATE FAILED (Java): $$t.java is in one tree and not the other — the shared runtime moved when an earlier-sorting file joined the unit"; exit 1; \
+		fi; \
+	done; \
+	if [ "$$n" -lt 10 ]; then \
+		echo "RUNTIME HOME GATE FAILED (Java): found $$n runtime types, expected at least 10 — the glob, not the property, is what broke"; exit 1; \
+	fi
+	@for t in TableBytes TableBlockRows TableBlockInfo TableBlockFieldInfo TableCookStorage TableCookInfo TableCookFieldInfo; do \
+		cmp -s build/runtime-home-java/base/$$t.java build/runtime-home-java/added/$$t.java || \
+			{ echo "RUNTIME HOME GATE FAILED (Java): $$t.java's bytes moved when the unit gained a file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Java): every shared runtime type stays in its own <Type>.java, byte for byte, when an earlier-sorting file joins the unit"
+
+# The negative control: the file-order rule put back, in Java's spelling — the
+# byte-access runtime named by the file that sorts first instead of by itself.
+# The sabotage is the ONE edit, applied through `go build -overlay` exactly as
+# the C# (Makefile:1734) and JS (make/js.mk:322) controls do it, so no tracked
+# Go file is ever written. `ir` is already imported in javatable.go.
+.PHONY: tables-java-runtime-home-negative-control
+tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
+	@sed 's|"TableBytes.java": *tableBytesFile(u),|ir.ProtocolIdHome(u) + "Bytes.java": tableBytesFile(u), // SABOTAGED: back to the file order|' \
+		internal/codegen/javatable/javatable.go > build/javaruntime-fileorder.gotext
+	@[ "$$(grep -c SABOTAGED build/javaruntime-fileorder.gotext)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing, or patched more than one line"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/javatable.go":"%s/build/javaruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/javaruntime-overlay.json
+	@go build -overlay=build/javaruntime-overlay.json -o build/schema-javaruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-java/base-sabotage build/runtime-home-java/added-sabotage
+	@./build/schema-javaruntime-sabotaged generate --lang java --out build/runtime-home-java/base-sabotage tables/examples
+	@./build/schema-javaruntime-sabotaged generate --lang java --out build/runtime-home-java/added-sabotage build/runtime-home-java/src
+	@base=$$(cd build/runtime-home-java/base-sabotage && ls *Bytes.java); \
+	 added=$$(cd build/runtime-home-java/added-sabotage && ls *Bytes.java); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the byte-access runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Java): the file-order rule moves the byte-access runtime from $$base to $$added"
 
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
@@ -257,208 +297,6 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_FUZZ_SABOTAGE)/log
 	@echo "negative control: the Java block Open with its two extent bounds removed turns the fuzz oracle RED"
 
-# ---------------------------------------------------------------------------
-# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
-# ---------------------------------------------------------------------------
-#
-# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole of this gate. The
-# reference writes the corpus (`make tables-fixedform-corpus`, one form-3 FILE
-# per root) and this leg reads every one of them, checks the VALUES it decoded,
-# saves them back, and the bytes must be IDENTICAL. A byte this port encodes
-# differently is a byte that does not come back.
-#
-# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2 pair, the V1/V2
-# slide and P1 against P3, and FU1/FU2 (text under an arm: FU2 appends `extra`
-# so a read of FU1's bytes is a compiled plan) — the cases the C++ and C legs
-# run — and the negative controls, of which the one §3.4 names is a reader
-# given the WRONG PLAN for a record, which must come out wrong, and one
-# CORRUPTED-LAYOUT case per named rule a reader holds an untrusted peer's
-# layout to.
-build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedform/src/Main.java
-	@rm -rf build/java-fixedform && mkdir -p build/java-fixedform
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixedform \
-		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java \
-		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
-		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
-		build/tables-generated-java/ut/*.java \
-		build/tables-generated-java/fu1/*.java build/tables-generated-java/fu2/*.java \
-		build/tables-generated-java/scalars/*.java \
-		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
-	@touch $@
-
-# BOTH ASSERTION MODES, and the reason is this form's own: the generated
-# writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
-# default proves they are gone and the bytes are still the reference's.
-.PHONY: tables-java-fixedform
-tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
-	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
-
-# THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
-# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
-# internal/codegen/javatable/fixedversioning_test.go reads the C++ reference's
-# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
-# and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
-# PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
-# leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
-# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
-# file's hash alone (§5.3).
-#
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
-# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
-# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
-# regression rides into a green CI, since the go-test job runs nothing but
-# `go test ./...`. So the target BUILDS THE ORACLE FIRST (the reference's own
-# dump) and then sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a
-# FAILURE: under this name a missing corpus can never pass silently. It is the
-# Java twin of `tables-go-versioning` (make/go.mk) and it is hung off the same
-# job, for the same reason.
-.PHONY: tables-java-versioning
-tables-java-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
-	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
-
-# ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
-# `make tables-java-versioning` could have been asserting nothing and reporting
-# green, which is the failure the Go and Rust legs' own controls are for.
-#
-# WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
-# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
-# that name is the entire answer — it is what tells an operator to ship a newer
-# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
-# name for a file with no layout at all. Every counter still reads refused, so
-# only a suite that checks the NAME can see it, and this control requires the
-# suite to go red and to say which name it wanted.
-#
-# IT REPLACES THE RETIRED `plan_too_large` CONTROL. That one watched the
-# grow-and-retry cap in lineagePlans, which is gone: the plan is sized from the
-# lock's own entry counts by a stated formula (§5.9 #21), so there is no cap to
-# red any more, and the control moved here with its case.
-JAVA_VERSIONING_SABOTAGE := build/java-versioning-sabotage
-.PHONY: tables-java-versioning-negative-control
-tables-java-versioning-negative-control: tables-fixedform-corpus
-	@rm -rf $(JAVA_VERSIONING_SABOTAGE) && mkdir -p $(JAVA_VERSIONING_SABOTAGE)
-	go run ./tools/sabotage -name fixed-form-java-refusal-name \
-		-out $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext internal/codegen/javatable/fixedform.go
-	@grep -q SABOTAGED $(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
-			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
-			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
-		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
-	fi
-	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
-		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
-	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
-	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
-
-# THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
-# matched bench uses, written by the C++ reference with its form-3 writer and
-# stated beside as a VALUE ORACLE, because a reader and a writer that share one
-# offset mistake round trip perfectly and are both wrong. bench/paired has no
-# Java half to run the matched gate through, so this is that gate's shape for
-# this port: the reference is the oracle, at gate time, over the same corpus.
-# It is also where the WIDE KINDS ride — a `fixed(24, 8)`, a `ufixed(8, 8)`, a
-# bare `uint128` and a ranged `int128` — which no other fixed-form corpus has.
-build/java-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
-	@mkdir -p build/java-fixed-corpus
-	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/java-fixed-corpus/corpus
-	./build/java-fixed-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
-		build/java-fixed-corpus/bench_fixed.bin build/java-fixed-corpus/bench_fixed.oracle.json
-	@touch $@
-
-build/java-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/java-fixedform/src/BenchFixed.java make/java.mk
-	@rm -rf build/java-fixed-bench && mkdir -p build/java-fixed-bench/src
-	./bin/schema generate --lang java --out build/java-fixed-bench/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixed-bench \
-		build/java-fixed-bench/src/*.java test/java-fixedform/src/BenchFixed.java
-	@touch $@
-
-.PHONY: tables-java-fixedform-bench
-tables-java-fixedform-bench: build/java-fixed-bench/.stamp build/java-fixed-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixed-bench BenchFixed build/java-fixed-corpus
-	$(JAVA)     -cp build/java-fixed-bench BenchFixed build/java-fixed-corpus
-
-# ITS NEGATIVE CONTROL, and it moves a BYTE rather than a check: one text
-# length written one too high in the fixed writer's template, which the C++
-# reference's corpus must then refuse to match. Without this the byte
-# comparison could be comparing a file with itself and nobody would know.
-JAVA_FIXED_SABOTAGE := build/java-fixed-sabotage
-.PHONY: tables-java-fixedform-negative-control
-tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
-	@rm -rf $(JAVA_FIXED_SABOTAGE) && mkdir -p $(JAVA_FIXED_SABOTAGE)
-	go run ./tools/sabotage -name fixed-form-java-text-length \
-		-out $(JAVA_FIXED_SABOTAGE)/fixedform.gotext internal/codegen/javatable/fixedform.go
-	@grep -q SABOTAGED $(JAVA_FIXED_SABOTAGE)/fixedform.gotext || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_FIXED_SABOTAGE)/fixedform.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_FIXED_SABOTAGE)/overlay.json
-	go run -overlay=$(JAVA_FIXED_SABOTAGE)/overlay.json ./cmd/schema generate --lang java \
-		--out $(JAVA_FIXED_SABOTAGE)/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@grep -q "Length + 1" $(JAVA_FIXED_SABOTAGE)/src/BenchMixedFixed.java || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged writer"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_FIXED_SABOTAGE)/classes \
-		$(JAVA_FIXED_SABOTAGE)/src/*.java test/java-fixedform/src/BenchFixed.java
-	@if $(JAVA) -cp $(JAVA_FIXED_SABOTAGE)/classes BenchFixed build/java-fixed-corpus \
-			> $(JAVA_FIXED_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
-		cat $(JAVA_FIXED_SABOTAGE)/log; exit 1; \
-	fi
-	@grep -q "the first byte differing from the C++ reference" $(JAVA_FIXED_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red, but not on the reference byte match"; \
-		  cat $(JAVA_FIXED_SABOTAGE)/log; exit 1; }
-	@grep -m1 "FAILED:" $(JAVA_FIXED_SABOTAGE)/log
-	@echo "negative control: one byte off the fixed write template reds the reference byte match"
-
-# THE ARM-TEXT CONTROL, and it plants the ENCODING this form replaced: the
-# text op's flavour written over `arg`, which is the ARM ORDINAL a guarded
-# entry is selected by. Under it a `string(N)` under a union's SECOND arm is
-# dropped on every compiled-plan read — the field never lands and no counter
-# moves — and nothing else about the record changes, which is why it went
-# unseen. So the control requires the arm-text conformance case
-# (test/tables/UT.schema) to go RED and to name the check that caught it.
-JAVA_ARM_SABOTAGE := build/java-arm-sabotage
-.PHONY: tables-java-fixedform-arm-negative-control
-tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.stamp
-	@rm -rf $(JAVA_ARM_SABOTAGE) && mkdir -p $(JAVA_ARM_SABOTAGE)
-	go run ./tools/sabotage -name fixed-form-java-arm-text-flavour \
-		-out $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext internal/codegen/javatable/fixedruntime.go
-	@grep -q SABOTAGED $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedruntime.go":"%s/$(JAVA_ARM_SABOTAGE)/fixedruntime.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(JAVA_ARM_SABOTAGE)/overlay.json
-	go build -overlay $(JAVA_ARM_SABOTAGE)/overlay.json -o $(JAVA_ARM_SABOTAGE)/schema ./cmd/schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/ut test/tables/UT.schema
-	@grep -q "SABOTAGED" $(JAVA_ARM_SABOTAGE)/src/ut/TableFixed.java || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged runtime"; exit 1; }
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fu1 test/tables/FU1.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fu2 test/tables/FU2.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx1 test/tables/FX1.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx2 test/tables/FX2.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/p1 test/tables/P1.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/p3 test/tables/P3.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v1 test/tables/V1.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v2 test/tables/V2.schema
-	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/examples tables/examples
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_ARM_SABOTAGE)/classes \
-		$(JAVA_ARM_SABOTAGE)/src/*/*.java test/java-fixedform/src/Main.java
-	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main build/fixedform-corpus \
-			> $(JAVA_ARM_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a text entry on the guard's own lane left the fixed form green"; \
-		cat $(JAVA_ARM_SABOTAGE)/log; exit 1; \
-	fi
-	@grep -q "arm text: a COMPILED plan lands a text field under the SECOND arm" $(JAVA_ARM_SABOTAGE)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the arm's text"; \
-		  cat $(JAVA_ARM_SABOTAGE)/log; exit 1; }
-	@grep -m1 "FAILED:" $(JAVA_ARM_SABOTAGE)/log
-	@echo "negative control: a text entry that borrows the guard's own byte drops the SECOND arm's text and reds"
-
 # THE BYTE-ORDER LEG. Java reads a block and a cook explicitly little-endian, so
 # this reader's order is a CONSTANT rather than the host's — and a file of the
 # other order is refused twice: its magic reads back byte-swapped and its order
@@ -508,6 +346,46 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
+# The cook example is pulled from docs/USAGE.md into a class that reads the
+# fixture cook and supplies the page's `use` hook, compiled with the generated
+# `tables/pointers` package under the consumer's `-Xlint:all -Werror`, and run.
+.PHONY: tables-java-usage
+tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/java-usage && mkdir -p build/java-usage
+	printf 'package graphdemo;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic final class Usage {\n    static int used;\n\n    static void use(int value) { used++; }\n\n    public static void main(String[] args) throws Exception {\n        byte[] bytes = Files.readAllBytes(Path.of(args[0]));\n\n' > build/java-usage/Usage.java
+	sed -n '/<!-- java-table-usage -->/,/<!-- \/java-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/java-usage/Usage.java
+	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> build/java-usage/Usage.java
+	grep -q 'SceneCook.open' build/java-usage/Usage.java || \
+		{ echo "MISSING: docs/USAGE.md carries no java-table-usage example"; exit 1; }
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-usage/classes \
+		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
+	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
+
+# THE ALLOCATION GATE (docs/PORTING.md I14). The gate reads the JDK's feature
+# version and the JVM's per-thread allocation counter, and refuses to certify on
+# any JDK other than the pin — or with no counter at all — without measuring.
+# SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative control;
+# SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does not
+# certify.
+.PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control
+tables-java-allocator: build/java-tables/.stamp
+	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
+	$(JAVA) -cp build/java-tables Main allocator
+
+tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
+	@mkdir -p build/java-allocator-runtime-negative-control
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator > build/java-allocator-runtime-negative-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
+		cat build/java-allocator-runtime-negative-control/log; exit 1; \
+	fi
+	@grep -Fq 'allocation certification requires JDK 17, running 21' build/java-allocator-runtime-negative-control/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the allocation gate refused for another reason'; cat build/java-allocator-runtime-negative-control/log; exit 1; }
+	@echo 'java allocation gate refuses a JDK that is not the pin (wants 21, ran 17)'
+
+test-java: tables-java-allocator tables-java-allocator-runtime-negative-control
+
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
@@ -524,28 +402,18 @@ tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) tables-java-fixedform-negative-control
 	$(MAKE) tables-java-fixedform-arm-negative-control
-	# THE VERSIONING GATE'S OWN CONTROL, beside the byte gate's. It was written
-	# and registered in make/negative-controls.json and then hung off NO recipe,
-	# so nothing but the negative-controls matrix ever ran it and `make` itself
-	# could not. It sits HERE and not in `test-java` because it rebuilds the
-	# compiler over a sabotaged emitter and runs both columns of every §5.7 row
-	# behind it — the expensive half, which is what this target is for (above).
+# THE VERSIONING GATE'S OWN CONTROL, beside the byte gate's. It was written
+# and registered in make/negative-controls.json and then hung off NO recipe,
+# so nothing but the negative-controls matrix ever ran it and `make` itself
+# could not. It sits HERE and not in `test-java` because it rebuilds the
+# compiler over a sabotaged emitter and runs both columns of every §5.7 row
+# behind it — the expensive half, which is what this target is for (above).
 	$(MAKE) tables-java-versioning-negative-control
+$(MAKE) tables-java-usage
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
-
-# THE PAIRED UNIT, in the discovered generation graph beside the four the
-# driver already tracks (c, cpp, cs, go each have this rule in their own .mk).
-# Java's tree was committed without one, so `make generated/*/.stamp` — which
-# is what CI's `generated` job discovers and runs — walked past it and the
-# committed Java went stale against its own emitter without turning anything
-# red. The paired driver regenerates this tree on `-mode build`, which is how
-# the staleness surfaced at all: as a dirty checkpoint refusing a fast pass.
-generated/bench/paired/java/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/java.mk
-	@mkdir -p generated/bench/paired/java
-	./bin/schema generate --lang java --out generated/bench/paired/java bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@touch $@
+	$(MAKE) tables-java-runtime-home-negative-control
 
 generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
@@ -592,9 +460,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
-		build/tables-generated-java/p3/*.java \
-		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
-		test/conformance/java/src/Driver.java
+		build/tables-generated-java/p3/*.java test/conformance/java/src/Driver.java
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
@@ -657,12 +523,10 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-standalone
 	$(MAKE) tables-java-zero-cost
+	$(MAKE) tables-java-runtime-home
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
-	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
-	$(MAKE) tables-java-fixedform
-	$(MAKE) tables-java-fixedform-bench
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
@@ -673,6 +537,22 @@ TOOLCHAIN_LEGS     += java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 CONFORMANCE_ENV    += JAVA=$(JAVA)
+
+# THE JAVA TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `google-java-format`
+# is the language's one formatting authority, so an emitter that has to be
+# hand-reflowed is an emitter that drifts. The gate holds every generated Java
+# table unit to what the formatter would write, and SKIPS cleanly where the
+# formatter is not on PATH.
+GOOGLE_JAVA_FORMAT ?= google-java-format
+.PHONY: tables-java-clean
+tables-java-clean: build/tables-generated-java/.stamp
+	@if ! command -v $(GOOGLE_JAVA_FORMAT) >/dev/null 2>&1; then \
+		echo "SKIP tables-java-clean: $(GOOGLE_JAVA_FORMAT) is not installed"; exit 0; \
+	fi
+	$(GOOGLE_JAVA_FORMAT) --dry-run --set-exit-if-changed $$(find build/tables-generated-java -name '*.java')
+	@echo "tables Java: google-java-format clean over the generated table units"
+test-java: tables-java-clean
+
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/java/source

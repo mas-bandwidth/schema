@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -28,11 +27,7 @@ func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string
 
 func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
 	t.Helper()
-	return runGeneratedUnit(t, unitFrom(t, schema), testSource, edit, flags...)
-}
-
-func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
-	t.Helper()
+	u := unitFrom(t, schema)
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatal(err)

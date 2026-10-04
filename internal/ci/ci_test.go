@@ -316,86 +316,77 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	}
 }
 
-// jobKeyRe matches a top-level job key, `  <name>:` at exactly two columns —
-// the indent that separates a job from the four-column keys and steps inside it.
-var jobKeyRe = regexp.MustCompile(`^  [A-Za-z0-9_-]+:$`)
+// ciMakeInvocation matches one `make` invocation on a workflow line and
+// captures its argument list. compiler/porting_test.go's workflowMake reader
+// carries the same shape for the register gate.
+var ciMakeInvocation = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
 
-// jobIfCondition returns the `if:` value of one top-level job name in a
-// workflow body, or "" when the job carries no gate (and so runs on every
-// trigger the workflow handles).
-func jobIfCondition(data, job string) string {
-	inJob := false
-	for raw := range strings.SplitSeq(data, "\n") {
-		trimmed := strings.TrimSpace(raw)
-		if !inJob {
-			if raw == "  "+job+":" {
-				inJob = true
-			}
+// ciMakeTargetsAfter returns the target names in a make argument list: flags,
+// variable assignments and shell substitutions are not targets.
+func ciMakeTargetsAfter(args string) []string {
+	var out []string
+	for tok := range strings.FieldsSeq(args) {
+		if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "=$\"'{}") {
 			continue
 		}
-		// The block ends at the next sibling job key or any top-level key: a
-		// line that is not a comment, and either stands at fewer than two
-		// columns or names another job. Inter-job prose is comment-only.
-		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			if !strings.HasPrefix(raw, "  ") || jobKeyRe.MatchString(raw) {
-				return ""
-			}
-		}
-		if ifCond, ok := strings.CutPrefix(trimmed, "if:"); ok {
-			return strings.TrimSpace(ifCond)
-		}
+		out = append(out, tok)
 	}
-	return ""
+	return out
 }
 
-// TestGeneratedTreeAndPinsRunOnEveryPullRequest (issue #1421) refuses the one
-// gate that must NEVER be behind the `full-ci` label. The `generated` job is
-// the only check that names a stale committed generated/ tree, and it lives in
-// ci-full.yml — whose every job skipped itself on an unlabelled pull request.
-// A pull request into fixed-table-form runs neither this file nor the leg gate
-// (ci-fast.yml's gate is `github.base_ref == 'main'`), so #1395 landed a stale
-// generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it. A
-// "the committed tree is what this compiler emits" question is an ITERATION
-// question by this file's own rule, so it belongs on every pull request and
-// not behind a label. `pins` answers the same question for testdata/ and is
-// dropped from the label gate with it.
-func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+// ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
+// ci.yml, invokes by name, comments stripped.
+func ciPullRequestMakeTargets(t *testing.T, root string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ci.yml is the pull-request gate this test reads: %v", err)
 	}
-	for _, job := range []string{"generated", "pins"} {
-		cond := jobIfCondition(string(data), job)
-		if cond == "" {
-			continue // no gate: runs on every trigger, every pull request with it
-		}
-		if strings.Contains(cond, "full-ci") {
-			t.Errorf("ci-full.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
+	var targets []string
+	for _, l := range lines("ci.yml", string(data)) {
+		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
+			targets = append(targets, ciMakeTargetsAfter(m[1])...)
 		}
 	}
+	return targets
 }
 
-// TestModernizeRunsOnEveryPullRequest (issue #1424) refuses the modernize check
-// being gated behind the `full-ci` label. #1422 landed two lines in
-// internal/ci/ci_test.go that modernize flags; its PR passed only because the
-// full `lint` job skips an unlabelled pull request into fixed-table-form, and
-// the red then fired on the branch push alone — after merge. So modernize must
-// ride the fast lane: ci-fast.yml's `lint-fast` has no `full-ci` gate and runs
-// on every pull-request push, and the `modernize` step is where the same check
-// that bites on the push bites on the PR.
-func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
-	if err != nil {
-		t.Fatal(err)
+// ciInvokesTarget reports whether the targets a workflow invokes include name
+// itself or a shard of it, `name-fast` and the like.
+func ciInvokesTarget(targets []string, name string) bool {
+	for _, target := range targets {
+		if target == name || strings.HasPrefix(target, name+"-") {
+			return true
+		}
 	}
-	body := string(data)
+	return false
+}
 
-	cond := jobIfCondition(body, "lint-fast")
-	if strings.Contains(cond, "full-ci") {
-		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
-	}
-	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
-		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+// TestTheFixedFormHarnessesRunPerPullRequest (issue #857) is a listing check:
+// every fixed-form harness the tables page's build gate names must be invoked
+// by some job in the pull-request gate, .github/workflows/ci.yml, so a change
+// to what the loader takes cannot leave a red tip behind two green pull
+// requests.
+//
+// The class is issue #744's: a leg that exists, is green wherever it runs, and
+// is invoked by no pull-request job. The two fixed-form harnesses,
+// `make tables-fixedform` (the C++ reference) and `make tables-c-fixedform`
+// (the C leg), lived only in `make test`, which nightly certification runs. On
+// 2026-09-10 the tip of fixed-table-form did not compile —
+// `test/tables/fixedform_main.cpp:984` and `test/c-tables/fixedform_v1.c:75`,
+// too few arguments to `*FixedLoad` — while #855 (which added the plan-cache
+// argument) and #856 (which added a caller) were each green at their own head.
+func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
+	targets := ciPullRequestMakeTargets(t, repoRoot(t))
+
+	// THE LISTING. Both harnesses the fixed form's build gate names, and the
+	// fast shard of each counts: `make test` still runs the pair with the
+	// sanitized twin in nightly certification.
+	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
+	for _, harness := range fixedFormHarnesses {
+		if !ciInvokesTarget(targets, harness) {
+			t.Errorf("no job in ci.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci.yml.", harness)
+		}
 	}
 }
 

@@ -249,10 +249,10 @@ quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
 a positional array whose bound folds from an enum is REFUSED BY NAME in a
 table body and a union arm, and the same array held by a `type` a table
-closure reaches is ruled on schema#606, by that refusal or by a keyed wire
-(SPEC-TABLES.md §2.4, §11), so
-`[E]T` is the table form and an enum a table reaches moves no slot when it
-changes. Flags is therefore the whole of the exception, and there is no
+closure reaches rides KEYED on the table wire (schema#606), so its kind `13`
+body moves no slot when the enum changes (SPEC-TABLES.md §2.4, §11): `[E]T` is
+the table form and a `type`-held enum-extent array keys like it. Flags is
+therefore the whole of the exception, and there is no
 second.
 
 **What reachability does not change is what the projection MEANS.** The
@@ -661,8 +661,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
                                                                  // nothing follows a qualification
-Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
-                                                                 //            cpp_include = "a.h"
+Attr        = ident "=" ( ConstExpr | QualIdent | string )       // valued:    min = 0, max = 100,
+                                                                 //            cpp_include = "a.h",
+                                                                 //            cpp_native = math::Vec2
             | ident .                                            // valueless: a TAG (§4.2) — legal
                                                                  // in every qualification section,
                                                                  // in an open namespace
@@ -670,6 +671,9 @@ Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    m
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
                                                                  // or a quoted string)
+QualIdent   = ident { "::" ident } .                             // a `::`-qualified C++ type name:
+                                                                 // the global spelling the emitter
+                                                                 // writes verbatim (cpp_native, §4.2)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 
@@ -1090,10 +1094,14 @@ property (§4.11) survive untouched.
 
 The rules:
 
-- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type
-  name. **`cpp_include` takes a quoted header path** — the header declaring
-  it. They go together: one without the other is an error. String literals
-  (`"..."`, no escapes) exist in the grammar for attribute values only.
+- **`cpp_native` takes a C++ type name** — a bare identifier names a global
+  type, and a `::`-qualified name (`math::Vec2`) names one inside a
+  namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
+  the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
+  engine type needs no global alias. **`cpp_include` takes a quoted header
+  path** — the header declaring it. They go together: one without the other
+  is an error. String literals (`"..."`, no escapes) exist in the grammar for
+  attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
@@ -2315,7 +2323,16 @@ Per `type`, per target:
    (generated validation refusals return `false` latching nothing, so callers
    tell the two channels apart exactly as in C#). The consumed size (§5)
    surfaces per target idiom — a success value that carries bits consumed
-   where the idiom allows, an out-parameter where it does not.
+   where the idiom allows, an out-parameter where it does not. **In ELIXIR it
+   is a SECOND ENTRY and not a second argument**, a binary carrying no
+   position: `read_<name>_bits(data, num_bits)` returns `{:ok, value,
+   bits_read}` or `:error`, and `read_<name>/2` is that function with the count
+   dropped. Both are generated for every `type` and every `union`, the verdict
+   and the refusals identical; `read_<name>_bits` is what frames a second
+   object behind the first in one buffer, the next one beginning at
+   `div(bits_read + 7, 8)` bytes in. The name is claimed like any other
+   generated name, so a `type FrameBits` beside a `type Frame` is refused
+   rather than silently taking the same binding (§4.11).
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer

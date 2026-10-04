@@ -1,0 +1,12 @@
+// The [[.Lang]] leg's fixture unit, laid down by `schema new-leg [[.Lang]]`.
+package fixture
+
+const MaxHealth = 100
+
+enum Team { red, blue, spectator }
+
+type Thing
+{
+    health int32 | min = 0, max = MaxHealth
+    team   Team
+}

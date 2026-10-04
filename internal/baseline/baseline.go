@@ -67,6 +67,16 @@ const FileName = "tables.baseline"
 // every update.
 const HistoryHeading = "## history"
 
+// RetiredHeading opens the RETIRED-NAMES LEDGER inside the file (issue #441,
+// docs/SPEC-TABLES.md §18.4): the register of every field, enum variant and
+// union arm a `--update` has removed, with the wire id it rode under and the
+// day it was retired. [Update] appends to it and never drops an entry, so a
+// name re-added years later meets the record of its own retirement and is
+// refused until a `--update --reason` acknowledges the resurrection. It is
+// the one fact in the file the live projection cannot regenerate, which is
+// why it lives here and not in the compiler.
+const RetiredHeading = "## retired"
+
 const magic = "schema-tables-baseline"
 
 // A Unit is one baseline: the projection of a unit's table closure, plus the
@@ -82,6 +92,25 @@ type Unit struct {
 	// History is the `## history` section's lines, verbatim and in file
 	// order. Rendering writes them back untouched; an update appends.
 	History []string
+
+	// Retired is the `## retired` ledger (issue #441): one entry per field,
+	// enum variant and union arm a `--update` has removed, in file order.
+	// [Update] appends to it and never drops an entry; [Render] leaves it
+	// empty, because the live projection cannot know what is gone.
+	Retired []Retired
+}
+
+// A Retired is one name the closure no longer carries: a field, an enum
+// variant or a union arm a `--update` removed. It is the ledger Protobuf's
+// `reserved` is, baseline-only and with no wire cost.
+type Retired struct {
+	Vocab string // "field", "enum-variant" or "union-arm"
+	Name  string // its fully-qualified name when it was retired
+	Id    uint64 // the wire id it rode under
+	Date  string // the day --update recorded the retirement
+	// Revived is the day a `--update --reason` acknowledged a re-added name
+	// or id, and "" while the retirement still refuses the reuse.
+	Revived string
 }
 
 // A Table is one member of the table closure: a `table` declaration, or a
@@ -506,6 +535,16 @@ func (u *Unit) Text() string {
 			b.WriteString("\n")
 		}
 	}
+	if len(u.Retired) > 0 {
+		fmt.Fprintf(&b, "\n%s\n", RetiredHeading)
+		for _, r := range u.Retired {
+			fmt.Fprintf(&b, "    %s %s id=0x%016x date=%s", r.Vocab, r.Name, r.Id, r.Date)
+			if r.Revived != "" {
+				fmt.Fprintf(&b, " revived=%s", r.Revived)
+			}
+			b.WriteString("\n")
+		}
+	}
 	if len(u.History) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", HistoryHeading)
 		for _, line := range u.History {
@@ -551,6 +590,10 @@ func Parse(path string, data []byte) (*Unit, error) {
 				u.History = u.History[1:]
 			}
 			break
+		}
+		if line == RetiredHeading {
+			cur = "retired"
+			continue
 		}
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -684,6 +727,38 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 				path, lineno, fields[1], val, len(fl.Variants))
 		}
 		fl.Variants = append(fl.Variants, fields[1])
+	case "retired":
+		// `    <vocab> <name> id=0x… date=… [revived=…]` (issue #441): the
+		// ledger line names what was removed, the id it rode under and the
+		// day, and `revived=` marks a resurrection `--update` acknowledged.
+		if len(fields) < 4 {
+			return bad()
+		}
+		r := Retired{Vocab: fields[0], Name: fields[1]}
+		for _, tok := range fields[2:] {
+			k, val, ok := strings.Cut(tok, "=")
+			if !ok {
+				return bad()
+			}
+			switch k {
+			case "id":
+				id, err := strconv.ParseUint(strings.TrimPrefix(val, "0x"), 16, 64)
+				if err != nil {
+					return bad()
+				}
+				r.Id = id
+			case "date":
+				r.Date = val
+			case "revived":
+				r.Revived = val
+			default:
+				return bad()
+			}
+		}
+		if r.Date == "" {
+			return bad()
+		}
+		u.Retired = append(u.Retired, r)
 	default:
 		return bad()
 	}

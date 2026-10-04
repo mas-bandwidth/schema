@@ -26,6 +26,7 @@ goes red everywhere localises nothing:
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
 | `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-cpp` | the C++ walk's field offset, in the emitter | `cpp / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |

@@ -303,13 +303,19 @@ fn read_u32(p: *const u8) -> u32 {
     unsafe { std::ptr::read_unaligned(p as *const u32) }
 }
 
-fn open_block(name: &str, data: &[u8], extent: i64) -> bool {
-    let storage = Aligned::new(data, extent);
+// `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes past
+// one. An unaligned base is a pointer fact and not a file fact, so the bytes are
+// copied AT the base the column states and the base-alignment clause is the one
+// that must refuse them.
+fn open_block(name: &str, data: &[u8], extent: i64, lead: usize) -> bool {
+    let claim = if extent < 0 { data.len() as i64 } else { extent };
+    let storage = Aligned::placed(data, claim, lead);
+    let base = storage.at(lead);
     unsafe {
         if name.starts_with("block_render") {
-            blockdemo::RenderFrameBlock::open(storage.base, storage.bytes).is_some()
+            blockdemo::RenderFrameBlock::open(base, storage.bytes).is_some()
         } else if name.starts_with("block_padded") {
-            blockdemo::PaddedFrameBlock::open(storage.base, storage.bytes).is_some()
+            blockdemo::PaddedFrameBlock::open(base, storage.bytes).is_some()
         } else {
             fail(&format!("no block named {name}"))
         }
@@ -333,7 +339,7 @@ fn surface_block_dump(manifest: &Manifest, out: &str) {
 fn surface_block(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("block") {
         let data = slurp(&f[3]);
-        let verdict = if open_block(&f[1], &data, -1) {
+        let verdict = if open_block(&f[1], &data, -1, 0) {
             "open\n"
         } else {
             "refuse\n"
@@ -360,7 +366,7 @@ fn foreign(data: &[u8]) -> Vec<u8> {
 fn surface_block_foreign(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("block") {
         let data = foreign(&slurp(&f[3]));
-        let verdict = if open_block(&f[1], &data, -1) {
+        let verdict = if open_block(&f[1], &data, -1, 0) {
             "open\n"
         } else {
             "refuse\n"
@@ -387,12 +393,14 @@ fn surface_forgery(manifest: &Manifest, out: &str) {
         }
         let data = slurp(&f[4]);
         let extent: i64 = parse_int(&f[5]);
-        // every block row is read out of an ALIGNED base; the pointer column
-        // is the cook battery's, and it is read here rather than assumed
-        if f[6] != "0" {
-            fail(&format!("{}: a block forgery with pointer {}", f[1], f[6]));
-        }
-        let verdict = if open_block(&f[3], &data, extent) {
+        // the POINTER column is the buffer the caller holds: 0 an aligned base,
+        // 1..63 that many bytes past one. The block battery carries one such
+        // row, and it is read here rather than assumed.
+        let null_buffer = f[6] == "null";
+        let lead = if null_buffer { 0 } else { parse_int(&f[6]) as usize };
+        let verdict = if null_buffer {
+            "refuse\n"
+        } else if open_block(&f[3], &data, extent, lead) {
             "open\n"
         } else {
             "refuse\n"
