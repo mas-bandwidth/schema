@@ -75,6 +75,7 @@ type tableGen struct {
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
 
+	lineage       map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	needsMath     bool
 	unsafeUsed    bool
 	wireSerial    int
@@ -92,7 +93,6 @@ type tableGen struct {
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
 	unionArmSlot map[string]int
-	lineage      map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 }
 
 func wireIdOrdinals(u *ir.Unit) map[uint64]int {
@@ -156,43 +156,6 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
-// runtimeHome is the basename of the file that carries a unit's shared Go table
-// runtime — TableReport, the reflection descriptors, the wire and message
-// runtimes, the text walk's home, the region machinery when the unit is
-// variable. IT IS THE PACKAGE, and nothing else.
-//
-// A Go package is one namespace across its files, so a shared runtime need only
-// be emitted ONCE, ANYWHERE — and "anywhere" wants a name that does not move.
-// Any rule that picks a FILE picks it off the file order, and relocates the
-// runtime the day the unit gains a file that sorts earlier: correct output, and
-// a diff nobody can read (#347). The package names one home per unit and never
-// moves. A unit whose own <Package>.schema exists carries the runtime in that
-// file's generated output — same name, one file, no collision; every other unit
-// gets the file emitted FOR it, which is what makes the home unconditional.
-//
-// A file basename that differs from the package ONLY BY CASE is the same file
-// name on a case-insensitive filesystem and two on a case-sensitive one, so the
-// match is case-insensitive and the FILE's spelling wins.
-func runtimeHome(u *ir.Unit) string {
-	home := ir.GoExportName(u.Package)
-	for _, f := range u.Files {
-		if strings.EqualFold(f.Base, home) {
-			return f.Base
-		}
-	}
-	return home
-}
-
-// unitHasFile reports whether a schema file's basename is base.
-func unitHasFile(u *ir.Unit, base string) bool {
-	for _, f := range u.Files {
-		if f.Base == base {
-			return true
-		}
-	}
-	return false
-}
-
 // Generate returns <Base>Table.go (plus the accelerators) for every file of a
 // unit that declares tables, and nothing when it declares none — a table-free
 // unit's generated tree is byte-identical with or without this package.
@@ -200,6 +163,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
 
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2). A nil map is a build with no lock, and
+// every table then carries the one entry it can always compute: its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -218,7 +185,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	regional := len(variableTableNames(u)) > 0
 
 	closure := ir.TableClosure(u)
-	home := runtimeHome(u)
+	home := ir.ProtocolIdHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	// the identity pair of an enum is emitted ONCE per unit, by the file that
 	// declares it: a Go package is one namespace across its files, so a second
@@ -227,50 +194,41 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
 	idOrdinal := wireIdOrdinals(u)
-	// the shared runtime is emitted ONCE, into the package's own home file,
-	// whether or not a schema file names the package (docs/SPEC-TABLES.md
-	// §19.2). Extracted so the synthesized home and a file that happens to be
-	// named for the package emit the same bytes.
-	emitRuntime := func(g *tableGen) {
-		g.needsMath = true
-		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
-		g.pf("%s", tableCookWriteSource(u))
-		if regional {
-			g.emitRegionRuntime(blocks)
-			g.emitRetainRuntime()
-		}
-		if anyKeyed {
-			g.pf("%s", tableKeyedAccessor)
-		}
-		if len(armSlots) > 0 {
-			g.pf("// One descriptor per union declaration, initialized after package data.\n")
-			g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
-			if !regional {
-				for _, file := range u.Files {
-					for _, decl := range file.Decls {
-						if un, ok := decl.(*ir.Union); ok {
+	for _, f := range u.Files {
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
+		members := fileMembers(f, closure)
+		if g.home {
+			g.needsMath = true
+			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
+			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
+			g.pf("%s", tableCookWriteSource(u))
+			if regional {
+				g.emitRegionRuntime(blocks)
+				g.emitRetainRuntime()
+			}
+			if anyKeyed {
+				g.pf("%s", tableKeyedAccessor)
+			}
+			if len(armSlots) > 0 {
+				g.pf("// One descriptor per union declaration, initialized after package data.\n")
+				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
+				if !regional {
+					for _, file := range u.Files {
+						for _, decl := range file.Decls {
+							if un, ok := decl.(*ir.Union); ok {
+								if _, used := armSlots[un.Name]; used {
+									g.emitUnionRow(un)
+								}
+							}
+						}
+						for _, un := range file.TableUnions {
 							if _, used := armSlots[un.Name]; used {
 								g.emitUnionRow(un)
 							}
 						}
 					}
-					for _, un := range file.TableUnions {
-						if _, used := armSlots[un.Name]; used {
-							g.emitUnionRow(un)
-						}
-					}
 				}
 			}
-		}
-	}
-	runtimeWritten := false
-	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
-		members := fileMembers(f, closure)
-		if g.home {
-			emitRuntime(g)
-			runtimeWritten = true
 		}
 		for _, un := range f.TableUnions {
 			g.emitTableUnion(un)
@@ -309,6 +267,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				}
 			}
 		}
+		g.emitFixedForm(members)
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
@@ -322,19 +281,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			return nil, err
 		}
 		out[f.Base+"Table.go"] = src
-	}
-	// No file of the unit is named for the package, so the home is emitted FOR
-	// the unit rather than for a file. The runtime lands in <Package>Table.go
-	// either way — that is the whole rule, and it is what keeps an
-	// earlier-sorting file from moving it (§19.2).
-	if !runtimeWritten {
-		g := &tableGen{unit: u, home: true, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal, lineage: lineage}
-		emitRuntime(g)
-		src, err := g.assemble()
-		if err != nil {
-			return nil, err
-		}
-		out[home+"Table.go"] = src
 	}
 
 	// the TEXT form (docs/SPEC-TABLES.md §16): one generic walk over the
@@ -368,13 +314,7 @@ func fileMembers(f *ir.File, closure map[string]bool) []*ir.Struct {
 
 func (g *tableGen) assemble() ([]byte, error) {
 	var h strings.Builder
-	// a home the unit has no file for is generated FOR THE UNIT, and says so —
-	// there is no <Base>.schema to name
-	if g.file != nil {
-		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
-	} else {
-		fmt.Fprintf(&h, "// Code generated by the schema compiler for package %s. DO NOT EDIT.\n", g.unit.Package)
-	}
+	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
@@ -415,11 +355,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString(g.body.String())
 	src, err := format.Source([]byte(h.String()))
 	if err != nil {
-		base := runtimeHome(g.unit)
-		if g.file != nil {
-			base = g.file.Base
-		}
-		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", base, err)
+		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}
 	return src, nil
 }
@@ -541,9 +477,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // tableRuntime is the unit's shared table runtime, emitted into ONE file per
-// unit (<Package>Table.go, the package's home). C++ emits it into every header
-// behind an include guard; a Go package is one namespace across its files, so a
-// second copy would be a redeclaration error instead.
+// unit (the protocol-id home). C++ emits it into every header behind an
+// include guard; a Go package is one namespace across its files, so a second
+// copy would be a redeclaration error instead.
 func tableRuntime() string {
 	return `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -561,6 +497,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
+	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
+	// reports it too — the operator's other answer, a layout this build served
+	// and has retired.
+	LayoutHash uint64
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----

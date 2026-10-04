@@ -409,7 +409,7 @@ tables-java-release:
 # compiler over a sabotaged emitter and runs both columns of every §5.7 row
 # behind it — the expensive half, which is what this target is for (above).
 	$(MAKE) tables-java-versioning-negative-control
-$(MAKE) tables-java-usage
+	$(MAKE) tables-java-usage
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control

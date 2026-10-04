@@ -7,28 +7,6 @@ const Js Backend = 1 << 7
 
 func init() {
 	define(Js,
-		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
-		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
-		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
-		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},
-		Name{Name: "TableJson", What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope, Dart at library scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},
-		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
-		// and every declaration row with no `///` block names this ONE
-		// definition, so absence costs a unit no string data and a printer
-		// concatenates doc columns with no null test. Every descriptor row a
-		// VIEW FILE writes names it too, so it is claimed in EVERY unit
-		// beside the descriptor primitives above (docs/SPEC-TABLES.md §8.2,
-		// §11) rather than only where a table rides.
-		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
-		Name{Name: "TableBitsToFloat", What: "u32 bits -> float"},
-		Name{Name: "TableFloatToBits", What: "float -> u32 bits"},
-		Name{Name: "TableBitsToDouble", What: "u64 bits -> double"},
-		Name{Name: "TableDoubleToBits", What: "double -> u64 bits"},
-		// JavaScript's four go through one shared eight-byte DataView, which is a
-		// module-level binding like any other and takes a name in this family for
-		// that reason: a SCREAMING_SNAKE spelling would have been a module-scope
-		// name outside every claim the front end makes.
-		Name{Name: "TableBitsScratch", What: "the JavaScript bit helpers' shared eight-byte DataView"},
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableBlockLayout", What: "the layout contract's check, run once. C# spells it a nested class of Schema; Java puts it at package scope and JavaScript at module scope, so the claim is the UNION"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},

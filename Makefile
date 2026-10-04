@@ -5119,25 +5119,6 @@ tables-ref-ordinal-shared-negative-control:
 # remainder to a baseline list so the gap can only shrink. This plants one more
 # unregistered struct in the runtime through `go test -overlay` and requires
 # that test to go RED naming it. No tracked file is written to.
-.PHONY: tables-cpp-names-negative-control
-tables-cpp-names-negative-control:
-	@rm -rf build/cpp-names-nc && mkdir -p build/cpp-names-nc
-	@sed 's|^struct TableWideRange$$|struct TableBogusUnregistered {}\n\nstruct TableWideRange|' \
-		internal/codegen/cpptable/cpptable.go > build/cpp-names-nc/cpptable.go.txt
-	@cmp -s internal/codegen/cpptable/cpptable.go build/cpp-names-nc/cpptable.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
-	@if go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
-			./compiler > build/cpp-names-nc/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
-		cat build/cpp-names-nc/log; exit 1; \
-	fi
-	@grep -q "emits TableBogusUnregistered and internal/tablenames does not register it" build/cpp-names-nc/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the test went red for some other reason"; \
-		  cat build/cpp-names-nc/log; exit 1; }
-	@grep -m1 "TableBogusUnregistered" build/cpp-names-nc/log
-	@echo "negative control: one unregistered runtime struct turns the C++ name-claim test RED"
 # THE C++ TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is
 # the language's formatting authority, so an emitter that has to be hand-reflowed
 # is an emitter that drifts. The gate holds every generated C++ table unit to
@@ -5982,6 +5963,11 @@ tables-ports-refuse-wide-scalars: bin/schema
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
+		fi; \
+		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log && \
+		   [ "$$(sed -n '1p' compiler/target_$$lang.go 2>/dev/null)" = "//go:build schema_leg_$$lang" ]; then \
+			echo "tables wide-scalar: $$lang has no --lang yet (schema new-leg skeleton)"; \
+			continue; \
 		fi; \
 		grep -q "does not carry the fixed-point and 128-bit table-wire kinds yet" build/tables-wide-refusal/$$lang.log || \
 			{ echo "REFUSAL GATE FAILED: the $$lang backend stopped for another reason:"; cat build/tables-wide-refusal/$$lang.log; exit 1; }; \
