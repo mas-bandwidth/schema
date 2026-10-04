@@ -14,6 +14,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
+| `mapwalk/` | map-walk gate instrument | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |

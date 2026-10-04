@@ -618,7 +618,7 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	}
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		asBig := fixedIsBig(f.Type)
-		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
+		lo, hi := fixedIntLit(rlo, asBig), fixedIntLit(rhi, asBig)
 		low, high := fixedClampEnds(f)
 		switch {
 		case low && high:
@@ -633,7 +633,7 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	w := fixedStorageBytes(f.Type)
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
-		lit := jsIntLit(maxv, fixedIsBig(f.Type))
+		lit := fixedIntLit(maxv, fixedIsBig(f.Type))
 		g.pf("%sif (%s > %s) { %s = %s; report.clamped++; }\n", ind, expr, lit, expr, lit)
 	}
 }
@@ -688,7 +688,7 @@ func fixedClampEnds(f *ir.Field) (low, high bool) {
 	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
-func jsIntLit(n *big.Int, asBig bool) string {
+func fixedIntLit(n *big.Int, asBig bool) string {
 	if n == nil {
 		return "0"
 	}

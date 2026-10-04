@@ -924,11 +924,11 @@ import { readFileSync } from "node:fs";
 // The WRITE half is here for the one case that makes its own file: two
 // generations of one table have no spelling in one module, so a case whose file
 // is not the reference's writes it with ONE probe and reads it with another.
-import { %[1]sFixedLoad, %[1]sFixedNewPlan, %[1]sFixedSave, %[1]sFixedMeasure } from "./ProbeTable.js";
+import { %[1]sFixedLoad, %[1]sFixedNewPlan, %[1]sFixedSave, %[1]sFixedMeasure } from "./ProbeFixed.js";
 // THE VALUE'S CLASS AND ITS RESET COME FROM THE UNIT'S RUNTIME HOME: a fixed
 // table's storage class is emitted there beside the shared runtime, because an
 // ES module is file-scoped (fixedmodule.go's home rule).
-import { %[1]s, Init%[1]s, TableFixedReport, TableFixedRefusal, TableFixedRefusalName, TableFixedResetReport } from "./%[2]sTable.js";
+import { %[1]s, Init%[1]s, TableFixedReport, TableFixedRefusal, TableFixedRefusalName, TableFixedResetReport } from "./%[2]sFixed.js";
 
 let failures = 0;
 function fail(why) { console.error("FAIL: " + why); failures++; }

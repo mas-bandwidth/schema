@@ -320,7 +320,7 @@ the source list at the end.
 | Editor support | none yet | plugins exist | VS Code, IntelliJ, Vim (PB-3p) |
 | Debug names | `EnumName`, `FlagNames` in every target, allocation-free (USAGE) | `--gen-name-strings` (FB-flatc) | via descriptors (PB-message) |
 | Embeddable compiler | a Go library; `cmd/schema` is a thin client; your generator walks the IR (USAGE) | `libflatbuffers` | protoc plugins (PB-3p) |
-| Converters | — | `flatc --proto` reads `.proto` (FB-flatc) | — |
+| Converters | not declined, not built: `schema import --proto` (and `--fbs`) emits a first-draft `.schema` with the bounds left for the author to declare, worth doing after 3.0.0 if a team asks ([#477](https://github.com/mas-bandwidth/schema/issues/477)) | `flatc --proto` reads `.proto` (FB-flatc) | — |
 | Languages | nine on the type wire held byte-identical in CI; tables landing per the matrix on #366; four more tracked on #381 | thirteen listed, coverage uneven (FB-support) | ten first-party, forty-plus third-party (PB-3p) |
 
 ## Sources

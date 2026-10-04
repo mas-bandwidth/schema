@@ -3,7 +3,7 @@ package jstable
 // fixedRuntime is the FIXED FORM's shared JavaScript runtime
 // (docs/SPEC-TABLES.md §3.4): the plan, the ONE read loop, the layout reader,
 // the plan compiler and the sixty-four-bit hash. It is emitted ONCE PER UNIT
-// into the unit's <Package>Table.js, exactly as the block form's runtime is
+// into the unit's <Package>Fixed.js, exactly as the block form's runtime is
 // (block.go), and every other module of the unit imports from there.
 //
 // THE READER'S OWN STORAGE IN THIS LANGUAGE IS THE CANONICAL BODY IMAGE.

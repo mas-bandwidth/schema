@@ -17,6 +17,7 @@
         "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-fixedform-run-copy-negative-control",
@@ -260,6 +261,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
@@ -497,18 +499,20 @@
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-allocator-runtime-negative-control",
         "tables-dart-fixed-form-negative-control",
-        "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-runtime-home-negative-control",
+        "tables-dart-standalone-negative-control",
+        "tables-dart-versioning-negative-control"
       ],
       "dart": "3.13.2"
     },
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine.",
+      "why": "the Java port's controls and its four packet families: the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it, beside the runtime home's own control. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine.",
       "targets": [
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
@@ -519,6 +523,7 @@
         "tables-java-fixedform-arm-negative-control",
         "tables-java-fixedform-negative-control",
         "tables-java-fuzz-negative-control",
+        "tables-java-runtime-home-negative-control",
         "tables-java-versioning-negative-control"
       ],
       "java": "21"
@@ -531,10 +536,12 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
+        "tables-elixir-accessor-negative-control",
         "tables-elixir-block-lead-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
         "tables-elixir-runtime-pin-negative-control",
+        "tables-elixir-slot-negative-control",
         "tables-elixir-versioning-negative-control"
       ],
       "otp": "29.0.5",
@@ -556,6 +563,7 @@
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
         "tables-go-slot-negative-control",
+        "tables-go-runtime-home-negative-control",
         "tables-go-block-race-negative-control",
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",

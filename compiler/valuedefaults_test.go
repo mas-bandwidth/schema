@@ -104,7 +104,7 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			if err != nil {
 				t.Fatalf("js refused supported table defaults: %v", err)
 			}
-			home := string(out["VdefTable.js"])
+			home := string(out["VdefFixed.js"])
 			for _, want := range []string{
 				"this.Name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "this.NameLength = 8;",
 				"this.Tag.set([97, 98]);", "this.TagLength = 2;", "this.Caps = 3n;",
