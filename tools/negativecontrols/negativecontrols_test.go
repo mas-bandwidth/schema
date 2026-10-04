@@ -345,13 +345,13 @@ func TestEachLegExpandsTheToolsMatrix(t *testing.T) {
 // red stays on the pull request.
 func TestTheBigEndianJobIsShardedByUnit(t *testing.T) {
 	root := testRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-full.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	doc, err := parseWorkflow(string(body))
 	if err != nil {
-		t.Fatalf(".github/workflows/ci.yml does not parse: %v", err)
+		t.Fatalf(".github/workflows/ci-full.yml does not parse: %v", err)
 	}
 
 	matrixValue, err := mappingAt(doc, "jobs", "big-endian", "strategy", "matrix")
