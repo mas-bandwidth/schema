@@ -1517,18 +1517,67 @@ tables-cook-cli: bin/schema
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
 # The second is the property §19 actually states: **the Table sources are
-# BYTE-IDENTICAL with or without the Block files existing**, held by comparing
-# 68 of them against frozen pins under testdata/golden/tables/.
+# BYTE-IDENTICAL with or without the block form**. It is MECHANICAL
+# (schema#331): a sabotaged emitter with the block form removed is built
+# through `go build -overlay` — the mechanism the negative controls below
+# already use — the corpus is generated from it, and every Table source must be
+# byte-identical to the ordinary build's. The comparison survives any
+# legitimate Table-emitter change, because both arms move together, and it goes
+# red precisely when the block form leaks into a Table source.
 #
-# They are ordinary goldens: `make update-goldens` re-pins them when a TABLE
-# emitter legitimately changes, and a move under an unchanged emitter is
-# stop-the-line, exactly as it is for every other golden. What a frozen pin
-# cannot do is survive a legitimate Table-emitter change without being
-# re-pinned; schema#331 carries the follow-on that would replace it with a
-# mechanical comparison against a block-less emitter, the way the negative
-# controls below already build sabotaged ones.
+# The pins under testdata/golden/tables/ remain ordinary goldens, held by the
+# compiler package's TestGoldenTableSource; a move under an unchanged emitter is
+# stop-the-line, exactly as it is for every other golden.
+
+# The block form's EMISSION is removed at the one line each backend computes
+# it: the emitter is handed a nil block surface, so it writes no Block file and
+# no block surface at all. The LAYOUT MODEL is untouched, so the build version
+# (docs/SPEC-TABLES.md §20), which is computed from it independently, is the same
+# in both arms — the comparison measures the block form's emission, not the id.
+BLOCKLESS_ROOT   := build/zero-cost-noblock
+BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
+BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema$(skip_hash)331)
+
+$(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
+	@mkdir -p $(BLOCKLESS_ROOT)
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/cpptable/cpptable.go > $(BLOCKLESS_ROOT)/cpptable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/cpptable.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "ZERO-COST GATE FAILED: the cpp sabotage patched nothing"; exit 1; } || true
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/cstable/cstable.go > $(BLOCKLESS_ROOT)/cstable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/cstable.gotext internal/codegen/cstable/cstable.go && \
+		{ echo "ZERO-COST GATE FAILED: the cs sabotage patched nothing"; exit 1; } || true
+	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
+		internal/codegen/ctable/ctable.go > $(BLOCKLESS_ROOT)/ctable.gotext
+	@cmp -s $(BLOCKLESS_ROOT)/ctable.gotext internal/codegen/ctable/ctable.go && \
+		{ echo "ZERO-COST GATE FAILED: the c sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/$(BLOCKLESS_ROOT)/cpptable.gotext","%s/internal/codegen/cstable/cstable.go":"%s/$(BLOCKLESS_ROOT)/cstable.gotext","%s/internal/codegen/ctable/ctable.go":"%s/$(BLOCKLESS_ROOT)/ctable.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(BLOCKLESS_ROOT)/overlay.json
+	go build -overlay=$(BLOCKLESS_ROOT)/overlay.json -o $@ ./cmd/schema
+
+# $(call tables_byte_identical,<label>,<ordinary root>,<block-less root>,<find patterns>,<floor>)
+# walks the ordinary root's Table sources, requires each in the block-less root
+# byte-for-byte, and returns non-zero if one is missing or moved. The floor is
+# the glob's own sanity check, not the property.
+define tables_byte_identical
+n=0; d=0; \
+for f in $$(find $(2) -type f \( $(4) \) | sort); do \
+	rel=$${f#$(2)/}; \
+	n=$$(( n + 1 )); \
+	if [ ! -f "$(3)/$$rel" ]; then \
+		echo "ZERO-COST GATE FAILED: the block-less $(1) emitter did not write $$rel"; d=$$(( d + 1 )); \
+	elif ! cmp -s "$$f" "$(3)/$$rel"; then \
+		echo "ZERO-COST GATE FAILED: $(1) $$rel moved when the block form was removed"; d=$$(( d + 1 )); \
+	fi; \
+done; \
+if [ "$$n" -lt $(5) ]; then echo "ZERO-COST GATE FAILED: $(1) compared $$n Table files, expected at least $(5) — the glob, not the property, is what broke"; d=$$(( d + 1 )); fi; \
+if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte-identical to the block-less emitter"; fi; \
+[ "$$d" = "0" ]
+endef
+
 .PHONY: tables-block-zero-cost
-tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp
+tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
@@ -1553,44 +1602,36 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		fi; \
 	done
 	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@n=0; d=0; \
-	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
-	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
-	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* \
-	         testdata/golden/tables/blobs/*Table.* testdata/golden/tables/scalars/*Table.* \
-	         testdata/golden/tables/maps/*Table.* testdata/golden/tables/lists/*Table.* \
-	         testdata/golden/tables/arms/*Table.* testdata/golden/tables/wide/*Table.* ; do \
-		dir=$$(basename $$(dirname $$f)); \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/examples-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/examples/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/block-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/block/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/blockhome-cs/*Table.cs; do \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-cs/blockhome/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	for f in testdata/golden/tables/examples-c/*Table.* testdata/golden/tables/block-c/*Table.* \
-	         testdata/golden/tables/pointers-c/*Table.*; do \
-		dir=$$(basename $$(dirname $$f)); \
-		dir=$${dir%-c}; \
-		n=$$(( n + 1 )); \
-		cmp -s $$f build/tables-generated-c/$$dir/$$(basename $$f) || \
-			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
-	done; \
-	if [ "$$d" != "0" ]; then exit 1; fi; \
-	if [ "$$n" -lt 72 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 72 — the glob, not the property, is what broke"; exit 1; fi; \
-	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
+	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
+	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
+	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+	$(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+	@if find $(BLOCKLESS_ROOT) -name '*Block.*' | grep -q .; then \
+		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
+		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
+	fi
+	@$(call tables_byte_identical,cpp,build/tables-generated,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cs,build/tables-generated-cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+	@$(call tables_byte_identical,c,build/tables-generated-c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+
+# THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
+# until it is shown able to refuse a Table source that moved: the nearest
+# neighbour of the property is planted into a COPY of the ordinary corpus — a
+# block spelling in a Table source — and the SAME comparison must go red.
+# Nothing tracked is written to.
+.PHONY: tables-block-zero-cost-negative-control
+tables-block-zero-cost-negative-control: build/tables-generated/.stamp
+	@rm -rf build/zero-cost-leak && cp -R build/tables-generated build/zero-cost-leak
+	@printf 'struct TableBlockAllocator; // PLANTED: a block spelling in a Table source (schema#331)\n' \
+		>> build/zero-cost-leak/pointers/GraphTable.h
+	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
+	fi
+	@echo "negative control: a moved Table source turns the block-less comparison RED"
 
 # THE BUILD VERSION IS ONE NUMBER (docs/SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
@@ -2869,13 +2910,24 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	@mkdir -p build
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
-.PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+# THE LEG IS INDEPENDENT PIECES, AND EACH IS ITS OWN TARGET (issue #684).
+# `make tables-big-endian` still runs all of them, in the same order, off the
+# same parallel prerequisite build — that is what `make test`, certify.yml and a
+# workstation ask for and none of it changes. What the split adds is that CI can
+# ask for ONE of them: the pieces share nothing but bin/schema and the generated
+# tree, and one job made the run pay their SUM. The CI job is a matrix of one
+# row per piece, so the longest piece is the job instead of the sum.
+.PHONY: tables-big-endian-tables
+tables-big-endian-tables: build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	@echo "big-endian leg: the wire crosses the byte order"
+
+.PHONY: tables-big-endian-collections
+tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
 	$(BE_RUN) ./build/schema_test_arms_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
+	@echo "big-endian leg: a map's framing and its sorted entry array cross the byte order with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2889,6 +2941,15 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/s
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
+
+# The prerequisites stay HERE, on the umbrella, so one `make -j
+# tables-big-endian` still builds all nine binaries in parallel and only then
+# runs anything. The pieces are submakes because their prerequisites are
+# already standing by the time this recipe runs.
+.PHONY: tables-big-endian
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+	$(MAKE) tables-big-endian-tables
+	$(MAKE) tables-big-endian-collections
 	$(MAKE) tables-cook-endian
 	$(MAKE) tables-c-big-endian
 
@@ -2944,6 +3005,18 @@ tables-cook-endian: bin/schema
 # something else.
 .PHONY: tables-big-endian-negative-control
 tables-big-endian-negative-control: tables-big-endian
+	$(MAKE) tables-big-endian-control-only
+
+# THE CONTROL'S OWN RECIPE IS ITS OWN TARGET, `tables-big-endian-control-only`.
+# It shares nothing with the leg above but the tree it is cut from: it builds a
+# SABOTAGED compiler through the overlay, generates its OWN corpus into
+# build/tables-host-order, and compiles and runs that — none of the leg's nine
+# binaries appear in it. `tables-big-endian-negative-control` still runs the leg
+# and then the control, which is what `make test`, certify.yml and a workstation
+# ask for; CI asks for the control half in a job of its own, beside the job that
+# runs the leg, and the pair is the same pair.
+.PHONY: tables-big-endian-control-only
+tables-big-endian-control-only:
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -3244,6 +3317,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-maps
 	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
+	$(MAKE) tables-json-map-walk-negative-controls
 	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-lists
 	# the tool's own cook half for a list, held to the reference byte for byte
@@ -3320,6 +3394,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cook-open-root-negative-control
 	$(MAKE) tables-cook-open-walk-negative-control
 	$(MAKE) tables-block-zero-cost
+	$(MAKE) tables-block-zero-cost-negative-control
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser
 	$(MAKE) tables-block-fill-refuser-negative-control
@@ -3395,29 +3470,85 @@ tables-maps-measure-refusals: build/schema_test_maps
 	./build/schema_test_maps measure-refusals
 
 # THE MAP-WALK GATE (docs/SPEC-TABLES.md §2.8, §16): the map's half of the text
-# form is emitted only in a unit that declares one, and it is ONE half too —
-# the same bytes in every map-bearing .cpp of the corpus, on the walk's own
-# terms — and none of it reaches a map-free unit, which is the zero-cost
-# property (§2.2) holding for the text form.
+# form is emitted only in a unit that declares one, it is ONE half, the same
+# bytes in every map-bearing .cpp, and none of it reaches a map-free unit,
+# which is the zero-cost property (§2.2) holding for the text form.
+#
+# THE MAP-FREE SET IS DERIVED, NOT NAMED. It was two directory names in this
+# recipe, and the byte compare covered one directory's .cpp while every
+# map-bearing unit of the corpus carries the half. The premise was right and
+# the instrument was narrow. `internal/mapwalk` asks the COMPILER'S OWN IR
+# instead: a unit is map-free when no table in its closure carries a map
+# (§2.8), and a generated entry is a table of that closure, so a nested map
+# reaches the answer with no clause of its own. The corpus is the units
+# `tables_generate` emits, read from that define, so the scan is every
+# generated .cpp of the tree rather than one directory's ten.
 .PHONY: tables-json-map-walk
 tables-json-map-walk: build/tables-generated/.stamp
-	@rm -rf build/json-map-walk && mkdir -p build/json-map-walk
-	@for f in build/tables-generated/maps/*Table.cpp; do \
-		out=build/json-map-walk/$$(echo $$f | tr / _); \
-		awk '/---- json map walk: begin ----/,/---- json map walk: end ----/' $$f > $$out; \
-		if [ ! -s $$out ]; then echo "MAP-WALK GATE FAILED: no map half in $$f"; exit 1; fi; \
-	done
-	@first=""; for f in build/json-map-walk/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "MAP-WALK GATE FAILED: the map half in $$f is not the map half in $$first"; exit 1; }; \
-		fi; \
-	done
-	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp; do \
-		if grep -q "json map walk: begin" $$f; then \
-			echo "MAP-WALK GATE FAILED: the map half reached the map-free unit $$f"; exit 1; \
-		fi; \
-	done
-	@echo "tables map-walk gate: one map half, byte-identical in $$(ls build/json-map-walk | wc -l | tr -d ' ') map-bearing .cpp files, and none in a map-free one"
+	@mkdir -p build
+	SCHEMA_MAP_WALK_DIR=$$PWD/build/tables-generated \
+		SCHEMA_MAP_WALK_SUMMARY=$$PWD/build/map-walk.summary \
+		go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits
+	@cat build/map-walk.summary
+
+# THE NEGATIVE CONTROLS for the map-walk gate (docs/SPEC-TABLES.md §2.8, §16).
+# A gate that cannot go red proves nothing, and the three ways this one can
+# fail to hold are the three ways the half can land wrong:
+#
+#   1. PLANTED. The half is put into a map-free unit's emitted .cpp in a
+#      throwaway copy. Nothing generates it and no emitter is patched, so
+#      this control holds the SCAN alone: it must name the file.
+#   2. UNGATED. The emitter's own `if anyMap` is removed, so every unit's
+#      .cpp carries the real half. This is the control the gate exists for,
+#      because it is what §16's zero-cost promise costs a map-free consumer
+#      the day the gating goes, and the derived set has to say which units
+#      are free.
+#   3. DROPPED. The other half of the same switch: the map half is never
+#      emitted, so a map-bearing unit's .cpp carries the stub. A gate that
+#      only refused leaks would stay green here.
+#
+# Each control narrows the run with SCHEMA_MAP_WALK_UNITS, so its red is its
+# own and not thirty-five absent trees.
+#
+# The two gating controls share a recipe. $(1) the control's short name, $(2)
+# the sed script over the JSON emitter, $(3) the corpus directory the control
+# regenerates and scans, $(4) the sentence a reader gets when the gate stayed
+# green, $(5) the clause the red has to be on.
+define map_walk_gating_control
+	@sed -e $(2) internal/codegen/cpptable/json.go > build/map-walk-$(1).gotext
+	@cmp -s build/map-walk-$(1).gotext internal/codegen/cpptable/json.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/build/map-walk-$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-walk-$(1)-overlay.json
+	@go build -overlay=build/map-walk-$(1)-overlay.json -o build/schema-map-walk-$(1) ./cmd/schema
+	@rm -rf build/map-walk-$(1)-tree && mkdir -p build/map-walk-$(1)-tree
+	@./build/schema-map-walk-$(1) generate --lang cpp --out build/map-walk-$(1)-tree/$(3) tables/$(3)
+	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-$(1)-tree SCHEMA_MAP_WALK_UNITS=$(3) \
+			go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			> build/map-walk-$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
+	fi
+	@grep -q "$(5)" build/map-walk-$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $(1) clause"; cat build/map-walk-$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the MAP-WALK GATE red on $$(grep -c 'MAP-WALK GATE FAILED' build/map-walk-$(1).log) named file(s)"
+endef
+
+.PHONY: tables-json-map-walk-negative-controls
+tables-json-map-walk-negative-controls: bin/schema build/tables-generated/.stamp
+	@rm -rf build/map-walk-planted && mkdir -p build/map-walk-planted/examples
+	@cp build/tables-generated/examples/TablesTable.cpp build/map-walk-planted/examples/TablesTable.cpp
+	@printf '// ---- json map walk: begin ----\n// PLANTED\n// ---- json map walk: end ----\n' \
+		>> build/map-walk-planted/examples/TablesTable.cpp
+	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-planted SCHEMA_MAP_WALK_UNITS=examples \
+			go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			> build/map-walk-planted.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the map half planted in a map-free unit left the gate GREEN"; exit 1; \
+	fi
+	@grep -q "the map half reached the map-free unit.*examples/TablesTable.cpp" build/map-walk-planted.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not by naming the planted file"; cat build/map-walk-planted.log; exit 1; }
+	@echo "negative control: a planted map half turns the MAP-WALK GATE red on $$(grep -c 'MAP-WALK GATE FAILED' build/map-walk-planted.log) named file(s)"
+	$(call map_walk_gating_control,ungated,'s@mapAdapters := tableJsonNoMapAdapters@mapAdapters := tableJsonMapAdapters // SABOTAGED@',examples,the map half emitted into every unit left the gate GREEN,the map half reached the map-free unit)
+	$(call map_walk_gating_control,dropped,'s@mapAdapters = tableJsonMapAdapters@mapAdapters = tableJsonNoMapAdapters // SABOTAGED@',maps,the map half emitted into no unit at all left the gate GREEN,no map half in)
 
 # ---- the NEGATIVE CONTROLS §2.8 names ------------------------------------
 #
@@ -4880,12 +5011,19 @@ tables-ref-ordinal-shared-negative-control:
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
 # §6.6). certify.yml runs every `tables-<lang>-release` target by name.
+#
+# THE INT32_MAX BASE64 BEHAVIORAL REPRODUCTION (#746) rides here beside the
+# fuzzers: it is the run half of compiler/issue714_test.go's emitted-text pin.
+# A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
+# seconds and do not fit the owner's two-minute per-commit rule, which is why
+# the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 	$(MAKE) tables-wire-fuzz-retain N=500000
 	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
+	SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control tables-wire-fuzz-message-blob-oracle-negative-control tables-wire-fuzz-message-blob-leg-negative-control
@@ -6216,6 +6354,7 @@ slow-gate-coverage:
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+
 # THE VULNERABILITY GATE (tools/vuln/govulncheck.sh). `make` is the one entry,
 # so the gate both workflows run is a target here, and the retry-and-classify
 # logic is a committed script that `make test` holds to its fixtures — not
@@ -6227,16 +6366,17 @@ slow-gate-coverage:
 # time, so a red run can never mean the scanner moved under us.
 GOVULNCHECK_VERSION ?= v1.7.0
 
-# `make vuln` is the pull-request gate: a database still unreachable after three
-# attempts is forgiven, loudly, because a contributor's diff cannot be judged by
-# vuln.go.dev's uptime. `make vuln-strict` is the nightly certification's gate:
-# the same three attempts, and then RED, because a certificate is a full run at
-# an exact SHA and an unreachable database certifies nothing. The two differ by
-# that flag and nothing else, and both exist so an outage always leaves a red
-# SOMEWHERE rather than nowhere.
+# `make vuln` is the pull-request gate and runs the scanner PINNED AND DIRECT,
+# with no retry and no classifier: any failure — an unreachable database
+# included — is RED, because a PR-tier gate that forgives an outage is a gate
+# that has silently stopped watching, and a new CVE is the one verdict that
+# changes with no commit here. `make vuln-strict` is the nightly certification's
+# gate: the same pin through the classifying script, three attempts against a
+# transient blip and then RED, because a certificate is a full run at an exact
+# SHA and an unreachable database certifies nothing.
 .PHONY: vuln
 vuln:
-	GOVULNCHECK_VERSION=$(GOVULNCHECK_VERSION) tools/vuln/govulncheck.sh run
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: vuln-strict
 vuln-strict:

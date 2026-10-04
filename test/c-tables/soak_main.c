@@ -299,7 +299,21 @@ int main( int argc, char ** argv )
         }
         iterations++;
         if ( iterations == 1 ) { settled = live_bytes(); }
-        if ( ( iterations & 0x3ff ) == 0 && difftime( time( NULL ), start ) >= seconds ) { break; }
+        /* THE CLOCK IS ONLY READ EVERY 1024 PASSES, because time() in the loop
+           would be most of the loop. That mask also sets a FLOOR of 1024
+           passes, which is what a soak wants and is not what the CROSS-ENDIAN
+           leg wants: `tables-c-big-endian` asks for zero seconds — the golden
+           gate it exists for has already run, above, before the clock — and
+           paid 1024 passes for it anyway, 104 s of the big-endian job's 411
+           under the emulator (run 34346307562). Zero seconds now stops at TWO
+           passes, which is the fewest that still makes the leak comparison
+           below mean something: `settled` is sampled after the first pass and
+           `after` at the end, so one pass would compare a number with itself.
+           A soak proper (SOAK_SECONDS > 0, every caller but that leg) reads
+           the clock on exactly the schedule it always did. */
+        if ( iterations >= 2 &&
+             ( seconds <= 0.0 ||
+               ( ( iterations & 0x3ff ) == 0 && difftime( time( NULL ), start ) >= seconds ) ) ) { break; }
     }
     schema_soak_counting = 0;
     after = live_bytes();
