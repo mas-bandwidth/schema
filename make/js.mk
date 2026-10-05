@@ -310,6 +310,11 @@ tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 # what §3.4 actually says — refusal is scoped to a CONSTRUCT, never the table
 # declaration — so every POINTERED table is named as refused and has no Fixed
 # surface at all, while the unit's fixed-size tables carry the form.
+#
+# THE FIXED FORM'S SURFACE IS READ OUT OF <Base>Fixed.js: the id-table wire
+# (schema#516) holds <Base>Table.js, so the form took the Fixed spelling the
+# Elixir (<Base>Fixed.ex), Java (TableFixed.java) and Dart (<Base>Fixed.dart)
+# legs already use, and both surfaces ride side by side in one unit.
 JS_POINTERED_TABLES := ListNode TreeNode Layer Scene Depot Album Marker
 JS_FIXED_TABLES     := Meta Settings Tally Stamp
 
@@ -318,14 +323,14 @@ tables-js-refuses-pointers: bin/schema
 	@rm -rf build/tables-js-refusal && mkdir -p build
 	./bin/schema generate --lang js --out build/tables-js-refusal tables/pointers
 	@for t in $(JS_POINTERED_TABLES); do \
-		grep -qh "table $$t has NO FIXED FORM in JavaScript" build/tables-js-refusal/*Table.js || \
+		grep -qh "table $$t has NO FIXED FORM in JavaScript" build/tables-js-refusal/*Fixed.js || \
 			{ echo "REFUSAL GATE FAILED: pointered table $$t is not refused BY NAME in any module"; exit 1; }; \
-		if grep -qh "^export function $${t}Fixed" build/tables-js-refusal/*Table.js; then \
+		if grep -qh "^export function $${t}Fixed" build/tables-js-refusal/*Fixed.js; then \
 			echo "REFUSAL GATE FAILED: the JavaScript backend emitted a fixed-form surface for pointered table $$t"; exit 1; \
 		fi; \
 	done
 	@for t in $(JS_FIXED_TABLES); do \
-		grep -qh "^export function $${t}FixedSave" build/tables-js-refusal/*Table.js || \
+		grep -qh "^export function $${t}FixedSave" build/tables-js-refusal/*Fixed.js || \
 			{ echo "REFUSAL GATE FAILED: fixed-size table $$t lost its form because the unit holds pointers"; exit 1; }; \
 	done
 	@n=$$(ls build/tables-js-refusal/*Cook.js 2>/dev/null | wc -l | tr -d ' '); \
