@@ -25,7 +25,6 @@ func t02Probe(t *testing.T, reader string, older []string, retire int, file, bod
 func TestFixedRoadmapT02Plans(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
-	oldFile := corpus + "/old_field_append.bin"
 	newFile := corpus + "/new_field_append.bin"
 	lineage := []string{"VOLD_field_append"}
 
