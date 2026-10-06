@@ -15,8 +15,10 @@ package javatable
 import (
 	"encoding/binary"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -49,6 +51,18 @@ func (e *t01Env) forge(t *testing.T, name string, mutate func(b []byte) []byte) 
 		t.Fatal(err)
 	}
 	return path
+}
+
+// deep runs the poisoned reader over a file with the TOTAL poison, the one a
+// nested value needs (see poisonFinals in the probe).
+func t01Deep(t *testing.T, classes, file string) probeRun {
+	t.Helper()
+	_, javaBin := javaTools(t)
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()
+	if err != nil {
+		t.Fatalf("java Probe_reads %s deep: %v\n%s", filepath.Base(file), err, out)
+	}
+	return parseProbe(t, string(out))
 }
 
 // requireNamedRefusal is §5.3's first row of the answer table: a refusal BY NAME
@@ -101,6 +115,9 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 	}{
 		{"java/F4", t01F4},
 		{"java/F12", t01F12},
+		{"java/R7", t01R7},
+		{"java/R9", t01R9},
+		{"java/R13", t01R13},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -183,5 +200,159 @@ func t01F12(t *testing.T, e *t01Env) {
 	stranger := e.forge(t, "stranger.bin", func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b })
 	if r := runProbe(t, e.classes, "Probe_reads", stranger); r.reason != "layoutNewer" {
 		t.Errorf("an unheld hash: reason=%s, want layoutNewer, which is not the second-layout name", r.reason)
+	}
+}
+
+// t01R7 is R7 "the identity lane is an index comparison, never a recomputed
+// hash": ALGORITHM §5.3, "a runtime NEVER computes a hash from layout bytes it
+// holds — not for the IDENTITY LANE". The emitted load selects the lane by
+// comparing the file's header hash with the reader's own hash constant, and
+// neither it nor the lane selection reaches the runtime's hash function.
+func t01R7(t *testing.T, e *t01Env) {
+	u := versioningSchemaUnit(t, "VNEW_nested_append.schema")
+	files, err := GenerateLineage(u, lineageOf(t, []string{"VOLD_nested_append.schema"}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var load string
+	for _, src := range files {
+		s := string(src)
+		if i := strings.Index(s, "public static int load("); i >= 0 {
+			load = s[i:]
+			if j := strings.Index(load, "\n    }\n"); j >= 0 {
+				load = load[:j]
+			}
+		}
+	}
+	if load == "" {
+		t.Fatal("no emitted load function found")
+	}
+	if !strings.Contains(load, "fileHash != hash") {
+		t.Error("the identity lane is not selected by comparing the file's header hash with the reader's own hash constant")
+	}
+	for _, banned := range []string{"TableFixed.hash(", "fnv", ".hash(", "compile(", "parse("} {
+		if strings.Contains(load, banned) {
+			t.Errorf("load reaches %q: a runtime never derives a hash or walks a layout it holds", banned)
+		}
+	}
+	// The behaviour the lane buys: the reader's own file reads on the identity
+	// plan with the compile census untouched.
+	intact := runProbe(t, e.classes, "Probe_reads", e.forge(t, "own.bin", func(b []byte) []byte { return b }))
+	if intact.unknown != 0 || intact.kindMismatch != 0 || intact.refused || intact.n < 1 {
+		t.Errorf("the own-lane read: %+v", intact)
+	}
+}
+
+// t01R9 is R9 "a known hash with a different layout length or bytes →
+// layout_malformed; the seven §1.1 malformations under a known hash all come back
+// as this one name": ALGORITHM §5.3 step 7. Each of §1.1's seven rules is
+// broken in the layout of a file whose header hash is held.
+func t01R9(t *testing.T, e *t01Env) {
+	entry := func(i int) int { return t01HeaderBytes + t01LengthBytes + 4 + i*t01EntryBytes }
+	// a deep chain for rule 7: 70 single-child tables, the length word honest.
+	chain := func(b []byte) []byte {
+		const depth = 70
+		layout := make([]byte, 4+t01EntryBytes*depth)
+		binary.LittleEndian.PutUint32(layout, depth)
+		for i := 0; i < depth; i++ {
+			at := 4 + i*t01EntryBytes
+			binary.LittleEndian.PutUint64(layout[at:], uint64(i+1))
+			layout[at+8] = 13
+			binary.LittleEndian.PutUint32(layout[at+9:], 8)
+			if i+1 < depth {
+				binary.LittleEndian.PutUint32(layout[at+13:], 1)
+			}
+		}
+		out := append([]byte(nil), b[:t01HeaderBytes]...)
+		out = append(out, 0, 0, 0, 0)
+		binary.LittleEndian.PutUint32(out[t01HeaderBytes:], uint32(len(layout)))
+		out = append(out, layout...)
+		return append(out, b[e.recordsAt():]...)
+	}
+	rules := []struct {
+		rule   string
+		mutate func(b []byte) []byte
+	}{
+		{"1 count mismatch", func(b []byte) []byte {
+			binary.LittleEndian.PutUint32(b[t01HeaderBytes+t01LengthBytes:], uint32((e.layoutLen()-4)/t01EntryBytes+1))
+			return b
+		}},
+		{"1 count zero", func(b []byte) []byte {
+			binary.LittleEndian.PutUint32(b[t01HeaderBytes+t01LengthBytes:], 0)
+			return b
+		}},
+		{"2 kind unknown", func(b []byte) []byte { b[entry(1)+8] = 0xEE; return b }},
+		{"3 size mismatch", func(b []byte) []byte { b[entry(1)+9]++; return b }},
+		{"4 kind invalid", func(b []byte) []byte { b[entry(0)+8] = 9; return b }},
+		{"5 tree unclosed", func(b []byte) []byte { b[entry(0)+13]++; return b }},
+		{"6 record too large", func(b []byte) []byte { binary.LittleEndian.PutUint32(b[entry(0)+9:], 70000); return b }},
+		{"7 too deep", chain},
+	}
+	for _, r := range rules {
+		path := e.forge(t, "rule.bin", r.mutate)
+		got := runProbe(t, e.classes, "Probe_reads", path)
+		requireNamedRefusal(t, "§1.1 rule "+r.rule, got, "layoutMalformed")
+		ref := runProbe(t, e.classes, "Probe_refuses", path)
+		requireNamedRefusal(t, "§1.1 rule "+r.rule+" (refuses probe)", ref, "layoutMalformed")
+	}
+}
+
+// t01R13 is R13 "REFUSE is total: refused+reason and malformed are never both
+// set, every counter stays zero, and not one destination byte is written":
+// ALGORITHM §5.3's answer table. Each refusal by name that a single-record file
+// can earn is read into storage poisoned with 0x5A, and every byte of it is
+// still 0x5A. A multi-record `no_layout` is the bill's open question
+// (FIXED-FORM-VERSIONING-TESTS.md, row 9) and is not asserted here.
+func t01R13(t *testing.T, e *t01Env) {
+	forged := map[string]struct {
+		mutate func(b []byte) []byte
+		reason string
+	}{
+		"layout_newer":     {func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b }, "layoutNewer"},
+		"layout_malformed": {func(b []byte) []byte { b[t01HeaderBytes+t01LengthBytes+4] ^= 0xFF; return b }, "layoutMalformed"},
+		"layout_truncated": {func(b []byte) []byte { return b[:e.recordsAt()-1] }, "layoutMalformed"},
+		"no_layout": {func(b []byte) []byte {
+			for i := range 8 {
+				b[e.recordsAt()+i] ^= 0xFF
+			}
+			return b
+		}, "noLayout"},
+		"newer_form": {func(b []byte) []byte { b[0] = 9; return b }, "newerForm"},
+	}
+	for name, f := range forged {
+		path := e.forge(t, name+".bin", f.mutate)
+		r := t01Deep(t, e.classes, path)
+		requireNamedRefusal(t, name, r, f.reason)
+		for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
+			if got, ok := r.value[field]; !ok || got != poison32 {
+				t.Errorf("%s wrote the destination: %s=%q, want the 0x5A poison %s", name, field, got, poison32)
+			}
+		}
+	}
+	// The floor: a lineage whose oldest entry is retired refuses the file by name.
+	_, retired := buildRow(t, filepath.Join(e.dir, "retired"), "nested_append", []sideSpec{
+		{key: "reads", schema: "VNEW_nested_append.schema", older: []string{"VOLD_nested_append.schema"}, retire: 1},
+	})
+	r := t01Deep(t, retired, e.forge(t, "floor.bin", func(b []byte) []byte { return b }))
+	requireNamedRefusal(t, "layout_unsupported", r, "layoutUnsupported")
+	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
+		if got := r.value[field]; got != poison32 {
+			t.Errorf("layout_unsupported wrote the destination: %s=%q, want the 0x5A poison", field, got)
+		}
+	}
+	// The other answer: a malformed read sets malformed and no refusal, and
+	// writes nothing either.
+	ragged := e.forge(t, "ragged.bin", func(b []byte) []byte { return append(b, 0) })
+	m := t01Deep(t, e.classes, ragged)
+	if !m.malformed || m.refused || m.n != -1 || m.reason != "none" {
+		t.Errorf("a ragged tail: %+v, want malformed alone and -1", m)
+	}
+	if m.unknown != 0 || m.kindMismatch != 0 || m.widened != 0 || m.clamped != 0 {
+		t.Errorf("a ragged tail moved a counter: %+v", m)
+	}
+	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
+		if got := m.value[field]; got != poison32 {
+			t.Errorf("a malformed read wrote the destination: %s=%q, want the 0x5A poison", field, got)
+		}
 	}
 }
