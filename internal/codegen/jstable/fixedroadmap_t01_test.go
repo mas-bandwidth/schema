@@ -128,6 +128,54 @@ for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {
 }
 `
 		}, nil},
+		// §5.3 step 10: "n := rest / record_bytes ; if n > capacity: REFUSE
+		// batch_too_large", and the table row "more records than the caller's
+		// capacity | `batch_too_large` | the name".
+		{"js/F9", func() (string, []string, int, string) {
+			return older, nil, 0, `
+const data = readFileSync(` + oldFile + `);
+const L = new DataView(data.buffer, data.byteOffset, data.length).getUint32(16, true);
+const recAt = 20 + L, recLen = data.length - recAt;
+const back = eight(); const plan = TNewPlan(4096, 4096);
+{
+  const r = new TableFixedReport();
+  const n = TLoad(back, back.length, data, data.length, plan, r);
+  if (n !== 1 || r.malformed || r.refused !== 0) { fail("the corpus file is one clean record: n=" + n + " " + reason(r)); }
+}
+// n == capacity is the boundary that reads
+{
+  const r = new TableFixedReport();
+  const n = TLoad(back, 1, data, data.length, plan, r);
+  if (n !== 1 || r.refused !== 0 || r.malformed) { fail("n == capacity reads: n=" + n + " " + reason(r)); }
+}
+// n == capacity + 1 refuses by name
+{
+  poison(back, plan);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 0, data, data.length, plan, r);
+  total("one record, capacity 0", n, r, "BatchTooLarge", 0n, back, plan);
+}
+// two whole records into a capacity of one, and into a capacity of two (reads)
+{
+  const two = new Uint8Array(data.length + recLen);
+  two.set(data); two.set(data.subarray(recAt), data.length);
+  poison(back, plan);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 1, two, two.length, plan, r);
+  total("two records, capacity 1", n, r, "BatchTooLarge", 0n, back, plan);
+  const ok = new TableFixedReport();
+  const m = TLoad(back, 2, two, two.length, plan, ok);
+  if (m !== 2 || ok.refused !== 0 || ok.malformed) { fail("two records read into a capacity of two: n=" + m + " " + reason(ok)); }
+  // step 10 runs before step 11: a second record whose hash is no layout's
+  // still overflows by name, before a record is looked at
+  two[data.length] ^= 0xFF;
+  poison(back, plan);
+  const q = new TableFixedReport();
+  const p = TLoad(back, 1, two, two.length, plan, q);
+  total("two records, the second's hash bad, capacity 1", p, q, "BatchTooLarge", 0n, back, plan);
+}
+`
+		}, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {
