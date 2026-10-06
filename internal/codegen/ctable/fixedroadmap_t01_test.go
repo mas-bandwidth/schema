@@ -109,12 +109,50 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		id  string
 		run func(t *testing.T, corpus string)
 	}{
+		{"c/F9", cT01BatchTooLarge},
 		{"c/F12", cT01SecondLayout},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
 			t.Parallel()
 			row.run(t, corpus)
+		})
+	}
+}
+
+// c/F9 — "batch_too_large". Algorithm §5.3 step 6: "If `rest / record_bytes`
+// passes the caller's capacity, `REFUSE batch_too_large`". new_int_widen.bin
+// carries THREE records, so capacity 0, 1 and 2 are each short and capacity 3
+// is the boundary that reads. The refusal comes before any record is decoded
+// (nothing written, report exactly refused+reason), on the identity lane and on
+// an older lineage entry's lane alike.
+func cT01BatchTooLarge(t *testing.T, corpus string) {
+	newer := cReadSchema(t, "VNEW_int_widen")
+	older := cReadSchema(t, "VOLD_int_widen")
+	body := `
+    {
+        const int64_t count = n; /* the probe's own read, capacity 8: the entry's record size is the lock's, not this build's */
+        int64_t c;
+        char who[64];
+        if ( count < 1 || count > 8 ) { printf( "the corpus file carries no record\n" ); return 1; }
+        for ( c = 0; c < count; ++c )
+        {
+            snprintf( who, sizeof( who ), "batch_too_large capacity=%lld of %lld", (long long) c, (long long) count );
+            RESET_BACK();
+            n = @LOAD@( back, c, data, len, plan, 4096, NULL, &r );
+            EXPECT_REFUSED( who, SCHEMA_TABLE_BATCH_TOO_LARGE, 0 );
+        }
+        RESET_BACK();
+        n = @LOAD@( back, count, data, len, plan, 4096, NULL, &r );
+        if ( n != count || r.refused || r.malformed || r.reason != 0 ) { printf( "capacity == count must read: n=%lld refused=%d reason=%d\n", (long long) n, r.refused, r.reason ); return 1; }
+    }
+`
+	for _, lane := range []struct{ name, file string }{
+		{"identity", "new_int_widen.bin"}, {"lineage", "old_int_widen.bin"},
+	} {
+		t.Run(lane.name, func(t *testing.T) {
+			t.Parallel()
+			cT01Probe(t, newer, []string{older}, 0, filepath.Join(corpus, lane.file), body)
 		})
 	}
 }
