@@ -176,7 +176,6 @@ func t01Probes() []csVersionProbe {
 			suffix: strings.NewReplacer("cs/", "", "_", "").Replace(strings.ToLower(name)),
 			file:   "old_unknown_census.bin", body: t01Body(t01PoisonCensus, t01UntouchedCensus, steps)}
 	}
-	_ = census
 	files := `"new_field_append.bin", "old_field_append.bin"`
 	return []csVersionProbe{
 		// F4, ALGORITHM §5.3 step 3: `L := LE(4, file+16); if 20 + L > len(file): REFUSE
@@ -198,6 +197,31 @@ func t01Probes() []csVersionProbe {
                 Expect(name + " length word 0x7FFFFFFF", Put(g, 16, 0x7FFFFFFFL, 4), 1, "layout_malformed", 0);
                 Expect(name + " length word 0xFFFFFFFF", Put(g, 16, 0xFFFFFFFFL, 4), 1, "layout_malformed", 0);
             }
+`),
+		// F9, §5.3 step 10: `n := rest / record_bytes; if n > capacity: REFUSE batch_too_large`.
+		// Three whole records against capacities 0, 1, 2 refuse; 3 and 4 read.
+		lineage("cs/F9", `            foreach (string name in new string[] { `+files+` })
+            {
+                byte[] three = Records(Corpus(name), 3);
+                for (int cap = 0; cap < 3; ++cap)
+                {
+                    Expect(name + " capacity " + cap, three, cap, "batch_too_large", 0);
+                }
+                ReadsClean(name + " capacity 3", three, 3, 3);
+                ReadsClean(name + " capacity 4", three, 4, 3);
+            }
+`),
+		// F9 over a lineage lane that owes a census: the refusal comes AFTER the
+		// plan is resolved, so a census landed early would show here as Unknown.
+		census("cs/F9_census", `            byte[] g = Corpus("old_unknown_census.bin");
+            {
+                @TABLE@[] back = Fresh(1);
+                TableReport r = new TableReport();
+                long n = Schema.@TABLE@FixedLoad(back, g, new TableFixedEntry[8192], r);
+                if (n != 1 || r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "the control: the clean lineage read owes a census of one: n=" + n + " unknown=" + r.Unknown); }
+            }
+            Expect("capacity 0", g, 0, "batch_too_large", 0);
+            Expect("two records, capacity 1", Records(g, 2), 1, "batch_too_large", 0);
 `),
 	}
 }
@@ -328,6 +352,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		check  func(t *testing.T)
 	}{
 		{id: "cs/F4", probes: []string{"cs/F4"}},
+		{id: "cs/F9", probes: []string{"cs/F9", "cs/F9_census"}},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
