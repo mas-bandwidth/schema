@@ -223,6 +223,106 @@ func t01Probes() []csVersionProbe {
             Expect("capacity 0", g, 0, "batch_too_large", 0);
             Expect("two records, capacity 1", Records(g, 2), 1, "batch_too_large", 0);
 `),
+		// R7, §5.3 "EVERY HASH A RUNTIME HOLDS WAS HANDED TO IT": the header's hash is
+		// taken as given. A header hash outside the lineage over the file's TRUE layout
+		// bytes is layout_newer, so no hash is derived from the bytes; a header hash
+		// IN the lineage over other bytes is layout_malformed, so the bytes do not
+		// choose the lane.
+		lineage("cs/R7", `            foreach (string name in new string[] { `+files+` })
+            {
+                byte[] g = Corpus(name);
+                ReadsClean(name + " unbroken", g, 1, 1);
+                Expect(name + " forged header hash over the true layout", Put(g, 8, 0x0123456789ABCDEFL, 8), 1, "layout_newer", 0x0123456789ABCDEFUL);
+                Expect(name + " the held hash over other layout bytes", Put(g, 24, Rd(g, 24, 4) + 1, 4), 1, "layout_malformed", 0);
+            }
+            {
+                // the identity lane publishes no hash and moves no counter
+                byte[] g = Corpus("new_field_append.bin");
+                @TABLE@[] back = Fresh(1);
+                TableReport r = new TableReport();
+                long n = Schema.@TABLE@FixedLoad(back, g, new TableFixedEntry[8192], r);
+                if (n != 1 || r.LayoutHash != 0 || Counters(r)) { bad += ProbeLog.Fail(@NAME@, "the identity lane: n=" + n + " hash=0x" + r.LayoutHash.ToString("x16") + " counters=" + Counters(r)); }
+            }
+`),
+		// R9, §1.1 and §5.3 step 7: a known hash with a different layout length or
+		// bytes is layout_malformed, and the seven §1.1 malformations under a known
+		// hash all come back as that one name.
+		lineage("cs/R9", `            byte[] Deep(byte[] f)
+            {
+                int depth = 66;
+                byte[] lay = new byte[4 + 17 * (depth + 1)];
+                W(lay, 0, depth + 1, 4);
+                for (int i = 0; i <= depth; ++i)
+                {
+                    int at = 4 + 17 * i;
+                    W(lay, at, i + 1, 8);
+                    W(lay, at + 8, i < depth ? 13 : 4, 1);
+                    W(lay, at + 9, 4, 4);
+                    W(lay, at + 13, i < depth ? 1 : 0, 4);
+                }
+                int end = 20 + LayoutBytes(f);
+                byte[] o = new byte[20 + lay.Length + (f.Length - end)];
+                Array.Copy(f, 0, o, 0, 16);
+                W(o, 16, lay.Length, 4);
+                Array.Copy(lay, 0, o, 20, lay.Length);
+                Array.Copy(f, end, o, 20 + lay.Length, f.Length - end);
+                return o;
+            }
+            foreach (string name in new string[] { `+files+` })
+            {
+                byte[] g = Corpus(name);
+                int end = 20 + LayoutBytes(g);
+                int rootChildren = (int)Rd(g, E(0) + 13, 4);
+                ReadsClean(name + " unbroken", g, 1, 1);
+                byte[] longer = new byte[g.Length + 1];
+                Array.Copy(g, 0, longer, 0, end);
+                Array.Copy(g, end, longer, end + 1, g.Length - end);
+                W(longer, 16, LayoutBytes(g) + 1, 4);
+                byte[] shorter = new byte[g.Length - 1];
+                Array.Copy(g, 0, shorter, 0, end - 1);
+                Array.Copy(g, end, shorter, end - 1, g.Length - end);
+                W(shorter, 16, LayoutBytes(g) - 1, 4);
+                (string, byte[])[] cases = new (string, byte[])[]
+                {
+                    ("rule 1: count is not the stated length", Put(g, 20, Rd(g, 20, 4) + 1, 4)),
+                    ("rule 1: count zero", Put(g, 20, 0, 4)),
+                    ("rule 2: kind 0", Put(g, E(1) + 8, 0, 1)),
+                    ("rule 2: kind 31", Put(g, E(1) + 8, 31, 1)),
+                    ("rule 2: kind 34", Put(g, E(1) + 8, 34, 1)),
+                    ("rule 2: kind 36", Put(g, E(1) + 8, 36, 1)),
+                    ("rule 3: size does not match its kind", Put(g, E(1) + 9, 3, 4)),
+                    ("rule 4: the root is not a table", Put(g, E(0) + 8, 12, 1)),
+                    ("rule 5: the walk ends before the last entry", Put(g, E(0) + 13, rootChildren - 1, 4)),
+                    ("rule 5: the walk runs past the last entry", Put(g, E(0) + 13, rootChildren + 1, 4)),
+                    ("rule 6: size past 65536", Put(g, E(1) + 9, 70000, 4)),
+                    ("rule 7: nesting past 64", Deep(g)),
+                    ("length one longer", longer),
+                    ("length one shorter", shorter),
+                    ("one layout byte changed", Put(g, E(2) + 3, Rd(g, E(2) + 3, 1) ^ 0x01, 1)),
+                };
+                foreach ((string label, byte[] bytes) in cases)
+                {
+                    Expect(name + " " + label, bytes, 1, "layout_malformed", 0);
+                }
+            }
+`),
+		// R13, §5.3 "REFUSE is total", over the identity file and the lineage file
+		// (whose plan carries a nonempty prefill: the appended Lineage.w default).
+		lineage("cs/R13", strings.Replace(t01Refusals, "@FILES@", files, 1)),
+		// R13 over a lineage lane that owes a census (Unknown == 1 on a clean read):
+		// a refusal must land none of it.
+		census("cs/R13_census", `            {
+                @TABLE@[] back = Fresh(1);
+                TableReport r = new TableReport();
+                long n = Schema.@TABLE@FixedLoad(back, Corpus("old_unknown_census.bin"), new TableFixedEntry[8192], r);
+                if (n != 1 || r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "the control: the clean lineage read owes a census of one: n=" + n + " unknown=" + r.Unknown); }
+            }
+`+strings.Replace(t01Refusals, "@FILES@", `"old_unknown_census.bin"`, 1)),
+		// R13 for layout_unsupported: below the floor, over a retired entry.
+		{name: "cs/R13_floor", reader: "VNEW_floor", older: []string{"VOLD_floor", "VMID_floor"}, retire: 1, suffix: "r1",
+			file: "old_floor.bin", body: t01Body(t01PoisonFloor, t01UntouchedFloor, `            byte[] g = Corpus("old_floor.bin");
+            Expect("below the floor", g, 1, "layout_unsupported", HashOf(g));
+`)},
 	}
 }
 
@@ -353,6 +453,22 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 	}{
 		{id: "cs/F4", probes: []string{"cs/F4"}},
 		{id: "cs/F9", probes: []string{"cs/F9", "cs/F9_census"}},
+		{id: "cs/R7", probes: []string{"cs/R7"}, check: func(t *testing.T) {
+			// §5.3: "a runtime NEVER computes a hash from layout bytes it holds". The
+			// emitted runtime defines TableFixedWire.HashOf (one definition) and nothing
+			// calls it: any second occurrence is a call, a hash derived from layout bytes.
+			// The load takes the identity lane by comparing the header's hash with the
+			// compiler-handed constant.
+			if n := strings.Count(t01Src["cs/R7"], "HashOf("); n != 1 {
+				t.Errorf("HashOf( occurs %d times in the emitted unit, want its one definition and no call: a runtime derives no hash from layout bytes", n)
+			}
+			lane := "if (hash != " + t01Table["cs/R7"] + "FixedHash)"
+			if !strings.Contains(t01Src["cs/R7"], lane) {
+				t.Errorf("the load does not select its lane by %q", lane)
+			}
+		}},
+		{id: "cs/R9", probes: []string{"cs/R9"}},
+		{id: "cs/R13", probes: []string{"cs/R13", "cs/R13_census", "cs/R13_floor"}},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
