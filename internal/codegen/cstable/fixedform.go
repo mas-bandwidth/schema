@@ -1760,7 +1760,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);\n")
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
-	g.pf("    long record_bytes = known.Record;\n")
+	g.pf("    long record_bytes = known.RecordBytes;\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")

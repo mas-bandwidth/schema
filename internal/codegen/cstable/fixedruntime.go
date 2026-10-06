@@ -129,26 +129,29 @@ public struct TableFixedFill
 // (upgrade the client). Those are the operator's two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-// on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
-// never from the file.
+// on, the layout bytes verbatim, the byte length riding BESIDE the pointer, and
+// the RECORD SIZE taken from the lock and never from the file.
 //
-// §5.9 #19 names four members — hash, layout, layout_bytes, record_bytes —
-// because tools/fixedtwin holds the C and C++ pair to one text and the byte
-// length there rides BESIDE the pointer. A C# array carries its own length, so
-// the fourth member would be a second spelling of Layout.Length; there is no
-// twin gate on this leg to hold it to the pair's text. Three members, the same
-// ORDER, and the divergence is named rather than silent.
+// §5.9 #19 names the four members in this order — hash, layout, layout_bytes,
+// record_bytes — the byte length beside the pointer rather than inside it, the
+// way §4.1 names the plan entry's lanes; tools/fixedtwin holds the C and C++
+// pair to the same text, and §5.2 makes the names the contract. A C# array
+// carries its own length, so LayoutBytes is the length of Layout rather than a
+// second fact, but the member rides so the four names and their order are the
+// page's on every leg.
 public readonly struct TableFixedKnownLayout
 {
     public readonly ulong Hash;
     public readonly byte[] Layout;
-    public readonly long Record;
+    public readonly int LayoutBytes;
+    public readonly long RecordBytes;
 
     public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
     {
         Hash = hash;
         Layout = layout;
-        Record = record;
+        LayoutBytes = layout.Length;
+        RecordBytes = record;
     }
 }
 
