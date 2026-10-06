@@ -61,6 +61,38 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     "20 + L == len(file) is a whole layout and no records: #{inspect({wtag, wvalues})}")`)
 		}},
 
+		// §5.3 step 10: "n := rest / record_bytes ; if n > capacity: REFUSE
+		// batch_too_large". n == capacity reads, n > capacity refuses, the
+		// ragged tail (step 9) answers before the capacity does and the
+		// capacity (step 10) answers before the per-record hash (step 11).
+		{"elixir/F9", func(t *testing.T) {
+			t01Probe(t, "VNEW_array_bounded_grow", nil, 0, corpus+"/new_array_bounded_grow.bin", `  data = File.read!(file())
+  <<_::binary-size(16), l::little-unsigned-32, _::binary>> = data
+  rb = T.array_bounded_grow_fixed_record_bytes()
+  n = div(byte_size(data) - 20 - l, rb)
+  check(n >= 1 and rem(byte_size(data) - 20 - l, rb) == 0, "the corpus file is not whole records: #{n}")
+  {otag, ovalues, oreport} = load(data, batch_capacity: n)
+  check(otag == :ok and length(ovalues) == n and oreport.malformed == false,
+    "n == capacity reads every record: #{inspect(otag)} #{why(oreport)}")
+  {dtag, _, _} = load(data)
+  check(dtag == :ok, "the default capacity reads the same file: #{inspect(dtag)}")
+  for cap <- [n - 1, 0] do
+    {tag, reason, report} = load(data, batch_capacity: cap)
+    check(tag == :error and reason == :batch_too_large,
+      "n > capacity (#{cap}) is batch_too_large: #{inspect({tag, reason})}")
+    check(not is_list(reason), "the refusal built no value")
+    check(report == R.report(), "REFUSE is total and never malformed: #{why(report)}")
+  end
+  <<first8::binary-size(8), rest::binary>> = binary_part(data, byte_size(data) - rb, rb)
+  forged = data <> <<Bitwise.bxor(:binary.decode_unsigned(first8, :little), 0xFFFFFFFFFFFFFFFF)::little-unsigned-64>> <> rest
+  {ftag, freason, _} = load(forged, batch_capacity: n)
+  check(ftag == :error and freason == :batch_too_large,
+    "step 10 answers before step 11's record hash: #{inspect({ftag, freason})}")
+  {rtag, rreason, rreport} = load(data <> <<0x5A>>, batch_capacity: 0)
+  check(rtag == :error and rreason == :malformed and rreport.malformed == true,
+    "step 9's ragged tail answers before the capacity: #{inspect({rtag, rreason})}")`)
+		}},
+
 	}
 	for _, tc := range tasks {
 		t.Run(tc.id, func(t *testing.T) {
