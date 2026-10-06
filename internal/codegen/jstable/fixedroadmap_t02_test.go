@@ -21,9 +21,6 @@ function poison(back, plan) {
   for (const v of back) { for (const key of Object.keys(v)) { v[key] = SENT; } }
   if (plan !== null) { plan.image.fill(0x5A); }
 }
-function show(v) { return JSON.stringify(v, (k, val) => typeof val === 'bigint' ? val.toString(16) : val); }
-function reason(r) { return "refused=" + r.refused + " malformed=" + r.malformed + " layout_hash=" + (r.layoutHash ? "0x" + r.layoutHash.toString(16) : "0"); }
-function fail(msg) { throw new Error(msg); }
 `
 
 func t02Probe(t *testing.T, node, reader string, older []string, retire int, table, body string) {
