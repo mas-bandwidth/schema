@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // THE ROADMAP'S FRAMING TASKS ON THE RUST LEG (docs/roadmap.sexp node
@@ -116,6 +118,168 @@ fn v_t01_f9() {
     assert!(t01_untouched(&values), "the over-capacity refusal wrote a destination byte");
 }
 
+/// F10 (§5.3 step 7): "per record: if LE(8, at) != h, REFUSE no_layout" — this
+/// leg's spelling is no_block (§5.9 #25). A forged hash in ANY record refuses by
+/// name, total, and is never malformed. What a refusal at record k leaves in
+/// out[0..k-1] is the page's OPEN QUESTION and is not asserted.
+#[test]
+fn v_t01_f10() {
+    for k in 0..3usize {
+        let mut data = t01_records(3);
+        let at = TABLE_FIXED_HEADER_BYTES + 4 + t01_layout_len(&data) + k * LINEAGE_FIXED_RECORD_BYTES;
+        data[at] ^= 0x01;
+        let (n, report, values) = t01_read(&data, 3, 4096);
+        assert!(n.is_none(), "record {k} with a forged hash must refuse: {:?}", report);
+        assert_eq!(report.reason.name(), "no_block", "record {k}: {:?}", report.reason);
+        assert!(report.refused && !report.malformed, "record {k}: refused and malformed are never both set: {:?}", report);
+        assert!(t01_total(&report), "record {k}: no counter moves: {:?}", report);
+        assert_eq!(report.layout_hash, 0, "record {k}: no_block carries no hash: {:?}", report);
+        if k == 0 {
+            assert!(t01_untouched(&values), "a refusal at record 0 wrote a destination byte");
+        }
+    }
+}
+
+/// R8 (§5.3 step 4): "a hash in no entry is layout_newer", reporting THE FILE'S
+/// HASH AND NOTHING ELSE: the whole report is exactly refused, the reason and
+/// the hash.
+#[test]
+fn v_t01_r8() {
+    for forged in [0xDEAD_BEEF_CAFE_F00Du64, 0, u64::MAX] {
+        let mut data = t01_records(2);
+        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].copy_from_slice(&forged.to_le_bytes());
+        let (n, report, values) = t01_read(&data, 2, 4096);
+        assert!(n.is_none(), "a hash in no entry must refuse: {:?}", report);
+        let want = TableFixedReport {
+            refused: true,
+            reason: TableFixedReason::LayoutNewer,
+            layout_hash: forged,
+            ..TableFixedReport::default()
+        };
+        assert_eq!(report, want, "layout_newer reports the file's hash {forged:#018x} and NOTHING ELSE");
+        assert!(t01_untouched(&values), "layout_newer wrote a destination byte");
+    }
+}
+
+/// R9 (§5.3 step 5 and step 3's tail): "a known hash with a different layout
+/// length or bytes → layout_malformed; the seven §1.1 malformations under a
+/// known hash all come back as this one name". Every edit below leaves the
+/// header's hash the reader's own.
+#[test]
+fn v_t01_r9() {
+    let own = t01_records(1);
+    let l = t01_layout_len(&own);
+    let b = TABLE_FIXED_HEADER_BYTES + 4;
+    let count = u32::from_le_bytes(own[b..b + 4].try_into().expect("four bytes")) as usize;
+    assert_eq!(l, 4 + 17 * count, "the fixture's layout is count entries of 17 bytes");
+    let entry = |i: usize| b + 4 + 17 * i;
+    let mut cases: Vec<(String, Vec<u8>)> = Vec::new();
+    // EVERY BYTE OF THE LAYOUT, flipped: a different layout of the same length.
+    for i in 0..l {
+        let mut d = own.clone();
+        d[b + i] ^= 0xFF;
+        cases.push((format!("byte {i} flipped"), d));
+    }
+    // A DIFFERENT LENGTH: shorter and longer, the stated length following the bytes.
+    {
+        let mut d = own.clone();
+        d.remove(b + l - 1);
+        d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&((l - 1) as u32).to_le_bytes());
+        cases.push(("one byte shorter".to_string(), d));
+        let mut d = own.clone();
+        d.insert(b + l, 0);
+        d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&((l + 1) as u32).to_le_bytes());
+        cases.push(("one byte longer".to_string(), d));
+        let mut d = own.clone();
+        d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&0u32.to_le_bytes());
+        cases.push(("an empty layout".to_string(), d));
+        let mut d = own.clone();
+        d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        cases.push(("a stated length past the file".to_string(), d));
+    }
+    // §1.1's SEVEN, each forged in place under the known hash.
+    let seven: [(&str, Vec<u8>); 7] = {
+        let edit = |at: usize, v: &[u8]| { let mut d = own.clone(); d[at..at + v.len()].copy_from_slice(v); d };
+        [
+            ("1 count mismatch", edit(b, &((count + 1) as u32).to_le_bytes())),
+            ("2 kind unknown", edit(entry(1) + 8, &[31])),
+            ("3 size mismatch", edit(entry(1) + 9, &0x7FFF_FFFFu32.to_le_bytes())),
+            ("4 kind invalid", edit(entry(0) + 8, &[14])),
+            ("5 tree unclosed", edit(entry(0) + 13, &(count as u32).to_le_bytes())),
+            ("6 record too large", edit(entry(0) + 9, &0x7FFF_FFFFu32.to_le_bytes())),
+            ("7 too deep", {
+                // a 70-entry chain of single-child tables, under the same hash
+                let n = 70usize;
+                let mut layout = (n as u32).to_le_bytes().to_vec();
+                for i in 0..n {
+                    layout.extend_from_slice(&[0u8; 8]);
+                    layout.push(13);
+                    layout.extend_from_slice(&1u32.to_le_bytes());
+                    layout.extend_from_slice(&(if i + 1 < n { 1u32 } else { 0u32 }).to_le_bytes());
+                }
+                let mut d = own[..TABLE_FIXED_HEADER_BYTES].to_vec();
+                d.extend_from_slice(&(layout.len() as u32).to_le_bytes());
+                d.extend_from_slice(&layout);
+                d
+            }),
+        ]
+    };
+    for (name, d) in seven { cases.push((name.to_string(), d)); }
+    for (name, d) in cases {
+        let (n, report, values) = t01_read(&d, 2, 4096);
+        assert!(n.is_none(), "{name}: a lie about a known version is refused: {:?}", report);
+        assert_eq!(report.reason.name(), "layout_malformed", "{name}: ONE name, not {:?}", report.reason);
+        assert!(report.refused && !report.malformed, "{name}: refused and malformed are never both set: {:?}", report);
+        assert!(t01_total(&report) && report.layout_hash == 0, "{name}: nothing else is reported: {:?}", report);
+        assert!(t01_untouched(&values), "{name}: a destination byte was written");
+    }
+}
+
+/// R13 (§5.3, §5.8 row 9): "REFUSE is total: refused+reason and malformed are
+/// never both set, every counter stays zero, and not one destination byte is
+/// written". Every refusal the load answers before a record lands is held to it
+/// across ITS OWN name, and every malformed answer is held to the other side.
+#[test]
+fn v_t01_r13() {
+    let own = t01_records(3);
+    let at = TABLE_FIXED_HEADER_BYTES + 4 + t01_layout_len(&own);
+    let edit = |f: &dyn Fn(&mut Vec<u8>)| { let mut d = own.clone(); f(&mut d); d };
+    let refusals: Vec<(&str, Vec<u8>, usize, usize, &str)> = vec![
+        ("previous_form", edit(&|d| d[0] = 1), 3, 4096, "previous_form"),
+        ("message_form_as_file", edit(&|d| d[0] = 2), 3, 4096, "message_form_as_file"),
+        ("newer_form", edit(&|d| d[0] = 9), 3, 4096, "newer_form"),
+        ("layout_newer", edit(&|d| d[8] ^= 0xFF), 3, 4096, "layout_newer"),
+        ("layout_malformed", edit(&|d| d[TABLE_FIXED_HEADER_BYTES + 4] ^= 0xFF), 3, 4096, "layout_malformed"),
+        ("layout_past_the_file", edit(&|d| d[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].copy_from_slice(&u32::MAX.to_le_bytes())), 3, 4096, "layout_malformed"),
+        ("batch_too_large", own.clone(), 2, 4096, "batch_too_large"),
+        ("no_block", edit(&|d| d[at] ^= 0x01), 3, 4096, "no_block"),
+        ("plan_too_large", own.clone(), 3, 0, "plan_too_large"),
+    ];
+    for (label, d, capacity, plan_len, name) in refusals {
+        let (n, report, values) = t01_read(&d, capacity, plan_len);
+        assert!(n.is_none(), "{label}: a refusal reads nothing: {:?}", report);
+        assert!(report.refused, "{label}: refused is set: {:?}", report);
+        assert_eq!(report.reason.name(), name, "{label}");
+        assert!(!report.malformed, "{label}: refused and malformed are never both set: {:?}", report);
+        assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
+        assert!(t01_untouched(&values), "{label}: a destination byte was written");
+    }
+    // THE OTHER ANSWER: malformed is never a refusal and never carries a name.
+    let malformed: Vec<(&str, Vec<u8>)> = vec![
+        ("no first byte", Vec::new()),
+        ("under 20 bytes", own[..19].to_vec()),
+        ("a nonzero reserved byte", edit(&|d| d[3] = 1)),
+        ("a ragged tail", edit(&|d| d.push(0))),
+    ];
+    for (label, d) in malformed {
+        let (n, report, values) = t01_read(&d, 3, 4096);
+        assert!(n.is_none(), "{label}: malformed reads nothing: {:?}", report);
+        assert!(report.malformed, "{label}: malformed is set: {:?}", report);
+        assert!(!report.refused && report.reason == TableFixedReason::None, "{label}: never both set: {:?}", report);
+        assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
+        assert!(t01_untouched(&values), "{label}: a destination byte was written");
+    }
+}
 `, filepath.Join(corpus, "new_field_append.bin"))
 }
 
@@ -151,6 +315,54 @@ func t01Run(t *testing.T) string {
 	return string(out)
 }
 
+// t01IdentityShape is rust/R7 (§5.3 step 8, §5.9 #20): "the identity lane is an
+// index comparison, never a recomputed hash". The emitted load selects by
+// `position(|k| k.hash == hash)` over the lock's constants, tests `found ==
+// <OWN>` for identity, and never calls the hash function a runtime holds.
+func t01IdentityShape(t *testing.T) {
+	older := versionUnit(t, versionSchema(t, "VOLD_field_append"))
+	u := versionUnit(t, versionSchema(t, "VNEW_field_append"))
+	lineage := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(older) {
+		e, ok := FixedLineageOf(older, st.Name)
+		if !ok {
+			t.Fatalf("no lineage entry for %s", st.Name)
+		}
+		lineage[st.Name] = append(lineage[st.Name], e)
+	}
+	for label, l := range map[string]map[string][]FixedLineageEntry{"a lineage of two": lineage, "a lineage of one": nil} {
+		tables, err := GenerateLineage(u, l)
+		if err != nil {
+			t.Fatalf("%s: GenerateLineage: %v", label, err)
+		}
+		seen := false
+		for name, data := range tables {
+			text := string(data)
+			from := strings.Index(text, "_fixed_load(")
+			if from < 0 {
+				continue
+			}
+			seen = true
+			load := text[from:]
+			if end := strings.Index(load, "\n}\n"); end > 0 {
+				load = load[:end]
+			}
+			if strings.Contains(load, "table_fixed_hash(") {
+				t.Errorf("%s %s: the load recomputes a hash; the identity lane is an index comparison (§5.3 step 8)", label, name)
+			}
+			if !strings.Contains(load, ".position(|k| k.hash == hash)") {
+				t.Errorf("%s %s: the plan is not selected by the header's hash against the lock's constants (§5.3 step 4)", label, name)
+			}
+			if l != nil && !strings.Contains(load, "let identity = found == ") {
+				t.Errorf("%s %s: identity is not an index comparison (§5.3 step 8)", label, name)
+			}
+		}
+		if !seen {
+			t.Fatalf("%s: no load function was emitted", label)
+		}
+	}
+}
+
 func TestFixedRoadmapT01Framing(t *testing.T) {
 	t.Parallel()
 	out := t01Run(t)
@@ -160,6 +372,11 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		check func(t *testing.T)
 	}{
 		{id: "rust/F9", test: "v_t01_f9"},
+		{id: "rust/F10", test: "v_t01_f10"},
+		{id: "rust/R7", check: t01IdentityShape},
+		{id: "rust/R8", test: "v_t01_r8"},
+		{id: "rust/R9", test: "v_t01_r9"},
+		{id: "rust/R13", test: "v_t01_r13"},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
