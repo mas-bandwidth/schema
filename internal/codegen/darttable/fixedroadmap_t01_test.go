@@ -109,6 +109,19 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   for (var len = t.TableFixedLimits.layoutAt; len < cut; len++) {
     refused(data, values.length, t.TableFixedRefusal.layoutMalformed, 'F4 a $len-byte prefix', len);
   }`)},
+
+		// dart/F9 "batch_too_large": "If `rest / record_bytes` passes the
+		// caller's capacity, `REFUSE batch_too_large`". The boundary reads: n ==
+		// capacity is whole, n == capacity + 1 refuses.
+		{"dart/F9", ownRun(roadmapPrelude + `
+  final three = records(3);
+  poison();
+  final fit = t.TableFixedReport();
+  final n = LOAD(values, 3, three, three.length, plan, fit);
+  check(n == 3 && fit.refused == 0 && !fit.malformed, 'F9 n == capacity reads whole: n=$n ${why(fit)}');
+  refused(three, 2, t.TableFixedRefusal.batchTooLarge, 'F9 three records into capacity two');
+  refused(three, 0, t.TableFixedRefusal.batchTooLarge, 'F9 three records into capacity zero');
+  refused(records(2), 1, t.TableFixedRefusal.batchTooLarge, 'F9 two records into capacity one');`)},
 	}
 
 	for _, row := range rows {
