@@ -615,7 +615,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t fill_count = 0;\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    (void) plan; /* a CAPACITY DECLARATION now, never written through (§5.9 #5) */\n")
-	g.pf("    (void) plan_capacity; /* read where a lineage entry has a plan to measure */\n")
 	g.pf("    (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */\n")
 	g.pf("    memset( &local, 0, sizeof( local ) );\n")
 	g.pf("    if ( report == NULL ) { report = &local; }\n")
@@ -668,7 +667,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
 		g.pf("        %s_fixed_lineage_build(); /* once per process, from THE LOCK'S bytes */\n", n)
 		g.pf("        if ( %s_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = %s_fixed_lineage[pick].reason; return -1; }\n", n, n)
-		g.pf("        if ( %s_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n", n)
 		g.pf("        entries = %s_fixed_lineage[pick].entries;\n", n)
 		g.pf("        entry_count = %s_fixed_lineage[pick].count;\n", n)
 		g.pf("        entry_guarded = %s_fixed_lineage[pick].guarded;\n", n)
@@ -680,6 +678,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        census_kind = %s_fixed_lineage[pick].kind_mismatch;\n", n)
 		g.pf("    }\n")
 	}
+	// STEP 8's second half: THE CALLER'S CAPACITY IS A BOUND ON THE SELECTED PLAN,
+	// the baked identity plan included. §5.2 PLAN: "if the entries or their tables
+	// do not fit the declared capacity: REFUSE plan_too_large", owed by every leg
+	// (§5.9 #45). The check stands after selection and before the record loop, so a
+	// refusal has written not one destination byte.
+	g.pf("    /* THE CALLER'S CAPACITY BOUNDS THE SELECTED PLAN — THE IDENTITY PLAN\n")
+	g.pf("       INCLUDED (§5.2 PLAN: \"if the entries or their tables do not fit the\n")
+	g.pf("       declared capacity: REFUSE plan_too_large\"; §5.9 #45). It stands after\n")
+	g.pf("       the selection, before the record loop, so a refusal writes no byte. */\n")
+	g.pf("    if ( entry_count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n")
 	// STEPS 9 and 10.
 	g.pf("    /* 9 and 10. the tail must be whole records, and they must fit the caller. */\n")
 	g.pf("    at = layout + layout_bytes;\n")
