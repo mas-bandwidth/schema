@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -50,6 +51,17 @@ fixed table T
 }
 `
 
+// t02Ranged is a table whose digest carries both a range and a resolution: the
+// 'R' and 'Q' rows §5.2's digest table names.
+const t02Ranged = `package probe
+
+fixed table T
+{
+    x int32 | min = -5, max = 5
+    y float32 = 0.0 | min = 0.0, max = 1.0, resolution = 0.01
+}
+`
+
 func TestFixedRoadmapT02Plans(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -62,6 +74,10 @@ func TestFixedRoadmapT02Plans(t *testing.T) {
 		{"go/R25", t02R25},
 		{"go/R26", t02R26},
 		{"go/W14", t02W14},
+		{"go/R4", t02R4},
+		{"go/R5", t02R5},
+		{"go/W11", t02W11},
+		{"go/W12", t02W12},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -378,4 +394,202 @@ func t02W14(t *testing.T) {
 		t.Errorf("W14: the leaves carry %d four-byte sizes, want one per int32", got)
 	}
 	t02Has(t, src, fmt.Sprintf("const TFixedBodyBytes = %d", ir.TableFixedTypeBytes(st)), "W14 the body constant is sizeof(T)")
+}
+
+// ---- go/R4 -------------------------------------------------------------------
+
+// t02R4: R4 "the hash is fnv1a64 over the layout bytes then DIGEST(T), the
+// digest computed at the hash site from the schema; a runtime never derives a
+// hash from layout bytes it holds". The compiler's hash equals fnv1a64 of the
+// layout followed by the definitions digest, the emitted constant is that
+// number, and the load takes the header's hash as given.
+func t02R4(t *testing.T) {
+	u := unitFrom(t, t02Ranged)
+	st := t02Table(t, u, "T")
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	digest := ir.TableFixedDefinitionsDigest(st)
+	if len(digest) == 0 {
+		t.Fatal("R4: the fixture carries no digest")
+	}
+	h := uint64(0xcbf29ce484222325)
+	for _, b := range append(append([]byte(nil), layout...), digest...) {
+		h ^= uint64(b)
+		h *= 0x100000001b3
+	}
+	if got := ir.TableFixedLayoutHash(layout, st); got != h {
+		t.Errorf("R4: hash = %#x, want fnv1a64(layout || digest) = %#x", got, h)
+	}
+	files := generate(t, t02Ranged)
+	src := tableFile(files)
+	t02Has(t, src, fmt.Sprintf("const TFixedHash = 0x%016x", h), "R4 the emitted hash constant is the digest-bound number")
+	load := t02Block(t, src, "func TFixedLoad(", "\n}\n")
+	t02Has(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])", "R4 the file's hash is taken as given")
+	if strings.Contains(load, "TableFixedLayoutHash") || strings.Contains(load, "0x100000001b3") {
+		t.Error("R4: the load path derives a hash from layout bytes it holds")
+	}
+}
+
+// ---- go/R5 -------------------------------------------------------------------
+
+// t02R5: R5 "the digest carries every range, every resolution (tag 'Q') and
+// every reader limit (tag 'L'), and a flags type deduped by name, once". The
+// bytes are positional and named by tag, so each clause is read off the digest
+// directly. The 'L' clause has two halves: no table spelling of a reader-side
+// limit exists in the IR (the premise the reservation rests on), and no digest
+// this leg builds carries an 'L'.
+func t02R5(t *testing.T) {
+	ranged := t02Table(t, unitFrom(t, `package probe
+
+fixed table T
+{
+    x int32 | min = -5, max = 5
+}
+`), "T")
+	rd := ir.TableFixedDefinitionsDigest(ranged)
+	if len(rd) != 17 || rd[0] != 'R' {
+		t.Errorf("R5: a range digest = % x, want 'R' and min=-5", rd)
+	}
+
+	compressed := t02Table(t, unitFrom(t, `package probe
+
+fixed table T
+{
+    q float32 = 0.0 | min = 0.0, max = 1.0, resolution = 0.01
+}
+`), "T")
+	cd := ir.TableFixedDefinitionsDigest(compressed)
+	if len(cd) != 26 || cd[0] != 'R' || cd[17] != 'Q' {
+		t.Errorf("R5: a compressed-float digest = % x, want 'R' min max 'Q' resolution", cd)
+	}
+
+	flagsOnce := t02Table(t, unitFrom(t, `package probe
+
+flags Marks { One, Two }
+
+fixed table T
+{
+    m Marks
+}
+`), "T")
+	once := ir.TableFixedDefinitionsDigest(flagsOnce)
+	if len(once) != 23 || once[0] != 'F' || once[5] != 'f' || once[14] != 'f' {
+		t.Errorf("R5: a flags digest = % x, want 'F' count, then 'f' name per flag", once)
+	}
+	if n := binary.LittleEndian.Uint32(once[1:5]); n != 2 {
+		t.Errorf("R5: the flags row names %d wire bits, want 2", n)
+	}
+
+	flagsTwice := t02Table(t, unitFrom(t, `package probe
+
+flags Marks { One, Two }
+
+fixed table T
+{
+    m Marks
+    n Marks
+}
+`), "T")
+	if got := ir.TableFixedDefinitionsDigest(flagsTwice); string(got) != string(once) {
+		t.Errorf("R5: the flags type is not deduped by name: once % x, twice % x", once, got)
+	}
+
+	// ALGORITHM §5.2 reserves 'L' because no table spelling of a reader-side
+	// limit exists: no member the walk can reach declares one. Prove that
+	// premise, so the empty row is the page's reservation and not a coincidence
+	// of these fixtures.
+	for _, rt := range []reflect.Type{
+		reflect.TypeFor[ir.Field](),
+		reflect.TypeFor[ir.Struct](),
+		reflect.TypeFor[ir.Unit](),
+	} {
+		for sf := range rt.Fields() {
+			if strings.Contains(strings.ToLower(sf.Name), "limit") {
+				t.Fatalf("R5: the IR declares %s.%s, a table-declared reader-side limit; ALGORITHM §5.2 reserves 'L' only until one exists", rt.Name(), sf.Name)
+			}
+		}
+	}
+	for _, d := range [][]byte{rd, cd, once} {
+		if slices.Contains(d, byte('L')) {
+			t.Error("R5: the digest carries a reader-limit row no table spelling produces")
+		}
+	}
+}
+
+// ---- go/W11 ------------------------------------------------------------------
+
+// t02W11: W11 "bytes(N) is layout kind 14". A bytes(N) field walks as an ARRAY
+// (kind 14) with one synthetic u8 child, and the byte that rides the layout is
+// the same number.
+func t02W11(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table T
+{
+    blob bytes(6)
+}
+`)
+	st := t02Table(t, u, "T")
+	w := (&tableGen{}).fixedWalkRoot(st)
+	at := -1
+	for i, e := range w.entries {
+		if e.note == "blob" {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("W11: the bytes(6) field is not in the leg's walk")
+	}
+	if e := w.entries[at]; e.kind != ir.TableKindArray {
+		t.Errorf("W11: bytes(6) walks as kind %d, want %d (array)", e.kind, ir.TableKindArray)
+	}
+	if e := w.entries[at]; e.children != 1 {
+		t.Errorf("W11: bytes(6) carries %d children, want the one synthetic u8", e.children)
+	}
+	if at+1 >= len(w.entries) || w.entries[at+1].kind != ir.TableKindU8 || w.entries[at+1].size != 1 || w.entries[at+1].children != 0 {
+		t.Errorf("W11: bytes(6)'s element is not the synthetic u8 (kind 6, size 1, no children)")
+	}
+
+	files := generate(t, `package probe
+
+fixed table T
+{
+    blob bytes(6)
+}
+`)
+	layout := t02ByteArray(t, tableFile(files), "TFixedLayout")
+	if len(layout) < 4+2*17 {
+		t.Fatalf("W11: the emitted layout is %d bytes, too short for the table and the bytes row", len(layout))
+	}
+	if got := layout[4+17+8]; got != 14 {
+		t.Errorf("W11: the bytes(6) layout kind byte = %d, want 14", got)
+	}
+	if ir.TableKindArray != 14 {
+		t.Fatalf("W11: TableKindArray = %d, want 14", ir.TableKindArray)
+	}
+}
+
+// ---- go/W12 ------------------------------------------------------------------
+
+// t02W12: W12 "hash includes the 4-byte count". The layout opens with the u32
+// entry count, the emitted bytes carry that count, and the hash moves when the
+// count moves.
+func t02W12(t *testing.T) {
+	u := unitFrom(t, t02Flat)
+	st := t02Table(t, u, "T")
+	w := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(w)
+	if got := binary.LittleEndian.Uint32(layout[:4]); got != uint32(len(w)) {
+		t.Errorf("W12: the layout's count = %d, want %d entries", got, len(w))
+	}
+	mutated := append([]byte(nil), layout...)
+	binary.LittleEndian.PutUint32(mutated[:4], uint32(len(w))+1)
+	if ir.TableFixedLayoutHash(layout, st) == ir.TableFixedLayoutHash(mutated, st) {
+		t.Error("W12: the hash ignores the layout's 4-byte entry count")
+	}
+
+	files := generate(t, t02Flat)
+	emitted := t02ByteArray(t, tableFile(files), "TFixedLayout")
+	if len(emitted) < 4 || binary.LittleEndian.Uint32(emitted[:4]) != uint32(len(w)) {
+		t.Errorf("W12: the emitted layout does not open with the %d-entry count", len(w))
+	}
 }
