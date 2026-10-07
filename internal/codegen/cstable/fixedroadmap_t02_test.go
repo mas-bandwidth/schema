@@ -476,4 +476,3 @@ func t02W12(t *testing.T) {
 	_, src := t02Table(t, t02Flat)
 	t02Has(t, src, "0x03, 0x00, 0x00, 0x00,", "W12 the emitted layout opens with its 4-byte entry count")
 }
-
