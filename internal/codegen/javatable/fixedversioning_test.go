@@ -584,6 +584,13 @@ type sideSpec struct {
 
 // lineageOf is the lock a test plays: every fixed root of every older unit, in
 // order, oldest first, with the first `retire` entries marked retired.
+//
+// Each entry also carries the WRITER's bounded leaves (ALGORITHM §4.6, bill
+// §12.5): the ranged scalars the older unit declared, on the raw scale — a
+// fixed-point's whole-unit bounds shifted by F — matched by the field's name.
+// The reference's collectKnownRanges hands its emitter the same facts from the
+// same peer schemas; a leg's bounds pass holds a compiled lane to the peer's
+// own bounds, so the entry is where they ride.
 func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLineageEntry {
 	t.Helper()
 	out := map[string][]FixedLineageEntry{}
@@ -598,8 +605,37 @@ func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLinea
 			if e.Retired {
 				e.Reason = "retired by the test's lock"
 			}
+			e.Ranges = fixedWriterRanges(t, st)
 			out[st.Name] = append(out[st.Name], e)
 		}
+	}
+	return out
+}
+
+// fixedWriterRanges is the older unit's own ranged leaves, top level of the
+// root, on the RAW scale the wire carries (ir.TableRawRange shifts a
+// fixed-point's bounds by F). Bounds that do not fit an int64 bound nothing
+// and are skipped rather than clamped to a zero nobody declared. A FIXED
+// array's range bounds every element; a counted array's live count is a
+// run-time fact this static entry does not carry, so only the fixed shape
+// rides here (the scatter's own pass walks a counted array's live elements).
+func fixedWriterRanges(t *testing.T, st *ir.Struct) []FixedRangeSpec {
+	t.Helper()
+	var out []FixedRangeSpec
+	for _, f := range st.Fields {
+		if f.Array == ir.ArrayCounted || f.Type.Optional || f.KeyEnum != "" {
+			continue
+		}
+		switch f.Type.Kind {
+		case ir.TInt, ir.TBits, ir.TFixed:
+		default:
+			continue
+		}
+		lo, hi, ok := ir.TableRawRange(f)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			continue
+		}
+		out = append(out, FixedRangeSpec{Name: f.Name, Lo: lo.Int64(), Hi: hi.Int64()})
 	}
 	return out
 }

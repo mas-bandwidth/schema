@@ -522,8 +522,25 @@ public final class TableFixed {
                 }
                 case opWidenF: {
                     if (p.src + 4 > srcLength) { report.malformed = true; return; }
-                    final float f = Float.intBitsToFloat(get32(src, srcAt + p.src));
-                    put64(image, p.dst, Double.doubleToRawLongBits(f));
+                    // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling), so
+                    // the widening is BY THE PATTERN and never through the
+                    // hardware's own conversion: the conversion between the two
+                    // widths SETS THE QUIET BIT on a signalling NaN and drops a
+                    // payload the narrower cell would have kept, and widenf owes
+                    // the bit-exact widening (ALG 4.2: "NaN payloads included").
+                    // Sign, exponent and payload carried; every finite value is
+                    // exact through the conversion, so only the pattern needs
+                    // spelling out — NaN and infinity share the all-ones
+                    // exponent the shift lands.
+                    final int bits = get32(src, srcAt + p.src);
+                    final long out;
+                    if ((bits & 0x7F800000) == 0x7F800000) {
+                        out = ((bits & 0x80000000L) << 32) | 0x7FF0000000000000L
+                            | ((bits & 0x7FFFFFL) << 29);
+                    } else {
+                        out = Double.doubleToRawLongBits(Float.intBitsToFloat(bits));
+                    }
+                    put64(image, p.dst, out);
                     report.widened++;
                     break;
                 }
@@ -552,6 +569,30 @@ public final class TableFixed {
                 }
                 default: break;
             }
+        }
+    }
+
+    /** §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves,
+     *  straight-line over the record image after the plan run and before the
+     *  scatter. spec is a flat array of {dst, width, signed, lo, hi} rows,
+     *  one per leaf the writer declared, or null when the entry bounds nothing
+     *  — the reader's range is the wider one, so clamping to it would land a
+     *  value the old writer could not have written (bill §12.5). Every clamp
+     *  COUNTS, once per leaf per record, exactly as the scatter's own pass
+     *  counts the reader's. */
+    public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
+        if (spec == null || spec.length == 0 || image == null) { return; }
+        for (int i = 0; i + 4 < spec.length; i += 5) {
+            final int at = (int) spec[i];
+            final int width = (int) spec[i + 1];
+            if (width <= 0 || width > 8 || at < 0 || at + width > image.length) { continue; }
+            final long lo = spec[i + 3];
+            final long hi = spec[i + 4];
+            final long v = spec[i + 2] != 0 ? getInt(image, at, width) : getUint(image, at, width);
+            long landed = v;
+            if (landed < lo) { landed = lo; report.clamped++; }
+            else if (landed > hi) { landed = hi; report.clamped++; }
+            if (landed != v) { putUint(image, at, landed, width); }
         }
     }
 
