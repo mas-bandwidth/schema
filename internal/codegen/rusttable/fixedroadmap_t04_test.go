@@ -471,6 +471,67 @@ func t04R29(t *testing.T) {
 	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),", "R29 the text's cap is the writer's span in units")
 }
 
+// ---- rust/E5 ------------------------------------------------------------------
+
+// t04E5 holds rust/E5 to SPEC-TABLES §3.4's kind 35: "ON THIS FORM THEY ARE
+// ONE BYTE APART ... the edit reads as kind_mismatch and the field takes its
+// declared default", so `?T` and a plain `T` nesting are distinguishable in the
+// layout, the wrapper is one present byte plus its child, and `T` into `?T`
+// lands a CONSTANT present 1 under the row's own guard.
+func t04E5(t *testing.T) {
+	if ir.TableKindOptional != 35 {
+		t.Fatalf("E5: TableKindOptional = %d, want 35", ir.TableKindOptional)
+	}
+	plain := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    link int32\n}\n")
+	optional := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    link ?int32\n}\n")
+	if got := ir.TableFixedTypeBytes(plain.Tables["Lineage"]); got != 4 {
+		t.Errorf("E5: a plain int32 nested body is %d, want 4", got)
+	}
+	if got := ir.TableFixedTypeBytes(optional.Tables["Lineage"]); got != 5 {
+		t.Errorf("E5: a ?int32 body is %d, want 5 — one present byte plus the payload", got)
+	}
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, "35 => {", "E5 the optional wrapper is a layout kind")
+	t04Has(t, runtime, "if e.size as u64 != sum + 1 {", "E5 the wrapper is one present byte plus its child")
+	t04Has(t, runtime, "if me.kind == 35 && te.kind != 35 {", "E5 T into ?T is its own emit")
+	t04Has(t, runtime, "aux: 1,", "E5 the present companion lands a constant 1")
+}
+
+// ---- rust/W2 ------------------------------------------------------------------
+
+// t04W2 holds rust/W2 to SPEC-TABLES §3.4's present rule: "the payload rides
+// WHOLE whether or not it is present; ZERO on write when the flag is 0". The
+// emitted write body stores the flag and then the payload behind ONE `if`, so
+// an absent optional costs the branch and not one store — the template's zeros
+// are what rides, and a caller's untouched payload storage never reaches the
+// wire.
+func t04W2(t *testing.T) {
+	text, _ := t04Lineage(t,
+		"package probe\n\nfixed table Lineage\n{\n    link int32\n}\n",
+		"package probe\n\nfixed table Lineage\n{\n    link ?int32\n}\n")
+	write := t04Fn(text, "lineage_fixed_write_body")
+	if write == "" {
+		t.Fatal("W2: lineage_fixed_write_body is not emitted")
+	}
+	t04Has(t, write, "u8::from(value.link_present);", "W2 the present flag is stored")
+	guard := strings.Index(write, "if value.link_present {")
+	if guard < 0 {
+		t.Fatalf("W2: an absent optional does not guard its store:\n%s", write)
+	}
+	// THE PAYLOAD'S STORE IS BEHIND THE GUARD and never before it: the first
+	// payload byte written must come after the `if`.
+	rest := write[guard:]
+	if end := strings.Index(rest, "\n    }"); end >= 0 {
+		rest = rest[:end]
+	}
+	if !strings.Contains(rest, "copy_from_slice") && !strings.Contains(rest, "b[") {
+		t.Errorf("W2: the guard does not wrap the payload's store:\n%s", write)
+	}
+	if strings.Count(write, "if value.link_present {") != 1 {
+		t.Errorf("W2: the absent-optional guard appears %d times, want once", strings.Count(write, "if value.link_present {"))
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapT04Versions(t *testing.T) {
@@ -488,6 +549,8 @@ func TestFixedRoadmapT04Versions(t *testing.T) {
 		{id: "rust/R20", check: t04R20},
 		{id: "rust/R21", check: t04R21},
 		{id: "rust/R29", check: t04R29},
+		{id: "rust/E5", check: t04E5},
+		{id: "rust/W2", check: t04W2},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
