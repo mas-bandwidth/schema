@@ -35,6 +35,23 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's bounded leaves this entry carries, so the
+	// compiled lane's bounds pass can hold a peer to what IT could have
+	// written and never to this reader's wider own (ALGORITHM §4.6: "the
+	// bounds this pass holds are the plan's — the writer's own for the lineage
+	// entry the plan was compiled for"). A fixed-point's whole-unit bounds are
+	// already shifted by F here — the RAW scale the wire carries.
+	Ranges []FixedRangeSpec
+}
+
+// FixedRangeSpec is one bounded leaf of a lineage entry's WRITER: the field's
+// name, matched against this reader's own spelling of it, and the writer's
+// declared bounds on the raw scale. A bound that does not fit the int64
+// lanes bounds nothing and is skipped by whoever builds the entry.
+type FixedRangeSpec struct {
+	Name string
+	Lo   int64
+	Hi   int64
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
