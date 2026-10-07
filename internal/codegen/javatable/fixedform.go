@@ -1307,40 +1307,58 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		return
 	}
 	typ := fixedScalarType(f.Type)
-	// A RANGED INTEGER CLAMPS ON LOAD AND COUNTS (docs/SPEC-TABLES.md §3.4's
-	// constant-size table, §4): the bounds do not ride, so a peer that widened
-	// them lands a value this reader does not admit and the reader cuts it to
-	// its own. It is straight-line code in the identity decode, as the packet
-	// reader's own range check is.
-	if lo, hi, ok := fixedIntRange(owner); ok && typ != "Int128" && typ != "UInt128" {
+	// A RANGED SCALAR CLAMPS ON LOAD AND COUNTS, straight-line code after the
+	// plan run over STORAGE (ALGORITHM §4.6's bounds pass, which is what
+	// makes one pass cover both plans): this is the READER's own half, and
+	// the lineage entry's writer bounds hold the compiled lane to the PEER's
+	// own declaration beside it. A FIXED-POINT'S BOUNDS ARE IN VALUE UNITS
+	// and its storage is raw, so both ends shift by F first
+	// (ir.TableRawRange); a bits(N) clamps to 2^N − 1 below, its declared
+	// width being a bound its storage byte count does not enforce.
+	if lo, hi, ok := fixedRawRange(owner); ok && typ != "Int128" && typ != "UInt128" {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (q < %sL) { q = %sL; %s.clamped++; } else if (q > %sL) { q = %sL; %s.clamped++; }\n",
+		g.pf("%s    if (q < %dL) { q = %dL; %s.clamped++; } else if (q > %dL) { q = %dL; %s.clamped++; }\n",
 			ind, lo, lo, rep, hi, hi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
-		return
+	} else {
+		g.pf("%s%s = %s;\n", ind, expr, fixedLoadAs(buf, at, off, w, f.Type.Signed, typ))
 	}
-	g.pf("%s%s = %s;\n", ind, expr, fixedLoadAs(buf, at, off, w, f.Type.Signed, typ))
+	// A bits(N) CLAMPS TO 2^N − 1 (ALGORITHM §4.6): N is the declared width and
+	// the storage that holds it can be wider, so a forged value between the
+	// two lands the width's own top and counts.
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
+		maxv := int64(uint64(1)<<uint(f.Type.Width) - 1)
+		g.pf("%sif (%s > %dL) { %s = %s; %s.clamped++; } // bits(%d) clamps to 2^N - 1\n",
+			ind, expr, maxv, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), rep, f.Type.Width)
+	}
 }
 
-// fixedIntRange answers a plain integer field's declared bounds as Java `long`
-// literals. Only the integer kinds: a fixed-point field's bounds are whole
-// units against a raw scaled wire, and a float's are a different rule, so
-// neither clamps here.
-func fixedIntRange(f *ir.Field) (string, string, bool) {
+// fixedRawRange answers a leaf's declared bounds on the RAW scale the wire
+// carries, as int64 literals: a plain integer's own bounds, a bits(N)'s
+// declared range, and a fixed-point's whole-unit bounds SHIFTED BY F
+// (ir.TableRawRange — ALGORITHM §4.6: "a fixed-point field's bounds are in
+// value units and its storage is raw, so both ends are shifted by F first").
+// A float's bounds are a different rule — the reader's own, schema#1164,
+// statement B — and a bound that does not fit the int64 lanes bounds nothing.
+func fixedRawRange(f *ir.Field) (int64, int64, bool) {
 	if f == nil || !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
-		return "", "", false
+		return 0, 0, false
 	}
 	switch f.Type.Kind {
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
 	default:
-		return "", "", false
+		return 0, 0, false
 	}
-	if f.Type.Width > 64 || !f.IntMin.IsInt64() || !f.IntMax.IsInt64() {
-		return "", "", false
+	if f.Type.Width > 64 {
+		return 0, 0, false
 	}
-	return f.IntMin.String(), f.IntMax.String(), true
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok || !lo.IsInt64() || !hi.IsInt64() {
+		return 0, 0, false
+	}
+	return lo.Int64(), hi.Int64(), true
 }
 
 func fixedNarrow(typ, expr string) string {
@@ -1487,7 +1505,9 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.emitDestArray(w)
 	g.pf("    };\n\n")
 
-	g.emitLineage(st, hash, layout, body)
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
+	g.emitLineage(st, hash, layout, entries, floor)
+	entryBounds := g.fixedWriterBounds(st, entries, hash)
 
 	g.pf("    /** everything a FILE carries once, in front of the records: §3's own\n")
 	g.pf("     *  sixteen-byte header, then the u32 layout length, then the layout. */\n")
@@ -1617,6 +1637,13 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        short[] table = remap;\n")
 	g.pf("        int censusUnknown = 0;\n")
 	g.pf("        int censusKind = 0;\n")
+	if entryBounds != nil {
+		g.pf("        // THE WRITER'S OWN BOUNDS for the peer this file selected (ALGORITHM\n")
+		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
+		g.pf("        // so a forged value past what the writer could have written lands\n")
+		g.pf("        // the writer's bound and counts, never this reader's wider own.\n")
+		g.pf("        long[] writerBounds = null;\n")
+	}
 	g.pf("        if (fileHash != hash) {\n")
 	g.pf("            final TableFixed.Plan lane = Lineage.plans[pick];\n")
 	g.pf("            if (lane == null || lane.why != TableFixed.Reason.none) {\n")
@@ -1629,6 +1656,9 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            table = lane.remap;\n")
 	g.pf("            censusUnknown = lane.unknown;\n")
 	g.pf("            censusKind = lane.kindMismatch;\n")
+	if entryBounds != nil {
+		g.pf("            writerBounds = Lineage.bounds[pick];\n")
+	}
 	g.pf("        }\n")
 	g.pf("        final long recordSize = known_.recordBytes;\n")
 	g.pf("\n")
@@ -1659,6 +1689,9 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                System.arraycopy(defaults, off, image, off, hn);\n")
 	g.pf("            }\n")
 	g.pf("            TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);\n")
+	if entryBounds != nil {
+		g.pf("            TableFixed.clampWriterBounds(writerBounds, image, report);\n")
+	}
 	g.pf("            scatter(image, 0, values[k], report);\n")
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
@@ -1681,8 +1714,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 // initializer holds 64KiB of it, and a lineage multiplies `4 + 17E` bytes of
 // layout by its entry count: the one shape that does not grow the initializer
 // with the lineage is the string constant.
-func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, body int64) {
-	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
+func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entries []FixedLineageEntry, floor int) {
 	for i, e := range entries {
 		if e.Wire == hash {
 			continue // the current layout is already the `layout` constant
@@ -1716,14 +1748,118 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, body i
 	g.pf("     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry\n")
 	g.pf("     *  stays in the lineage forever: the floor is an index cut. */\n")
 	g.pf("    public static final int floor = %d;\n\n", floor)
+	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
+	// the bounds pass on a compiled lane holds the PEER's declaration and never
+	// this reader's wider own, so each entry's ranged leaves ride as data —
+	// a flat {dst, width, signed, lo, hi} per leaf, at this reader's image
+	// offsets, in the writer's raw bounds. Only entries that carry them.
+	entryBounds := g.fixedWriterBounds(st, entries, hash)
+	hasBounds := entryBounds != nil
+	if hasBounds {
+		for i, rows := range entryBounds {
+			if len(rows) == 0 {
+				continue
+			}
+			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the peer's own ranged leaves,\n", i)
+			g.pf("     *  raw scale, at this reader's image offsets — what the compiled\n")
+			g.pf("     *  lane's bounds pass holds this peer to (ALGORITHM §4.6). */\n")
+			g.pf("    private static final long[] known%dWriterBounds = {\n", i)
+			for _, r := range rows {
+				sgn := int64(0)
+				if r.signed {
+					sgn = 1
+				}
+				g.pf("        %d, %d, %d, %dL, %dL,\n", r.dst, r.width, sgn, r.lo, r.hi)
+			}
+			g.pf("    };\n\n")
+		}
+	}
 	g.pf("    // ONE PLAN PER LINEAGE ENTRY, BUILT AT CLASS INITIALIZATION from the\n")
 	g.pf("    // lock's own bytes — build time for a language with no constexpr, and\n")
 	g.pf("    // conforming (§5.9 #3). Nothing on the load path compiles, nothing on it\n")
 	g.pf("    // parses a layout, and there is no cache a load can miss.\n")
 	g.pf("    private static final class Lineage {\n")
 	g.pf("        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);\n")
+	if hasBounds {
+		g.pf("        // the writer's bounded leaves per entry, null where the entry\n")
+		g.pf("        // bounds nothing: the compiled lane's bounds pass (§4.6).\n")
+		g.pf("        static final long[][] bounds = {\n")
+		for i, rows := range entryBounds {
+			if len(rows) == 0 {
+				g.pf("            null,\n")
+				continue
+			}
+			g.pf("            known%dWriterBounds,\n", i)
+		}
+		g.pf("        };\n")
+	}
 	g.pf("    }\n")
 	g.pf("\n")
+}
+
+// fixedWriterBound is one bounded leaf of a lineage entry's WRITER, resolved
+// onto this reader's storage: the image offset the compiled plan lands it at,
+// the width this reader holds it in, and the writer's raw bounds.
+type fixedWriterBound struct {
+	dst    int64
+	width  int64
+	signed bool
+	lo, hi int64
+}
+
+// fixedWriterBounds resolves every entry's ranged leaves against this reader's
+// own fields BY NAME — the match the reference's collectKnownRanges makes — so
+// the compiled lane's bounds pass can hold a peer to what IT declared and
+// never to this reader's wider own (ALGORITHM §4.6, bill §12.5). The
+// identity entry needs none: its writer IS this reader, and the scatter's own
+// pass holds it. A field this reader cannot name bounds nothing, and a FIXED
+// array's bound covers every slot at its stride; a counted array's live count
+// is a run-time fact a static entry does not carry, so only the fixed shape
+// rides. The answer is nil when no entry bounds anything, so a table without
+// ranged writers emits no clamp at all.
+func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
+	var all [][]fixedWriterBound
+	any := false
+	for _, e := range entries {
+		var rows []fixedWriterBound
+		if e.Wire != hash {
+			for _, spec := range e.Ranges {
+				at := int64(0)
+				for _, f := range st.Fields {
+					if f.Name == spec.Name {
+						rows = append(rows, fixedWriterBoundsOfField(f, at, spec.Lo, spec.Hi)...)
+						break
+					}
+					at += fixedFieldBytes(f)
+				}
+			}
+		}
+		all = append(all, rows)
+		if len(rows) > 0 {
+			any = true
+		}
+	}
+	if !any {
+		return nil
+	}
+	return all
+}
+
+// fixedWriterBoundsOfField spells one writer-bound spec at this reader's
+// offsets: a scalar is one row, a fixed array one per slot at its stride.
+func fixedWriterBoundsOfField(f *ir.Field, at, lo, hi int64) []fixedWriterBound {
+	if f.Array == ir.ArrayFixed {
+		stride := fixedElementBytes(f)
+		out := make([]fixedWriterBound, 0, f.ArrayBound)
+		for i := int64(0); i < f.ArrayBound; i++ {
+			out = append(out, fixedWriterBound{dst: at + i*stride, width: stride, signed: f.Type.Signed, lo: lo, hi: hi})
+		}
+		return out
+	}
+	if f.Array != ir.ArrayNone {
+		return nil // a counted array walks its live count, which a static row cannot name
+	}
+	return []fixedWriterBound{{dst: at, width: fixedFieldBytes(f), signed: f.Type.Signed, lo: lo, hi: hi}}
 }
 
 // fixedLiteralCap is where a readable byte-array literal stops being one. A
