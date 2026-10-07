@@ -176,6 +176,117 @@ func t04R3(t *testing.T) {
 	}
 }
 
+// ---- rust/R32 ----------------------------------------------------------------
+
+// t04R32 holds rust/R32 to §5.2's retirement, read off the emitted load: the
+// operator's mark is laid down per entry (`retired: true`), the floor check
+// sits ONCE, after the hash select and BEFORE the byte comparison or any
+// record, and its whole body is the named refusal — a pure read of `found`, so
+// a second load of the same file answers the same name. REFUSE is TOTAL: the
+// runtime's refuse zeroes every counter and no plan runs.
+func t04R32(t *testing.T) {
+	text := t04Retire(t, 1)
+	t04Has(t, text, "retired: true,", "R32 the retired entry's mark is laid down")
+	t04Has(t, text, "retired: false,", "R32 the current entry is not retired")
+	load := t04Fn(text, "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("R32: lineage_fixed_load is not emitted")
+	}
+	if n := strings.Count(load, "found < LINEAGE_FIXED_FLOOR"); n != 1 {
+		t.Errorf("R32: the floor is tested %d times, want once", n)
+	}
+	at := strings.Index(load, "found < LINEAGE_FIXED_FLOOR")
+	known := strings.Index(load, "let known = &LINEAGE_FIXED_LINEAGE[found];")
+	bytes := strings.Index(load, "if block != known.layout {")
+	records := strings.Index(load, "for k in 0..n {")
+	if at < 0 || known < 0 || bytes < 0 || records < 0 {
+		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	if !(at < known && known < bytes && bytes < records) {
+		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	// ONCE AND IDEMPOTENT: the guarded body reads `found` and returns the named
+	// refusal; nothing before it mutates the report or the destination.
+	body := load[at:]
+	if end := strings.Index(body, "\n    }"); end >= 0 {
+		body = body[:end]
+	}
+	if strings.Contains(body, "report.unknown") || strings.Contains(body, "image[") || strings.Contains(body, "values[") {
+		t.Errorf("R32: the floor refusal is not a pure named refusal:\n%s", body)
+	}
+	runtime := string(fixedRuntimeBody)
+	for _, zero := range []string{"self.unknown = 0;", "self.kind_mismatch = 0;", "self.widened = 0;", "self.clamped = 0;", "self.malformed = false;"} {
+		t04Has(t, runtime, zero, "R32 REFUSE is TOTAL")
+	}
+}
+
+// ---- rust/R10 -----------------------------------------------------------------
+
+// t04R10 holds rust/R10 to §5.6 and §5.3 step 7: "the hash is looked up, the
+// floor is checked, and the layout is COMPARED — the seven rules do not fire at
+// run time". The emitted load parses no layout (`TableFixedBlock::parse` is the
+// build-time LazyLock's), walks no stranger's bytes, and never recomputes the
+// header's hash: the header's eight bytes are taken as given and matched on.
+func t04R10(t *testing.T) {
+	text := t04Retire(t, 0)
+	load := t04Fn(text, "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("R10: lineage_fixed_load is not emitted")
+	}
+	t04Has(t, load, "if block != known.layout {", "R10 the layout is a byte comparison")
+	t04Has(t, load, "return report.refuse(TableFixedReason::LayoutMalformed);", "R10 a lie about a known version is layout_malformed")
+	if strings.Contains(load, "TableFixedBlock::parse") {
+		t.Error("R10: the load walks a stranger's layout; the walk is the build's LazyLock")
+	}
+	if strings.Contains(load, "table_fixed_hash(") {
+		t.Error("R10: the load recomputes the header's hash")
+	}
+	if strings.Contains(load, "check_entry") || strings.Contains(load, "known_kind") || strings.Contains(load, "leaf_size") {
+		t.Error("R10: the load carries §1.1's layout rules into the run time")
+	}
+	// THE HASH IS STILL A WIRE IDENTITY: the function survives for the writer side
+	// and for any later reader, but no load path calls it.
+	t04Has(t, string(fixedRuntimeBody), "pub fn table_fixed_hash(block: &[u8]) -> u64 {", "R10 the hash function")
+}
+
+// ---- rust/R15 -----------------------------------------------------------------
+
+// t04R15 holds rust/R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan
+// selection, on the file's hash; the count and text clamps that REMAIN are the
+// writer's bounds carried by the plan (bill §12.5), which only a backward read
+// over a locked entry can reach; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t04R15(t *testing.T) {
+	text := t04Retire(t, 0)
+	load := t04Fn(text, "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("R15: lineage_fixed_load is not emitted")
+	}
+	miss := strings.Index(load, "return report.refuse_layout(TableFixedReason::LayoutNewer, hash);")
+	records := strings.Index(load, "for k in 0..n {")
+	if miss < 0 || records < 0 {
+		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
+	}
+	if miss > records {
+		t.Error("R15: an unknown hash is not refused before the first record")
+	}
+	if strings.Contains(load, "let identity = found ==") && strings.Index(load, "let identity") < miss {
+		t.Error("R15: a plan is selected before the hash is known")
+	}
+	if strings.Contains(load, "report.unknown += 1") {
+		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
+	}
+	t04Has(t, load, "report.unknown += census.0;", "R15 unknown is the compile census")
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R15 the count clamp is the writer's bound")
+	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R15 the text clamp is the writer's span")
+	if strings.Contains(runtime, "remap.get(base).unwrap_or") {
+		t.Error("R15: a forward-read remap survives in the runtime")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapT04Versions(t *testing.T) {
@@ -185,6 +296,9 @@ func TestFixedRoadmapT04Versions(t *testing.T) {
 		check func(t *testing.T)
 	}{
 		{id: "rust/R3", check: t04R3},
+		{id: "rust/R32", check: t04R32},
+		{id: "rust/R10", check: t04R10},
+		{id: "rust/R15", check: t04R15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
