@@ -43,6 +43,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -119,6 +121,20 @@ func t03Has(t *testing.T, src, want, what string) {
 	if !strings.Contains(src, want) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
+}
+
+// t03CheckErrs parses and checks one source and answers the checker's errors,
+// so a closure refusal can be read by name rather than caught as a fixture bug.
+func t03CheckErrs(t *testing.T, src string) []error {
+	t.Helper()
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		return []error{perrs[0]}
+	}
+	_, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	return cerrs
 }
 
 // t03Fnv is fnv1a64 over the run, the primitive §5.2's HASH is built from.
@@ -394,6 +410,114 @@ fixed table T
 	}
 }
 
+// ---- elixir/R6 -----------------------------------------------------------------
+
+// t03R6 holds elixir/R6 to SPEC-TABLES §3.4 and §5.2: a table whose record body
+// is past the 65536-byte ceiling has NO FORM EMITTED, is NAMED by the compiler
+// (a warning, not a refusal of the unit, since it keeps form 1), and no lineage
+// entry handed in for it is parsed even when the lock carries one.
+func t03R6(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Big
+{
+    blob bytes(70000)
+}
+`)
+	st := t03Table(t, u, "Big")
+	if ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes {
+		t.Fatalf("R6: the fixture body = %d, not past %d", ir.TableFixedTypeBytes(st), ir.TableFixedRecordMaxBytes)
+	}
+	for _, r := range ir.TableFixedFormRoots(u) {
+		if r.Name == "Big" {
+			t.Error("R6: a table past the ceiling is a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 0 {
+		t.Errorf("R6: past the ceiling is a warning, not a refusal: %v", errs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Big") || !strings.Contains(joined, "ceiling") {
+		t.Errorf("R6: the warning does not name the table and the ceiling: %s", joined)
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{
+		"Big": {{Wire: 0x1122334455667788, Layout: []byte{1, 2, 3, 4}, Record: 70008}},
+	})
+	if err != nil {
+		t.Fatalf("R6: GenerateLineage: %v", err)
+	}
+	for name, body := range files {
+		if strings.HasSuffix(name, FixedModuleSuffix+".ex") {
+			t.Errorf("R6: %s emitted a form for a table past the ceiling", name)
+		}
+		if strings.Contains(string(body), "0x1122334455667788") {
+			t.Errorf("R6: %s parsed the lock's lineage entry for a table past the ceiling", name)
+		}
+	}
+}
+
+// ---- elixir/R14 ----------------------------------------------------------------
+
+// t03R14 holds elixir/R14 to §5.2's PLAN: the runtime bounds a single entry and
+// a subtree to the 65536 a reader caps a record at, the zero root to the same
+// name, and — the clause the task adds — every compiled entry to the WRITER's
+// OWN declared record size, refusing the plan WHOLE under
+// layout_record_too_large and never landing a short read.
+func t03R14(t *testing.T) {
+	runtime := fixedRuntimeBody
+	t03Has(t, runtime, "@record_max 65536", "R14 the ceiling constant")
+	t03Has(t, runtime, "defp layout_root({_id, 13, size, _children}) when size > 0 and size <= @record_max", "R14 the zero root and the 65536 bound")
+	t03Has(t, runtime, "size > @record_max -> {:error, :layout_record_too_large}", "R14 a single entry past the 65536 bound")
+	t03Has(t, runtime, "if sum > @record_max do\n          {:error, :layout_record_too_large}", "R14 a subtree's sum past the 65536 bound")
+	t03Has(t, runtime, "record = size_at(theirs, 0)", "R14 the writer's own declared record is the bound")
+	t03Has(t, runtime, "any_past?(entries, record) ->", "R14 every compiled entry is held to the writer's record")
+	t03Has(t, runtime, "defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)", "R14 an entry reaching past the writer's declared record")
+	t03Has(t, runtime, "{:error, :layout_record_too_large, report}", "R14 the plan is refused WHOLE and named layout_record_too_large")
+}
+
+// ---- elixir/R22 ----------------------------------------------------------------
+
+// t03R22 holds elixir/R22 to §5.5 and SPEC-TABLES §2.2: a table or type reached
+// by value from a fixed table is itself fixed (a nested fixed table is a closure
+// member, not a break), a pointer, a map or an unbounded array in that closure
+// is a compile refusal naming the construct, and a table that reaches itself by
+// value — a table in its own closure — is refused.
+func t03R22(t *testing.T) {
+	fixed := unitFrom(t, `package probe
+
+fixed table Inner { a int32 }
+fixed table T { inner Inner }
+`)
+	if breaks := ir.FixedClosureBreaks(func(name string) *ir.Struct { return fixed.Tables[name] }, "T"); len(breaks) != 0 {
+		t.Errorf("R22: a fixed table nested by value is a closure break: %v", breaks)
+	}
+
+	for _, tc := range []struct {
+		name, src, want string
+	}{
+		{"plain table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the plain table Node by value"},
+		{"pointer", "package probe\ntable Node { x int32 }\nfixed table Scene { head *Node }\n", "is a pointer"},
+		{"map", "package probe\nfixed table Fleet { ships map[uint32]int32 }\n", "is a map"},
+		{"unbounded array", "package probe\nfixed table Log { entries []int32 }\n", "is an unbounded array"},
+	} {
+		errs := t03CheckErrs(t, tc.src)
+		if len(errs) == 0 {
+			t.Errorf("R22 %s: the closure break is not a compile refusal", tc.name)
+			continue
+		}
+		got := errs[0].Error()
+		if !strings.Contains(got, tc.want) || !strings.Contains(got, "docs/SPEC-TABLES.md") {
+			t.Errorf("R22 %s: refusal = %q, want it to name %q and §2.2", tc.name, got, tc.want)
+		}
+	}
+
+	// T is never in its own closure: a fixed table that reaches itself by value
+	// is refused, so a table cannot be its own closure member.
+	if errs := t03CheckErrs(t, "package probe\nfixed table T { next T }\n"); len(errs) == 0 {
+		t.Error("R22: a fixed table that reaches itself by value is not refused")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapT03Plans(t *testing.T) {
@@ -406,6 +530,9 @@ func TestFixedRoadmapT03Plans(t *testing.T) {
 		{id: "elixir/R5", check: t03R5},
 		{id: "elixir/W11", check: t03W11},
 		{id: "elixir/W12", check: t03W12},
+		{id: "elixir/R6", check: t03R6},
+		{id: "elixir/R14", check: t03R14},
+		{id: "elixir/R22", check: t03R22},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
