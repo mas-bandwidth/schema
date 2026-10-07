@@ -546,8 +546,24 @@ pub fn table_fixed_run(
                     report.malformed = true;
                     return;
                 }
-                let f = f32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
-                image[d..d + 8].copy_from_slice(&f64::from(f).to_le_bytes());
+                // f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
+                // BITS. The hardware conversion QUIETS a signalling NaN and can
+                // drop a payload bit, so the widened double is assembled by hand
+                // for every all-ones exponent: the sign is carried, the exponent
+                // becomes f64's all-ones, and the 23-bit mantissa shifts left by
+                // 29 to become the 52-bit one, which carries the quiet bit as
+                // the writer wrote it (§4, docs/PORTING.md's FU ruling). Every
+                // other exponent converts exactly, so the hardware path is the
+                // value and nothing else.
+                let bits = u32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
+                let wide: u64 = if bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0 {
+                    (u64::from(bits >> 31) << 63)
+                        | 0x7ff0_0000_0000_0000
+                        | (u64::from(bits & 0x007f_ffff) << 29)
+                } else {
+                    f64::from(f32::from_bits(bits)).to_bits()
+                };
+                image[d..d + 8].copy_from_slice(&wide.to_le_bytes());
                 report.widened += 1;
             }
             TableFixedOp::Const => {
