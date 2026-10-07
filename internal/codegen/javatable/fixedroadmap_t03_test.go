@@ -79,6 +79,8 @@ func TestFixedRoadmapT03Versions(t *testing.T) {
 		{"java/R20", t03R20},
 		{"java/R21", t03R21},
 		{"java/R29", t03R29},
+		{"java/E5", t03E5},
+		{"java/W2", t03W2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -874,6 +876,99 @@ func t03R29(t *testing.T) {
 			t.Errorf("R29: the lawful 100 must land unclamped: %+v", clean)
 		}
 	})
+}
+
+// t03E5: E5 "?T vs plain nesting". The clause is held twice on this leg: the
+// versioning harness's optional_add row (T into ?T: present == 1, the value
+// exact) and Main.java's anOptional (P1's plain Link against P3's ?Link is a
+// kind that MOVED and is SEEN — one byte apart, reported rather than silent).
+// This subtest runs the row's both columns for real.
+func t03E5(t *testing.T) {
+	oldFile := t03CorpusFile(t, "old_optional_add.bin")
+	newFile := t03CorpusFile(t, "new_optional_add.bin")
+	_, classes := buildRow(t, t.TempDir(), "optional_add", []sideSpec{
+		{key: "reads", schema: "VNEW_optional_add.schema", older: []string{"VOLD_optional_add.schema"}},
+		{key: "refuses", schema: "VOLD_optional_add.schema"},
+	})
+	got := runProbe(t, classes, "Probe_reads", oldFile)
+	if got.n != 1 || got.refused || got.malformed {
+		t.Fatalf("E5: the plain-T file must read through the ?T reader: %+v", got)
+	}
+	if p := got.value["linkPresent"]; p != "true" {
+		t.Errorf("E5: T into ?T lands present = %s, want true — the wrapper's byte is a CONSTANT 1 beside the payload (bill 12.8)", p)
+	}
+	if v := got.value["link.value"]; v != "777" {
+		t.Errorf("E5: the wrapped payload landed %s, want the writer's 777 exact", v)
+	}
+	// And the ?T writer's own file read by the ?T reader: the flag is the
+	// writer's, and an ABSENT optional's payload is the template's zeros
+	// (§3.4) — the plain-nesting difference, one byte, rides whole.
+	own := runProbe(t, classes, "Probe_reads", newFile)
+	if p := own.value["linkPresent"]; p != "false" {
+		t.Errorf("E5: the ?T writer's own flag landed %s, want false", p)
+	}
+	if v := own.value["link.value"]; v != "0" {
+		t.Errorf("E5: an absent optional's payload landed %s, want the template's zeros", v)
+	}
+}
+
+// t03W2: W2 "absent optional skips store". The end-to-end holder is
+// Main.java's p3Write (the gate's make tables-java-fixedform: an absent
+// optional this port writes carries the template's zeros, not the caller's
+// storage, and the SAME payload PRESENT does put those bytes on the wire).
+// This subtest pins the emitted writer's branch directly: the store is
+// SKIPPED behind a false flag and the bytes are zeroed — one `if`, and no
+// store of the caller's value.
+func t03W2(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Leaf
+{
+    n int32
+}
+
+fixed table T
+{
+    link ?Leaf
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("W2: Generate: %v", err)
+	}
+	src := string(files["TFixed.java"])
+	body := t03Method(src, "public static void writeBody(")
+	if body == "" {
+		t.Fatal("W2: the emitted writer has no writeBody")
+	}
+	if !strings.Contains(body, "linkPresent ? 1 : 0") {
+		t.Error("W2: the writer does not spell the present flag")
+	}
+	// The skip itself: behind a false flag the bytes are FILLED with zero
+	// and the payload's store is inside the taken branch only.
+	if !strings.Contains(body, "if (v.linkPresent) {") {
+		t.Fatal("W2: the writer has no present branch to skip the store in")
+	}
+	i := strings.Index(body, "if (v.linkPresent) {")
+	rest := body[i:]
+	j := strings.Index(rest, "} else {")
+	if j < 0 {
+		t.Fatal("W2: the present branch has no else half")
+	}
+	taken := rest[:j]
+	if !strings.Contains(taken, "LeafFixed.writeBody(") && !strings.Contains(taken, "TableFixed.put32") {
+		t.Errorf("W2: the taken branch does not store the payload:\n%s", taken)
+	}
+	elseHalf := rest[j:]
+	if k := strings.Index(elseHalf, "\n    }"); k >= 0 {
+		elseHalf = elseHalf[:k]
+	}
+	if !strings.Contains(elseHalf, "Arrays.fill") || !strings.Contains(elseHalf, "(byte) 0") {
+		t.Errorf("W2: the absent half does not zero the payload's bytes — an absent optional SKIPS the store and what rides is the template's zeros (SPEC-TABLES 3.4):\n%s", elseHalf)
+	}
+	if strings.Contains(elseHalf, "put32") || strings.Contains(elseHalf, "arraycopy") {
+		t.Error("W2: the absent half stores the caller's storage")
+	}
 }
 
 func t03RunSaveLoad(t *testing.T, classes, class string) string {
