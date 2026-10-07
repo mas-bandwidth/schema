@@ -69,6 +69,8 @@ func TestFixedRoadmapT03Versions(t *testing.T) {
 	}{
 		{"java/R3", t03R3},
 		{"java/R32", t03R32},
+		{"java/R10", t03R10},
+		{"java/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -146,6 +148,103 @@ func t03R32(t *testing.T) {
 	// what makes the refusal the entry's and not the build's.
 	if r := runProbe(t, classes, "Probe_reads", newFile); r.n < 1 {
 		t.Errorf("R32: the reader's own file must read beside the retired refusal: %+v", r)
+	}
+}
+
+// t03R10: R10 "the run-time walk of a stranger's layout and the recompute of
+// the header's hash are retired". The load path is t01R7's (no fnv, no
+// .hash(, no compile(, no parse(); the file's hash taken as given) and the
+// hash-as-given half is t02R4's; this subtest widens the ban to the WHOLE
+// emitted build — the runtime holds no recompute of the header's hash anywhere,
+// not only on the load path — and holds §5.9 #23's retirement print, which
+// names where the stranger's-walk coverage is owed.
+func t03R10(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R10: FixedLineageOf has no entry for T")
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": {{
+		Wire: own.Wire ^ 0x5a5a5a5a, Layout: own.Layout, Record: own.Record,
+	}}})
+	if err != nil {
+		t.Fatalf("R10: GenerateLineage: %v", err)
+	}
+	for name, src := range files {
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
+		// THE RUNTIME NEVER COMPUTES A HASH FROM LAYOUT BYTES IT HOLDS (§5.3
+		// step 4's rule, wider than the step): the only fnv in the emitted
+		// build is the TableFixed.hash function nobody calls — the writer
+		// spells the compile-time constant and the load takes the header's
+		// hash as given.
+		if strings.Contains(string(src), "TableFixed.hash(") {
+			t.Errorf("R10: %s calls TableFixed.hash: the recompute of the header's hash is retired, on every path and not only the load's", name)
+		}
+		load := t03Method(string(src), "public static int load(")
+		if load == "" {
+			continue
+		}
+		for _, banned := range []string{"fnv", "compile(", "parse("} {
+			if strings.Contains(load, banned) {
+				t.Errorf("R10: %s's load reaches %q: a stranger's layout is never walked at run time", name, banned)
+			}
+		}
+	}
+	// §5.9 #23: a leg whose suite has no skip prints one instead — the six
+	// families §5.6 retires, each named at the call site with where the
+	// coverage is owed. The gate runs Main (make tables-java-fixedform).
+	mainSrc, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "java-fixedform", "src", "Main.java"))
+	if err != nil {
+		t.Fatalf("R10: read Main.java: %v", err)
+	}
+	for _, name := range []string{"textUnderAnArm", "anOlderWriter", "aNewerWriter", "anOptional", "theSlide", "layoutValidation"} {
+		if !strings.Contains(string(mainSrc), "retired(\""+name+"\"") {
+			t.Errorf("R10: Main.java names no retirement for %q: §5.9 #23 wants the retired case named at the call site with where its coverage is owed", name)
+		}
+	}
+}
+
+// t03R15: R15 "the four forward-read clamps are retired — count clamp across
+// bounds, range clamp across versions, remap of an unknown variant to None,
+// drop-and-count of an unknown field: each is layout_newer now". The four
+// rows' OLD-REFUSES-NEW columns are TestFixedVersioningRows' (the rows are in
+// versioningRows and none is a sameHash row, so the column runs); this
+// subtest proves the four rows are in the suite and runs one of them for
+// real, so a row quietly dropped from the suite is red by name.
+func t03R15(t *testing.T) {
+	// The four clauses' rows: field_append is the drop-and-count of an
+	// unknown field, array_bounded_grow the count clamp across bounds,
+	// range_widen the range clamp across versions, enum_append the remap of
+	// an unknown variant to None.
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		inRows := false
+		for _, r := range versioningRows {
+			if r.name == row {
+				inRows = true
+			}
+		}
+		if !inRows {
+			t.Errorf("R15: %s is not in TestFixedVersioningRows' rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+		if sameHashRows[row] {
+			t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
+		}
+	}
+	// And the run: a newer writer's file under the older reader refuses
+	// layout_newer before any record, on the file's hash alone.
+	newFile := t03CorpusFile(t, "new_enum_append.bin")
+	_, classes := buildRow(t, t.TempDir(), "enum_append", []sideSpec{
+		{key: "reads", schema: "VNEW_enum_append.schema", older: []string{"VOLD_enum_append.schema"}},
+		{key: "refuses", schema: "VOLD_enum_append.schema"},
+	})
+	ref := runProbe(t, classes, "Probe_refuses", newFile)
+	if !ref.refused || ref.reason != "layoutNewer" {
+		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
+	}
+	if ref.malformed || ref.n != -1 || ref.clamped != 0 {
+		t.Errorf("R15: the retired clamp moved on a newer file: %+v; a forward read refuses whole, before any record", ref)
 	}
 }
 
