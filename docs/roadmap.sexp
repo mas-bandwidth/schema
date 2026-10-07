@@ -9,7 +9,7 @@
  :nodes
  ((:id "schema/fixed-tables-goal" :type :work-set :children ("fixed-tables" "shared" "acceptance-gates" "integration"))
   (:id "fixed-tables" :type :roadmap :title "NEW Fixed Tables" :scope-revision 2 :source-revision
-   "f2d33e802a4933b5e8212ce87c3fa67280faf98a" :rows
+   "57fe01ba43ac2788858f79ff6aa916410c462173" :rows
    (("file-envelope" "File framing and layout announcements") ("batch-capacity" "Bounded batches")
     ("plan-selection" "Select known layouts and refuse unsupported input")
     ("compiled-plans" "Static plans, record sizes and caller capacity")
@@ -419,14 +419,18 @@
    :reported-state "inapplicable" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "c/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+  (:id "c/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/ctable/fixedform_ragged_tail_test.go: TestCFixedFormRaggedTail")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "F8"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "c/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
+  (:id "c/F12" :type :task :title "second layout for a held hash" :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/F12")
+   :tested-revision "674cc2710b970fefc244db59c632f59fc34b0785" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item
    "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 674cc271 and landed it at 3c1f6496.")
   (:id "file-envelope/c" :type :work-set :children ("c/F1" "c/F2" "c/F3" "c/F4" "c/F7" "c/F8" "c/F12"))
   (:verification
    "Named-refusal criterion matched by semantics: F1 ten-byte form1 previous_form; F2 three-byte form2 message_form_as_file; F3 unassigned form0 newer_form. Exact source assertions and invoked targets inspected; combined FAST passed all nine language jobs. This does not close the remaining framing, malformed-input, report, performance or integration criteria."
@@ -458,18 +462,24 @@
    :audit-item "F3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "cs/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "cs/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/cs/F4")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item
    "F4" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item "F7"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
+  (:id "cs/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/cstable/fixedform_under_20_bytes_test.go: TestFixedFormUnder20Bytes")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "F7"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
+  (:id "cs/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/cstable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "F8"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "cs/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil :audit-item
    "F12" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -506,18 +516,24 @@
    :audit-item "F3" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "go/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "go/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/gotable/fixedform_test.go: TestFixedFormLayoutMalformedTruncated")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item
    "F4" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "go/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item "F7"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
+  (:id "go/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/gotable/fixedform_under_20_bytes_test.go: TestFixedFormUnder20Bytes")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "F7"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "go/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
+  (:id "go/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/gotable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "F8"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "go/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil :audit-item
    "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -562,10 +578,12 @@
    "F7" :reported-state "inapplicable" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+  (:id "rust/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/rusttable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "F8"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil
    :audit-item "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -602,22 +620,30 @@
    :audit-item "F3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "java/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "java/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/F4")
+   :tested-revision "dc9231ae261e46e7e1bc57d62342eb0a4240f534" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item
    "F4" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at dc9231ae and landed it at 11365b74.")
+  (:id "java/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/javatable/fixedform_under_20_bytes_test.go: TestFixedFormUnder20Bytes")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item
    "F7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
+  (:id "java/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/javatable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "F8"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
+  (:id "java/F12" :type :task :title "second layout for a held hash" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/F12")
+   :tested-revision "dc9231ae261e46e7e1bc57d62342eb0a4240f534" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a"
    :audit-item "F12" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at dc9231ae and landed it at 11365b74.")
   (:id "file-envelope/java" :type :work-set :children
    ("java/F1" "java/F2" "java/F3" "java/F4" "java/F7" "java/F8" "java/F12"))
   (:verification
@@ -650,18 +676,24 @@
    :audit-item "F3" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "js/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "js/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/F4")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item
    "F4" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "js/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item "F7"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
+  (:id "js/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/jstable/fixedform_under_20_bytes_test.go: TestJSFixedFormUnder20Bytes")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "F7"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "js/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
+  (:id "js/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/jstable/fixedform_ragged_tail_test.go: TestJSFixedFormRaggedTail")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "F8"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "js/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil :audit-item
    "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -698,18 +730,24 @@
    :audit-item "F3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "dart/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "dart/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/F4")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item
    "F4" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
+  (:id "dart/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/darttable/fixedform_under_20_bytes_test.go: TestFixedFormUnder20Bytes")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item
    "F7" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
+  (:id "dart/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/darttable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "F8"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil
    :audit-item "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -746,18 +784,24 @@
    :audit-item "F3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Historical report remains in reported-state/reported-source. Current named-refusal acceptance reconciled from exact e4b9147f source and successful native jobs.")
-  (:id "elixir/F4" :type :task :title "layout_malformed, truncated" :state :unknown :evidence nil :audit-item
+  (:id "elixir/F4" :type :task :title "layout_malformed, truncated" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/F4")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item
    "F4" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/F7" :type :task :title "malformed, under 20 bytes" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
+  (:id "elixir/F7" :type :task :title "malformed, under 20 bytes" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedform_under_20_bytes_test.go: TestFixedFormUnder20Bytes")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item
    "F7" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/F8" :type :task :title "malformed, ragged tail" :state :unknown :evidence nil :audit-item "F8"
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
+  (:id "elixir/F8" :type :task :title "malformed, ragged tail" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "F8"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/F12" :type :task :title "second layout for a held hash" :state :unknown :evidence nil
    :audit-item "F12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -769,45 +813,59 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "batch-capacity/cpp" :type :work-set :children ("cpp/F9"))
-  (:id "c/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "c/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/F9")
+   :tested-revision "b2b975e62f1db45fa9870dfc61b9c71677af0f51" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "F9"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at b2b975e6 and landed it at 3c1f6496.")
   (:id "batch-capacity/c" :type :work-set :children ("c/F9"))
-  (:id "cs/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "cs/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/cs/F9")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "F9"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "batch-capacity/cs" :type :work-set :children ("cs/F9"))
-  (:id "go/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "go/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/F9")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "F9"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "batch-capacity/go" :type :work-set :children ("go/F9"))
-  (:id "rust/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "rust/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/F9")
+   :tested-revision "d9169a05b35c3af94e10ae753d8ed9499a8e69f5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "F9"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at d9169a05 and landed it at 5429766e.")
   (:id "batch-capacity/rust" :type :work-set :children ("rust/F9"))
   (:id "java/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
    :reported-state "inapplicable" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "batch-capacity/java" :type :work-set :children ("java/F9"))
-  (:id "js/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "js/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/F9")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "F9"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "batch-capacity/js" :type :work-set :children ("js/F9"))
-  (:id "dart/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "dart/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/F9")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "F9"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "batch-capacity/dart" :type :work-set :children ("dart/F9"))
-  (:id "elixir/F9" :type :task :title "batch_too_large" :state :unknown :evidence nil :audit-item "F9"
+  (:id "elixir/F9" :type :task :title "batch_too_large" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/F9")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "F9"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "batch-capacity/elixir" :type :work-set :children ("elixir/F9"))
   (:id "cpp/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
    :reported-state "implemented-asserted" :reported-source
@@ -852,23 +910,29 @@
    ("cpp/R13"))
   (:id "plan-selection/cpp" :type :work-set :children
    ("cpp/F10" "cpp/R7" "cpp/R8" "cpp/R9" "cpp/R12" "cpp/R13" "cpp/W15"))
-  (:id "c/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10" :reported-state
+  (:id "c/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/ctable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "F10" :reported-state
    "owed" :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "c/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state
-   :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
+  (:id "c/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R7")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
   (:id "c/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R8")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
   (:id "c/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R9")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
   (:id "c/R12" :type :task :title "the per-record hash check is before the prefill: no_layout writes nothing"
    :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1128"
@@ -878,33 +942,40 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "c/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R13")
+   :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d" :landed-revision "3c1f649620b707fe206362312b8e830de4ecbf6f" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-c.sexp: sprint card fixed-c-t01-framing-5 proved it green at 8fe240ba and landed it at 3c1f6496.")
   (:id "c/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("c/R13"))
   (:id "plan-selection/c" :type :work-set :children ("c/F10" "c/R7" "c/R8" "c/R9" "c/R12" "c/R13" "c/W15"))
-  (:id "cs/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "cs/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/cstable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "F10"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "cs/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state
    :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "cs/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/cstable/fixedversioning_test.go: TestFixedVersioning/hash_unknown")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "cs/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/cs/R9")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "cs/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :unknown :evidence nil
    :audit-item "R12" :reported-state "owed" :reported-source
@@ -912,9 +983,11 @@
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "cs/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/cs/R13")
+   :tested-revision "9cefa70821e89ecc5676d1f84c02336339431968" :landed-revision "f8bec97c1c901e1fd03ff514247c9e1e6ae92e8e" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t01-framing-5 proved it green at 9cefa708 and landed it at f8bec97c.")
   (:id "cs/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -922,24 +995,30 @@
    ("cs/R13"))
   (:id "plan-selection/cs" :type :work-set :children
    ("cs/F10" "cs/R7" "cs/R8" "cs/R9" "cs/R12" "cs/R13" "cs/W15"))
-  (:id "go/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "go/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/F10")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "F10"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "go/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state
-   :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
+  (:id "go/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/R7")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "go/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/R8")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "go/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/R9")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "go/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1124"
@@ -950,9 +1029,11 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "go/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/gotable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/go/R13")
+   :tested-revision "624da009f6b62aa93e27af956f05cc459a7562e8" :landed-revision "fc303145ff15cc84d54e7caf3da4a4bc6571aa6e" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-go.sexp: sprint card fixed-go-t01-framing-5 proved it green at 624da009 and landed it at fc303145.")
   (:id "go/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -960,24 +1041,31 @@
    ("go/R13"))
   (:id "plan-selection/go" :type :work-set :children
    ("go/F10" "go/R7" "go/R8" "go/R9" "go/R12" "go/R13" "go/W15"))
-  (:id "rust/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "rust/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/F10")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "F10"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash"
-   :state :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/R7")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/R8")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/R9")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1151"
@@ -988,9 +1076,11 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "rust/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/R13")
+   :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5" :landed-revision "5429766ea32dd0cb950287010520d2abd113e9a6" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t01-framing-5 proved it green at 56e29251 and landed it at 5429766e.")
   (:id "rust/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -998,24 +1088,32 @@
    ("rust/R13"))
   (:id "plan-selection/rust" :type :work-set :children
    ("rust/F10" "rust/R7" "rust/R8" "rust/R9" "rust/R12" "rust/R13" "rust/W15"))
-  (:id "java/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "java/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/javatable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "F10"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
   (:id "java/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash"
-   :state :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/R7")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
   (:id "java/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningHash"
+    "internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningRows")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
   (:id "java/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/R9")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
   (:id "java/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1140"
@@ -1026,9 +1124,11 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "java/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/R13")
+   :tested-revision "32a0e3c2bb89524373ddaaac3bf66aee9268a36a" :landed-revision "11365b747897f0552b4e889aeca3f128d1b9e82a" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t01-framing-5 proved it green at 32a0e3c2 and landed it at 11365b74.")
   (:id "java/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -1036,24 +1136,32 @@
    ("java/R13"))
   (:id "plan-selection/java" :type :work-set :children
    ("java/F10" "java/R7" "java/R8" "java/R9" "java/R12" "java/R13" "java/W15"))
-  (:id "js/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "js/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/F10"
+    "internal/codegen/jstable/fixedversioning_refuse_writes_nothing_test.go: TestJSFixedVersioningRefuseWritesNothing")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "F10"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "js/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state
-   :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
+  (:id "js/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash" :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/R7")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "js/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/R8"
+    "internal/codegen/jstable/fixedversioning_test.go: TestJSFixedVersioningOldRefusesNew")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "js/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/R9")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "R9" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "js/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1134"
@@ -1064,9 +1172,12 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "js/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/jstable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/js/R13"
+    "internal/codegen/jstable/fixedversioning_refuse_writes_nothing_test.go: TestJSFixedVersioningRefuseWritesNothing")
+   :tested-revision "4e8420ab4a59c4a4bea96cd6e7e46e5e543a2c18" :landed-revision "f3e9ab463fa02370e52f229aaa56f87dd2f62a71" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-js.sexp: sprint card fixed-js-t01-framing-5 proved it green at 4e8420ab and landed it at f3e9ab46.")
   (:id "js/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -1074,24 +1185,32 @@
    ("js/R13"))
   (:id "plan-selection/js" :type :work-set :children
    ("js/F10" "js/R7" "js/R8" "js/R9" "js/R12" "js/R13" "js/W15"))
-  (:id "dart/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "dart/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/F10")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "F10"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash"
-   :state :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/R7"
+    "internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/R7/static")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/R8")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/R9")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "R9" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/R12" :type :task :title
    "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1147"
@@ -1102,9 +1221,11 @@
    "Reconciled 2026-09-19 against the merged row PR in :evidence: §5.8 row 9 refuse_writes_nothing — no_layout, malformed FALSE, every counter exactly 0, and the caller storage poisoned 0x5A before the load still 0x5A in every byte after it, so the hash check ran before the prefill.")
   (:id "dart/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/dart/R13")
+   :tested-revision "065427aa1964318bc16c32e29b8b9bda617e24d2" :landed-revision "970f7393b20b9e61e953db05bd2ee71bd7415a99" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t01-framing-5 proved it green at 065427aa and landed it at 970f7393.")
   (:id "dart/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -1112,36 +1233,49 @@
    ("dart/R13"))
   (:id "plan-selection/dart" :type :work-set :children
    ("dart/F10" "dart/R7" "dart/R8" "dart/R9" "dart/R12" "dart/R13" "dart/W15"))
-  (:id "elixir/F10" :type :task :title "no_layout" :state :unknown :evidence nil :audit-item "F10"
+  (:id "elixir/F10" :type :task :title "no_layout" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail"
+    "internal/codegen/elixirtable/fixedversioning_refuse_writes_nothing_test.go: TestFixedVersioningRefuseWritesNothing")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "F10"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/R7" :type :task :title "the identity lane is an index comparison, never a recomputed hash"
-   :state :unknown :evidence nil :audit-item "R7" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/R7")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "R7" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/R8" :type :task :title
-   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :unknown
-   :evidence nil :audit-item "R8" :reported-state "implemented-asserted" :reported-source
+   "a hash in no lineage entry → layout_newer, reporting the file's hash AND NOTHING ELSE" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedversioning_test.go: TestFixedVersioningOldRefusesNew/field_append"
+    "internal/codegen/elixirtable/fixedversioning_test.go: TestFixedVersioningHash/hash_unknown")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "R8" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/R9" :type :task :title
    "a known hash with a different layout length or bytes → layout_malformed; the seven §1.1 malformations under a known hash all come back as this one name"
-   :state :unknown :evidence nil :audit-item "R9" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/R9")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "R9" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/R12" :type :task :title
-   "the per-record hash check is before the prefill: no_layout writes nothing" :state :unknown :evidence
+   "the per-record hash check is before the prefill: no_layout writes nothing" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/1155: the refusal half only — see :note. internal/codegen/elixirtable/fixedversioning_refuse_writes_nothing_test.go"
-    "merged into fixed-table-form at 0255317373653ddd8a26249423ee49b7792785bf")
+    "merged into fixed-table-form at 0255317373653ddd8a26249423ee49b7792785bf"
+    "internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/R12")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0"
    :audit-item "R12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "NOT reconciled. #1155 in :evidence proves the refusal half on elixir — tag :error, why :no_layout, malformed false, layout_hash untouched and every counter exactly 0 — but NOT the 'writes nothing' half that is the operative clause of this task. Its only destination check is check(fresh == fresh_value(), 'REFUSE wrote destination values'), where fresh is bound to fresh_value() and never passed into load/1: both sides are freshly built struct literals, so the comparison is true whether or not a prefill ran. There is no 0x5A poison anywhere in #1155, unlike the six legs that do sweep one. Either the clause is unprovable on an immutable leg or the probe owes the assertion; until one or the other, :unknown.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769. Earlier: NOT reconciled. #1155 in :evidence proves the refusal half on elixir — tag :error, why :no_layout, malformed false, layout_hash untouched and every counter exactly 0 — but NOT the 'writes nothing' half that is the operative clause of this task. Its only destination check is check(fresh == fresh_value(), 'REFUSE wrote destination values'), where fresh is bound to fresh_value() and never passed into load/1: both sides are freshly built struct literals, so the comparison is true whether or not a prefill ran. There is no 0x5A poison anywhere in #1155, unlike the six legs that do sweep one. Either the clause is unprovable on an immutable leg or the probe owes the assertion; until one or the other, :unknown.")
   (:id "elixir/R13" :type :task :title
    "REFUSE is total: refused+reason and malformed are never both set, every counter stays zero, and not one destination byte is written"
-   :state :unknown :evidence nil :audit-item "R13" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/R13")
+   :tested-revision "a782615e2906e6ea842a7d25eb36b78a1a790eb5" :landed-revision "d025f769c789d1df58f4fd11b1cdc363640191c0" :audit-item "R13" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t01-framing-5 proved it green at a782615e and landed it at d025f769.")
   (:id "elixir/W15" :type :work-set :title "REFUSE is total" :audit-item "W15" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -1218,37 +1352,48 @@
   (:id "compiled-plans/c" :type :work-set :children ("c/R1" "c/R2" "c/R23" "c/F11" "c/R25" "c/R26" "c/W14"))
   (:id "cs/R1" :type :task :title
    "COMPILE lays the lineage down as static data at build time, oldest first and the current layout last, from the lock"
-   :state :unknown :evidence nil :audit-item "R1" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R1")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R1" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "cs/R2" :type :task :title
    "record_bytes is 8 + body: the lock stores the body, COMPILE adds the eight once, and no backend adds anything"
-   :state :unknown :evidence nil :audit-item "R2" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R2")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R2" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "cs/R23" :type :task :title
    "the static data's member names and order — TableFixedKnownLayout = hash, layout, layout_bytes, record_bytes; the report's layout_hash last and zero on every other path"
-   :state :unknown :evidence nil :audit-item "R23" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R23")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R23" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "cs/F11" :type :work-set :title "plan_too_large" :audit-item "F11" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("cs/R25"))
-  (:id "cs/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state
-   :unknown :evidence nil :audit-item "R25" :reported-state "weak" :reported-source
+  (:id "cs/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R25")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R25" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "cs/R26" :type :task :title
    "a known hash whose lineage entry would not build → layout_malformed / plan_too_large by that entry's own lane, never a throw"
-   :state :unknown :evidence nil :audit-item "R26" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R26")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R26" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/W14" :type :task :title "plan dst == offsetof/sizeof" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
+  (:id "cs/W14" :type :task :title "plan dst == offsetof/sizeof" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/W14")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item
    "W14" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "compiled-plans/cs" :type :work-set :children
    ("cs/R1" "cs/R2" "cs/R23" "cs/F11" "cs/R25" "cs/R26" "cs/W14"))
   (:id "go/R1" :type :task :title
@@ -1287,71 +1432,93 @@
    ("go/R1" "go/R2" "go/R23" "go/F11" "go/R25" "go/R26" "go/W14"))
   (:id "rust/R1" :type :task :title
    "COMPILE lays the lineage down as static data at build time, oldest first and the current layout last, from the lock"
-   :state :unknown :evidence nil :audit-item "R1" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/R1")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item "R1" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
   (:id "rust/R2" :type :task :title
    "record_bytes is 8 + body: the lock stores the body, COMPILE adds the eight once, and no backend adds anything"
-   :state :unknown :evidence nil :audit-item "R2" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/R2")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item "R2" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
   (:id "rust/R23" :type :task :title
    "the static data's member names and order — TableFixedKnownLayout = hash, layout, layout_bytes, record_bytes; the report's layout_hash last and zero on every other path"
-   :state :unknown :evidence nil :audit-item "R23" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/R23")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item "R23" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
   (:id "rust/F11" :type :work-set :title "plan_too_large" :audit-item "F11" :reported-state "owed"
    :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("rust/R25"))
-  (:id "rust/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state
-   :unknown :evidence nil :audit-item "R25" :reported-state "owed" :reported-source
+  (:id "rust/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/R25")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item "R25" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
   (:id "rust/R26" :type :task :title
    "a known hash whose lineage entry would not build → layout_malformed / plan_too_large by that entry's own lane, never a throw"
-   :state :unknown :evidence nil :audit-item "R26" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/R26")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item "R26" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/W14" :type :task :title "plan dst == offsetof/sizeof" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
+  (:id "rust/W14" :type :task :title "plan dst == offsetof/sizeof" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/rust/W14")
+   :tested-revision "7f00ec4c4d7a96cb5e1b5ee098a8adb480f5a5ef" :landed-revision "ae497703c49d21bbe770691b084f15f8a9974ed5" :audit-item
    "W14" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t02-plans-5 proved it green at 7f00ec4c and landed it at ae497703.")
   (:id "compiled-plans/rust" :type :work-set :children
    ("rust/R1" "rust/R2" "rust/R23" "rust/F11" "rust/R25" "rust/R26" "rust/W14"))
   (:id "java/R1" :type :task :title
    "COMPILE lays the lineage down as static data at build time, oldest first and the current layout last, from the lock"
-   :state :unknown :evidence nil :audit-item "R1" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R1")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R1" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R2" :type :task :title
    "record_bytes is 8 + body: the lock stores the body, COMPILE adds the eight once, and no backend adds anything"
-   :state :unknown :evidence nil :audit-item "R2" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R2")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R2" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R23" :type :task :title
    "the static data's member names and order — TableFixedKnownLayout = hash, layout, layout_bytes, record_bytes; the report's layout_hash last and zero on every other path"
-   :state :unknown :evidence nil :audit-item "R23" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R23")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R23" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/F11" :type :work-set :title "plan_too_large" :audit-item "F11" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("java/R25"))
-  (:id "java/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state
-   :unknown :evidence nil :audit-item "R25" :reported-state "weak" :reported-source
+  (:id "java/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R25")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R25" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R26" :type :task :title
    "a known hash whose lineage entry would not build → layout_malformed / plan_too_large by that entry's own lane, never a throw"
-   :state :unknown :evidence nil :audit-item "R26" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R26")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R26" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/W14" :type :task :title "plan dst == offsetof/sizeof" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
+  (:id "java/W14" :type :task :title "plan dst == offsetof/sizeof" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/W14")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item
    "W14" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "compiled-plans/java" :type :work-set :children
    ("java/R1" "java/R2" "java/R23" "java/F11" "java/R25" "java/R26" "java/W14"))
   (:id "js/R1" :type :task :title
@@ -1390,71 +1557,96 @@
    ("js/R1" "js/R2" "js/R23" "js/F11" "js/R25" "js/R26" "js/W14"))
   (:id "dart/R1" :type :task :title
    "COMPILE lays the lineage down as static data at build time, oldest first and the current layout last, from the lock"
-   :state :unknown :evidence nil :audit-item "R1" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/R1")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item "R1" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
   (:id "dart/R2" :type :task :title
    "record_bytes is 8 + body: the lock stores the body, COMPILE adds the eight once, and no backend adds anything"
-   :state :unknown :evidence nil :audit-item "R2" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/R2"
+    "compiler/fixedlineageship_test.go: TestFixedLineageRecordSizeIsTheWholeRecord")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item "R2" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
   (:id "dart/R23" :type :task :title
    "the static data's member names and order — TableFixedKnownLayout = hash, layout, layout_bytes, record_bytes; the report's layout_hash last and zero on every other path"
-   :state :unknown :evidence nil :audit-item "R23" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/R23")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item "R23" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
   (:id "dart/F11" :type :work-set :title "plan_too_large" :audit-item "F11" :reported-state "owed"
    :reported-source "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("dart/R25"))
-  (:id "dart/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state
-   :unknown :evidence nil :audit-item "R25" :reported-state "owed" :reported-source
+  (:id "dart/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/R25")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item "R25" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
   (:id "dart/R26" :type :task :title
    "a known hash whose lineage entry would not build → layout_malformed / plan_too_large by that entry's own lane, never a throw"
-   :state :unknown :evidence nil :audit-item "R26" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/R26")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item "R26" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/W14" :type :task :title "plan dst == offsetof/sizeof" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
+  (:id "dart/W14" :type :task :title "plan dst == offsetof/sizeof" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/dart/W14")
+   :tested-revision "b3c0f1ad2512877e60b28060c01e6fceac9cf6a8" :landed-revision "7c385aa34c76d85518e666f0b2103478349b8b0f" :audit-item
    "W14" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t02-plans-5 proved it green at b3c0f1ad and landed it at 7c385aa3.")
   (:id "compiled-plans/dart" :type :work-set :children
    ("dart/R1" "dart/R2" "dart/R23" "dart/F11" "dart/R25" "dart/R26" "dart/W14"))
   (:id "elixir/R1" :type :task :title
    "COMPILE lays the lineage down as static data at build time, oldest first and the current layout last, from the lock"
-   :state :unknown :evidence nil :audit-item "R1" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/R1")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e" :audit-item "R1" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
   (:id "elixir/R2" :type :task :title
    "record_bytes is 8 + body: the lock stores the body, COMPILE adds the eight once, and no backend adds anything"
-   :state :unknown :evidence nil :audit-item "R2" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/R2")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e" :audit-item "R2" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
   (:id "elixir/R23" :type :task :title
    "the static data's member names and order — TableFixedKnownLayout = hash, layout, layout_bytes, record_bytes; the report's layout_hash last and zero on every other path"
-   :state :unknown :evidence nil :audit-item "R23" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/R23")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e" :audit-item "R23" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
   (:id "elixir/F11" :type :work-set :title "plan_too_large" :audit-item "F11" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
    "Same obligation retained under the original audit ID; shared leaf, not duplicate work." :children
    ("elixir/R25"))
   (:id "elixir/R25" :type :task :title "plan_too_large when the plan does not fit the caller's capacity"
-   :state :unknown :evidence nil :audit-item "R25" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/R25"
+    "internal/codegen/elixirtable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/elixir/R13")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e" :audit-item "R25" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
   (:id "elixir/R26" :type :task :title
    "a known hash whose lineage entry would not build → layout_malformed / plan_too_large by that entry's own lane, never a throw"
-   :state :unknown :evidence nil :audit-item "R26" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/R26")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e" :audit-item "R26" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/W14" :type :task :title "plan dst == offsetof/sizeof" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
+  (:id "elixir/W14" :type :task :title "plan dst == offsetof/sizeof" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/elixir/W14")
+   :tested-revision "190beff55aac34d8bfb0cce81bb64ae10c04c424" :landed-revision "e01debaa5ca8f8ab753592ecd9722d08ec776e4e"
    :audit-item "W14" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t02-plans-5 proved it green at 190beff5 and landed it at e01debaa.")
   (:id "compiled-plans/elixir" :type :work-set :children
    ("elixir/R1" "elixir/R2" "elixir/R23" "elixir/F11" "elixir/R25" "elixir/R26" "elixir/W14"))
   (:id "cpp/R4" :type :task :title
@@ -1497,22 +1689,30 @@
   (:id "definition-hash/c" :type :work-set :children ("c/R4" "c/R5" "c/W11" "c/W12"))
   (:id "cs/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
-   :state :unknown :evidence nil :audit-item "R4" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R4")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R4" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "cs/R5" :type :task :title
    "the digest carries every range, every resolution (tag 'Q') and every reader limit (tag 'L'), and a flags type deduped by name, once"
-   :state :unknown :evidence nil :audit-item "R5" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R5")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item "R5" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/W11" :type :task :title "bytes(N) is layout kind 14" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
+  (:id "cs/W11" :type :task :title "bytes(N) is layout kind 14" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/W11")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item
    "W11" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "cs/W12" :type :task :title "hash includes the 4-byte count" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
+  (:id "cs/W12" :type :task :title "hash includes the 4-byte count" :state :done :evidence
+   ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/W12")
+   :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0" :landed-revision "e989dba08e25e7479fce6ed0a5c90f1bb27b008b" :audit-item
    "W12" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-cs.sexp: sprint card fixed-cs-t02-plans-5 proved it green at 3108cc90 and landed it at e989dba0.")
   (:id "definition-hash/cs" :type :work-set :children ("cs/R4" "cs/R5" "cs/W11" "cs/W12"))
   (:id "go/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
@@ -1535,41 +1735,58 @@
   (:id "definition-hash/go" :type :work-set :children ("go/R4" "go/R5" "go/W11" "go/W12"))
   (:id "rust/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
-   :state :unknown :evidence nil :audit-item "R4" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/R4")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item "R4" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
   (:id "rust/R5" :type :task :title
    "the digest carries every range, every resolution (tag 'Q') and every reader limit (tag 'L'), and a flags type deduped by name, once"
-   :state :unknown :evidence nil :audit-item "R5" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/R5")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item "R5" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/W11" :type :task :title "bytes(N) is layout kind 14" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
+  (:id "rust/W11" :type :task :title "bytes(N) is layout kind 14" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/W11")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item
    "W11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/W12" :type :task :title "hash includes the 4-byte count" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
+  (:id "rust/W12" :type :task :title "hash includes the 4-byte count" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/W12")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13"
    :audit-item "W12" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
   (:id "definition-hash/rust" :type :work-set :children ("rust/R4" "rust/R5" "rust/W11" "rust/W12"))
   (:id "java/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
-   :state :unknown :evidence nil :audit-item "R4" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R4")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R4" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R5" :type :task :title
    "the digest carries every range, every resolution (tag 'Q') and every reader limit (tag 'L'), and a flags type deduped by name, once"
-   :state :unknown :evidence nil :audit-item "R5" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R5"
+    "ir/fixedform_hash_test.go: TestTableFixedDefinitionsDigestLReservedUntilALimitExists")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R5" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/W11" :type :task :title "bytes(N) is layout kind 14" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
+  (:id "java/W11" :type :task :title "bytes(N) is layout kind 14" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/W11")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item
    "W11" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/W12" :type :task :title "hash includes the 4-byte count" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
+  (:id "java/W12" :type :task :title "hash includes the 4-byte count" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/W12")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878"
    :audit-item "W12" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "definition-hash/java" :type :work-set :children ("java/R4" "java/R5" "java/W11" "java/W12"))
   (:id "js/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
@@ -1592,41 +1809,57 @@
   (:id "definition-hash/js" :type :work-set :children ("js/R4" "js/R5" "js/W11" "js/W12"))
   (:id "dart/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
-   :state :unknown :evidence nil :audit-item "R4" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/R4")
+   :tested-revision "fbefa78e79fc32b1e5dd09967c071e57f3b6178a" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item "R4" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at fbefa78e and landed it at 57fe01ba.")
   (:id "dart/R5" :type :task :title
    "the digest carries every range, every resolution (tag 'Q') and every reader limit (tag 'L'), and a flags type deduped by name, once"
-   :state :unknown :evidence nil :audit-item "R5" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/R5")
+   :tested-revision "fbefa78e79fc32b1e5dd09967c071e57f3b6178a" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item "R5" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/W11" :type :task :title "bytes(N) is layout kind 14" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at fbefa78e and landed it at 57fe01ba.")
+  (:id "dart/W11" :type :task :title "bytes(N) is layout kind 14" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/W11")
+   :tested-revision "fbefa78e79fc32b1e5dd09967c071e57f3b6178a" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item
    "W11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "dart/W12" :type :task :title "hash includes the 4-byte count" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at fbefa78e and landed it at 57fe01ba.")
+  (:id "dart/W12" :type :task :title "hash includes the 4-byte count" :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/W12")
+   :tested-revision "fbefa78e79fc32b1e5dd09967c071e57f3b6178a" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173"
    :audit-item "W12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at fbefa78e and landed it at 57fe01ba.")
   (:id "definition-hash/dart" :type :work-set :children ("dart/R4" "dart/R5" "dart/W11" "dart/W12"))
   (:id "elixir/R4" :type :task :title
    "the hash is fnv1a64 over the layout bytes then DIGEST(T), the digest computed at the hash site from the schema; a runtime never derives a hash from layout bytes it holds"
-   :state :unknown :evidence nil :audit-item "R4" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R4")
+   :tested-revision "ed942f5f20b8e0b5e069c7ea0557790caa244964" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item "R4" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at ed942f5f and landed it at bea1cf5a.")
   (:id "elixir/R5" :type :task :title
    "the digest carries every range, every resolution (tag 'Q') and every reader limit (tag 'L'), and a flags type deduped by name, once"
-   :state :unknown :evidence nil :audit-item "R5" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R5")
+   :tested-revision "ed942f5f20b8e0b5e069c7ea0557790caa244964" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item "R5" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/W11" :type :task :title "bytes(N) is layout kind 14" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at ed942f5f and landed it at bea1cf5a.")
+  (:id "elixir/W11" :type :task :title "bytes(N) is layout kind 14" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/W11")
+   :tested-revision "ed942f5f20b8e0b5e069c7ea0557790caa244964" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item
    "W11" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "elixir/W12" :type :task :title "hash includes the 4-byte count" :state :unknown :evidence nil
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at ed942f5f and landed it at bea1cf5a.")
+  (:id "elixir/W12" :type :task :title "hash includes the 4-byte count" :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/W12")
+   :tested-revision "ed942f5f20b8e0b5e069c7ea0557790caa244964" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12"
    :audit-item "W12" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at ed942f5f and landed it at bea1cf5a.")
   (:id "definition-hash/elixir" :type :work-set :children
    ("elixir/R4" "elixir/R5" "elixir/W11" "elixir/W12"))
   (:id "cpp/R6" :type :task :title
@@ -1715,19 +1948,25 @@
   (:id "fixed-closure/go" :type :work-set :children ("go/R6" "go/R14" "go/R22" "go/W10"))
   (:id "rust/R6" :type :task :title
    "a table past §3.4's 65536 ceiling is not a fixed-form root: the refusal names the table, no form is emitted, and no lineage entry is parsed for it even when the lock carries one"
-   :state :unknown :evidence nil :audit-item "R6" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/R6")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item "R6" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
   (:id "rust/R14" :type :task :title
    "layout_record_too_large for an entry reaching past the writer's declared record, not only for the 65536 bound and a zero root"
-   :state :unknown :evidence nil :audit-item "R14" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/R14")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item "R14" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
   (:id "rust/R22" :type :task :title
    "the closure rule: every table or type reached by value is itself fixed; a pointer, map or unbounded array in the closure is a compile refusal; T is never in its own closure"
-   :state :unknown :evidence nil :audit-item "R22" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/rust/R22")
+   :tested-revision "33429cc4d8606e37c3f358780f95ffca89da687c" :landed-revision "cd4d5206d8526ef9eb56eacf85e48537b3b74b13" :audit-item "R22" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t03-plans-5 proved it green at 33429cc4 and landed it at cd4d5206.")
   (:id "rust/W10" :type :work-set :title "entry bounded by writer's record size" :audit-item "W10"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
@@ -1736,19 +1975,25 @@
   (:id "fixed-closure/rust" :type :work-set :children ("rust/R6" "rust/R14" "rust/R22" "rust/W10"))
   (:id "java/R6" :type :task :title
    "a table past §3.4's 65536 ceiling is not a fixed-form root: the refusal names the table, no form is emitted, and no lineage entry is parsed for it even when the lock carries one"
-   :state :unknown :evidence nil :audit-item "R6" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R6")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R6" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R14" :type :task :title
    "layout_record_too_large for an entry reaching past the writer's declared record, not only for the 65536 bound and a zero root"
-   :state :unknown :evidence nil :audit-item "R14" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R14")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R14" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/R22" :type :task :title
    "the closure rule: every table or type reached by value is itself fixed; a pointer, map or unbounded array in the closure is a compile refusal; T is never in its own closure"
-   :state :unknown :evidence nil :audit-item "R22" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/java/R22")
+   :tested-revision "c1c5d14f8258977eec2eac909777f5a0994385c9" :landed-revision "54a6ae17bf2038302a9a36b5d3a32e5c61f0c878" :audit-item "R22" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t02-plans-5b proved it green at c1c5d14f and landed it at 54a6ae17.")
   (:id "java/W10" :type :work-set :title "entry bounded by writer's record size" :audit-item "W10"
    :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
@@ -1778,19 +2023,25 @@
   (:id "fixed-closure/js" :type :work-set :children ("js/R6" "js/R14" "js/R22" "js/W10"))
   (:id "dart/R6" :type :task :title
    "a table past §3.4's 65536 ceiling is not a fixed-form root: the refusal names the table, no form is emitted, and no lineage entry is parsed for it even when the lock carries one"
-   :state :unknown :evidence nil :audit-item "R6" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/R6")
+   :tested-revision "1ca08bb6da706f437d2547c9e226d8ad7dede870" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item "R6" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at 1ca08bb6 and landed it at 57fe01ba.")
   (:id "dart/R14" :type :task :title
    "layout_record_too_large for an entry reaching past the writer's declared record, not only for the 65536 bound and a zero root"
-   :state :unknown :evidence nil :audit-item "R14" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/R14")
+   :tested-revision "1ca08bb6da706f437d2547c9e226d8ad7dede870" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item "R14" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at 1ca08bb6 and landed it at 57fe01ba.")
   (:id "dart/R22" :type :task :title
    "the closure rule: every table or type reached by value is itself fixed; a pointer, map or unbounded array in the closure is a compile refusal; T is never in its own closure"
-   :state :unknown :evidence nil :audit-item "R22" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/darttable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/dart/R22")
+   :tested-revision "1ca08bb6da706f437d2547c9e226d8ad7dede870" :landed-revision "57fe01ba43ac2788858f79ff6aa916410c462173" :audit-item "R22" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-dart.sexp: sprint card fixed-dart-t03-plans-5 proved it green at 1ca08bb6 and landed it at 57fe01ba.")
   (:id "dart/W10" :type :work-set :title "entry bounded by writer's record size" :audit-item "W10"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -1799,19 +2050,25 @@
   (:id "fixed-closure/dart" :type :work-set :children ("dart/R6" "dart/R14" "dart/R22" "dart/W10"))
   (:id "elixir/R6" :type :task :title
    "a table past §3.4's 65536 ceiling is not a fixed-form root: the refusal names the table, no form is emitted, and no lineage entry is parsed for it even when the lock carries one"
-   :state :unknown :evidence nil :audit-item "R6" :reported-state "weak" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R6")
+   :tested-revision "54af93364a128629a0a66032c12e711cfd38921a" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item "R6" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at 54af9336 and landed it at bea1cf5a.")
   (:id "elixir/R14" :type :task :title
    "layout_record_too_large for an entry reaching past the writer's declared record, not only for the 65536 bound and a zero root"
-   :state :unknown :evidence nil :audit-item "R14" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R14")
+   :tested-revision "54af93364a128629a0a66032c12e711cfd38921a" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item "R14" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at 54af9336 and landed it at bea1cf5a.")
   (:id "elixir/R22" :type :task :title
    "the closure rule: every table or type reached by value is itself fixed; a pointer, map or unbounded array in the closure is a compile refusal; T is never in its own closure"
-   :state :unknown :evidence nil :audit-item "R22" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R22")
+   :tested-revision "54af93364a128629a0a66032c12e711cfd38921a" :landed-revision "bea1cf5a778205b1aa34f4b551212828d6ff3c12" :audit-item "R22" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-elixir.sexp: sprint card fixed-elixir-t03-plans-5 proved it green at 54af9336 and landed it at bea1cf5a.")
   (:id "elixir/W10" :type :work-set :title "entry bounded by writer's record size" :audit-item "W10"
    :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648012854" :note
@@ -1863,25 +2120,35 @@
   (:id "retirement/go" :type :work-set :children ("go/R3" "go/R32"))
   (:id "rust/R3" :type :task :title
    "the floor is 1 + the highest retired index (0 when none); below the floor is layout_unsupported, reporting the file's hash"
-   :state :unknown :evidence nil :audit-item "R3" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R3")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "rust/R32" :type :task :title
-   "retire for real: a retired version is refused by name, once, idempotently" :state :unknown :evidence nil
+   "retire for real: a retired version is refused by name, once, idempotently" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R32")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04"
    :audit-item "R32" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "retirement/rust" :type :work-set :children ("rust/R3" "rust/R32"))
   (:id "java/R3" :type :task :title
    "the floor is 1 + the highest retired index (0 when none); below the floor is layout_unsupported, reporting the file's hash"
-   :state :unknown :evidence nil :audit-item "R3" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R3"
+    "internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningFloor")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R3" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "java/R32" :type :task :title
-   "retire for real: a retired version is refused by name, once, idempotently" :state :unknown :evidence nil
+   "retire for real: a retired version is refused by name, once, idempotently" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R32"
+    "internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningFloor")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7"
    :audit-item "R32" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "retirement/java" :type :work-set :children ("java/R3" "java/R32"))
   (:id "js/R3" :type :task :title
    "the floor is 1 + the highest retired index (0 when none); below the floor is layout_unsupported, reporting the file's hash"
@@ -1961,26 +2228,34 @@
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "retired-runtime/go" :type :work-set :children ("go/R10" "go/R15"))
   (:id "rust/R10" :type :task :title
-   "the run-time walk of a stranger's layout and the recompute of the header's hash are retired" :state
-   :unknown :evidence nil :audit-item "R10" :reported-state "implemented-asserted" :reported-source
+   "the run-time walk of a stranger's layout and the recompute of the header's hash are retired" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R10")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "rust/R15" :type :task :title
    "the four forward-read clamps are retired — count clamp across bounds, range clamp across versions, remap of an unknown variant to None, drop-and-count of an unknown field: each is layout_newer now"
-   :state :unknown :evidence nil :audit-item "R15" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R15")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R15" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "retired-runtime/rust" :type :work-set :children ("rust/R10" "rust/R15"))
   (:id "java/R10" :type :task :title
-   "the run-time walk of a stranger's layout and the recompute of the header's hash are retired" :state
-   :unknown :evidence nil :audit-item "R10" :reported-state "implemented-asserted" :reported-source
+   "the run-time walk of a stranger's layout and the recompute of the header's hash are retired" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R10"
+    "internal/codegen/javatable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/java/R7")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R10" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "java/R15" :type :task :title
    "the four forward-read clamps are retired — count clamp across bounds, range clamp across versions, remap of an unknown variant to None, drop-and-count of an unknown field: each is layout_newer now"
-   :state :unknown :evidence nil :audit-item "R15" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R15"
+    "internal/codegen/javatable/fixedversioning_test.go: TestFixedVersioningRows")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R15" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "retired-runtime/java" :type :work-set :children ("java/R10" "java/R15"))
   (:id "js/R10" :type :task :title
    "the run-time walk of a stranger's layout and the recompute of the header's hash are retired" :state
@@ -2144,66 +2419,85 @@
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
    "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
-  (:id "rust/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
-   :unknown :evidence nil :note
-   "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
+  (:id "rust/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/E3/other-required-widens")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :note
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33. Earlier: Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
   (:id "rust/E3" :type :work-set :title "widen ladders" :audit-item "E3" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
    "Historical report at b7ab66a8; current completion has not been reconciled." :children
    ("rust/E3/fixed-array-element" "rust/E3/other-required-widens"))
-  (:id "rust/C8" :type :task :title "fixed-point F-shift / bits(N)" :state :unknown :evidence nil :audit-item
+  (:id "rust/C8" :type :task :title "fixed-point F-shift / bits(N)" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/C8")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item
    "C8" :reported-state "weak" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "rust/R20" :type :task :title
    "§21.2's landing rules: an added field lands its declared default; a deprecated field is dropped and counted once under unknown per plan; a narrower integer or float is widened exactly and widened counts; a shorter array or string lands with the reader's slack as template zeros; an older enum's ordinals are the reader's, the list being a prefix"
-   :state :unknown :evidence nil :audit-item "R20" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R20")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R20" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "rust/R21" :type :task :title
    "widenf is the bit-exact widening — signalling NaNs kept, the quiet bit carried as the writer wrote it"
-   :state :unknown :evidence nil :audit-item "R21" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R21")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R21" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "rust/R29" :type :task :title
    "the band case: the widening across the 65536 ceiling, and the bounds pass clamping to the writer's bounds"
-   :state :unknown :evidence nil :audit-item "R29" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/R29")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "R29" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "numeric-evolution/rust" :type :work-set :children
    ("rust/E3" "rust/C8" "rust/R20" "rust/R21" "rust/R29"))
   (:id "java/E3/fixed-array-element" :type :task :title
    "fixed_I_grow_element: exact per-slot scaled values and older-reader refusal" :state :done :evidence
    ("https://github.com/mas-bandwidth/schema/pull/994") :tested-revision
    "88b8e1515e975c6e6cfb1dac9b8fef51328a96e6" :landed-revision "1e3d67297e86a4f4e870628aae06bc4e42e3cd1a")
-  (:id "java/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state
-   :unknown :evidence nil :note
-   "Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
+  (:id "java/E3/other-required-widens" :type :task :title "All other required widen-ladder cases" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/E3/other-required-widens")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :note
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247. Earlier: Decompose against the existing contract during reconciliation; this aggregate is not a completion claim.")
   (:id "java/E3" :type :work-set :title "widen ladders" :audit-item "E3" :reported-state
    "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled." :children
    ("java/E3/fixed-array-element" "java/E3/other-required-widens"))
-  (:id "java/C8" :type :task :title "fixed-point F-shift / bits(N)" :state :unknown :evidence nil :audit-item
+  (:id "java/C8" :type :task :title "fixed-point F-shift / bits(N)" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/C8")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item
    "C8" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "java/R20" :type :task :title
    "§21.2's landing rules: an added field lands its declared default; a deprecated field is dropped and counted once under unknown per plan; a narrower integer or float is widened exactly and widened counts; a shorter array or string lands with the reader's slack as template zeros; an older enum's ordinals are the reader's, the list being a prefix"
-   :state :unknown :evidence nil :audit-item "R20" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R20"
+    "internal/codegen/javatable/fixedversioning_unknown_census_many_test.go: TestFixedVersioningUnknownCensusManyRecords")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R20" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "java/R21" :type :task :title
    "widenf is the bit-exact widening — signalling NaNs kept, the quiet bit carried as the writer wrote it"
-   :state :unknown :evidence nil :audit-item "R21" :reported-state "implemented-asserted" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R21")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R21" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "java/R29" :type :task :title
    "the band case: the widening across the 65536 ceiling, and the bounds pass clamping to the writer's bounds"
-   :state :unknown :evidence nil :audit-item "R29" :reported-state "owed" :reported-source
+   :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/R29")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "R29" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "numeric-evolution/java" :type :work-set :children
    ("java/E3" "java/C8" "java/R20" "java/R21" "java/R29"))
   (:id "js/E3/fixed-array-element" :type :task :title
@@ -2337,23 +2631,33 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "optional-values/go" :type :work-set :children ("go/E5" "go/W2"))
-  (:id "rust/E5" :type :task :title "?T vs plain nesting" :state :unknown :evidence nil :audit-item "E5"
+  (:id "rust/E5" :type :task :title "?T vs plain nesting" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/E5")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item "E5"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "rust/W2" :type :task :title "absent optional skips store" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
+  (:id "rust/W2" :type :task :title "absent optional skips store" :state :done :evidence
+   ("internal/codegen/rusttable/fixedroadmap_t04_test.go: TestFixedRoadmapT04Versions/rust/W2")
+   :tested-revision "b22a358a83bb263657d76bf46e2a2e3fc4b3ae7b" :landed-revision "9657da336a6b3ab865fc87fd7b7d927e7a410a04" :audit-item
    "W2" :reported-state "owed" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5648020292" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-rust.sexp: sprint card fixed-rust-t04-versions-5 proved it green at b22a358a and landed it at 9657da33.")
   (:id "optional-values/rust" :type :work-set :children ("rust/E5" "rust/W2"))
-  (:id "java/E5" :type :task :title "?T vs plain nesting" :state :unknown :evidence nil :audit-item "E5"
+  (:id "java/E5" :type :task :title "?T vs plain nesting" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/E5"
+    "test/java-fixedform/src/Main.java: anOptional")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item "E5"
    :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
-  (:id "java/W2" :type :task :title "absent optional skips store" :state :unknown :evidence nil :audit-item
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
+  (:id "java/W2" :type :task :title "absent optional skips store" :state :done :evidence
+   ("internal/codegen/javatable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Versions/java/W2"
+    "test/java-fixedform/src/Main.java: p3Write")
+   :tested-revision "6d1dc96a0f39f9d7161ceeaf5876304329de79e2" :landed-revision "9285e247568868c78e1e92440cf512aa7f4010d7" :audit-item
    "W2" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
-   "Historical report at b7ab66a8; current completion has not been reconciled.")
+   "Reconciled 2026-10-07 from docs/roadmap-evidence/fixed-java.sexp: sprint card fixed-java-t03-versions-5 proved it green at 6d1dc96a and landed it at 9285e247.")
   (:id "optional-values/java" :type :work-set :children ("java/E5" "java/W2"))
   (:id "js/E5" :type :task :title "?T vs plain nesting" :state :unknown :evidence nil :audit-item "E5"
    :reported-state "implemented-asserted" :reported-source
