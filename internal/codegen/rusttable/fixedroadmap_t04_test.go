@@ -287,6 +287,190 @@ func t04R15(t *testing.T) {
 	}
 }
 
+// ---- rust/E3 ------------------------------------------------------------------
+
+// t04E3 holds rust/E3 to §5.2's EMIT ladder, in full: "if LADDER(te.kind,
+// me.kind): emit widenf when te is f32 else widen, sign := te.kind is a signed
+// integer or a signed fixed-point". Every required rung is present — 2..5, 6..9,
+// 20..24, 25..29 and 10 -> 11 — the float rung is `widenf`, the sign is the
+// WRITER's kind, and a same-kind widen zero-extends. The non-default and
+// boundary values are written and read by the gate's corpus rows
+// (`int_widen`, `uint_widen`, `float_widen`, `array_elem_widen`, `enum_width`).
+func t04E3(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	for _, rung := range []string{
+		"if (6..=9).contains(&from) && (6..=9).contains(&to) {",
+		"if (2..=5).contains(&from) && (2..=5).contains(&to) {",
+		"if (20..=24).contains(&from) && (20..=24).contains(&to) {",
+		"if (25..=29).contains(&from) && (25..=29).contains(&to) {",
+		"from == 10 && to == 11 // f32 -> f64",
+	} {
+		t04Has(t, runtime, rung, "E3 the widen ladder")
+	}
+	t04Has(t, runtime, "op: if te.kind == 10 {", "E3 the float rung is chosen by the writer's kind")
+	t04Has(t, runtime, "TableFixedOp::WidenF", "E3 the float rung is widenF")
+	t04Has(t, runtime, "sign: u8::from(signed_kind(te.kind)),", "E3 a ladder widen's sign is the writer's kind")
+	t04Has(t, runtime, "sign: 0,", "E3 a same-kind widen zero-extends")
+}
+
+// ---- rust/C8 ------------------------------------------------------------------
+
+// t04C8 holds rust/C8 to §3.4's constant-size table and §5.2's fixed-point
+// family: a `fixed(I,F)` rides as the raw scaled integer at its storage width,
+// `I + F`, and the KIND encodes that width and the family and NOT `F` — so an
+// `F`-only edit is a definitions-digest change the lock refuses, never a widen.
+// `bits(N)` rides at its declared storage width and is clamped at `N`'s own
+// ceiling, which is not a storage limit.
+func t04C8(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Lineage
+{
+    a fixed(4, 4) | min = -8, max = 7
+    b fixed(2, 6) | min = -2, max = 1
+    c fixed(8, 8) | min = -128, max = 127
+    d ufixed(4, 4) | min = 0, max = 15
+    e bits(12)
+}
+`)
+	st := u.Tables["Lineage"]
+	if st == nil {
+		t.Fatal("C8: the fixture declares no Lineage table")
+	}
+	kind := map[string]int{}
+	for _, f := range st.Fields {
+		kind[f.Name] = ir.TableScalarKind(f)
+	}
+	if kind["a"] != 20 || kind["b"] != 20 {
+		t.Errorf("C8: fixed(4,4) and fixed(2,6) are kinds %d and %d, want the same kind 20 — F does not ride in the kind", kind["a"], kind["b"])
+	}
+	if kind["c"] != 21 {
+		t.Errorf("C8: fixed(8,8) is kind %d, want 21 (a 16-bit storage width)", kind["c"])
+	}
+	if kind["d"] != 25 {
+		t.Errorf("C8: ufixed(4,4) is kind %d, want 25 (the unsigned family)", kind["d"])
+	}
+	if kind["e"] != 7 {
+		t.Errorf("C8: bits(12) is kind %d, want 7 — a bits(N) rides at its storage width's integer kind", kind["e"])
+	}
+	if got := ir.TableFixedStorageBytes(st.Fields[4].Type); got != 4 {
+		t.Errorf("C8: bits(12) storage = %d, want 4", got)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("C8: Generate: %v", err)
+	}
+	clamp := t04Fn(t04Fixed(t, files), "lineage_fixed_clamp_body")
+	if clamp == "" {
+		t.Fatal("C8: lineage_fixed_clamp_body is not emitted")
+	}
+	t04Has(t, clamp, "4095", "C8 bits(12)'s own ceiling")
+	t04Has(t, string(fixedRuntimeBody), "20 | 25 => size == 1,", "C8 the fixed-point ladder's storage widths")
+	t04Has(t, string(fixedRuntimeBody), "24 | 29 => size == 16,", "C8 the fixed-point ladder's top rung")
+}
+
+// ---- rust/R20 -----------------------------------------------------------------
+
+// t04R20 holds rust/R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
+// sites: an added field lands the prefill's declared default; a deprecated field
+// is dropped and counted once per plan through the compile census; a narrower
+// integer or float is widened exactly and counts widened; a shorter array or
+// string lands with the reader's slack as the template's zeros; an older enum's
+// ordinals are the reader's, its list a prefix.
+func t04R20(t *testing.T) {
+	text := t04Retire(t, 0)
+	runtime := string(fixedRuntimeBody)
+	// AN ADDED FIELD: the holes are covered from the DEFAULTS image, and the
+	// image is zeroed first so a shorter array or string keeps template zeros.
+	t04Has(t, text, "image[o..o + z].copy_from_slice(&", "R20 an added field lands the declared default")
+	t04Has(t, text, "_FIXED_DEFAULTS: [u8;", "R20 the prefill image is emitted")
+	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
+	// time the peer's field is seen, and an array's element 0 is the only one
+	// that censuses.
+	t04Has(t, runtime, "if !named && census {", "R20 an unknown field is counted")
+	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per peer, not per element")
+	t04Has(t, text, "report.unknown += census.0;", "R20 the census lands once, after the loop")
+	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
+	t04Has(t, runtime, "report.widened += 1;", "R20 a widen counts")
+	// A SHORTER ARRAY OR STRING: the image is the template's zeros, and the plan
+	// writes only the writer's live extent.
+	t04Has(t, text, "let mut image = [0u8;", "R20 the reader's slack is the template's zeros")
+	t04Has(t, text, "table_fixed_holes(entries, &mut cover, &mut hole_buf);", "R20 the holes are what the plan does not write")
+	// AN OLDER ENUM: the remap is by NAME and its list is the writer's count, so
+	// a prefix maps position for position.
+	t04Has(t, runtime, "Some(count) if raw != 0 && raw <= u64::from(*count) => {", "R20 the ordinal is resolved through the plan's remap")
+	t04Has(t, runtime, "u64::from(remap[base + raw as usize])", "R20 the older enum's ordinals are the reader's")
+}
+
+// ---- rust/R21 -----------------------------------------------------------------
+
+// t04R21 holds rust/R21 to §4's float rung and §5.2's table: "widenf is the f32
+// at src as an f64 at dst ... both are exact by construction, NaN payloads
+// included". The hardware f64::from(f32) QUIETS a signalling NaN and can drop a
+// payload bit, so the emitted runtime assembles every all-ones exponent by hand
+// — the sign carried, f64's all-ones exponent, and the 23-bit mantissa shifted
+// left by 29, which carries the quiet bit as the writer wrote it.
+func t04R21(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, "bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0", "R21 the all-ones exponent is handled on the bits")
+	t04Has(t, runtime, "| 0x7ff0_0000_0000_0000", "R21 f64's all-ones exponent")
+	t04Has(t, runtime, "<< 29", "R21 the 23-bit mantissa becomes the 52-bit one")
+	t04Has(t, runtime, "f64::from(f32::from_bits(bits)).to_bits()", "R21 every other exponent converts exactly")
+	if strings.Contains(runtime, "f64::from(f).to_le_bytes()") {
+		t.Error("R21: the float rung still widens through the hardware conversion")
+	}
+}
+
+// ---- rust/R29 -----------------------------------------------------------------
+
+// t04R29 holds rust/R29 to the 65536 band and to bill §12.5's carried writer
+// bounds. THE BAND: a record body AT 65536 is a fixed root and one byte past it
+// is not (SPEC-TABLES §3.4, "65536 BYTES OF RECORD BODY: THE FORM IS NOT
+// EMITTED, AND THE TABLE IS NAMED"), and a layout entry reaching past the
+// writer's own declared record refuses the plan WHOLE under
+// layout_record_too_large. THE WRITER'S BOUNDS: the count op clamps to the
+// writer's element bound carried by the plan and the text op to the writer's
+// span, so a value forged past what the WRITER could have written clamps and
+// counts while a value the reader merely widened does not.
+func t04R29(t *testing.T) {
+	if ir.TableFixedRecordMaxBytes != 65536 {
+		t.Fatalf("R29: the ceiling is %d, want 65536", ir.TableFixedRecordMaxBytes)
+	}
+	at := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65532)\n}\n")
+	past := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65533)\n}\n")
+	if got := ir.TableFixedTypeBytes(at.Tables["Lineage"]); got != 65536 {
+		t.Fatalf("R29: the AT fixture body is %d, want 65536", got)
+	}
+	found := false
+	for _, r := range ir.TableFixedFormRoots(at) {
+		if r.Name == "Lineage" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("R29: a body AT 65536 is not a fixed-form root")
+	}
+	for _, r := range ir.TableFixedFormRoots(past) {
+		if r.Name == "Lineage" {
+			t.Error("R29: a body one past 65536 is still a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(at, 0)
+	if len(errs) != 0 {
+		t.Errorf("R29: a body at the ceiling is a warning and not a refusal: %v", errs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
+		t.Errorf("R29: the warning does not name the table: %s", joined)
+	}
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, "if root.size == 0 || root.size > 65536 {", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, runtime, "if self.record != 0 && end > self.record as u64 {", "R29 an entry past the writer's declared record")
+	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R29 the count clamps to the writer's bound")
+	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R29 the text clamps to the writer's span")
+	t04Has(t, runtime, "size: their_n.min(my_n),", "R29 the count's bound is the writer's")
+	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),", "R29 the text's cap is the writer's span in units")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapT04Versions(t *testing.T) {
@@ -299,6 +483,11 @@ func TestFixedRoadmapT04Versions(t *testing.T) {
 		{id: "rust/R32", check: t04R32},
 		{id: "rust/R10", check: t04R10},
 		{id: "rust/R15", check: t04R15},
+		{id: "rust/E3/other-required-widens", check: t04E3},
+		{id: "rust/C8", check: t04C8},
+		{id: "rust/R20", check: t04R20},
+		{id: "rust/R21", check: t04R21},
+		{id: "rust/R29", check: t04R29},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
