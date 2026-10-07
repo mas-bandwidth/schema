@@ -720,6 +720,15 @@ final class TableFixedPlan {
   bool ready = false;
   bool overflow = false;
 
+  /// the WRITER's declared root size — the bound every entry's source extent
+  /// is held to (§5.2): an entry that reached past it would read the NEXT
+  /// record's bytes
+  int record = 0;
+
+  /// ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE under
+  /// layout_record_too_large (§5.2) and never lands a short read
+  bool tooLarge = false;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -878,6 +887,23 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
         coverCount,
         census,
       );
+      if (made == -3) {
+        // ONE ENTRY PAST THE WRITER'S DECLARED RECORD (§5.2, fix 3): the
+        // plan refuses WHOLE under layout_record_too_large and a bigger room
+        // cannot fix it, so the entry's lane says so and the load that
+        // selects it refuses by that name.
+        lane = TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          0,
+          TableFixedRefusal.layoutRecordTooLarge,
+        );
+        break;
+      }
       if (made < 0) {
         continue;
       }
@@ -1146,6 +1172,40 @@ abstract final class TableFixedCompiler {
   static bool keeping(TableFixedPlan plan, int guard) =>
       plan.pass == 0 ? guard == tableFixedNoGuard : guard != tableFixedNoGuard;
 
+  /// THE LAST SOURCE BYTE, exclusive, an entry reads — the guard included,
+  /// because a guarded entry loads the tag before anything else. The bound it
+  /// is held to is the WRITER's declared root size (§5.2), and never this
+  /// reader's: an entry that reached past it would read the NEXT record's
+  /// bytes.
+  static int srcEnd(int op, int src, int size, int aux, int guard, int argw) {
+    var end = 0;
+    switch (op) {
+      case TableFixedOp.constant:
+        // a constant reads no source at all — EXCEPT the union's None const,
+        // which reads the writer's raw tag to count a clamp past its arm set
+        if (aux == 0 && size != 0) {
+          end = src + size;
+        }
+        break;
+      case TableFixedOp.count:
+        end = src + 4; // size is the BOUND, not a byte count
+        break;
+      case TableFixedOp.text:
+        end = src + 4 + size;
+        break;
+      default:
+        end = src + size;
+    }
+    if (guard != tableFixedNoGuard) {
+      final w = argw <= 0 ? 1 : (argw > 8 ? 8 : argw);
+      final g = guard + w;
+      if (g > end) {
+        end = g;
+      }
+    }
+    return end;
+  }
+
   static void push(
     TableFixedPlan plan,
     int op,
@@ -1160,6 +1220,15 @@ abstract final class TableFixedCompiler {
     // THE HALF IS TESTED AT THE PUSH, so the two walks push the same pairs and
     // each keeps only its own.
     if (!keeping(plan, guard)) {
+      return;
+    }
+    // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
+    // bound is the writer's declared root size and not this reader's: an
+    // entry that reached past it would read the NEXT record's bytes, so the
+    // plan is refused under layout_record_too_large rather than landed short.
+    final end = srcEnd(op, src, size, aux, guard, plan.argw);
+    if (plan.record != 0 && end > plan.record) {
+      plan.tooLarge = true;
       return;
     }
     if (plan.count >= plan.capacity) {
@@ -1746,6 +1815,11 @@ abstract final class TableFixedCompiler {
     plan.count = 0;
     plan.remapUsed = 0;
     plan.overflow = false;
+    plan.tooLarge = false;
+    // THE WRITER'S DECLARED RECORD (§5.2's record := x.root.size): every
+    // entry this compile pushes is bounded by it and by nothing the file
+    // said. theirs is parsed by the caller, from the lock's own bytes.
+    plan.record = plan.theirs.size(0);
     plan.fillCount = 0;
     plan.argw = 1;
     // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING
@@ -1772,6 +1846,12 @@ abstract final class TableFixedCompiler {
     );
     coalesce(plan, plan.split);
     plan.pass = 0;
+    // -3 IS ONE ENTRY PAST THE WRITER'S RECORD (§5.2): the plan refused WHOLE
+    // under layout_record_too_large, and no bigger room fixes it, so the
+    // caller names the entry's lane rather than growing and retrying.
+    if (plan.tooLarge) {
+      return -3;
+    }
     if (plan.overflow) {
       return -1;
     }
