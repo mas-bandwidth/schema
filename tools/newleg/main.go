@@ -28,6 +28,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -35,8 +36,9 @@ func main() {
 	root := fs.String("root", ".", "the schema checkout to lay the leg into")
 	ext := fs.String("ext", "", "extension of the files the backend emits (default ."+"<lang>)")
 	comment := fs.String("comment", "", "the language's line-comment opener (default from a short table, else //)")
+	verbose := fs.Bool("verbose", false, "name each written file by its absolute path")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: schema new-leg [--root <checkout>] [--ext .x] [--comment //] <lang>")
+		fmt.Fprintln(os.Stderr, "usage: schema new-leg [--root <checkout>] [--ext .x] [--comment //] [--verbose] <lang>")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(os.Args[1:]) // ExitOnError: Parse never returns an error
@@ -50,6 +52,12 @@ func main() {
 		os.Exit(1)
 	}
 	for _, path := range written {
+		if *verbose {
+			path = filepath.Join(*root, filepath.FromSlash(path))
+			if abs, err := filepath.Abs(path); err == nil {
+				path = abs
+			}
+		}
 		fmt.Println("wrote " + path)
 	}
 	fmt.Printf("next: go test ./internal/codegen/%s/ && make test-%s\n", fs.Arg(0), fs.Arg(0))

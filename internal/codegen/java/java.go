@@ -104,12 +104,42 @@ func unitBulkBytes(u *ir.Unit) map[*ir.Field]bool {
 
 // unitNeeds128 reports whether any field of the unit stores as the emulated
 // 128-bit pair (int128/uint128, or fixed point of storage width 128).
+//
+// TABLES AND TABLE UNIONS ARE ASKED TOO, and they are the reason this is not
+// a walk of Structs alone: a `table` is DELIBERATELY absent from Structs (see
+// ir.Unit) because it rides the table wire and never the packet wire, and the
+// same goes for a union with a table arm. But the FIXED FORM (docs/SPEC-TABLES.md
+// §3.4) carries an int128/uint128 as sixteen bytes and spells the value it
+// scatters `new UInt128(hi, lo)` — so a unit whose only 128-bit field is a
+// table's own field still names Int128/UInt128 in its generated Java, and
+// skipping them there emits a package that does not compile. Such a unit is
+// exactly the wide-kind unit the two ACCELERATORS refuse (§15), which is why
+// nothing but the fixed form ever reaches this case.
 func unitNeeds128(u *ir.Unit) bool {
 	for _, st := range u.Structs {
-		for _, f := range st.Fields {
-			if is128(f.Type) {
+		if structNeeds128(st) {
+			return true
+		}
+	}
+	for _, st := range u.Tables {
+		if structNeeds128(st) {
+			return true
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, v := range un.Variants {
+			if v.F != nil && is128(v.F.Type) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func structNeeds128(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if is128(f.Type) {
+			return true
 		}
 	}
 	return false

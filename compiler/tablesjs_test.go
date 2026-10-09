@@ -1,5 +1,6 @@
 // Tests for the JAVASCRIPT tables surface (docs/SPEC-TABLES.md): the js target
-// grows <Base>Table.js plus the two accelerators' readers for a unit with
+// grows <Base>Table.js (form 1), <Base>Fixed.js (the fixed form) plus the two
+// accelerators' readers for a unit with
 // tables, adds nothing for one without, refuses the variable class by name, and
 // — the §11 half — spells no MODULE-SCOPE name a legal schema could collide
 // with.
@@ -25,7 +26,39 @@ func TestJsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
-		for _, want := range []string{"ProbeTable.js", "ProbeBlock.js", "ProbeCook.js"} {
+		// TWO FORMS, TWO MODULES, AND NO COLLISION. <Base>Table.js is FORM 1's
+		// module, the id-table wire (#516), and <Base>Fixed.js is the FIXED
+		// FORM's (§3.4, form byte 3). This used to assert that form 1 was ABSENT,
+		// when the fixed form lived in <Base>Table.js and this backend carried no
+		// form 1; form 1 has landed, so what has to hold now is that the two
+		// never meet: each module carries its own form's verbs and none of the
+		// other's, so neither emitter can overwrite the other's file and a
+		// consumer that imports one form never reaches the other by accident.
+		table, ok := with["ProbeTable.js"]
+		if !ok {
+			t.Fatalf("--lang %s emitted no ProbeTable.js (form 1) for a unit with tables; got %d files", target, len(with))
+		}
+		fixed, ok := with["ProbeFixed.js"]
+		if !ok {
+			t.Fatalf("--lang %s emitted no ProbeFixed.js (the fixed form) for a unit with a fixed-size table; got %d files", target, len(with))
+		}
+		for _, want := range []string{"export function ConfigSave(", "export function ConfigLoad(", "export function ConfigMeasure("} {
+			if !strings.Contains(string(table), want) {
+				t.Errorf("--lang %s: ProbeTable.js carries no %q — form 1's module lost its own verb", target, want)
+			}
+			if strings.Contains(string(fixed), want) {
+				t.Errorf("--lang %s: ProbeFixed.js carries %q — a form-1 verb in the fixed form's module", target, want)
+			}
+		}
+		for _, want := range []string{"export function ConfigFixedSave(", "export function ConfigFixedLoad("} {
+			if !strings.Contains(string(fixed), want) {
+				t.Errorf("--lang %s: ProbeFixed.js carries no %q — the fixed form's module lost its own verb", target, want)
+			}
+			if strings.Contains(string(table), want) {
+				t.Errorf("--lang %s: ProbeTable.js carries %q — a fixed-form verb in form 1's module", target, want)
+			}
+		}
+		for _, want := range []string{"ProbeBlock.js", "ProbeCook.js"} {
 			if _, ok := with[want]; !ok {
 				t.Fatalf("--lang %s emitted no %s for a unit with tables; got %d files", target, want, len(with))
 			}
@@ -35,7 +68,7 @@ func TestJsEmitsTableSources(t *testing.T) {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
 		for name := range without {
-			for _, suffix := range []string{"Table.js", "Block.js", "Cook.js"} {
+			for _, suffix := range []string{"Table.js", "Block.js", "Cook.js", "Fixed.js"} {
 				if strings.HasSuffix(name, suffix) {
 					t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
 				}
@@ -59,7 +92,7 @@ func TestJsEmitsTableSources(t *testing.T) {
 				continue
 			}
 			if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-				!strings.HasSuffix(name, "Cook.js") {
+				!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "Fixed.js") {
 				t.Errorf("--lang %s: adding a table grew unexpected non-table module %s", target, name)
 			}
 		}
@@ -208,7 +241,7 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 	emitted := map[string]bool{}
 	for name, data := range files {
 		if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-			!strings.HasSuffix(name, "Cook.js") {
+			!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "Fixed.js") {
 			continue // the packet emitter's own modules are its own gate's business
 		}
 		for _, spelled := range jsModuleScopeNames(string(data)) {

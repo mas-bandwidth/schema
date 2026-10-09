@@ -1,6 +1,6 @@
 # schema
 
-[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
+[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci-fast.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci-fast.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 **Schema. The data language for games.**

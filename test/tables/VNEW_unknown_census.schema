@@ -1,0 +1,25 @@
+// VNEW_unknown_census.schema — NEW: Item.drop removed
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid field
+// moves a neighbour, and the equality check sees it.
+//
+// THIS PAIR IS DELIBERATELY UNLAWFUL: SPEC §5.1 refuses this removal of
+// Item.drop, which is the row's LOCK column (docs/FIXED-FORM-VERSIONING-TESTS.md
+// §5.8 row 11), so this NEW side is generated and never dumped. Do not "fix" it.
+
+package vnew_unknown_census
+
+fixed table Item
+{
+    a int32 = 0
+}
+
+fixed table Census
+{
+    lead  uint32 = 1
+    items [4]Item
+    trail uint32 = 2
+}

@@ -486,12 +486,6 @@ func StructOf(f *ir.Field) *ir.Struct {
 	return st
 }
 
-// IsArrayShaped reports whether the field's payload is a wire ARRAY — a
-// declared array, or `bytes(N)`, which rides as an array of u8 (§2.5).
-func IsArrayShaped(f *ir.Field) bool {
-	return f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
-}
-
 // ---- guards ----
 
 // GuardTerm is one conjunct of a guarded field's branch condition: a bool

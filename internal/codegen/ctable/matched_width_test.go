@@ -1,7 +1,6 @@
 package ctable
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -9,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -184,11 +183,68 @@ int main(void)
 `, b))
 }
 
-func runCGenerated(t *testing.T, schema, source string) {
+// gccFortifyFlags silence gcc -O2 -Werror when copy_run's overlapping unroll
+// inlines into fill_run against a stack object smaller than that unroll.
+// Clang rejects -Wno-maybe-uninitialized under -Werror, so they are GNU-only.
+var gccFortifyFlags = []string{
+	"-Wno-array-bounds",
+	"-Wno-maybe-uninitialized",
+	"-Wno-stringop-overread",
+}
+
+// gccFortifySilence returns gccFortifyFlags for a GNU cc, and nil for clang.
+// Ubuntu's `cc --version` is "cc (Ubuntu …)" and never contains the word gcc;
+// 2c49a99a required that word and CI dropped the flags. GNU is __GNUC__
+// without __clang__, with --version as a fallback that does not require "gcc".
+func gccFortifySilence(cc string) []string {
+	if gnuCC(cc) {
+		return gccFortifyFlags
+	}
+	return nil
+}
+
+func gnuCC(cc string) bool {
+	cmd := exec.Command(cc, "-dM", "-E", "-")
+	cmd.Stdin = strings.NewReader("\n")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		defs := string(out)
+		return strings.Contains(defs, "#define __GNUC__") && !strings.Contains(defs, "#define __clang__")
+	}
+	vout, verr := exec.Command(cc, "--version").CombinedOutput()
+	if verr != nil {
+		return false
+	}
+	s := strings.ToLower(string(vout))
+	return !strings.Contains(s, "clang") && !strings.Contains(s, "apple llvm")
+}
+
+func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = "cc"
+	}
+	flags := gccFortifySilence(cc)
+	if gnuCC(cc) {
+		if flags == nil {
+			t.Fatal("GNU cc dropped fortify silence flags; Ubuntu's cc --version has no word gcc")
+		}
+		return
+	}
+	if flags != nil {
+		t.Fatalf("non-GNU cc must not get fortify silence flags, got %v", flags)
+	}
+}
+
+func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
 	t.Helper()
-	cc, err := exec.LookPath("cc")
-	if err != nil {
-		t.Skip("generated C execution requires cc")
+	cc := os.Getenv("CC")
+	if cc == "" {
+		var err error
+		cc, err = exec.LookPath("cc")
+		if err != nil {
+			t.Skip("generated C execution requires cc")
+		}
 	}
 	u := unitFrom(t, schema)
 	files, err := cgen.Generate(u)
@@ -209,7 +265,9 @@ func runCGenerated(t *testing.T, schema, source string) {
 	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-I", dir, filepath.Join(dir, "main.c")}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2"}
+	args = append(args, extraCC...)
+	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
 			args = append(args, filepath.Join(dir, name))
@@ -219,7 +277,7 @@ func runCGenerated(t *testing.T, schema, source string) {
 	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)

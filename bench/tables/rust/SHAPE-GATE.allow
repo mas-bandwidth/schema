@@ -1,0 +1,29 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+# NO ENTRIES, AND THE ZERO IS NOT A CLAIM OF VIRTUE. `go run ./bench/tools/shapegate`
+# prints no `names` line for bench/tables/rust/src/main.rs, so the exact count
+# this ledger would record is 0 and a zero-count entry is not a thing the gate
+# can hold (`add` drops a zero, and the ledger check fails an entry whose count
+# has dropped). The file is here so the next porter finds the reason rather
+# than the absence.
+#
+# THE REASON, stated because it is a gate blind spot and not a property of this
+# leg: the gate's vocabulary matches whole IDENTIFIER TOKENS, and the generated
+# Rust API spells the corpus type only inside longer ones —
+# `<Name>Row` for the blittable value and `<name>_fixed_load` /
+# `<name>_fixed_save` for the entry points. `_` and a following capital are
+# word characters, so a token built by suffixing a guarded name is a different
+# token and matches nothing. A Rust or Go leg that named a generated symbol
+# this way would pass the `names` check even if it were not shape-blind.
+#
+# THIS LEG IS shape-blind on the merits, which is what the ledger's other
+# entries assert of theirs and what a reviewer has to check by reading: the
+# runner names the generated type, its plan entry, its read verdict and its two
+# generated entry points at ONE `use` and at its storage declarations, and
+# nothing else — no field, no pinned value, no wire size. Every size it uses it
+# reads from the corpus at run time.
+#
+# The `consts` check DOES bind this file with no exemption at all, so the
+# distinctive wire sizes of these shapes cannot be written down here.

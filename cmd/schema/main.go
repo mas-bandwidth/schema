@@ -14,7 +14,7 @@
 //	schema cook-check <file.cook>                    validate an untrusted cook, offline
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
-//	schema new-leg    <lang>                         lay down a new language leg's skeleton (a checkout's tools/newleg)
+//	schema new-leg    <lang> [--root <checkout>] [--ext .x] [--comment //] [--verbose]  lay down a new language leg's skeleton (a checkout's tools/newleg)
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -199,6 +199,8 @@ func main() {
 		// is the command that makes it current.
 		fs := flag.NewFlagSet("lock", flag.ExitOnError)
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
+		retire := fs.String("retire", "", "retire a locked layout (`Table@0x<hash>`) or a whole locked table (`Table`) — the lock's one non-append edit: nothing is removed, the entry or the block stays with its reason, and a retired table's declaration may then be dropped (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)")
+		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -213,9 +215,33 @@ func main() {
 			fmt.Print(compiler.SchemaLockText(u))
 			break
 		}
+		if *retire != "" {
+			// THE ONE NON-APPEND EDIT (bill §11.4, §11.5), and it is a verb of
+			// this command because the file has one writer.
+			path, rewrote, err := compiler.RetireSchemaLock(u, paths, *retire, *reason)
+			if err != nil {
+				fail(err)
+			}
+			if verbose {
+				if rewrote {
+					fmt.Printf("retired %s in %s\n", *retire, path)
+				} else {
+					fmt.Printf("%s is already retired in %s\n", *retire, path)
+				}
+			}
+			break
+		}
+		if *reason != "" {
+			fail(fmt.Errorf("--reason belongs to --retire: every other write this command takes is an append, and an append declares nothing (docs/SPEC-TABLES.md §2.10)"))
+		}
 		path, rewrote, err := compiler.UpdateSchemaLock(u, paths)
 		if err != nil {
 			fail(err)
+		}
+		// THE LINEAGE'S OWN ADVISORY (docs/FIXED-FORM-BILL-READS-BACKWARD.md
+		// §11.6), said where the person who moved the file sees it.
+		for _, w := range compiler.SchemaLockWarnings(paths) {
+			fmt.Fprintln(os.Stderr, "warning: "+w)
 		}
 		if verbose {
 			if rewrote {
@@ -541,7 +567,7 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
-	case "new-leg":
+	case "new-leg", "newleg":
 		newLeg(os.Args[2:])
 	default:
 		usage()
@@ -560,9 +586,20 @@ func newLeg(args []string) {
 	root := fs.String("root", ".", "the schema checkout to lay the leg into")
 	ext := fs.String("ext", "", "extension of the files the new backend emits (default .<lang>)")
 	comment := fs.String("comment", "", "the language's line-comment opener (default from tools/newleg's table, else //)")
+	verbose := fs.Bool("verbose", false, "name each written file by its absolute path")
 	_ = fs.Parse(args) // ExitOnError: Parse never returns an error
-	if fs.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: schema new-leg [--root <checkout>] [--ext .x] [--comment //] <lang>")
+	// FLAGS MAY FOLLOW THE LANGUAGE NAME too, so `schema new-leg lua --root .`
+	// is the same command as `schema new-leg --root . lua` (the spelling the
+	// in-binary verb this one replaced accepted).
+	if fs.NArg() > 1 {
+		lang := fs.Arg(0)
+		_ = fs.Parse(fs.Args()[1:])
+		args = append([]string{lang}, fs.Args()...)
+	} else {
+		args = fs.Args()
+	}
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: schema new-leg [--root <checkout>] [--ext .x] [--comment //] [--verbose] <lang>")
 		os.Exit(2)
 	}
 	abs, err := filepath.Abs(*root)
@@ -579,7 +616,10 @@ func newLeg(args []string) {
 	if *comment != "" {
 		run = append(run, "--comment", *comment)
 	}
-	cmd := exec.Command("go", append(run, fs.Arg(0))...)
+	if *verbose {
+		run = append(run, "--verbose")
+	}
+	cmd := exec.Command("go", append(run, args[0])...)
 	cmd.Dir = abs
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -717,7 +757,7 @@ func usage() {
   schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
-  schema new-leg    [--root <checkout>] [--ext .x] [--comment //] <lang>
+  schema new-leg    [--root <checkout>] [--ext .x] [--comment //] [--verbose] <lang>
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3

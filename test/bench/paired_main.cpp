@@ -118,7 +118,7 @@ int main( int argc, char ** argv )
         std::vector<bench::TableFixedEntry> plan( 4096 );
         bench::TableReport report;
         const int64_t got = bench::FixedTableFixedLoad( back.data(), (int64_t) Count, file.data(), (int64_t) file.size(),
-                                                        plan.data(), (int32_t) plan.size(), &report );
+                                                        plan.data(), (int32_t) plan.size(), NULL, &report );
         if ( got != (int64_t) Count || report.malformed || report.refused || report.unknown ||
              report.kind_mismatch || report.widened || report.clamped )
         {

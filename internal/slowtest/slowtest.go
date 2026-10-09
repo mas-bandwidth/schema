@@ -16,11 +16,28 @@
 // emitters' text, the goldens, the refusals. The toolchain half runs under
 // SCHEMA_SLOW=1, and it runs there ALWAYS:
 //
-//   - every make leg gate already exports SCHEMA_REQUIRE_CORPUS=1, and Enabled
-//     counts that as the slow half being ON — so not one of the nine leg gates,
-//     and not one of ci-fast.yml's per-leg rows that drive them, changed at all,
-//   - ci-full.yml's two `go test` steps set SCHEMA_SLOW=1 explicitly, so the
+//   - every make leg gate exports SCHEMA_REQUIRE_CORPUS=1, and Enabled counts
+//     that as the slow half being ON — so not one of the nine leg gates, and
+//     not one of ci-fast.yml's per-leg rows that drive them, changed at all,
+//   - every POSITIVE gate target runs its `go test` through test/slowgate/proof,
+//     which sets SCHEMA_SLOW=1, refuses a slowtest skip in its own log, and
+//     requires a `--- PASS` for each gate it names (schema#988),
+//   - ci.yml's two `go test` steps set SCHEMA_SLOW=1 explicitly, so the
 //     merge and nightly lanes run the whole of both halves.
+//
+// THE SECOND BULLET WAS FALSE FOR ONE DAY AND IT COST US A DAY (schema#988, G5).
+// This comment said "NOTHING IS CHECKED LESS THAN BEFORE" while fourteen
+// positive gate targets — tables-go-fixedform, -containers, -block-build,
+// -block-race-negative-control, -retain, -allocator, -blob-span,
+// -blob-span-negative-control, -builders, -typed-refusals, -view, -release,
+// tables-c-retain and tables-reference-review — ran a BARE `go test`. Under
+// `make test` the gate each one names skipped, `go test` exited 0, and the
+// target went green having run nothing. The claim is a claim about the
+// Makefile, so `make slow-gate-scan` now CHECKS IT on every run: a recipe line
+// that runs `go test` on a package holding gated tests without setting either
+// variable fails by name, and anything deliberately left to ci.yml is
+// named with its reason in make/slow-gate-exceptions.txt. A sentence in a
+// comment is not a gate; the scan is.
 //
 // NOTHING IS CHECKED LESS THAN BEFORE. A gate that quietly stopped running is
 // worse than a slow one, which is why Gate never reads a toolchain's presence:
@@ -28,8 +45,10 @@
 package slowtest
 
 import (
+	"context"
 	"os"
 	"testing"
+	"time"
 )
 
 // Enabled reports whether the slow half runs in this process.
@@ -51,5 +70,27 @@ func Gate(t *testing.T, what string) {
 	if Enabled() {
 		return
 	}
-	t.Skipf("SCHEMA_SLOW: this test shells out to %s; set SCHEMA_SLOW=1 to run it (ci-full.yml and the make leg gates always do)", what)
+	t.Skipf("SCHEMA_SLOW: this test shells out to %s; set SCHEMA_SLOW=1 to run it (ci.yml and the make leg gates always do)", what)
 }
+
+// ProbeContext is the context a compiled probe runs under: the TEST'S OWN
+// deadline (go test -timeout, ten minutes by default) less a margin wide enough
+// for the harness to print the failure by name, and no deadline at all when the
+// harness has none. It replaces a fixed 30 s wall bound, which was measured
+// wrong on 2026-09-11 (PR #950's gate): macOS assesses every freshly written
+// executable on its first exec, about 2 s idle and unbounded when twenty-two
+// gates each spawn fresh probes through the one syspolicyd — a probe whose own
+// work is microseconds died at 30.48 s with 0 % CPU. A probe that truly hangs
+// still fails under its test's name, before the harness's own timeout panic;
+// the margin is what keeps the two apart.
+func ProbeContext(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return context.WithCancel(t.Context())
+	}
+	return context.WithDeadline(t.Context(), deadline.Add(-probeMargin))
+}
+
+// probeMargin is the slice of the test's deadline the harness keeps for itself.
+const probeMargin = 5 * time.Second

@@ -39,13 +39,6 @@ func DocComment(doc, indent, marker string) string {
 // written. C, C++, C#, Go, Java, JavaScript and Rust all read it.
 func QuoteDoc(doc string) string { return strconv.Quote(doc) }
 
-// QuoteDocDart renders a doc comment as a single-quoted Dart string literal:
-// a backslash, a quote, the interpolation sigil and a newline are escaped.
-func QuoteDocDart(doc string) string {
-	r := strings.NewReplacer(`\`, `\\`, `'`, `\'`, `$`, `\$`, "\n", `\n`, "\r", `\r`, "\t", `\t`)
-	return "'" + r.Replace(doc) + "'"
-}
-
 // QuoteDocElixir renders a doc comment as a double-quoted Elixir string
 // literal: a backslash, a quote, the interpolation opener and a newline are
 // escaped.

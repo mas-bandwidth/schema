@@ -1,0 +1,18 @@
+// VNEW_field_undeprecate.schema — the NEW side of the `field_undeprecate` row of the fixed form's
+// versioning law (docs/FIXED-FORM-VERSIONING-TESTS.md, the LISTS rows; the bill
+// is docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and the procedures are
+// docs/FIXED-FORM-ALGORITHM.md §5).
+//
+// The pair differs by EXACTLY ONE definition change — one field UN-deprecated (allowed in both directions) — and
+// nothing else, so a read that goes wrong can only have gone wrong there. The
+// table name is the same on both sides, because the two layouts are ONE
+// LINEAGE; only the package differs, so both generations compile into one test
+// binary (the FX1/FX2 precedent).
+package vnew_field_undeprecate
+
+fixed table Lineage
+{
+    a int32 = 0
+    b int32 = 0
+    c int32 = 0
+}

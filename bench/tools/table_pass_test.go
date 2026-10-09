@@ -84,3 +84,34 @@ func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
 		t.Fatalf("started timing before discovering a missing leg: %s", events)
 	}
 }
+
+func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
+	root, env := tablePassFixture(t, "")
+	leg := filepath.Join(root, "bench", "tables", "lua", "leg")
+	if err := os.MkdirAll(filepath.Dir(leg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leg, []byte("#!/bin/sh\n[ \"$1\" = build ] && exit 2\necho fabricated-row\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("sh", "bench/tables/run.sh", "--bare")
+	cmd.Dir, cmd.Env = root, env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("default discovery rejected an unavailable scaffold: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "fabricated-row") {
+		t.Fatalf("default discovery ran the unavailable scaffold: %s", out)
+	}
+
+	cmd = exec.Command("sh", "bench/tables/run.sh", "--only", "lua", "--bare")
+	cmd.Dir, cmd.Env = root, env
+	out, err = cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("explicit selection accepted the unavailable scaffold: err=%v output=%s", err, out)
+	}
+	if strings.Contains(string(out), "fabricated-row") {
+		t.Fatalf("explicit selection ran the unavailable scaffold: %s", out)
+	}
+}

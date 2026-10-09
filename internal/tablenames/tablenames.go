@@ -103,13 +103,6 @@ type Name struct {
 	RustConst bool
 }
 
-// All returns the whole registry, sorted by name.
-func All() []Name {
-	out := append([]Name(nil), registry...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
 // Claimed is every UNIT-LEVEL registered name, sorted — what the checker
 // claims when a unit declares a table, whatever target it is generating for.
 // Scoped spellings are not claimed: they cannot collide with a declaration.

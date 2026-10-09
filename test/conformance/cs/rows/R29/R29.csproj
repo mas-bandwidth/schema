@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- cell-cs-r29 - the band case: the widening across the 65536 ceiling,
+       and the bounds pass clamping to the writer's bounds
+  
+       The two clauses of cs/R29 (docs/roadmap.sexp cs/R29, law at
+       docs/FIXED-FORM-ALGORITHM.md:1083):
+       
+         - THE BAND CASE: when the writer's narrower integer is at its own
+           declared MAX, the widening on the reader side MUST zero-extend
+           (because the source is unsigned) and LAND as the value just
+           inside the wider kind's bound. The value 0xFFFF (uint16 max) is
+           one short of 0x10000 (the 65536 ceiling); widens to 65535 ==
+           0x0000FFFF, NEVER 0xFFFFFFFF.
+           
+         - THE BOUNDS PASS CLAMPING TO THE WRITER'S: a count or length in
+           the bounds pass is clamped to the WRITER's bound, NEVER the
+           reader's; the plan carries the writer's `e.size` and the
+           forged word between the two is the case the row exists to
+           settle.
+           
+       The standalone test reads the VOLD file bytes through a VNEW
+       COMPILED plan that knows the VOLD layout, asserts the band widen
+       case (zero-extend to 65535, NEVER 0xFFFFFFFF), the bounds pass
+       clamp (count == 4 == the writer's, with clamp counter fired), and
+       tests the negative control (changing the writer's bound bytes
+       makes the test go RED). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell-cs-r29</AssemblyName>
+    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+    <RepoRoot Condition="'$(RepoRoot)' == ''">../../../../..</RepoRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(TablesGeneratedDir)/vold_uint_widen/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/vnew_uint_widen/*.cs" />
+  </ItemGroup>
+
+  <Target Name="GenerateUintWidenTables" BeforeBuild>
+    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vold_uint_widen $(RepoRoot)/test/tables/VOLD_uint_widen.schema"
+          WorkingDirectory="$(RepoRoot)" />
+    <Exec Command="$(RepoRoot)/bin/schema generate --lang cs --out $(TablesGeneratedDir)/vnew_uint_widen $(RepoRoot)/test/tables/VNEW_uint_widen.schema"
+          WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+</Project>

@@ -1,0 +1,16 @@
+// VNEW_int_widen.schema — NEW: int32 — SIGN-EXTENDED, which is what -1 and INT16_MIN are here for
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+
+package vnew_int_widen
+
+fixed table IntWiden
+{
+    lead  uint32 = 1
+    v     int32 = 0
+    trail uint32 = 2
+}

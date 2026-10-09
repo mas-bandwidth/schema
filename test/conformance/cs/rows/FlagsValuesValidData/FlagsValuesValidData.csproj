@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- cell-cs-flags-values-valid-data — Flags masks: valid-data write/read acceptance
+       (docs/FIXED-FORM-ALGORITHM.md §3.4, contract "record, flags").
+       The leg compiles build/tables-generated-cs/examples/*.cs and assembles a
+       LoadoutConfig with each Perks bit set, then writes and reads it back. The
+       test reads testdata/wire/tables/loadout_full.bin too, the C++ build's
+       own loadout with Perks=Shielded, and proves the C# leg agrees on
+       the read. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>cell-cs-flags-values-valid-data</AssemblyName>
+    <TablesGeneratedDir Condition="'$(TablesGeneratedDir)' == ''">../../../../../build/tables-generated-cs</TablesGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(TablesGeneratedDir)/examples/*.cs" />
+  </ItemGroup>
+
+</Project>

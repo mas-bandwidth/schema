@@ -4480,7 +4480,7 @@
    :remaining nil :id "bool-values/go/valid-data" :type :task :title
    "Boolean values: valid-data write/read acceptance" :state :done :evidence
    ("internal/codegen/gotable/fixedform_test.go:621" "internal/codegen/gotable/fixedform_test.go:632"
-    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    ".github/workflows/ci.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
     "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
     "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
    :contract "§3.4 record, bool" :note
@@ -7867,7 +7867,7 @@
    :remaining nil :id "fixed-file-roundtrip/go/valid-data" :type :task :title
    "Save and load fixed-form files: valid-data write/read acceptance" :state :done :evidence
    ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413"
-    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    ".github/workflows/ci.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
     "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
     "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
    :contract "§3.4 framing; ALGORITHM §2 / §7" :note
@@ -7984,7 +7984,7 @@
    :remaining nil :id "record-measurement/go/valid-data" :type :task :title
    "Constant body size and file-size measurement: valid-data write/read acceptance" :state :done :evidence
    ("bench/tables/go/table_main.go:403" "bench/tables/go/table_main.go:413"
-    ".github/workflows/ci-full.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
+    ".github/workflows/ci.yml:313 SCHEMA_SLOW=1" "make/go.mk:505 active matched gate"
     "https://github.com/mas-bandwidth/schema/actions/runs/34767246900"
     "https://github.com/mas-bandwidth/schema/actions/runs/34766728596")
    :contract "§3.4 C(f), C(T), MeasureBody" :note

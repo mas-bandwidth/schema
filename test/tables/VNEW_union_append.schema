@@ -1,0 +1,28 @@
+// VNEW_union_append.schema — the NEW side of the `union_append` row of the fixed form's
+// versioning law (docs/FIXED-FORM-VERSIONING-TESTS.md, the LISTS rows; the bill
+// is docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and the procedures are
+// docs/FIXED-FORM-ALGORITHM.md §5).
+//
+// The pair differs by EXACTLY ONE definition change — one arm appended at the end of a union — and
+// nothing else, so a read that goes wrong can only have gone wrong there. The
+// table name is the same on both sides, because the two layouts are ONE
+// LINEAGE; only the package differs, so both generations compile into one test
+// binary (the FX1/FX2 precedent).
+package vnew_union_append
+
+type Alpha { m int32 = 0 }
+type Beta  { n int32 = 0 }
+type Gamma { p int32 = 0 }
+
+union Pick
+{
+    alpha Alpha
+    beta  Beta
+    gamma Gamma
+}
+
+fixed table Lineage
+{
+    pick Pick
+    seq  int32 = 0
+}

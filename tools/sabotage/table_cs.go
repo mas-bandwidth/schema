@@ -27,3 +27,18 @@ func init() {
 		new: "        report.RetainLost++; return true; // SABOTAGED: the framed record is not admitted",
 	}}
 }
+
+func init() {
+	sabotages["fixed-form-cs-arm-text-flavour"] = []edit{
+		{
+			old: "                    TableFixedEntry e = new TableFixedEntry(\n" +
+				"                        their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);",
+			new: "                    TableFixedEntry e = new TableFixedEntry(\n" +
+				"                        their_at, at, units, aux_at, guard, Text, d.Arg, 0, 0); // SABOTAGED: the flavour over the arm ordinal",
+		},
+		{
+			old: "                        uint unit = (p.Meta == TextWide) ? 2u : 1u;",
+			new: "                        uint unit = (p.Arg == TextWide) ? 2u : 1u; // SABOTAGED: the flavour read back off the guard's lane",
+		},
+	}
+}

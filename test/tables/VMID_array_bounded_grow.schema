@@ -1,0 +1,19 @@
+// VMID_array_bounded_grow.schema — MID: [..6]int32
+//
+// A THIRD side of the fixed form's `array_bounded_grow` row
+// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4). It writes no corpus file and
+// is never read from; it exists to sit in a reader's lineage BESIDE VOLD_ as a
+// DISTRACTOR, so that a reader holding two peers with different bounds has to
+// say which peer's bound the plan carries. It differs from VOLD_ in the bound
+// and in nothing else: `lead` and `trail` bracket the row's field exactly as
+// they do there, because a distractor that differs in any other way is not a
+// distractor, it is a different row.
+
+package vmid_array_bounded_grow
+
+fixed table ArrayBoundedGrow
+{
+    lead  uint32 = 1
+    vals  [..6]int32
+    trail uint32 = 2
+}

@@ -1,7 +1,8 @@
 # schema — maintainer context for a working session
 
-*The rules a session must not break are in [AGENTS.md](../AGENTS.md); this file
-is the context behind them — the ledger, the performance program, what `make`
+*The rules a session must not break are in [CONTRIBUTING.md](CONTRIBUTING.md);
+the generated map of the tree is [AGENTS.md](../AGENTS.md). This file is the
+context behind the rules — the ledger, the performance program, what `make`
 proves in full.*
 
 - **docs/SPEC.md is the source of truth for the type wire, and docs/SPEC-TABLES.md is

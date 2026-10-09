@@ -1,7 +1,9 @@
 # Compiled closure and widening regressions from the shared reference review.
 .PHONY: tables-reference-review
 tables-reference-review:
-	go test ./compiler -run '^Test(CppVariableWideAlignment|CppCollectionWidening|FlagsElementWidening|CppHiddenUnionExtentRefusal|RepeatedArrayTailDefaults)$$' -count=1
+	sh test/slowgate/proof tables-reference-review \
+		'TestCppVariableWideAlignment/narrow TestCppVariableWideAlignment/direct TestCppVariableWideAlignment/pointer TestCppVariableWideAlignment/union TestCppVariableWideAlignment/list TestCppVariableWideAlignment/map TestCppVariableWideAlignment/array TestCppVariableWideAlignment/nested TestCppCollectionWidening/list TestCppCollectionWidening/map TestFlagsElementWidening TestCppHiddenUnionExtentRefusal/false TestCppHiddenUnionExtentRefusal/true TestRepeatedArrayTailDefaults/c TestRepeatedArrayTailDefaults/cpp TestRepeatedArrayTailDefaults/c-bounded-extent' \
+		./compiler -run '^Test(CppVariableWideAlignment|CppCollectionWidening|FlagsElementWidening|CppHiddenUnionExtentRefusal|RepeatedArrayTailDefaults)$$' -count=1
 
 test: tables-reference-review
 

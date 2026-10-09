@@ -1,0 +1,32 @@
+// VNEW_union_arm_payload_widen.schema — the NEW side of the `union_arm_payload_widen` row of the fixed form's
+// versioning law (docs/FIXED-FORM-VERSIONING-TESTS.md, the LISTS rows; the bill
+// is docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and the procedures are
+// docs/FIXED-FORM-ALGORITHM.md §5).
+//
+// The pair differs by EXACTLY ONE definition change — one field appended to the payload of a union's FIRST arm — and
+// nothing else, so a read that goes wrong can only have gone wrong there. The
+// table name is the same on both sides, because the two layouts are ONE
+// LINEAGE; only the package differs, so both generations compile into one test
+// binary (the FX1/FX2 precedent).
+package vnew_union_arm_payload_widen
+
+// THE ARM'S PAYLOAD WIDENS: `y` appended at the end of Alpha, its default the
+// value a NEW reader lands when an OLD writer's arm carried only `x`.
+type Alpha
+{
+    x int32 = 0
+    y int32 = 55
+}
+type Beta  { n int32 = 0 }
+
+union Pick
+{
+    alpha Alpha
+    beta  Beta
+}
+
+fixed table Lineage
+{
+    pick Pick
+    seq  int32 = 0
+}

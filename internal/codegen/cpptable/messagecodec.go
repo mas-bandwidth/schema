@@ -530,11 +530,20 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
 	default:
-		if ir.TableKindWide(int(kind)) {
+		if tableKindWidth(int(kind)) == 16 {
 			// A 128-BIT KIND at the width its shape states: the base subtracted
 			// at 128 bits, the low half first and the high half where the
 			// width reaches it, which is ONE arithmetic for measure, save and
-			// read (§3.3)
+			// read (§3.3).
+			//
+			// THE GATE IS THE STORAGE WIDTH, not ir.TableKindWide: the wide
+			// vocabulary is kinds 18–29, which is the 128-bit integers AND the
+			// whole fixed-point family, and `fixed(12, 4)` rides in sixteen
+			// bits. Its raw value and its base both fit a uint64_t, so it takes
+			// the plain path below — the same gate the read side gates on
+			// (messageload.go's `bytesWide == 16`), and the one that keeps a
+			// Table.h of narrow fixed fields free of serialize.h, which only a
+			// unit whose closure declares a 128-bit field includes.
 			base := "serialize::uint128_t( 0 )"
 			if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
 				base = tableWideLit(shape.Base, false)

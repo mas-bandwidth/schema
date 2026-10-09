@@ -12,30 +12,36 @@ import (
 )
 
 // TestDartEmitsTableSources: the dart target adds the BLOCK and COOK read
-// halves, <Base>Block.dart and <Base>Cook.dart with their runtime homes, beside
-// the packet libraries for a unit with tables, and adds NOTHING for one
-// without. It emits no <Base>Table.dart at all: the table wire's Dart port
-// wrote the form that preceded the id-table wire and was removed rather than
-// carried (schema#514 brings the current wire to Dart).
+// halves, <Base>Block.dart and <Base>Cook.dart with their runtime homes, and
+// the FIXED FORM's <Base>Fixed.dart (docs/SPEC-TABLES.md §3.4), beside the
+// packet libraries for a unit with tables, and adds NOTHING for one without.
+// It emits no <Base>Table.dart at all: form 1's Dart port wrote the shape that
+// preceded the id-table wire and was removed rather than carried (schema#514
+// brings that wire to Dart; the fixed form is this backend's first).
 func TestDartEmitsTableSources(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "dart", Options{})
 	if err != nil {
 		t.Fatalf("--lang dart: %v", err)
 	}
-	blocks, cooks := 0, 0
+	blocks, cooks, fixed := 0, 0, 0
 	for name := range with {
 		switch {
 		case strings.HasSuffix(name, "Table.dart"):
-			t.Errorf("--lang dart emitted %s: the previous-form table wire was removed and nothing emits <Base>Table.dart", name)
+			t.Errorf("--lang dart emitted %s: form 1's Dart port was removed and nothing emits <Base>Table.dart", name)
 		case strings.HasSuffix(name, "Block.dart"):
 			blocks++
 		case strings.HasSuffix(name, "Cook.dart"):
 			cooks++
+		case strings.HasSuffix(name, "Fixed.dart"):
+			fixed++
 		}
 	}
 	if blocks == 0 || cooks == 0 {
 		t.Fatalf("--lang dart emitted %d Block.dart and %d Cook.dart files for a unit with tables; both halves are owed", blocks, cooks)
+	}
+	if fixed == 0 {
+		t.Fatalf("--lang dart emitted no Fixed.dart for a unit with a fixed table; the fixed form is owed (docs/SPEC-TABLES.md §3.4)")
 	}
 	without, err := c.Generate(unitFromSource(t, packetSrc), "dart", Options{})
 	if err != nil {
@@ -142,10 +148,12 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 
 // dartTableSource reports whether a generated file is one the DART TABLE
 // backend wrote: the block form's <Base>Block.dart, the cook's <Base>Cook.dart,
-// and (should one ever reappear) a <Base>Table.dart. The packet emitter's own
-// libraries are not this backend's to scan.
+// the FIXED FORM's <Base>Fixed.dart (docs/SPEC-TABLES.md §3.4), and (should one
+// ever reappear) a <Base>Table.dart. The packet emitter's own libraries are not
+// this backend's to scan.
 func dartTableSource(name string) bool {
 	return strings.HasSuffix(name, "Table.dart") ||
 		strings.HasSuffix(name, "Block.dart") ||
-		strings.HasSuffix(name, "Cook.dart")
+		strings.HasSuffix(name, "Cook.dart") ||
+		strings.HasSuffix(name, "Fixed.dart")
 }

@@ -1,0 +1,55 @@
+# R32 notes — retire for real: a retired version is refused by name, once, idempotently
+
+## Law citation
+docs/FIXED-FORM-ALGORITHM.md:552-553:
+"The floor is one number and the lineage is one array, so 'retired' is an index cut and the operator's two
+answers stay distinct: below the floor is layout_unsupported (upgrade the client), outside the lineage is
+layout_newer (ship the reader). A retired entry stays in the lineage forever."
+
+Also: docs/FIXED-FORM-ALGORITHM.md:441
+"per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`) | the floor, and layout_unsupported"
+
+docs/SPEC-TABLES.md:854 mentions "each refused by name (§11)" for retirement-related refusals.
+
+## Call site in production
+compiler/target_cpp.go:38 calls cpptable.GenerateLineage(u, lineage.Lock()) which emits lineage data.
+internal/codegen/cpptable/lineage.go:350 implements lineageFloor() which computes the floor from
+lockfile.Floor(g.lock, want) — that function (internal/lockfile/lineage.go:375-383) returns one past
+the highest Retired index. The emission happens in fixedform.go:605-660 emitFixedLineage(). The
+runtime check is in fixedform.go:532-534 where LOAD checks `if ( lineage_at < floor_at )`.
+
+## Test data
+Uses VOLD_floor, VMID_floor, VNEW_floor fixtures from test/tables/*.schema → build/tables-generated/vnum/*.h.
+No new fixture data was added; the test constructs wire bytes at runtime from vold_floor::Floored
+and loads them against the vnew_floor reader.
+
+## Production path exercised
+My test saves a vold_floor record using vold_floor::FlooredFixedSave (fixedform.go writer), then loads
+via vnew_floor::FlooredFixedLoad (fixedform.go reader). The reader iterates FlooredFixedLineage[] to find
+the hash, checks if the index is below FlooredFixedFloor (set to 1 by fixtureFloor map), and returns
+report->reason = layout_unsupported when lineage_at=0 < floor_at=1.
+
+## Make target
+Currently no Makefile target runs this standalone file. The ci.json lists targets:
+build/conformance-harness build/conformance-cpp build/schema_test_cook table-base64-cpp
+Wiring R32 into the conformance driver or a separate make target would require a separate card per leg.
+
+## Preflight outcome
+make build/conformance-harness build/conformance-cpp build/schema_test_cook table-base64-cpp FAILED due to
+missing serialize.h (sibling checkout not present). This is expected on a fresh mirror; the full repo has it.
+R32 compiles independently with -Ibuild/tables-generated/vnum.
+
+## Stella/Emma checklist (a)-(k)
+(a) Checked base-sha: no existing cpp test asserts R32 exactly. No ABSTAIN.
+(b) Named call site: compiler/lineage→cpptable/lineage.go lineCell(→emitFixedLineage()→emitFixedRoot()
+    Load() checks lineage_at < floor_at. Documented in RESULT.md.
+(c) Negative control: corrupt byte[8] of wire header hash → yields layout_newer, proving cell hit floor path.
+(d) Binding constraint tested: floor check — a retired entry (index 0 below floor=1) refuses layout_unsupported.
+(e) Ran changed package? Only R32.cpp (new file). Direct reverse dependents: none yet. internal/ci: not applicable
+    (no Go changes).
+(f) Docs updates: not needed (no CLI change, no new command flags).
+(g) Gate block: make lint / go vet not run — no Go code changed. make test cannot run without serialize.h.
+(h) Production path verified: Load() from fixedform.go:496 exercises lineage lookup + floor check directly.
+(i) Docs/spec change: none shipped (test-only assertion).
+(j) Make target: none wired yet. Would need a separate card.
+(k) Not a measurement/bench card.

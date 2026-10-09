@@ -1,0 +1,20 @@
+// VOLD_cfloat_res_refine.schema — OLD: aim float32 | min = -1, max = 1, resolution = 0.1
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/versioning_numbers.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbour, and the equality check sees it.
+//
+// The resolution is a DEFINITION in the digest (bill §13), not wire: in the
+// fixed form a compressed float rides as the float32 itself (SPEC §3.4), so
+// this refinement moves the hash, not the bytes, and takes no hostile row.
+
+package vold_cfloat_res_refine
+
+fixed table CfloatResRefine
+{
+    lead  uint32 = 1
+    aim   float32 | min = -1, max = 1, resolution = 0.1
+    trail uint32 = 2
+}
