@@ -215,7 +215,7 @@ tables-java-runtime-home: bin/schema
 # Go file is ever written. `ir` is already imported in javatable.go.
 .PHONY: tables-java-runtime-home-negative-control
 tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
-	@sed 's|"TableBytes.java": *tableBytesFile(u),|ir.ProtocolIdHome(u) + "Bytes.java": tableBytesFile(u), // SABOTAGED: back to the file order|' \
+	@sed 's|out\["TableBytes\.java"\] = tableBytesFile(u)|out[ir.ProtocolIdHome(u) + "Bytes.java"] = tableBytesFile(u) // SABOTAGED: back to the file order|' \
 		internal/codegen/javatable/javatable.go > build/javaruntime-fileorder.gotext
 	@[ "$$(grep -c SABOTAGED build/javaruntime-fileorder.gotext)" = "1" ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing, or patched more than one line"; exit 1; }
