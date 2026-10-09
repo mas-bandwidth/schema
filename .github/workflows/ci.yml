@@ -160,20 +160,21 @@ jobs:
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
   # so a job without them would report green over a check that never ran.
   #
-  # TEN MINUTES, MEASURED, AND EVERY ROW OVER TWO IS A DEFECT. The owner's
+  # TWELVE MINUTES, MEASURED, AND EVERY ROW OVER TWO IS A DEFECT. The owner's
   # rule is one minute per package, two at most, and main's go-test job held a
   # two-minute timeout. These three rows do not fit it, so the timeout is the
   # measured need plus a margin rather than the law, and each overrun is named
-  # here so it is fixed rather than budgeted. Measured on fixed-table-form's
-  # tip (run 37630463435, 2026-10-07):
-  #   versioning   6m44s — the C# leg in Debug and Release plus its versioning
-  #                suite 3m13s, Java versioning 55s, Go versioning 50s, Elixir
-  #                versioning 35s
-  #   unit-rest    6m23s — `go test` over the non-emitter packages 5m58s
-  #   unit-codegen 3m47s — `go test ./internal/codegen/...` 2m16s, plus the
-  #                Java versioning suite 1m17s that ran in every row for want
-  #                of an `if:` (fixed in the merge to main)
-  # The merge's own run re-measures these; the PR that lands it records them.
+  # here so it is fixed rather than budgeted. Measured on the merge to main
+  # (run 38001989528, 2026-10-09):
+  #   versioning   8m38s — the C# leg in Debug and Release plus its versioning
+  #                suite 4m22s, Java versioning 1m10s, Go versioning 53s,
+  #                Elixir versioning 47s
+  #   unit-rest    8m38s — `go test` over the non-emitter packages 8m01s, of
+  #                which `compiler` is 7m56s under SCHEMA_SLOW=1
+  #   unit-codegen 2m24s — `internal/codegen/gotable` 2m01s under SCHEMA_SLOW=1
+  # fixed-table-form's tip (run 37630463435) had versioning 6m44s and
+  # unit-rest 6m23s, with the Java versioning step running in every row for
+  # want of an `if:` (fixed in the merge).
   go-test:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -181,7 +182,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: go-test (${{ matrix.group }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
     # (2026-09-11) and a matrix row is a job: the emitter packages, everything
     # else, and the seven fixed-form versioning suites that cannot ride
