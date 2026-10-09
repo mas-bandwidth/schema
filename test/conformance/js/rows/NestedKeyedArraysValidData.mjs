@@ -21,8 +21,8 @@ import { pathToFileURL } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../../..");
 const generated = process.env.SCHEMA_JS_GENERATED ?? join(repoRoot, "build/tables-generated-js");
-const tmod = await import(pathToFileURL(join(generated, "examples/TabledemoTable.js")).href);
-const kmod = await import(pathToFileURL(join(generated, "examples/KeyedTable.js")).href);
+const tmod = await import(pathToFileURL(join(generated, "examples/TabledemoFixed.js")).href);
+const kmod = await import(pathToFileURL(join(generated, "examples/KeyedFixed.js")).href);
 
 const {
   Hull, Weapon, Team,

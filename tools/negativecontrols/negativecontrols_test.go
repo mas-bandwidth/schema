@@ -111,13 +111,13 @@ func TestEveryGroupRunsInATier(t *testing.T) {
 // leg's target list IS the manifest: a job that typed its own list would pass
 // every test above and still miss a control. So both workflows are read here,
 // and each must reach its matrix and its targets through this tool:
-// ci-full.yml for the merge tier (the 47 rows are too many runners for the
+// ci.yml for the merge tier (the 47 rows are too many runners for the
 // per-push fast lane; that split is in ci-fast.yml's header), certify.yml for
 // the nightly one, which is where this repository's schedule lives.
 func TestTheLegRunsTheManifestAndNotATypedList(t *testing.T) {
 	root := testRoot(t)
 	for workflow, wants := range map[string][]string{
-		"ci-full.yml": {
+		"ci.yml": {
 			"go run ./tools/negativecontrols check",
 			"go run ./tools/negativecontrols matrix",
 			"go run ./tools/negativecontrols targets",
@@ -259,7 +259,7 @@ var legs = []struct {
 	matrixJob string
 	command   string
 }{
-	{"ci-full.yml", "negative-controls", "negative-controls-matrix", "go run ./tools/negativecontrols matrix"},
+	{"ci.yml", "negative-controls", "negative-controls-matrix", "go run ./tools/negativecontrols matrix"},
 	{"certify.yml", "negative-controls-nightly", "negative-controls-nightly-matrix", "go run ./tools/negativecontrols matrix nightly"},
 }
 
@@ -330,6 +330,122 @@ func TestEachLegExpandsTheToolsMatrix(t *testing.T) {
 		}
 		if !strings.Contains(run, leg.command) {
 			t.Errorf(".github/workflows/%s: step %q of %s does not run %q, so the matrix it publishes is not the plan's:\n%s", leg.workflow, id, leg.matrixJob, leg.command, run)
+		}
+	}
+}
+
+// TestTheBigEndianJobIsShardedByUnit is issue #684's ruling made mechanical.
+// The big-endian leg ran five independent pieces and a control in ONE job on
+// every pull request and measured 4:15 to 4:26 (263 s) on main against the
+// owner's one-to-two-minute rule, because the job paid their SUM. The fix is a
+// matrix of one row per unit, and this test reads that matrix rather than the
+// comment that claims it: every row names exactly one target, the serial
+// composite tables-big-endian-negative-control is not what the job runs, and
+// the control still has a row of its own so the pair that proves the leg can go
+// red stays on the pull request.
+func TestTheBigEndianJobIsShardedByUnit(t *testing.T) {
+	root := testRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := parseWorkflow(string(body))
+	if err != nil {
+		t.Fatalf(".github/workflows/ci.yml does not parse: %v", err)
+	}
+
+	matrixValue, err := mappingAt(doc, "jobs", "big-endian", "strategy", "matrix")
+	if err != nil {
+		t.Fatalf("the big-endian job is not a matrix, so it is still one serial job paying the sum of every leg: %v", err)
+	}
+	matrix, ok := matrixValue.(map[string]any)
+	if !ok {
+		t.Fatalf("the big-endian job's matrix is %#v, not a mapping with an include list", matrixValue)
+	}
+	include, ok := matrix["include"].([]any)
+	if !ok || len(include) == 0 {
+		t.Fatalf("the big-endian job's matrix carries no include rows: %#v", matrixValue)
+	}
+
+	got := map[string]bool{}
+	for _, item := range include {
+		row, ok := item.(map[string]any)
+		if !ok {
+			t.Errorf("a big-endian matrix row is %#v, not a mapping with a target", item)
+			continue
+		}
+		target, _ := row["target"].(string)
+		if target == "" {
+			t.Errorf("a big-endian matrix row names no target: %#v", row)
+			continue
+		}
+		if strings.ContainsAny(target, " \t") {
+			t.Errorf("the big-endian row %q names more than one target, so the job is not sharded by unit", target)
+		}
+		if got[target] {
+			t.Errorf("the big-endian matrix runs %s in two rows", target)
+		}
+		got[target] = true
+	}
+
+	// The composite runs the whole leg and then the control, serially: it is
+	// the shape the rule cannot hold, so no row may be it.
+	if got["tables-big-endian-negative-control"] {
+		t.Errorf("the big-endian job runs tables-big-endian-negative-control as one row: that is exactly the serial leg-plus-control job #684 sharded away")
+	}
+	// The pieces the leg was made of must each be a row, and the control must
+	// still run as its own recipe or the pair that proves the leg is gone.
+	for _, want := range []string{
+		"tables-big-endian-tables",
+		"tables-big-endian-collections",
+		"tables-cook-endian",
+		"tables-c-big-endian",
+		"tables-big-endian-control-only",
+		"tables-c-big-endian-negative-control",
+		"conformance-big-endian",
+	} {
+		if !got[want] {
+			t.Errorf("the big-endian matrix has no row for %s: the leg lost a unit or its control", want)
+		}
+	}
+
+	// And no serial step may smuggle the composite back in beside the matrix.
+	stepsValue, err := mappingAt(doc, "jobs", "big-endian", "steps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, ok := stepsValue.([]any)
+	if !ok {
+		t.Fatalf("the big-endian job's steps are %#v", stepsValue)
+	}
+	for _, item := range steps {
+		step, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if run, _ := step["run"].(string); strings.Contains(run, "tables-big-endian-negative-control") {
+			t.Errorf("a big-endian step still runs the serial composite:\n%s", run)
+		}
+	}
+
+	// The Makefile keeps the pieces as targets of their own, the control's own
+	// recipe, and the composite that still runs them in order for `make test`.
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The pieces are not negative-control targets, so targetsIn's marker skips
+	// them; read their rule heads directly, with a line boundary so a
+	// prerequisite mention does not count as a definition.
+	text := "\n" + string(makefile)
+	for _, want := range []string{
+		"tables-big-endian-negative-control",
+		"tables-big-endian-control-only",
+		"tables-big-endian-tables",
+		"tables-big-endian-collections",
+	} {
+		if !strings.Contains(text, "\n"+want+":") {
+			t.Errorf("the Makefile defines no %s target", want)
 		}
 	}
 }

@@ -1,17 +1,20 @@
 // Package elixirtable emits the Elixir TABLE surface (docs/SPEC-TABLES.md):
 // the BLOCK form's read side in <Base>Block.ex (§19) and the COOKED form's
-// read side in <Base>Cook.ex (§7), with their shared runtime modules and the
+// read side in <Base>Cook.ex (§7), with their shared runtime modules, the
+// id-table wire's shared framing runtime in TableRuntime.ex (§3, §5) and the
 // unit's BuildVersion module, emitted only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
-// itself — the codecs, the reflection descriptors and the text form of
+// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE's
+// PER-FILE half — the codecs, the reflection descriptors and the text form of
 // docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir. The port that once stood here wrote the form that
+// emitted for Elixir yet. The port that once stood here wrote the form that
 // preceded the id-table wire, which the current specification does not
 // describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
-// marks the cells.
+// carried (schema#515 is the row that brings the wire to Elixir). What IS
+// emitted of the wire is the SHARED framing runtime, TableRuntime.ex (wire.go),
+// so a per-file emitter lands against primitives already held by test.
+// ROADMAP.md marks the cells.
 package elixirtable
 
 import (
@@ -92,6 +95,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 
+	// the id-table wire's shared framing (docs/SPEC-TABLES.md §3, §5): the
+	// primitives every variable table's codecs call, emitted once per unit the
+	// way the two accelerators' runtimes are. It is emitted OUTSIDE the
+	// wide-kind scope below: that scope limits the two accelerators, and the
+	// fixed form carries the wide kinds itself, so it never removes form 1.
+	out[TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns)
+
 	if !scope.Accelerators {
 		if anyCookable(u, closure) {
 			out[CookRuntimeModule+".ex"] = cookRuntimeModule(u, ns)
@@ -117,8 +127,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
-	// reads or writes one.
+	// own table wire beside form 1's shared framing (TableRuntime.ex above,
+	// schema#515). The two forms share no module name.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err

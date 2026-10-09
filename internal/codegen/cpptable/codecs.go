@@ -286,9 +286,17 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// appears. Every named slot exists, so there is no count companion,
 		// and the type derives its own extent from the enum — nothing outside
 		// the array names its size (docs/SPEC-TABLES.md §2.4).
+		//
+		// THE ` = {}` IS THE HOLDER'S, NOT THE TEMPLATE'S (schema#335): the
+		// element's own initializers carry a self-initialising type's declared
+		// defaults, so it gets none — the same rule the fixed and counted
+		// arrays follow, and the half of #320 that keeps cl off O(bytes) in its
+		// front end. A scalar element has no initializer of its own, so the
+		// member states the zero; `<Name>Reset` fills either from one element
+		// (docs/SPEC-TABLES.md §8.1).
 		g.noteRef(f.KeyEnum)
-		g.pf("    TableKeyed<%s, %s> %s; // [%s]: one slot per named variant, keyed by the value\n",
-			typ, f.KeyEnum, f.Name, f.KeyEnum)
+		g.pf("    TableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
+			typ, f.KeyEnum, f.Name, tableArrayInit(selfInit), f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d]%s;\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:

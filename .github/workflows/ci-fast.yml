@@ -21,7 +21,7 @@ name: CI fast
 #   conformance (9)           45        47 s         403 s
 #
 # END TO END those runs took 10:53, 15:08, 16:08, 15:45 and 24:42 — and THE
-# CRITICAL PATH IS NOT RUN TIME, IT IS QUEUE WAIT. ci-full.yml dispatches SEVENTY
+# CRITICAL PATH IS NOT RUN TIME, IT IS QUEUE WAIT. ci.yml dispatches SEVENTY
 # JOBS per pull request; with a dozen branches in flight the 47 negative-control
 # rows alone sat a median of 11m38s waiting for a runner, and the last job of a
 # run started up to 23 minutes after the push. No single job needed fixing: the
@@ -33,10 +33,10 @@ name: CI fast
 #     targeting two minutes wall: the cheap lints, the block zero-cost gate,
 #     `go test` of the packages the diff touches, and the fixed-form and
 #     versioning gates of the LEGS the diff touches.
-#   * ci-full.yml runs everything — the whole go-test, pins, the nine
+#   * ci.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
 #     vuln — on merge to main or fixed-table-form, nightly, on
-#     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
+#     `gh workflow run ci.yml --ref <branch>`, and on any pull request
 #     carrying the `full-ci` label.
 #
 # THE SELECTION IS BY PATH AND NEVER BY DROPPING A GATE. A diff that touches
@@ -74,7 +74,7 @@ name: CI fast
 # dist toolchains. The `actions/cache` restores are skipped on self-hosted for
 # the same reason: what they were restoring is already there.
 #
-# ci-full.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
+# ci.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
 # full lane is the one that proves the bytes on an x86-64 box we do not own, and
 # the merge gate is not where we trade breadth for speed.
 #
@@ -82,7 +82,7 @@ name: CI fast
 # request's own code on our hardware, so a pull request from a FORK MUST NEVER
 # reach these machines: every job below carries
 #   if: github.event.pull_request.head.repo.full_name == github.repository
-# and a fork's pull request is covered by ci-full.yml on hosted runners.
+# and a fork's pull request is covered by ci.yml on hosted runners.
 #
 # THE STUDIO IS FOR PULL REQUESTS INTO main, per the owner's ruling of
 # 2026-09-11: "Only run tests when merging into main, local runners elsewhere."
@@ -121,7 +121,7 @@ name: CI fast
 # THE FALLBACK IS NOT NEW and nothing below is darwin-only: every toolchain step
 # already carries `if: runner.environment == 'github-hosted'` precisely so these
 # jobs run on a hosted runner, and the equivalent gates run on ubuntu-latest in
-# ci-full.yml today. The `if:` conditions are untouched -- the fork guard still
+# ci.yml today. The `if:` conditions are untouched -- the fork guard still
 # keeps a fork's pull request off our hardware.
 #
 # THE OTHER SELF-HOSTED RUNNER IS NOT AN OPTION. `space-x64` is the only
@@ -150,7 +150,7 @@ concurrency:
   group: ci-fast-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The same sibling pins ci-full.yml and certify.yml carry, for the same reason: a
+# The same sibling pins ci.yml and certify.yml carry, for the same reason: a
 # sibling merging to main mid-day must not change what a schema commit proves.
 # The three files move together.
 env:
@@ -207,7 +207,7 @@ jobs:
 
           # THE LEGS. One line per leg: the codegen packages that emit it, the
           # generated tree it owns, its own test directory and its make include.
-          # A leg whose paths are untouched does not run here; ci-full.yml runs
+          # A leg whose paths are untouched does not run here; ci.yml runs
           # every leg on the merge regardless.
           legs=""
           add_leg() { case " $legs " in *" $1 "*) ;; *) legs="$legs $1" ;; esac; }
@@ -302,10 +302,10 @@ jobs:
   # #1424): the full `lint` job is gated behind the `full-ci` label on pull
   # requests, so a PR into fixed-table-form skips it and modernize only fires
   # on a branch push — the hole #1422 slipped through when two lines it landed
-  # in internal/ci reddened `CI full` on the push, after the PR had passed with
+  # in internal/ci reddened `CI` on the push, after the PR had passed with
   # lint skipped. golangci-lint, the absolute ledger and the render smoke are
   # NOT here: each downloads and compiles a tool of its own, which is a minute
-  # this lane does not have, and they run in ci-full.yml.
+  # this lane does not have, and they run in ci.yml.
   lint-fast:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","studio"]' || '["ubuntu-latest"]') }}
@@ -319,7 +319,7 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — ci-full.yml's `go-test` is the one
+      # The Go build cache, restore only — ci.yml's `go-test` is the one
       # Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
         if: runner.environment == 'github-hosted'
@@ -353,7 +353,7 @@ jobs:
       # but a pull request into fixed-table-form skips it, because that job is
       # gated behind the `full-ci` label; `lint-fast` has no such gate and runs
       # on every pull-request push, so it carries the check here instead. The
-      # pin below is the one ci-full.yml carries — the version gopls's own
+      # pin below is the one ci.yml carries — the version gopls's own
       # module tags — and is bumped by hand in both files together.
       - name: modernize
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
@@ -375,7 +375,7 @@ jobs:
         run: bash -n bench/run.sh
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
-  # step in ci-full.yml). The committed tables goldens must equal a fresh
+  # step in ci.yml). The committed tables goldens must equal a fresh
   # generation byte for byte, which is the one gate that can redden from a
   # one-character change to any emitter — so it rides every push. It takes
   # bin/schema and nothing else: no toolchain, no sibling checkout.
@@ -398,7 +398,7 @@ jobs:
         run: make tables-block-zero-cost
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
-  # median and lives in ci-full.yml; this job runs the packages `plan` picked,
+  # median and lives in ci.yml; this job runs the packages `plan` picked,
   # which for a single-leg diff is one or two of them. The corpus-reading
   # suites behave exactly as they do today: without build/fixedform-corpus and
   # without SCHEMA_REQUIRE_CORPUS=1 they skip themselves, and the leg gates
@@ -419,7 +419,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
-      # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
+      # ci.yml's `go-test` does. A dozen tests under compiler/ and
       # internal/codegen/ write a probe module whose go.mod carries
       # `replace github.com/mas-bandwidth/serialize.go => <abs ../serialize.go>`
       # (compiler/tableclosuredefaults_test.go:79,
@@ -429,7 +429,7 @@ jobs:
       # Without the sibling checkouts every one of those is a `setup failed`,
       # not a verdict on the diff.
       #
-      # THE PINS ARE THE FILE'S OWN, the same SERIALIZE*_TAG values ci-full.yml
+      # THE PINS ARE THE FILE'S OWN, the same SERIALIZE*_TAG values ci.yml
       # reads, so this lane compiles against the runtime the full lane does.
       #
       # Measured on the Studio's own network: the four shallow clones are
@@ -499,10 +499,10 @@ jobs:
           set -euo pipefail
           echo "packages: $PACKAGES"
           if [ "$BROAD" = yes ]; then
-            # a broad diff's own gate is the full suite in ci-full.yml; here it
+            # a broad diff's own gate is the full suite in ci.yml; here it
             # is bounded so the lane keeps its budget, and the short run still
             # catches the ordinary mistake in minutes rather than at merge
-            echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
+            echo "::notice::broad diff — the whole suite runs in ci.yml; this lane runs it with -short"
             # shellcheck disable=SC2086
             go test -short $PACKAGES
           else
@@ -528,7 +528,7 @@ jobs:
   # BOTH GATES, ALWAYS, per §5.9 #11 — a leg that proved its bytes and not its
   # versioning rows has proved half of what it owes. The Java leg has no
   # versioning target yet and the C++ reference IS the oracle, so those two
-  # rows run what exists; ci-full.yml is unchanged for both.
+  # rows run what exists; ci.yml is unchanged for both.
   #
   # SCHEMA_REQUIRE_CORPUS=1 is inside every one of these make targets: a corpus
   # that failed to build is a failure here, never a quiet skip.
@@ -589,7 +589,7 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # The leg's own toolchain, and only the leg's: a row that is not C# does
-      # not wait for the .NET SDK. The pins are the ones ci-full.yml carries.
+      # not wait for the .NET SDK. The pins are the ones ci.yml carries.
       - name: read the .NET SDK pin
         if: matrix.leg == 'cs'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
@@ -608,7 +608,7 @@ jobs:
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         if: matrix.leg == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: temurin
@@ -621,7 +621,7 @@ jobs:
 
       # C# runs Debug here; full CI keeps both Debug and Release.
       # THE TWO GATES. The target names are the tree's own — the same ones
-      # `make test` and ci-full.yml run — so a leg that renames a gate renames
+      # `make test` and ci.yml run — so a leg that renames a gate renames
       # it in one place and this row follows.
       - name: the ${{ matrix.leg }} leg's fixed form and versioning rows
         run: |
@@ -637,5 +637,5 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
-            *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
+            *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci.yml"; exit 1 ;;
           esac

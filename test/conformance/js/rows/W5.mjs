@@ -40,8 +40,8 @@ import { resolve } from "node:path";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const runtime = await load("block/BlockdemoTable.js");
-const tables = await load("block/PaddedTable.js");
+const runtime = await load("block/BlockdemoFixed.js");
+const tables = await load("block/PaddedFixed.js");
 
 const { PaddedRow, TableFixedReport, TableFixedResetReport, TableFixedHeaderBytes,
   TableFixedLayoutHeaderBytes } = runtime;

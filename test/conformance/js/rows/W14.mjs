@@ -199,8 +199,8 @@ for (const path of modules) {
 // 4 + 4 + 16 = 24. THE ROWS ARE THE ARTIFACT'S, parsed above — the same
 // numbers a compiled plan lands values through.
 
-const keyed = await loadModule(join(root, "examples", "KeyedTable.js"));
-const keyedText = withoutComments(readFileSync(join(root, "examples", "KeyedTable.js"), "utf8"));
+const keyed = await loadModule(join(root, "examples", "KeyedFixed.js"));
+const keyedText = withoutComments(readFileSync(join(root, "examples", "KeyedFixed.js"), "utf8"));
 const teamDst = parseInt32ArrayDecl(keyedText, "TeamConfig", "FixedDst");
 check(JSON.stringify(teamDst.slice(0, 5)) === "[0,0,0,0,0]" &&
   JSON.stringify(teamDst.slice(5, 10)) === "[0,0,0,0,0]" &&
@@ -215,7 +215,7 @@ check(JSON.stringify(teamDst.slice(0, 5)) === "[0,0,0,0,0]" &&
 // the lock's entry is a permuted THEIRS, so the compiler runs and the
 // artifact's own dst rows decide where every value lands.
 
-const runtime = await loadModule(join(root, "examples", "TabledemoTable.js"));
+const runtime = await loadModule(join(root, "examples", "TabledemoFixed.js"));
 const {
   TableFixedKnownLayout, TableFixedLineagePlans, TableFixedReport, TableFixedResetReport, TableFixedRun,
   TeamConfig, TeamConfigFixedDecode,

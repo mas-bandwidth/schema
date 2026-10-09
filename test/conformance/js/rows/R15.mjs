@@ -16,9 +16,9 @@
 // 2. Calls CellFixedLoad with that buffer
 // 3. Verifies report.refused === TableFixedRefusal.LayoutNewer (15)
 
-import { CellFixedLoad } from "../../../../build/tables-generated-js/v1/V1Table.js";
-import { TableFixedResetReport } from "../../../../build/tables-generated-js/v1/Tblv1Table.js";
-import { CellFixedLayout, CellFixedLayoutBytes } from "../../../../build/tables-generated-js/v1/V1Table.js";
+import { CellFixedLoad } from "../../../../build/tables-generated-js/v1/V1Fixed.js";
+import { TableFixedResetReport } from "../../../../build/tables-generated-js/v1/Tblv1Fixed.js";
+import { CellFixedLayout, CellFixedLayoutBytes } from "../../../../build/tables-generated-js/v1/V1Fixed.js";
 
 // Constants for building a minimal form-1 file
 const FORM_1 = 3;               // TableFixedForm (not TableFixedVariableForm=1)

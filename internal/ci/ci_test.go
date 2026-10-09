@@ -351,7 +351,7 @@ func jobIfCondition(data, job string) string {
 // TestGeneratedTreeAndPinsRunOnEveryPullRequest (issue #1421) refuses the one
 // gate that must NEVER be behind the `full-ci` label. The `generated` job is
 // the only check that names a stale committed generated/ tree, and it lives in
-// ci-full.yml — whose every job skipped itself on an unlabelled pull request.
+// ci.yml — whose every job skipped itself on an unlabelled pull request.
 // A pull request into fixed-table-form runs neither this file nor the leg gate
 // (ci-fast.yml's gate is `github.base_ref == 'main'`), so #1395 landed a stale
 // generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it. A
@@ -360,7 +360,7 @@ func jobIfCondition(data, job string) string {
 // not behind a label. `pins` answers the same question for testdata/ and is
 // dropped from the label gate with it.
 func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
 			continue // no gate: runs on every trigger, every pull request with it
 		}
 		if strings.Contains(cond, "full-ci") {
-			t.Errorf("ci-full.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
+			t.Errorf("ci.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
 		}
 	}
 }
@@ -395,7 +395,81 @@ func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
 		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
 	}
 	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
-		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci.yml's lint job runs it on the push (issue #1424)")
+	}
+}
+
+// ciMakeInvocation matches one `make` invocation on a workflow line and
+// captures its argument list. compiler/porting_test.go's workflowMake reader
+// carries the same shape for the register gate.
+var ciMakeInvocation = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
+
+// ciMakeTargetsAfter returns the target names in a make argument list: flags,
+// variable assignments and shell substitutions are not targets.
+func ciMakeTargetsAfter(args string) []string {
+	var out []string
+	for tok := range strings.FieldsSeq(args) {
+		if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "=$\"'{}") {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
+// ci.yml, invokes by name, comments stripped.
+func ciPullRequestMakeTargets(t *testing.T, root string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("ci.yml is the pull-request gate this test reads: %v", err)
+	}
+	var targets []string
+	for _, l := range lines("ci.yml", string(data)) {
+		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
+			targets = append(targets, ciMakeTargetsAfter(m[1])...)
+		}
+	}
+	return targets
+}
+
+// ciInvokesTarget reports whether the targets a workflow invokes include name
+// itself or a shard of it, `name-fast` and the like.
+func ciInvokesTarget(targets []string, name string) bool {
+	for _, target := range targets {
+		if target == name || strings.HasPrefix(target, name+"-") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTheFixedFormHarnessesRunPerPullRequest (issue #857) is a listing check:
+// every fixed-form harness the tables page's build gate names must be invoked
+// by some job in the pull-request gate, .github/workflows/ci.yml, so a change
+// to what the loader takes cannot leave a red tip behind two green pull
+// requests.
+//
+// The class is issue #744's: a leg that exists, is green wherever it runs, and
+// is invoked by no pull-request job. The two fixed-form harnesses,
+// `make tables-fixedform` (the C++ reference) and `make tables-c-fixedform`
+// (the C leg), lived only in `make test`, which nightly certification runs. On
+// 2026-09-10 the tip of fixed-table-form did not compile —
+// `test/tables/fixedform_main.cpp:984` and `test/c-tables/fixedform_v1.c:75`,
+// too few arguments to `*FixedLoad` — while #855 (which added the plan-cache
+// argument) and #856 (which added a caller) were each green at their own head.
+func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
+	targets := ciPullRequestMakeTargets(t, repoRoot(t))
+
+	// THE LISTING. Both harnesses the fixed form's build gate names, and the
+	// fast shard of each counts: `make test` still runs the pair with the
+	// sanitized twin in nightly certification.
+	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
+	for _, harness := range fixedFormHarnesses {
+		if !ciInvokesTarget(targets, harness) {
+			t.Errorf("no job in ci.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci.yml.", harness)
+		}
 	}
 }
 

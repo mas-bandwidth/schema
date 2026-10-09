@@ -96,10 +96,12 @@ defmodule Wide.WideText do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_seven decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_wide_seven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_wide_seven_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_wide_seven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -116,12 +118,19 @@ defmodule Wide.WideText do
       len = v
       if bits_read + len * 32 > num_bits, do: throw(:invalid)
       {bits_read, v_text} = read_wstring(len, data, bits_read, false, <<>>)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Wide.WideSeven{text: v_text}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_wide_seven is read_wide_seven_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_wide_seven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_wide_seven_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -164,10 +173,12 @@ defmodule Wide.WideText do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_four decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_wide_four(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_wide_four_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_wide_four_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -184,12 +195,19 @@ defmodule Wide.WideText do
       len = v
       if bits_read + len * 32 > num_bits, do: throw(:invalid)
       {bits_read, v_text} = read_wstring(len, data, bits_read, false, <<>>)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Wide.WideFour{text: v_text}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_wide_four is read_wide_four_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_wide_four(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_wide_four_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -230,10 +248,12 @@ defmodule Wide.WideText do
     data
   end
 
-  # read_narrow_fifteen decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_narrow_fifteen(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_narrow_fifteen_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_narrow_fifteen_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -267,12 +287,19 @@ defmodule Wide.WideText do
       if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Wide.NarrowFifteen{text: v_text}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_narrow_fifteen is read_narrow_fifteen_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_narrow_fifteen(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_narrow_fifteen_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -316,10 +343,12 @@ defmodule Wide.WideText do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_interop decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_wide_interop(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_wide_interop_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_wide_interop_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -336,12 +365,19 @@ defmodule Wide.WideText do
       len = v
       if bits_read + len * 32 > num_bits, do: throw(:invalid)
       {bits_read, v_caption} = read_wstring(len, data, bits_read, false, <<>>)
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Wide.WideInterop{caption: v_caption}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_wide_interop is read_wide_interop_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_wide_interop(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_wide_interop_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

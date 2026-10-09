@@ -30,8 +30,8 @@ func TestJSFixedFormRaggedTail(t *testing.T) {
 
 	file := filepath.Join(corpus, "old_field_append.bin")
 	body := fmt.Sprintf(`
-import { TableFixedHeaderBytes, TableFixedLayoutHeaderBytes } from "./%[1]sTable.js";
-import { %[3]sFixedRecordBytes } from "./ProbeTable.js";
+import { TableFixedHeaderBytes, TableFixedLayoutHeaderBytes } from "./%[1]sFixed.js";
+import { %[3]sFixedRecordBytes } from "./ProbeFixed.js";
 const data = readFileSync(%[2]q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const plan = TNewPlan(4096, 4096);

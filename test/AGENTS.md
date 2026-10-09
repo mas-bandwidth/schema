@@ -22,6 +22,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir/` | Elixir packet tests | `make test-elixir` | `make test-elixir` |
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |
+| `elixir-tables/` | Elixir tables harness | `make test-elixir` | `make test-elixir` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
@@ -38,6 +39,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |
+| `py-packet/` | Python packet row gates | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |

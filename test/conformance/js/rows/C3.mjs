@@ -19,16 +19,16 @@
 // this leg's clamp sites are asserted here:
 //
 //   1. THE PRODUCTION ENTRYPOINT, `ChainFixedLoad`
-//      (build/tables-generated-js/p1/P1Table.js), the read a caller of the
+//      (build/tables-generated-js/p1/P1Fixed.js), the read a caller of the
 //      generated unit makes: form byte, hash, layout compare, lineage, then
-//      per record `TableFixedRun` (P1Table.js:451) and `ChainFixedDecode`
-//      (P1Table.js:452). On the identity path the plan is ONE copy of the
+//      per record `TableFixedRun` (P1Fixed.js:451) and `ChainFixedDecode`
+//      (P1Fixed.js:452). On the identity path the plan is ONE copy of the
 //      whole body, so the clamp lives in the projection `ChainFixedDecode`
-//      (build/tables-generated-js/p1/Tblp1Table.js) — `n` over `string(16)`
+//      (build/tables-generated-js/p1/Tblp1Fixed.js) — `n` over `string(16)`
 //      clamped into `[0, 16]`, one `clamped` when it fires.
 //
 //   2. THE RUN'S TEXT OP, `TableFixedOpText`
-//      (build/tables-generated-js/p1/Tblp1Table.js, `case TableFixedOpText`),
+//      (build/tables-generated-js/p1/Tblp1Fixed.js, `case TableFixedOpText`),
 //      reached the way this leg's own fixed-form suite reaches the runtime
 //      (test/js-tables/fixedform.mjs, `wideTextCodeUnits`): a hand-built plan
 //      over hand-built bytes through `TableFixedRun`, the ONE loop identity
@@ -41,7 +41,7 @@
 // a time — the same instrument this leg's identity-clamp suite uses — so the
 // only thing that differs from bytes already proved good is the forgery. The
 // framing is the emitter's own, stated where the emitter states it
-// (build/tables-generated-js/p1/P1Table.js, `ChainFixedSave` and
+// (build/tables-generated-js/p1/P1Fixed.js, `ChainFixedSave` and
 // `ChainFixedWriteBody`): a file is the form byte at 0, seven reserved bytes,
 // the layout hash at 8, the layout's u32 length at 16 and the layout at 20;
 // one record is an eight-byte hash and then the body; Chain's body is `name`
@@ -63,8 +63,8 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const p1 = await load("p1/P1Table.js");
-const home = await load("p1/Tblp1Table.js");
+const p1 = await load("p1/P1Fixed.js");
+const home = await load("p1/Tblp1Fixed.js");
 
 // ---- §3's header, spelled out: a driver that read the offsets out of the
 // code under test would agree with whatever that code happened to write.

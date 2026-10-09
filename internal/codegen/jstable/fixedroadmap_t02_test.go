@@ -74,7 +74,7 @@ func t02Emit(t *testing.T, u *ir.Unit) string {
 // is where the fixed table's own surface lands for a single-file unit.
 func t02Source(t *testing.T, u *ir.Unit, files map[string][]byte) string {
 	t.Helper()
-	name := runtimeHome(u) + "Table.js"
+	name := runtimeHome(u) + "Fixed.js"
 	body, ok := files[name]
 	if !ok {
 		names := make([]string, 0, len(files))

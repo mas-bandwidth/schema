@@ -5,8 +5,8 @@
 //
 // THE LAW: when the plan does not fit the caller's capacity, the refusal is
 // reported as plan_too_large BY NAME. There are two production checks:
-// 1. At V1Table.js:180: if (plan === null) { report.refused = PlanTooLarge; return -1; }
-// 2. At V1Table.js:190: if (lane.count > plan.capacity) { report.refused = PlanTooLarge; return -1; }
+// 1. At V1Fixed.js:180: if (plan === null) { report.refused = PlanTooLarge; return -1; }
+// 2. At V1Fixed.js:190: if (lane.count > plan.capacity) { report.refused = PlanTooLarge; return -1; }
 //
 // This test focuses on case 1 (plan === null), which is the clearest case of
 // "the plan does not fit the caller's capacity" — the caller has no plan storage at all.
@@ -24,8 +24,8 @@ function assert(ok, msg) {
 }
 
 // Load the V1 table runtime
-const v1 = await load("v1/V1Table.js");
-const tbl = await load("v1/Tblv1Table.js");
+const v1 = await load("v1/V1Fixed.js");
+const tbl = await load("v1/Tblv1Fixed.js");
 const {
   CellFixedLoad,
   CellFixedLayout,
@@ -83,7 +83,7 @@ function buildCellFile() {
 }
 
 // Test: plan_too_large when plan is null
-// This is the check at V1Table.js:180: if (plan === null) { report.refused = PlanTooLarge; return -1; }
+// This is the check at V1Fixed.js:180: if (plan === null) { report.refused = PlanTooLarge; return -1; }
 {
   const bytes = buildCellFile();
   const report = new TableFixedReport();

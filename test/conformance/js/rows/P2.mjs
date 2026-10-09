@@ -12,7 +12,7 @@
 //
 // THE PRODUCTION PATH. The fixed form's generated JS: this file calls the SAME
 // emitter output the conformance driver reaches through SCHEMA_JS_GENERATED —
-// build/tables-generated-js/p1/P1Table.js — at its fixed-form half:
+// build/tables-generated-js/p1/P1Fixed.js — at its fixed-form half:
 //
 //   ChainFixedMeasure -> ChainFixedSave -> ChainFixedLoad -> ChainFixedSave
 //
@@ -33,8 +33,8 @@ import { pathToFileURL } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../../..");
 const generated = process.env.SCHEMA_JS_GENERATED ?? join(repoRoot, "build/tables-generated-js");
-const p1 = await import(pathToFileURL(join(generated, "p1/P1Table.js")).href);
-const home = await import(pathToFileURL(join(generated, "p1/Tblp1Table.js")).href);
+const p1 = await import(pathToFileURL(join(generated, "p1/P1Fixed.js")).href);
+const home = await import(pathToFileURL(join(generated, "p1/Tblp1Fixed.js")).href);
 
 const {
   InitChain, Chain, InitLink, Link,

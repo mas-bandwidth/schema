@@ -14,7 +14,7 @@
 //	schema cook-check <file.cook>                    validate an untrusted cook, offline
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
-//	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
+//	schema new-leg    <lang> [--root <checkout>] [--ext .x] [--comment //] [--verbose]  lay down a new language leg's skeleton (a checkout's tools/newleg)
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -28,6 +28,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -567,25 +568,65 @@ func main() {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
 	case "new-leg", "newleg":
-		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
-		// files, makefile, harness, one passing fixture. Not a codec. The
-		// writer is this command; fmt remains the only command that writes a
-		// .schema file. Flags may sit before or after the language name so
-		// `schema new-leg lua --verbose` is the same command as flags-first.
-		lang, root, verbose, err := parseNewLegArgs(os.Args[2:])
-		if err != nil {
-			fail(err)
-		}
-		files, err := compiler.NewLeg(lang)
-		if err != nil {
-			fail(err)
-		}
-		if err := writeNewLeg(root, files, verbose); err != nil {
-			fail(err)
-		}
+		newLeg(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
+	}
+}
+
+// newLeg is `schema new-leg <lang>`, the porter's scaffolding verb
+// (docs/CONTRIBUTING.md, "Adding a language"; nova-tools#2498 S5). It lays a
+// new leg's skeleton into a schema CHECKOUT — target, backend, fixture test,
+// make file, fixture unit — so it is the checkout's work, not the compiler's:
+// it runs the checkout's own tools/newleg, which keeps this binary a client of
+// the public API alone (internal/publicapi builds main.go outside the module).
+func newLeg(args []string) {
+	fs := flag.NewFlagSet("new-leg", flag.ExitOnError)
+	root := fs.String("root", ".", "the schema checkout to lay the leg into")
+	ext := fs.String("ext", "", "extension of the files the new backend emits (default .<lang>)")
+	comment := fs.String("comment", "", "the language's line-comment opener (default from tools/newleg's table, else //)")
+	verbose := fs.Bool("verbose", false, "name each written file by its absolute path")
+	_ = fs.Parse(args) // ExitOnError: Parse never returns an error
+	// FLAGS MAY FOLLOW THE LANGUAGE NAME too, so `schema new-leg lua --root .`
+	// is the same command as `schema new-leg --root . lua` (the spelling the
+	// in-binary verb this one replaced accepted).
+	if fs.NArg() > 1 {
+		lang := fs.Arg(0)
+		_ = fs.Parse(fs.Args()[1:])
+		args = append([]string{lang}, fs.Args()...)
+	} else {
+		args = fs.Args()
+	}
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: schema new-leg [--root <checkout>] [--ext .x] [--comment //] [--verbose] <lang>")
+		os.Exit(2)
+	}
+	abs, err := filepath.Abs(*root)
+	if err != nil {
+		fatalf("%v", err)
+	}
+	if info, err := os.Stat(filepath.Join(abs, "tools", "newleg")); err != nil || !info.IsDir() {
+		fatalf("new-leg lays a leg into a schema checkout, and %s is not one (no tools/newleg); run it from the repository root or pass --root", abs)
+	}
+	run := []string{"run", "./tools/newleg", "--root", abs}
+	if *ext != "" {
+		run = append(run, "--ext", *ext)
+	}
+	if *comment != "" {
+		run = append(run, "--comment", *comment)
+	}
+	if *verbose {
+		run = append(run, "--verbose")
+	}
+	cmd := exec.Command("go", append(run, args[0])...)
+	cmd.Dir = abs
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+			os.Exit(exit.ExitCode())
+		}
+		fatalf("new-leg: %v", err)
 	}
 }
 
@@ -716,13 +757,17 @@ func usage() {
   schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
-  schema new-leg    <lang> [--root .] [--verbose]
+  schema new-leg    [--root <checkout>] [--ext .x] [--comment //] [--verbose] <lang>
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
 the fixed form — or refuses it by name (docs/SPEC-TABLES.md §3). Every schema
 file begins with that byte and the registry there is the only place a value is
 assigned, so it is the first thing said about any file.
+
+new-leg is the porter's verb: in a schema checkout it lays down a new language
+leg that already builds, tests and is discovered (docs/CONTRIBUTING.md,
+"Adding a language"), and it never overwrites a file.
 
 fmt is the only command that writes a schema file (schemafmt — one style, no
 options); a file already in format is not touched. Every other command reads
@@ -852,92 +897,6 @@ func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
 		}
 		if verbose {
 			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
-		}
-	}
-	return nil
-}
-
-// parseNewLegArgs accepts flags before or after the language name, so
-// `schema new-leg lua --root .` is one command with `schema new-leg --root . lua`.
-func parseNewLegArgs(args []string) (lang, root string, verbose bool, err error) {
-	root = "."
-	var pos []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--verbose" || a == "-verbose":
-			verbose = true
-		case a == "--root" || a == "-root":
-			if i+1 >= len(args) {
-				return "", "", false, fmt.Errorf("new-leg --root needs a directory")
-			}
-			i++
-			root = args[i]
-		case strings.HasPrefix(a, "--root="):
-			root = strings.TrimPrefix(a, "--root=")
-		case a == "--":
-			pos = append(pos, args[i+1:]...)
-			i = len(args)
-		case strings.HasPrefix(a, "-"):
-			return "", "", false, fmt.Errorf("new-leg: unknown flag %s", a)
-		default:
-			pos = append(pos, a)
-		}
-	}
-	if len(pos) != 1 {
-		return "", "", false, fmt.Errorf("new-leg needs the language name: schema new-leg lua")
-	}
-	return pos[0], root, verbose, nil
-}
-
-// writeNewLeg writes compiler.NewLeg's files under root. It refuses to
-// overwrite, and it refuses a directory that is not a schema tree, so a
-// misplaced invocation cannot scatter a language leg into an unrelated
-// folder. fmt remains the only command that writes a .schema file.
-func writeNewLeg(root string, files map[string][]byte, verbose bool) error {
-	info, err := os.Stat(root)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("new-leg --root %s is not a directory", root)
-	}
-	for _, need := range []string{"Makefile", "compiler", "make", "internal/codegen"} {
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(need))); err != nil {
-			return fmt.Errorf("new-leg writes a schema language leg: %s is not a schema tree (missing %s)", root, need)
-		}
-	}
-	names := make([]string, 0, len(files))
-	for name := range files {
-		if !filepath.IsLocal(name) || strings.Contains(name, "\\") {
-			return fmt.Errorf("new-leg path %q is not a local path", name)
-		}
-		if strings.HasSuffix(name, ".schema") {
-			return fmt.Errorf("new-leg must not write a .schema file (%s); fmt is the only command that writes one", name)
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("new-leg refuses to overwrite %s", path)
-		}
-	}
-	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-		mode := os.FileMode(0o644)
-		if compiler.NewLegExec(name) {
-			mode = 0o755
-		}
-		if err := os.WriteFile(path, files[name], mode); err != nil {
-			return err
-		}
-		if verbose {
-			fmt.Printf("wrote %s\n", path)
 		}
 	}
 	return nil

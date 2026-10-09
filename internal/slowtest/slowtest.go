@@ -22,7 +22,7 @@
 //   - every POSITIVE gate target runs its `go test` through test/slowgate/proof,
 //     which sets SCHEMA_SLOW=1, refuses a slowtest skip in its own log, and
 //     requires a `--- PASS` for each gate it names (schema#988),
-//   - ci-full.yml's two `go test` steps set SCHEMA_SLOW=1 explicitly, so the
+//   - ci.yml's two `go test` steps set SCHEMA_SLOW=1 explicitly, so the
 //     merge and nightly lanes run the whole of both halves.
 //
 // THE SECOND BULLET WAS FALSE FOR ONE DAY AND IT COST US A DAY (schema#988, G5).
@@ -35,7 +35,7 @@
 // target went green having run nothing. The claim is a claim about the
 // Makefile, so `make slow-gate-scan` now CHECKS IT on every run: a recipe line
 // that runs `go test` on a package holding gated tests without setting either
-// variable fails by name, and anything deliberately left to ci-full.yml is
+// variable fails by name, and anything deliberately left to ci.yml is
 // named with its reason in make/slow-gate-exceptions.txt. A sentence in a
 // comment is not a gate; the scan is.
 //
@@ -70,7 +70,7 @@ func Gate(t *testing.T, what string) {
 	if Enabled() {
 		return
 	}
-	t.Skipf("SCHEMA_SLOW: this test shells out to %s; set SCHEMA_SLOW=1 to run it (ci-full.yml and the make leg gates always do)", what)
+	t.Skipf("SCHEMA_SLOW: this test shells out to %s; set SCHEMA_SLOW=1 to run it (ci.yml and the make leg gates always do)", what)
 }
 
 // ProbeContext is the context a compiled probe runs under: the TEST'S OWN

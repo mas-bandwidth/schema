@@ -146,7 +146,7 @@ func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) 
 		for _, r := range bare {
 			fmt.Printf("  %s:%d: %s: %s\n", r.file, r.line, r.target, strings.Join(r.packages, " "))
 		}
-		fmt.Println("remedy: run it through `sh test/slowgate/proof <label> '<required --- PASS names>' <go test args>`, or name it in make/slow-gate-exceptions.txt with the reason it is left to ci-full.yml.")
+		fmt.Println("remedy: run it through `sh test/slowgate/proof <label> '<required --- PASS names>' <go test args>`, or name it in make/slow-gate-exceptions.txt with the reason it is left to ci.yml.")
 		return 1
 	}
 	stale := 0
@@ -173,7 +173,7 @@ func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) 
 //
 //	make       a make target that sets the variable runs it — named in the table
 //	exception  an entry in make/slow-gate-exceptions.txt names it
-//	ci         no make target runs it; it runs ONLY on ci-full.yml's SCHEMA_SLOW=1
+//	ci         no make target runs it; it runs ONLY on ci.yml's SCHEMA_SLOW=1
 //	           steps. Not silence: a named lane, counted here, listed in the file.
 //	NOBODY     nothing in the repo runs it. That is the failure.
 func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, steps []ciStep) int {

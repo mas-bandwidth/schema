@@ -3,7 +3,7 @@
 # what the compiler at this sha emits, from an EMPTY directory — the only way to
 # see a file the emitter stopped writing, which an in-place regeneration and a
 # `git diff` cannot. `generated-current` in the Makefile is its entry point; the
-# `generated` job in .github/workflows/ci-full.yml and the certify workflow run
+# `generated` job in .github/workflows/ci.yml and the certify workflow run
 # the same script.
 #
 # The controls are hermetic: they drive test/generated-tree/compare, the

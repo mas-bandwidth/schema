@@ -57,14 +57,14 @@
 // module-relative, so the working directory only ever names the corpus.
 import { readFileSync } from "node:fs";
 
-import { FixedTable, TableFixedReport } from "../../../generated/bench/paired/js/BenchTable.js";
+import { FixedTable, TableFixedReport } from "../../../generated/bench/paired/js/BenchFixed.js";
 import {
   FixedTableFixedLayout,
   FixedTableFixedLoad,
   FixedTableFixedMeasure,
   FixedTableFixedNewPlan,
   FixedTableFixedSave,
-} from "../../../generated/bench/paired/js/FixedTableTable.js";
+} from "../../../generated/bench/paired/js/FixedTableFixed.js";
 
 const MaxNumRuns = 7; // median of 7 (N >= 5), after 1 warmup run
 const NumVariants = 64; // the corpus is 64 records, and an OP is one record

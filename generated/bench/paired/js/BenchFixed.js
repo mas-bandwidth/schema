@@ -4,7 +4,7 @@
 // AGPL-3.0, its output is not.
 // package bench — the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
-// the unit's shared runtime lives here — <Package>Table.js, one home per unit, named by
+// the unit's shared runtime lives here — <Package>Fixed.js, one home per unit, named by
 // the package and independent of file order.
 //
 // A FIXED-TABLE RECORD IS AN EIGHT-BYTE HASH OF THE WRITER'S LAYOUT (§3.4),

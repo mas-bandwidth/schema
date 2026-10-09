@@ -1,7 +1,7 @@
 package jstable
 
-// THE FIXED FORM'S MODULES: <Base>Table.js per unit file that declares a
-// table, and the unit's ONE RUNTIME HOME, <Package>Table.js, where the shared
+// THE FIXED FORM'S MODULES: <Base>Fixed.js per unit file that declares a
+// table, and the unit's ONE RUNTIME HOME, <Package>Fixed.js, where the shared
 // runtime and every type's write/decode helper land — the same home rule the
 // block form's modules follow (block.go), for the same reason: an ES module is
 // file-scoped, so a shared runtime is DEFINED once and imported everywhere
@@ -15,9 +15,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// generateFixedFiles emits <Base>Table.js for every unit file that declares a
+// fixedModuleSuffix names the fixed form's modules, <Base>Fixed.js and
+// <Package>Fixed.js. It is NOT "Table": <Base>Table.js is form 1's module
+// (the id-table wire, #516), and the two forms share no file and no module
+// scope. refuseFileCollisions claims the suffix beside Table, Block and Cook.
+const fixedModuleSuffix = "Fixed"
+
+// generateFixedFiles emits <Base>Fixed.js for every unit file that declares a
 // table, plus the unit's runtime home. A unit with no fixed-form root at all
-// gets no Table.js: nothing would be in it but a refusal nobody imports.
+// gets no Fixed.js: nothing would be in it but a refusal nobody imports.
 func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	roots := map[string][]*ir.Struct{}
@@ -58,13 +64,13 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 		if g.home {
 			homeWritten = true
 		}
-		out[f.Base+"Table.js"] = g.assemble()
+		out[f.Base+fixedModuleSuffix+".js"] = g.assemble()
 	}
 	if !homeWritten {
 		g := &fixedModule{unit: u, base: home, home: true, homeBase: home,
 			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage}
 		g.emit(closure, nil, nil)
-		out[home+"Table.js"] = g.assemble()
+		out[home+fixedModuleSuffix+".js"] = g.assemble()
 	}
 	return out, nil
 }
@@ -85,7 +91,7 @@ type fixedModule struct {
 func (g *fixedModule) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
 
 func (g *fixedModule) need(base string, symbols ...string) {
-	if base == "" || base == g.base+"Table" {
+	if base == "" || base == g.base+fixedModuleSuffix {
 		return
 	}
 	set := g.imports[base]
@@ -98,7 +104,7 @@ func (g *fixedModule) need(base string, symbols ...string) {
 	}
 }
 
-func (g *fixedModule) needHome(symbols ...string) { g.need(g.homeBase+"Table", symbols...) }
+func (g *fixedModule) needHome(symbols ...string) { g.need(g.homeBase+fixedModuleSuffix, symbols...) }
 
 func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*ir.Struct) {
 	if g.home {
@@ -441,7 +447,7 @@ func (g *fixedModule) assemble() []byte {
 	fmt.Fprintf(&h, "// package %s — the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.\n", g.unit.Package)
 	h.WriteString("//\n")
 	if g.home {
-		h.WriteString("// " + runtimeHomeMarker + " — <Package>Table.js, one home per unit, named by\n")
+		h.WriteString("// " + runtimeHomeMarker + " — <Package>Fixed.js, one home per unit, named by\n")
 		h.WriteString("// the package and independent of file order.\n")
 		h.WriteString("//\n")
 	}

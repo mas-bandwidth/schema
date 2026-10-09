@@ -16,9 +16,9 @@ import { readFileSync } from "node:fs";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const imp = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
-const v1Table = await imp("v1/Tblv1Table.js");
-const v1 = await imp("v1/V1Table.js");
-const v2 = await imp("v2/V2Table.js");
+const v1Table = await imp("v1/Tblv1Fixed.js");
+const v1 = await imp("v1/V1Fixed.js");
+const v2 = await imp("v2/V2Fixed.js");
 
 function parseInt32ArrayDecl(text, name, suffix) {
   const at = text.indexOf(`const ${name}${suffix} = new Int32Array([`);
@@ -29,8 +29,8 @@ function parseInt32ArrayDecl(text, name, suffix) {
   return new Int32Array(body.match(/-?\d+/g).map(Number));
 }
 
-const v1Text = readFileSync(resolve(generated, "v1/V1Table.js"), "utf8");
-const v2Text = readFileSync(resolve(generated, "v2/V2Table.js"), "utf8");
+const v1Text = readFileSync(resolve(generated, "v1/V1Fixed.js"), "utf8");
+const v2Text = readFileSync(resolve(generated, "v2/V2Fixed.js"), "utf8");
 const v1CellDst = parseInt32ArrayDecl(v1Text, "Cell", "FixedDst");
 const v1CfgDst = parseInt32ArrayDecl(v1Text, "Cfg", "FixedDst");
 const v2CfgDst = parseInt32ArrayDecl(v2Text, "Cfg", "FixedDst");

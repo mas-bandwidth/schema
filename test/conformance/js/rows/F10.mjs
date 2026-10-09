@@ -42,8 +42,8 @@ function check(ok, msg) {
 }
 
 async function main() {
-  const fx1 = await load("fx1/FX1Table.js");
-  const fx1home = await load("fx1/Tblfx1Table.js");
+  const fx1 = await load("fx1/FX1Fixed.js");
+  const fx1home = await load("fx1/Tblfx1Fixed.js");
   const R = fx1home.TableFixedRefusal;
 
   // --- build a valid form-3 file of this leg's own FX1 ---

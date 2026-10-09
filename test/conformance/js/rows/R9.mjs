@@ -9,7 +9,7 @@
 // the file's layout bytes against the known layout byte-by-byte. If they differ
 // in length or content, it returns LayoutMalformed — without walking the seven
 // §1.1 rules, because the hash already identified the version. The call site is
-// build/tables-generated-js/v1/V1Table.js:176-178.
+// build/tables-generated-js/v1/V1Fixed.js:176-178.
 //
 // Test vector derivation: take a valid file written by CellFixedSave, break one
 // byte of the layout (or change the declared layout length), keep the header
@@ -27,8 +27,8 @@ function check(condition, message) {
   else { console.log("ok: " + message); }
 }
 
-const home = await load("v1/Tblv1Table.js");
-const v1 = await load("v1/V1Table.js");
+const home = await load("v1/Tblv1Fixed.js");
+const v1 = await load("v1/V1Fixed.js");
 
 const TableFixedRefusal = home.TableFixedRefusal;
 const TableFixedHeaderBytes = home.TableFixedHeaderBytes;

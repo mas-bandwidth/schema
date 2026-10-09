@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const runtime = await load("v1/Tblv1Table.js");
+const runtime = await load("v1/Tblv1Fixed.js");
 
 let ok = 0;
 let total = 0;
@@ -55,7 +55,7 @@ check(inst.recordBytes === 100, "recordBytes assigned correctly");
 
 // Check the generated FixedKnown arrays use this exact class
 // (existing generated constant in the module)
-const v1Table = await load("v1/V1Table.js");
+const v1Table = await load("v1/V1Fixed.js");
 for (const key of Object.keys(v1Table)) {
   if (key.endsWith("FixedKnown")) {
     const arr = v1Table[key];

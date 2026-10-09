@@ -44,7 +44,7 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
-const tables = await load("examples/TabledemoTable.js");
+const tables = await load("examples/TabledemoFixed.js");
 
 const {
   TableFixedLayoutView,

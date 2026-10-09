@@ -22,7 +22,7 @@ function assert(ok, msg) {
 }
 
 // ---- load the runtime from the smallest fixed-form unit ----
-const rt = await load("v1/Tblv1Table.js");
+const rt = await load("v1/Tblv1Fixed.js");
 
 const {
   TableFixedLineagePlans,

@@ -41,8 +41,8 @@ import { pathToFileURL } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../../..");
 const generated = process.env.SCHEMA_JS_GENERATED ?? join(repoRoot, "build/tables-generated-js");
-const loadP1 = async () => import(pathToFileURL(join(generated, "p1/Tblp1Table.js")).href);
-const loadP3 = async () => import(pathToFileURL(join(generated, "p3/Tblp3Table.js")).href);
+const loadP1 = async () => import(pathToFileURL(join(generated, "p1/Tblp1Fixed.js")).href);
+const loadP3 = async () => import(pathToFileURL(join(generated, "p3/Tblp3Fixed.js")).href);
 
 const p1 = await loadP1();
 const p3 = await loadP3();

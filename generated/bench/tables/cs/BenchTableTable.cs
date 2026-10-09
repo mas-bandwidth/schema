@@ -410,26 +410,29 @@ namespace Benchtable
     // (upgrade the client). Those are the operator's two distinct answers.
 
     // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-    // on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
-    // never from the file.
+    // on, the layout bytes verbatim, the byte length riding BESIDE the pointer, and
+    // the RECORD SIZE taken from the lock and never from the file.
     //
-    // §5.9 #19 names four members — hash, layout, layout_bytes, record_bytes —
-    // because tools/fixedtwin holds the C and C++ pair to one text and the byte
-    // length there rides BESIDE the pointer. A C# array carries its own length, so
-    // the fourth member would be a second spelling of Layout.Length; there is no
-    // twin gate on this leg to hold it to the pair's text. Three members, the same
-    // ORDER, and the divergence is named rather than silent.
+    // §5.9 #19 names the four members in this order — hash, layout, layout_bytes,
+    // record_bytes — the byte length beside the pointer rather than inside it, the
+    // way §4.1 names the plan entry's lanes; tools/fixedtwin holds the C and C++
+    // pair to the same text, and §5.2 makes the names the contract. A C# array
+    // carries its own length, so LayoutBytes is the length of Layout rather than a
+    // second fact, but the member rides so the four names and their order are the
+    // page's on every leg.
     public readonly struct TableFixedKnownLayout
     {
         public readonly ulong Hash;
         public readonly byte[] Layout;
-        public readonly long Record;
+        public readonly int LayoutBytes;
+        public readonly long RecordBytes;
 
         public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
         {
             Hash = hash;
             Layout = layout;
-            Record = record;
+            LayoutBytes = layout.Length;
+            RecordBytes = record;
         }
     }
 
@@ -2387,10 +2390,14 @@ namespace Benchtable
                     }
                 }
                 if (saturated) { input.Report.Clamped++; }
+                // an unsigned magnitude past long.MaxValue rides as a negative long —
+                // that is the storage's own image of it and not a negative number, so
+                // the range sees the magnitude the same scale the reference's does
+                double valueScale = isSigned ? (double)value2 : (double)(ulong)value2;
                 if (f.HasRange)
                 {
-                    if ((double)value2 < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-                    else if ((double)value2 > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
+                    if (valueScale < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
+                    else if (valueScale > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
                 }
                 // the field's own storage width is the last bound: a value past it
                 // clamps rather than wrapping, which is what the wire does too
@@ -2406,14 +2413,22 @@ namespace Benchtable
                     else
                     {
                         ulong high = (1ul << (f.ElemWidth * 8)) - 1;
-                        if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
+                        if (value2 < 0)
+                        {
+                            // a magnitude past what sixty-four bits hold, carried as a
+                            // negative long, lands the field's CEILING: the domain is
+                            // established before any cast, so the saturation is one
+                            // clamp and the domain bound is the other
+                            value2 = (long)high;
+                            input.Report.Clamped++;
+                        }
                         else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
                     }
                 }
                 // at eight bytes the storage IS the parser's width, and an unsigned
-                // value past long.MaxValue rides here as a negative long by design —
-                // the token parser already turned a NEGATIVE token for an unsigned
-                // field into a clamped zero, so there is nothing left to bound.
+                // value past long.MaxValue rides here as its bit pattern by design —
+                // the domain bound above already handled it, and a NEGATIVE token for
+                // an unsigned field was turned into a clamped zero before this point.
                 f.SetRaw(owner, index, unchecked((ulong)value2));
                 return true;
             }
@@ -2803,6 +2818,13 @@ namespace Benchtable
         public static partial class TableWire
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
+
+            // A null report is DISCARDED, not created: one cached instance carries the
+            // ledger for a caller who supplies no report, so a null-report read
+            // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
+            // resets it exactly as it resets a caller-supplied report, so no earlier
+            // read's verdict leaks into the next.
+            public static readonly TableReport Ignored = new TableReport();
 
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
@@ -5200,7 +5222,7 @@ namespace Benchtable
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
-                if (report == null) { report = new TableReport(); }
+                if (report == null) { report = Ignored; }
                 type.Reset(value);
                 report.Refused = false; report.Reason = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
@@ -8242,7 +8264,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableEntityFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -8516,7 +8538,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableStatFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -9628,7 +9650,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableMixedFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;

@@ -220,5 +220,12 @@ func init() {
 		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
 		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
 		Name{Name: "TableFixedPlanCacheInit", What: "bind caller-owned slot storage to a plan cache"},
+		// the fixed form's prefill and known-range clamps (docs/FIXED-FORM-ALGORITHM.md
+		// §4.3, §5.2), emitted at namespace scope by the C++ reference
+		Name{Name: "TableFixedEntryLands", What: "the bytes of the reader's own storage one plan entry lands"},
+		Name{Name: "TableFixedFills", What: "the prefill's ranges: the cover minus everything the plan lands"},
+		Name{Name: "TableFixedLayFills", What: "reserve the prefill's ranges in the plan's own pool"},
+		Name{Name: "TableFixedKnownRange", What: "one known value range of a lineage entry's field"},
+		Name{Name: "TableFixedClampKnownRanges", What: "clamp a read's values to the lineage entry's known ranges"},
 	)
 }

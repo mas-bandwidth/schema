@@ -10,7 +10,7 @@ name: Certify
 # two at most; anything longer is nightly or manually triggered.
 #
 # THE PULL-REQUEST GATE IS ci-fast.yml (per push, two minutes, selected by
-# path) and ci-full.yml (on merge, nightly, on demand, and on a `full-ci`
+# path) and ci.yml (on merge, nightly, on demand, and on a `full-ci`
 # label), and together they are the fast half of this same set.
 # Nothing is checked less than it was before the split — what moved is WHEN a
 # certification instrument runs. A regression only this file can see fails
@@ -44,7 +44,7 @@ concurrency:
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
 # RELEASED tag, never main: a sibling merging to main mid-day must not change
-# what a schema commit's CI proves. ci-full.yml carries the same block; the two must
+# what a schema commit's CI proves. ci.yml carries the same block; the two must
 # move together.
 # To bump a pin: edit the *_TAG line to the new release tag — nothing else
 # changes. Find the newest tag with:
@@ -120,7 +120,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -147,7 +147,7 @@ jobs:
       # The JDK, same major as the Makefile's dist/ pin (generated Java is
       # self-contained — the JDK is the only Java dependency, so there is no
       # serialize.java clone above).
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -180,7 +180,7 @@ jobs:
       # writes: a file the emitter STOPPED writing stays on disk byte-identical
       # to the index, and a rule that never ran leaves its whole directory
       # standing, and a diff calls both green. So the verdict here is the same
-      # script the `generated` job in ci-full.yml and `make generated-current`
+      # script the `generated` job in ci.yml and `make generated-current`
       # run — test/generated-tree/verify, which moves the tree aside and emits
       # into NOTHING (#898's gate G3), then compares the full listing and the
       # bytes both ways. It checks this chain's in-place output against the
@@ -262,7 +262,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -278,7 +278,7 @@ jobs:
         with:
           sdk: '3.13.2'
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -362,7 +362,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
       # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
+      # names — .github/dotnet-version, read by ci.yml too (issue #470).
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -378,7 +378,7 @@ jobs:
         with:
           sdk: '3.13.2'
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -435,14 +435,12 @@ jobs:
       # whether a red one is this tree's fault — held to its fixtures by
       # `make test`, in tools/vuln/testdata/cases.txt.
       #
-      # --strict IS THE ONE LINE OF DIFFERENCE from ci.yml's `make vuln`, and
-      # it is the whole point of running the gate in both files. The
-      # pull-request gate forgives a database that never answers, because a
-      # contributor's diff cannot be judged by vuln.go.dev's uptime. A
-      # CERTIFICATE CANNOT: it is a full run at an exact SHA, and an
-      # unreachable database certifies nothing. If both forgave, an outage
-      # would leave no red anywhere and this estate would believe it had been
-      # scanned.
+      # The pull-request gate in ci.yml runs `make vuln`: the same pin, DIRECT
+      # with no retry and no classifier, so an unreachable database is RED
+      # there too. A CERTIFICATE CANNOT forgive: it is a full run at an exact
+      # SHA, and an unreachable database certifies nothing, so this gate goes
+      # RED after three attempts where the direct PR scan cannot even retry a
+      # transient blip.
       #
       # INSIDE THE 10-MINUTE CAP with room to spare: 3 x 35 s of scan plus the
       # 15 s and 45 s sleeps is 2:45 worst case; the cap remains for a scan that
@@ -537,7 +535,7 @@ jobs:
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -572,3 +570,16 @@ jobs:
             status=1
           fi
           exit $status
+
+  # THE NINE SCHEMA LEGS (issue #nx-g30). One reusable workflow, leg.yml,
+  # runs every registered driver over its own surface; the matrix input is
+  # the registry under test/conformance/<lang>/ci.json, so a tenth leg is
+  # exactly one matrix entry — a new <lang> directory with a driver and a
+  # ci.json — and nothing in this file moves. The same workflow is what
+  # ci.yml's conformance pair calls inline; here it is the certification
+  # path's view, run nightly and on demand under the same per-row timeout
+  # the conformance leg carries in ci.yml, so a row that goes red on its own
+  # fails the job rather than timing out the day.
+  schema-legs:
+    name: schema legs (certify)
+    uses: ./.github/workflows/leg.yml

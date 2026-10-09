@@ -51,8 +51,8 @@ import { resolve } from "node:path";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const runtime = await load("examples/TabledemoTable.js");
-const tables = await load("examples/TablesTable.js");
+const runtime = await load("examples/TabledemoFixed.js");
+const tables = await load("examples/TablesFixed.js");
 
 const { WeaponConfig, TableFixedHeaderBytes, TableFixedLayoutHeaderBytes } = runtime;
 const { WeaponConfigFixedSave, WeaponConfigFixedMeasure, WeaponConfigFixedLayoutBytes,

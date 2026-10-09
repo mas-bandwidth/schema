@@ -5,7 +5,7 @@
 // move nothing.
 //
 // Production path: CellFixedLoad → TableFixedRun → each op code. Every counter
-// assertion hits the generated JS emitter (build/tables-generated-js/v1/Tblv1Table.js).
+// assertion hits the generated JS emitter (build/tables-generated-js/v1/Tblv1Fixed.js).
 //
 // Plan format: 9 int32 lanes per entry — [op,src,dst,size,aux,guard,arg,meta,argw]
 // Ops: Copy=0, Count=1, Ordinal=3, Widen=4, Const=5, WidenF=6
@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const base = resolve(generated);
-const tbl = await import(pathToFileURL(join(base, "v1", "Tblv1Table.js")).href);
+const tbl = await import(pathToFileURL(join(base, "v1", "Tblv1Fixed.js")).href);
 
 const {
   TableFixedReport,
@@ -28,9 +28,9 @@ const {
   TableFixedLanes,
 } = tbl;
 
-// Lanes matching Tblv1Table.js
+// Lanes matching Tblv1Fixed.js
 const L = { Op:0, Src:1, Dst:2, Size:3, Aux:4, Guard:5, Arg:6, Meta:7, ArgW:8 };
-// Ops matching Tblv1Table.js
+// Ops matching Tblv1Fixed.js
 const O = { Copy:0, Count:1, Text:2, Ordinal:3, Widen:4, Const:5, WidenF:6 };
 const NoGuard = -1;
 

@@ -17,8 +17,8 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const Render = await load("block/RenderTable.js");
-const B = await load("block/BlockdemoTable.js");
+const Render = await load("block/RenderFixed.js");
+const B = await load("block/BlockdemoFixed.js");
 
 let ok = 0;
 

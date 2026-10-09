@@ -21,7 +21,7 @@ const repoRoot = resolve(__dirname, "../../../..");
 
 const generated = resolve(repoRoot, "generated/bench/paired/js");
 const m = await import(
-  pathToFileURL(resolve(generated, "FixedTableTable.js")).href
+  pathToFileURL(resolve(generated, "FixedTableFixed.js")).href
 );
 
 const REF_HASH_LO = 0x7e9ad910;

@@ -33,7 +33,7 @@
 // default is int32 4, so the prefill table's first lane is 04 00 00 00.
 //
 // THE NEGATIVE CONTROL is NOT run here: it breaks one constant of this law in
-// the generated tree (build/tables-generated-js/examples/TabledemoTable.js,
+// the generated tree (build/tables-generated-js/examples/TabledemoFixed.js,
 // TableFixedHoles' `cover.fill(0)` -> `cover.fill(1)`, so the unwritten-range
 // census sees no holes and no default is ever laid) and this file goes RED.
 // It is restored after; the red/green pair is recorded in RESULT.md.
@@ -51,8 +51,8 @@ const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js"
 const root = resolve(generated);
 const load = (path) => import(pathToFileURL(resolve(root, path)).href);
 
-const keyed = await load("examples/KeyedTable.js");
-const home = await load("examples/TabledemoTable.js");
+const keyed = await load("examples/KeyedFixed.js");
+const home = await load("examples/TabledemoFixed.js");
 const {
   TableFixedKnownLayout, TableFixedLineagePlans, TableFixedHoles, TableFixedRun,
   TableFixedReport, TeamConfig, TeamConfigFixedDecode,
@@ -77,7 +77,7 @@ function numericArray(text, name, suffix, ctor) {
   return lanes === null ? [] : lanes.map(Number);
 }
 
-const keyedText = readFileSync(resolve(root, "examples", "KeyedTable.js"), "utf8");
+const keyedText = readFileSync(resolve(root, "examples", "KeyedFixed.js"), "utf8");
 const identity = numericArray(keyedText, "TeamConfig", "FixedIdentity", "Int32Array");
 const dstRows = numericArray(keyedText, "TeamConfig", "FixedDst", "Int32Array");
 const prefill = numericArray(keyedText, "TeamConfig", "FixedPrefill", "Uint8Array");

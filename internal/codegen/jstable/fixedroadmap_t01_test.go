@@ -21,7 +21,7 @@ import (
 // by name is n == -1, `refused` is that name, `malformed` is false, every
 // counter is zero and not one destination byte is written.
 const t01Prelude = `
-import { TableFixedPlan, TableFixedLayoutView, TableFixedParseLayout } from "./@HOME@Table.js";
+import { TableFixedPlan, TableFixedLayoutView, TableFixedParseLayout } from "./@HOME@Fixed.js";
 const SENT = 0x5A5A5A5A;
 function eight() { const b = []; for (let k = 0; k < 8; k++) { b.push(new T()); InitT(b[k]); } return b; }
 function poison(back, plan) {
@@ -243,7 +243,7 @@ const back = eight();
 }
 // and no hash is ever computed at run time: the only mention of the layout hash
 // function in the emitted modules is its definition
-for (const name of ["./ProbeTable.js", "./@HOME@Table.js"]) {
+for (const name of ["./ProbeFixed.js", "./@HOME@Fixed.js"]) {
   const text = readFileSync(name, "utf8");
   let at = 0, calls = 0;
   for (;;) {

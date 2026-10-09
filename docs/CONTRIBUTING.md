@@ -170,7 +170,7 @@ certification installs every toolchain and overrides the pins, which resolve
 and pass the gate. `make toolchain` runs the gate alone, and
 `make toolchain-negative-control` proves it still has its blade, on every pin
 of every leg. That control runs inside `make test` and on every pull request,
-in the `go-test` job of `ci-full.yml`.
+in the `go-test` job of `ci.yml`.
 
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
@@ -210,7 +210,7 @@ Nothing was dropped. `internal/slowtest` gates the toolchain half:
   `SCHEMA_REQUIRE_CORPUS=1` and `slowtest.Enabled` counts that as the slow half
   being on. `make tables-<leg>-fixedform`, `make tables-<leg>-versioning` and
   `make tables-cs-leg` prove exactly what they proved before.
-- **`ci-full.yml`** sets `SCHEMA_SLOW=1` on both of its `go test` steps, so the
+- **`ci.yml`** sets `SCHEMA_SLOW=1` on both of its `go test` steps, so the
   merge and nightly lanes run the whole of both halves. **`ci-fast.yml`** does
   not, deliberately: its per-leg rows drive the make gates, which turn the slow
   half on for the leg the diff touched — which is the two-minute lane's whole
@@ -360,13 +360,6 @@ to somebody, so it needs to be worth it.
 
 ## Adding a language
 
-`schema new-leg lua` writes the skeleton: `compiler/target_lua.go` (behind
-the `schema_leg_lua` build tag, so the default nine stay the live `--lang`
-set), `internal/codegen/lua/` with one passing `go test` fixture,
-`make/lua.mk`, the conformance driver and the tables-bench `leg`. It is
-not a Lua emitter. `make test-lua` is the fixture; drop the build tag when
-the packet surface has claims and the port joins the builtins.
-
 A backend is a Go package under `internal/codegen/` that walks the same IR the
 existing nine consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
@@ -390,6 +383,19 @@ touches and two ports landing in one week do not conflict:
 | the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |
 | the goldens | `testdata/golden/<lang>/`, `testdata/golden/tables/<unit>-<lang>/` | the tests that pin them |
 
+**Start with `schema new-leg <lang>`.** In a checkout it lays down the first
+five of those files from templates in `tools/newleg/` — `compiler/target_<lang>.go`,
+the backend and its one fixture test under `internal/codegen/<lang>/`,
+`make/<lang>.mk` registering `test-<lang>`, and `test/<lang>/Fixture.schema` —
+so the tree builds, `go test ./internal/codegen/<lang>/` passes and
+`make test-<lang>` runs green before a line of the real emitter is written.
+The skeleton backend only names each declaration and refuses every construct
+it does not carry, by name; the port replaces it. The verb never overwrites a
+file, and a name a target already answers to is refused. Flags may come
+before or after the language name; `--root` names the checkout, `--ext` and
+`--comment` override the template's file extension and line-comment opener,
+and `--verbose` names each written file by its absolute path.
+
 `make registry` prints what the build discovered, and the registry gate
 (`test/conformance/harness/registry_test.go`) plants a fake language in a copy
 of the tree and requires the harness, the CI matrix, the bench pass and the
@@ -412,7 +418,7 @@ column on [PORTING.md](PORTING.md), the techniques register, is written by
 hand — every technique carried, cited or stated impossible — and its gate
 reads the columns from the page and holds them to the discovered drivers, so
 the column is the edit and no other file lists the language; a toolchain with
-no step yet in `.github/workflows/ci-full.yml` (and the `test` job of
+no step yet in `.github/workflows/ci.yml` (and the `test` job of
 `certify.yml`) adds one step, keyed on a new `ci.json` field; and the
 per-language prose in [SPEC.md](SPEC.md), [SPEC-TABLES.md](SPEC-TABLES.md)
 and [USAGE.md](USAGE.md) is prose, written by hand where the language's

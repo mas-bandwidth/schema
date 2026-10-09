@@ -26,6 +26,7 @@ goes red everywhere localises nothing:
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
 | `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-cpp` | the C++ walk's field offset, in the emitter | `cpp / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
@@ -285,7 +286,7 @@ directory and touches nothing another port touches (`docs/CONTRIBUTING.md`,
 "Adding a language"). The reference leg is `cpp` — the harness's own constant,
 sorted first — and the rest follow by name.
 
-**`ci.json` is one JSON object of strings**, and `.github/workflows/ci-full.yml`'s
+**`ci.json` is one JSON object of strings**, and `.github/workflows/ci.yml`'s
 conformance job reads it as the leg's matrix row:
 
 | key | what it is |

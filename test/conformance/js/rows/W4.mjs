@@ -16,7 +16,7 @@
 // (test/conformance/cpp/rows/W4.cpp) as its shape: it builds ONE RootConfig
 // record (the examples unit's fixed table, package tabledemo) whose live
 // values are all in bound, reads it through the production identity reader
-// (TablesTable.js's RootConfigFixedLoad), then stains every declared slack
+// (TablesFixed.js's RootConfigFixedLoad), then stains every declared slack
 // range of a copy with garbage a conforming writer never emits and reads THAT.
 // The stain is chosen so each wrong behaviour trips a different assertion:
 // invalid UTF-8 (0xC3 0x28 0xFF) past `version_note`'s used length — a reader
@@ -28,7 +28,7 @@
 // and every verdict, and the reader must not have looked at the slack at all.
 //
 // THE VECTOR. RootConfig's body is 1248 bytes, positional (SPEC §3.4), and
-// the emitted decode walk (TabledemoTable.js's RootConfigFixedDecode) states
+// the emitted decode walk (TabledemoFixed.js's RootConfigFixedDecode) states
 // the offsets: version_note's length word at +0 and its 16-byte buffer at
 // +4..20; the weapons count at +20 and 22-byte WeaponConfigs at +24+i*22;
 // the profiles count at +200. Within a weapon: damage +0 (f32), speed +4
@@ -39,7 +39,7 @@
 // hash, then the body.
 //
 // THE NEGATIVE CONTROL is NOT run here: it breaks one constant of this law in
-// the generated tree (build/tables-generated-js/examples/TabledemoTable.js,
+// the generated tree (build/tables-generated-js/examples/TabledemoFixed.js,
 // RootConfigFixedDecode's weapons loop bound `value.WeaponsCount` -> `8`, so
 // the pass walks the slack) and this file goes RED. It is restored after; the
 // red/green pair is recorded in RESULT.md.
@@ -55,8 +55,8 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const tables = await load("examples/TablesTable.js");
-const home = await load("examples/TabledemoTable.js");
+const tables = await load("examples/TablesFixed.js");
+const home = await load("examples/TabledemoFixed.js");
 
 let failures = 0;
 function check(ok, what) {

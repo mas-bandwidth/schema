@@ -46,10 +46,10 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	if !answer.measureRefused || answer.bytes != -1 || answer.report.Malformed {
 		t.Fatalf("count cap: %+v", answer)
 	}
-	if verdict := wireVerdict(root, legReply{measure: -1}, answer); verdict != "" {
+	if verdict := wireVerdict(root, legReply{measure: -1}, answer, len(wire)); verdict != "" {
 		t.Fatal(verdict)
 	}
-	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer); verdict == "" {
+	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer, len(wire)); verdict == "" {
 		t.Fatal("accepted loaded count above the cap")
 	}
 }
@@ -79,11 +79,11 @@ func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
 				t.Fatalf("builder count cap: %+v", answer)
 			}
 			reply := legReply{loaded: false, measure: -1, report: answer.report, saveFail: true}
-			if verdict := wireVerdict(root, reply, answer); verdict != "" {
+			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict != "" {
 				t.Fatal(verdict)
 			}
 			reply.report.Malformed = true
-			if verdict := wireVerdict(root, reply, answer); verdict == "" {
+			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict == "" {
 				t.Fatal("builder gate ignored an invented region recovery event")
 			}
 		})

@@ -96,16 +96,16 @@ function retired(name, why) {
 export async function checkFixedForm(check, generated, corpusDir, optionalDir, oracleDir) {
   const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
-  const bench = await load("bench/BenchTable.js");
-  const fixed = await load("bench/FixedTableTable.js");
-  const fx1 = await load("fx1/FX1Table.js");
-  const fx2 = await load("fx2/FX2Table.js");
-  const fx1home = await load("fx1/Tblfx1Table.js");
-  const fx2home = await load("fx2/Tblfx2Table.js");
-  const ut1 = await load("ut1/UT1Table.js");
-  const ut2 = await load("ut2/UT2Table.js");
-  const ut1home = await load("ut1/Tblut1Table.js");
-  const ut2home = await load("ut2/Tblut2Table.js");
+  const bench = await load("bench/BenchFixed.js");
+  const fixed = await load("bench/FixedTableFixed.js");
+  const fx1 = await load("fx1/FX1Fixed.js");
+  const fx2 = await load("fx2/FX2Fixed.js");
+  const fx1home = await load("fx1/Tblfx1Fixed.js");
+  const fx2home = await load("fx2/Tblfx2Fixed.js");
+  const ut1 = await load("ut1/UT1Fixed.js");
+  const ut2 = await load("ut2/UT2Fixed.js");
+  const ut1home = await load("ut1/Tblut1Fixed.js");
+  const ut2home = await load("ut2/Tblut2Fixed.js");
   const ut1types = await load("ut1/UT1.js");
   const ut2types = await load("ut2/UT2.js");
 
@@ -136,10 +136,10 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   if (optionalDir) {
     const o = {
-      p1: await load("p1/P1Table.js"), p1home: await load("p1/Tblp1Table.js"),
-      p3: await load("p3/P3Table.js"), p3home: await load("p3/Tblp3Table.js"),
-      fo1: await load("fo1/FO1Table.js"), fo1home: await load("fo1/Tblfo1Table.js"),
-      fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
+      p1: await load("p1/P1Fixed.js"), p1home: await load("p1/Tblp1Fixed.js"),
+      p3: await load("p3/P3Fixed.js"), p3home: await load("p3/Tblp3Fixed.js"),
+      fo1: await load("fo1/FO1Fixed.js"), fo1home: await load("fo1/Tblfo1Fixed.js"),
+      fo2: await load("fo2/FO2Fixed.js"), fo2home: await load("fo2/Tblfo2Fixed.js"),
     };
     optionalBytes(check, o, optionalDir);
     rangedScalarClamp(check, o);
@@ -621,7 +621,7 @@ function guardComparedAtArgW(check, home) {
 // plan_partition_case); this is its twin.
 //
 // THE PLAN THIS LEG ACTUALLY BUILDS IS THE COMPILED ONE. On this leg identity's
-// plan is ONE COPY of the whole body (ut1/UT1Table.js, `UtRootFixedIdentity`), so
+// plan is ONE COPY of the whole body (ut1/UT1Fixed.js, `UtRootFixedIdentity`), so
 // it has no guarded half to test and the partition is what the compiler owes the
 // lineage plans it lays down at module load. TableFixedCompile IS that compiler
 // and it is exported, so the case compiles a reader's own layout against itself
@@ -632,7 +632,7 @@ function guardComparedAtArgW(check, home) {
 // offsets, which place bytes and never choose a half; the partition is a fact of
 // the GUARD lane and `split` alone, so the rows are zero here. A plan entry is
 // nine int32 lanes (TableFixedLanes) and the guard is lane 5; TableFixedNoGuard
-// is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
+// is -1 (Tblut1Fixed.js, `TableFixedLanes`/`TableFixedNoGuard`).
 function partitionIsHeld(check, home, layout, bodyBytes, who) {
   const LANES = 9, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
   const NO_GUARD = -1, COPY = 0;
