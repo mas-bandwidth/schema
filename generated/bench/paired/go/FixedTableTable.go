@@ -247,8 +247,11 @@ func FixedTableSaveMessageBody(w *TableMessageWriter, value *FixedTable) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func FixedTableMeasureMessages(values []*FixedTable) int64 {
+func FixedTableMeasureMessages(values []*FixedTable, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}

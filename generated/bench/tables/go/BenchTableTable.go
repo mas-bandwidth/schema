@@ -4187,8 +4187,11 @@ func TableEntitySaveMessageBody(w *TableMessageWriter, value *TableEntity) bool 
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableEntityMeasureMessages(values []*TableEntity) int64 {
+func TableEntityMeasureMessages(values []*TableEntity, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -5084,8 +5087,11 @@ func TableStatSaveMessageBody(w *TableMessageWriter, value *TableStat) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableStatMeasureMessages(values []*TableStat) int64 {
+func TableStatMeasureMessages(values []*TableStat, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -7188,8 +7194,11 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableMixedMeasureMessages(values []*TableMixed) int64 {
+func TableMixedMeasureMessages(values []*TableMixed, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -8894,8 +8903,11 @@ func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) b
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableHitEventMeasureMessages(values []*TableHitEvent) int64 {
+func TableHitEventMeasureMessages(values []*TableHitEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -9397,8 +9409,11 @@ func TableChatEventSaveMessageBody(w *TableMessageWriter, value *TableChatEvent)
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableChatEventMeasureMessages(values []*TableChatEvent) int64 {
+func TableChatEventMeasureMessages(values []*TableChatEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -9826,8 +9841,11 @@ func TablePickupEventSaveMessageBody(w *TableMessageWriter, value *TablePickupEv
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TablePickupEventMeasureMessages(values []*TablePickupEvent) int64 {
+func TablePickupEventMeasureMessages(values []*TablePickupEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}

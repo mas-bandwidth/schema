@@ -4106,8 +4106,11 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedEntityMeasureMessages(values []*MixedEntity) int64 {
+func MixedEntityMeasureMessages(values []*MixedEntity, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -4986,8 +4989,11 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedStatMeasureMessages(values []*MixedStat) int64 {
+func MixedStatMeasureMessages(values []*MixedStat, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -5516,8 +5522,11 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedHitEventMeasureMessages(values []*MixedHitEvent) int64 {
+func MixedHitEventMeasureMessages(values []*MixedHitEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -6019,8 +6028,11 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedChatEventMeasureMessages(values []*MixedChatEvent) int64 {
+func MixedChatEventMeasureMessages(values []*MixedChatEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -6448,8 +6460,11 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func MixedPickupEventMeasureMessages(values []*MixedPickupEvent) int64 {
+func MixedPickupEventMeasureMessages(values []*MixedPickupEvent, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -8507,8 +8522,11 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func BenchMixedMeasureMessages(values []*BenchMixed) int64 {
+func BenchMixedMeasureMessages(values []*BenchMixed, report *TableReport) int64 {
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if report != nil {
+			tableMessageRefuse(report, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
