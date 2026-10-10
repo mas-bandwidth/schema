@@ -18,6 +18,8 @@ package jstable
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -62,6 +64,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{"js/R22", t03R22},
 		{"js/R3", t03R3},
 		{"js/R32", t03R32},
+		{"js/R10", t03R10},
+		{"js/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -306,5 +310,97 @@ func t03R32(t *testing.T) {
 	}
 	if strings.Contains(refuse, "image") || strings.Contains(refuse, "values") {
 		t.Error("R32: TableFixedRefuseHash touches a destination: a refusal writes report and hash and nothing else")
+	}
+}
+
+// t03R10: R10 "the run-time walk of a stranger's layout and the recompute of
+// the header's hash are retired" (§5.3 steps 4-7, §5.6). The load path's own
+// half is js/R7's (t01) and the hash-as-given half is js/R4's (t02); this
+// subtest widens the ban to the WHOLE emitted build — no emitted module CALLS
+// TableFixedHashOf, and the load path never calls TableFixedParseLayout on a
+// file's bytes, because a file's layout is COMPARED with the lock's and never
+// walked — and holds §5.9 #23's retirement print, which names at the call site
+// where the stranger's-walk coverage is owed.
+func t03R10(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R10: FixedLineageOf has no entry for T")
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": {{
+		Wire: own.Wire ^ 0x5a5a5a5a, Layout: own.Layout, Record: own.Record,
+	}}})
+	if err != nil {
+		t.Fatalf("R10: GenerateLineage: %v", err)
+	}
+	for name, body := range files {
+		text := string(body)
+		// NO RECOMPUTE OF THE HEADER'S HASH: the only mention of the hash
+		// function is its definition; the writer spells the compile-time
+		// constant and the load takes the header's hash as given.
+		if all, defs := strings.Count(text, "TableFixedHashOf("), strings.Count(text, "export function TableFixedHashOf("); all != defs {
+			t.Errorf("R10: %s calls TableFixedHashOf: the recompute of the header's hash is retired, on every path", name)
+		}
+		// NO RUN-TIME WALK OF A STRANGER'S LAYOUT: the load path compares the
+		// file's layout bytes with the lock's and never parses them.
+		if load := jsFn(text, "TFixedLoad"); load != "" && strings.Contains(load, "TableFixedParseLayout") {
+			t.Errorf("R10: %s's load parses a layout at run time; a file's layout is compared, never walked", name)
+		}
+	}
+	// §5.9 #23: a leg whose suite has no skip prints one instead. The js leg's
+	// retirement print is test/js-tables/fixedform.mjs's `retired(name, why)`,
+	// and it names the stranger's-layout families whose coverage is owed.
+	main, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "js-tables", "fixedform.mjs"))
+	if err != nil {
+		t.Fatalf("R10: read fixedform.mjs: %v", err)
+	}
+	if !strings.Contains(string(main), "function retired(name, why)") {
+		t.Error("R10: fixedform.mjs has no `retired(name, why)` print, so no retired case is named at its call site")
+	}
+	for _, name := range []string{"versioning", "negativeControls", "layoutValidation"} {
+		if !strings.Contains(string(main), "retired(\""+name+"\"") {
+			t.Errorf("R10: fixedform.mjs names no retirement for %q: §5.9 #23 wants the retired case named with where its coverage is owed", name)
+		}
+	}
+}
+
+// t03R15: R15 "the four forward-read clamps are retired — count clamp across
+// bounds, range clamp across versions, remap of an unknown variant to None,
+// drop-and-count of an unknown field: each is layout_newer now" (§5.6). The
+// four clauses' rows are field_append (drop-and-count of an unknown field),
+// array_bounded_grow (the count clamp across bounds), range_widen (the range
+// clamp across versions) and enum_append (the remap of an unknown variant to
+// None); each is in jsVersionRows and none is a sameHash row, so its
+// OLD-REFUSES-NEW column is a refusal and not a read. The replacement on the
+// emitted load path is §5.3 step 5: a hash outside the lineage is layout_newer
+// before any record, and no forward clamp survives.
+func t03R15(t *testing.T) {
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		found := false
+		for _, r := range jsVersionRows {
+			if r.row != row {
+				continue
+			}
+			found = true
+			if r.sameHash {
+				t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
+			}
+		}
+		if !found {
+			t.Errorf("R15: %s is not in jsVersionRows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+	}
+	u := unitFrom(t, t03Flat)
+	src := t02Emit(t, u)
+	load := jsFn(src, "TFixedLoad")
+	if load == "" {
+		t.Fatal("R15: the emitted load function is missing")
+	}
+	t02Has(t, t02Norm(load), "if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }",
+		"R15 the retired forward read is layout_newer, on the file's hash alone")
+	for _, gone := range []string{"dropAndCount", "remapUnknown", "clampAcrossVersions"} {
+		if strings.Contains(load, gone) {
+			t.Errorf("R15: the load path still carries the retired forward read %q", gone)
+		}
 	}
 }
