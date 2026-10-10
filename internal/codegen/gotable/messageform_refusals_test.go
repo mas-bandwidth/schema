@@ -247,6 +247,11 @@ func TestBatchTooLarge(t *testing.T) {
 	for i := range huge {
 		huge[i] = &Root{}
 	}
+	// MeasureMessages refuses and returns -1. The page also puts the reason on
+	// the TableReport each of the three verbs takes as its last parameter, but
+	// the plain fixed-table MeasureMessages emits no report parameter
+	// (messagewrite.go), so that half of the clause cannot be asserted here;
+	// it is reported not-done, and SaveMessages below carries the reason.
 	if n := RootMeasureMessages(huge); n != -1 {
 		t.Fatalf("measure over 256 bodies: %d", n)
 	}
