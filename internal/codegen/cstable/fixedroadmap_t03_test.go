@@ -137,6 +137,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R22", t03R22},
 		{"cs/R3", t03R3},
 		{"cs/R32", t03R32},
+		{"cs/R10", t03R10},
+		{"cs/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -417,4 +419,73 @@ func t03R32(t *testing.T) {
 			t.Errorf("R32: the floor refusal is not a pure named refusal: it reaches %q", banned)
 		}
 	}
+}
+
+// ---- cs/R10 -----------------------------------------------------------------
+
+// t03R10 holds R10 to §5.3 steps 4 and 7 and §5.6: "the run-time walk of a
+// stranger's layout and the recompute of the header's hash are retired". The
+// emitted load parses no layout (`ParseLayout` is the build-time initializer's),
+// walks no stranger's bytes, compares a known hash under THE LOCK'S bytes byte
+// for byte, takes the header's eight bytes as given and derives none of its own.
+func t03R10(t *testing.T) {
+	own, older := t03LineageUnits(t)
+	src := t03EmitLineage(t, own, map[string][]FixedLineageEntry{"Lineage": {older[0]}})
+	load := csFn(src, "public static long LineageFixedLoad(")
+	if load == "" {
+		t.Fatal("R10: LineageFixedLoad is not emitted")
+	}
+	t03Has(t, load, "ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));",
+		"R10 the header's hash is taken as given")
+	t03Has(t, t02Norm(load), "if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))",
+		"R10 a known hash is read under the lock's bytes, byte for byte")
+	for _, banned := range []string{
+		"ParseLayout", "CheckEntry", "layout_kind_unknown", "layout_size_mismatch",
+		"layout_tree_unclosed", "HashOf(",
+	} {
+		if strings.Contains(load, banned) {
+			t.Errorf("R10: the load reaches %q: a stranger's layout is never walked and the header's hash is never recomputed at run time (§5.3 steps 4 and 7)", banned)
+		}
+	}
+}
+
+// ---- cs/R15 -----------------------------------------------------------------
+
+// t03R15 holds R15 to §5.3 step 5 and §5.6's retirement list: the four
+// forward-read clamps are gone and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan is
+// selected; the count and text clamps that REMAIN are the writer's bounds
+// carried by the plan (bill §12.5); the ordinal remap is bounded by the
+// writer's own variant count; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t03R15(t *testing.T) {
+	own, older := t03LineageUnits(t)
+	src := t03EmitLineage(t, own, map[string][]FixedLineageEntry{"Lineage": {older[0]}})
+	load := csFn(src, "public static long LineageFixedLoad(")
+	if load == "" {
+		t.Fatal("R15: LineageFixedLoad is not emitted")
+	}
+	miss := strings.Index(load, `report.Reason = "layout_newer"`)
+	records := strings.Index(load, "for (int k = 0; k < n; ++k)")
+	if miss < 0 || records < 0 || miss > records {
+		t.Errorf("R15: a hash outside the lineage is not refused before the first record (%d, %d)", miss, records)
+	}
+	run := csFn(src, "public static void Run<T>(")
+	if run == "" {
+		t.Fatal("R15: TableFixedWire.Run is not emitted")
+	}
+	// DROP-AND-COUNT IS RETIRED: the read loop moves no unknown counter, and the
+	// census is the lane's, landed once after the loop.
+	if strings.Contains(run, "report.Unknown++") {
+		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
+	}
+	t03Has(t, load, "census_unknown = lane.Unknown;", "R15 the unknown count is the compile census")
+	t03Has(t, load, "report.Unknown += census_unknown;", "R15 the census lands once, after the record loop")
+	// THE COUNT CLAMP IS THE WRITER'S BOUND carried by the plan.
+	t03Has(t, run, "else if ((uint)v > p.Size)", "R15 the count clamps to the writer's element bound")
+	// THE ORDINAL REMAP IS BOUNDED by the writer's own variant count — no
+	// unknown variant from a newer writer reaches a remap.
+	t03Has(t, run, "if (raw != 0 && raw <= count)", "R15 an ordinal is remapped only inside the writer's own variant count")
+	// THE TEXT CLAMP IS THE WRITER'S SPAN, not the reader's capacity.
+	t03Has(t, run, "else if ((uint)v > cap)", "R15 the text clamps to the writer's own span")
 }
