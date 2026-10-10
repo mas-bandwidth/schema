@@ -108,9 +108,12 @@ func testSharedS1(t *testing.T) {
 
 // testSharedS2 asserts shared/S2: the lock holds the lineage and the
 // `lineage=0x…` roll-up binds the set, so a deleted or reordered line refuses
-// by name (docs/roadmap.sexp shared/S2; docs/FIXED-FORM-ALGORITHM.md §5.2;
-// docs/SPEC-TABLES.md §3.4).  internal/lockfile.TestLineageSetIsBoundByTheRollup
-// already asserts the parse-side recomputation and the hand-edit refusal.
+// by name; the line is one statement made twice (the parse recomputes the wire
+// hash and refuses a disagreement) (docs/roadmap.sexp shared/S2;
+// docs/FIXED-FORM-ALGORITHM.md §5.2; docs/SPEC-TABLES.md §3.4).
+// The hand-edit refusal (one statement made twice) is held by
+// internal/lockfile.TestLockLineageHandEditRefused; the roll-up binding is held
+// by internal/lockfile.TestLineageSetIsBoundByTheRollup.
 func testSharedS2(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "T.schema")
@@ -141,6 +144,34 @@ func testSharedS2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// The line is one statement made twice: the parse recomputes the wire hash
+	// over the layout bytes and the digest and refuses a disagreement
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2).  Flip the last hex digit of the
+	// recorded wire hash; §5.2's recomputation must catch it by name.
+	reWire := regexp.MustCompile(`(lineage wire=0x[0-9a-fA-F]{15})[0-9a-fA-F]`)
+	match := reWire.FindSubmatchIndex(data)
+	if match == nil {
+		t.Fatal("S2 setup: expected lineage wire=0x in the lock file")
+	}
+	corruptWire := make([]byte, len(data))
+	copy(corruptWire, data)
+	if corruptWire[match[3]] == '0' {
+		corruptWire[match[3]] = '1'
+	} else {
+		corruptWire[match[3]] = '0'
+	}
+	if err := os.WriteFile(lockp, corruptWire, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	errs := lockfile.Check(u2, paths)
+	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "two halves of this line disagree") {
+		t.Fatalf("S2: the parse recomputes the wire hash and must refuse the disagreement (one statement made twice): %v", errs)
+	}
+	if err := os.WriteFile(lockp, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	lines := strings.SplitAfter(string(data), "\n")
 	removed := false
 	var corrupt strings.Builder
@@ -157,7 +188,7 @@ func testSharedS2(t *testing.T) {
 	if err := os.WriteFile(lockp, []byte(corrupt.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	errs := lockfile.Check(u2, paths)
+	errs = lockfile.Check(u2, paths)
 	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "lineage=0x") || !strings.Contains(errs[0].Error(), "roll-up") {
 		t.Fatalf("S2: bound by lineage= must refuse a deleted or reordered line by name: %v", errs)
 	}
