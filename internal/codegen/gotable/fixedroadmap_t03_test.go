@@ -52,6 +52,8 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{"go/R22", t03R22},
 		{"go/R3", t03R3},
 		{"go/R32", t03R32},
+		{"go/R10", t03R10},
+		{"go/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -394,6 +396,103 @@ func TestR32Once(t *testing.T) {
 }
 `
 	t03RunGo(t, u, map[string][]FixedLineageEntry{"T": {retired}}, probe)
+}
+
+// ---- go/R10 -----------------------------------------------------------------
+
+// t03R10 holds R10: "the run-time walk of a stranger's layout and the recompute
+// of the header's hash are retired". §5.3 step 4: "nothing is recomputed from
+// the wire ... the definitions digest is not on the wire, so the hash cannot be
+// re-derived from a file at all"; step 7: a known hash is read under THE LOCK'S
+// layout bytes, a difference is layout_malformed, and "the seven §1.1 rules do
+// not run at read time at all: no stranger's layout is ever walked".
+func t03R10(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R10: FixedLineageOf has no entry for T")
+	}
+	src := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": {{
+		Wire: own.Wire ^ 0x5a5a, Layout: own.Layout, Record: own.Record,
+	}}})
+	// THE RECOMPUTE IS RETIRED: no FNV-1a prime anywhere in the emitted build,
+	// so no function in it can hash a layout; the header's hash is taken as
+	// given.
+	for _, prime := range []string{"0xcbf29ce484222325", "0x100000001b3", "1099511628211"} {
+		if strings.Contains(src, prime) {
+			t.Errorf("R10: the emitted build holds the FNV-1a prime %s; a runtime never computes a hash from layout bytes it holds (§5.3)", prime)
+		}
+	}
+	load := funcSource(src, "func TFixedLoad(")
+	if load == "" {
+		t.Fatal("R10: TFixedLoad is not emitted")
+	}
+	t03Has(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])",
+		"R10 the header's hash is taken as given")
+	// THE STRANGER'S WALK IS RETIRED: the load never parses or validates the
+	// file's layout bytes; it compares them against the lock's byte for byte.
+	t03Has(t, load, "for i := range layout {\n\t\tif layout[i] != known.Layout[i] {",
+		"R10 a known hash is read under the lock's bytes, byte for byte")
+	for _, banned := range []string{"tableFixedParseLayout", "tableFixedCheckEntry", "layout_kind_unknown", "layout_size_mismatch"} {
+		if strings.Contains(load, banned) {
+			t.Errorf("R10: the load reaches %q: a stranger's layout is never walked at run time (§5.3 step 7)", banned)
+		}
+	}
+}
+
+// ---- go/R15 -----------------------------------------------------------------
+
+// t03R15 holds R15: "the four forward-read clamps are retired — count clamp
+// across bounds, range clamp across versions, remap of an unknown variant to
+// None, drop-and-count of an unknown field: each is layout_newer now". §5.3
+// step 5: "outside the lineage is layout_newer"; §5.6: "what is retired by this
+// section" is every cross-version forward read, replaced by the refusal. A file
+// whose hash is not in the lineage refuses layout_newer before any record, with
+// the file's hash and nothing else, on a build that carries a lineage and so
+// could otherwise have clamped.
+func t03R15(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R15: FixedLineageOf has no entry for T")
+	}
+	lineage := map[string][]FixedLineageEntry{"T": {{
+		Wire: own.Wire ^ 0x77, Layout: own.Layout, Record: own.Record,
+	}}}
+	src := t03EmitLineage(t, u, lineage)
+	t03Has(t, src, "if pick < 0 {\n\t\treturn tableFixedRefuseHash(report, \"layout_newer\", hash)\n\t}",
+		"R15 a hash outside the lineage is layout_newer")
+	// THE FOUR CLAMPS ARE RETIRED: the only decode is behind the selection, so
+	// no forward read can clamp, remap or drop. The refusal stands before it.
+	load := funcSource(src, "func TFixedLoad(")
+	if i, j := strings.Index(load, "layout_newer"), strings.Index(load, "tableFixedRun("); i < 0 || j < 0 || j < i {
+		t.Errorf("R15: the decode is not gated behind the layout_newer refusal (layout_newer at %d, decode at %d)", i, j)
+	}
+	probe := `package probe
+import "testing"
+func TestR15Newer(t *testing.T) {
+    layout := TFixedLayout
+    file := make([]byte, TableFixedHeaderBytes+4+len(layout)+int(TFixedRecordBytes))
+    file[0] = TableFixedForm
+    tableFixedPut64(file[TableFixedHashAt:], 0x0123456789abcdef)
+    tableFixedPut32(file[TableFixedHeaderBytes:], uint32(len(layout)))
+    copy(file[TableFixedHeaderBytes+4:], layout)
+    tableFixedPut64(file[TableFixedHeaderBytes+4+len(layout):], 0x0123456789abcdef)
+    got := []T{{X: 0x5a5a, Y: 0x5a5a}}
+    var r TableReport
+    n := TFixedLoad(got, file, make([]TableFixedEntry, 64), &r)
+    if n != -1 || r.Verdict != TableOpenRefused || r.Reason != "layout_newer" {
+        t.Fatalf("n=%d %+v, want -1 layout_newer", n, r)
+    }
+    if r.LayoutHash != 0x0123456789abcdef {
+        t.Fatalf("layout_hash=%#x, want the file's own hash", r.LayoutHash)
+    }
+    if r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 {
+        t.Fatalf("a forward read moved something: %+v", r)
+    }
+}
+`
+	t03RunGo(t, u, lineage, probe)
 }
 
 // itoa is a strconv.Itoa for the one call site, kept local so the imports stay
