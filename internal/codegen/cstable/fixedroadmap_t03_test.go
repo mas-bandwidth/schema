@@ -135,6 +135,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R12", t03R12},
 		{"cs/R6", t03R6},
 		{"cs/R22", t03R22},
+		{"cs/R3", t03R3},
+		{"cs/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -320,4 +322,99 @@ fixed table T
 `
 	text := t03Emit(t, legal)
 	t03Has(t, text, "TFixedKnown", "R22 a closure of fixed things alone keeps its form")
+}
+
+// ---- cs/R3 ------------------------------------------------------------------
+
+// t03R3 holds R3 to §5.2's one number: "R.floor := 1 + the highest index marked
+// RETIRED in lock.lineage(T), or 0 when none is", emitted beside the lineage, and
+// to LOAD step 6: "if i < R.floor: REFUSE layout_unsupported, reporting h". The
+// arithmetic is read off the emitted constant for four retirement shapes, and the
+// emitted load is read for the name and the file's hash.
+func t03R3(t *testing.T) {
+	own, older := t03LineageUnits(t)
+	for _, tc := range []struct {
+		retire []int
+		want   int
+	}{
+		{nil, 0},
+		{[]int{0}, 1},
+		{[]int{1}, 2},
+		{[]int{0, 1}, 2},
+	} {
+		entries := append([]FixedLineageEntry(nil), older...)
+		for _, i := range tc.retire {
+			entries[i].Retired = true
+			entries[i].Reason = "the client is gone"
+		}
+		src := t03EmitLineage(t, own, map[string][]FixedLineageEntry{"Lineage": entries})
+		t03Has(t, src, fmt.Sprintf("public const int LineageFixedFloor = %d;", tc.want),
+			"R3 the floor is 1 + the highest retired index, 0 when none is")
+	}
+	src := t03EmitLineage(t, own, map[string][]FixedLineageEntry{"Lineage": older})
+	load := csFn(src, "public static long LineageFixedLoad(")
+	if load == "" {
+		t.Fatal("R3: LineageFixedLoad is not emitted")
+	}
+	t03Has(t, load, "pick < LineageFixedFloor", "R3 the floor check")
+	t03Has(t, load, `report.Reason = "layout_unsupported"`, "R3 below the floor is layout_unsupported")
+	t03Has(t, load, "report.LayoutHash = hash;", "R3 layout_unsupported reports the file's hash")
+}
+
+// ---- cs/R32 -----------------------------------------------------------------
+
+// t03R32 holds R32 to §5.2's retirement, read off the emitted load: the
+// operator's mark is laid down with its reason, the floor moves past it, the
+// same lock lays the same retired section twice (idempotent), and the refusal
+// sits ONCE, after the hash select and BEFORE the byte comparison or any record,
+// as a pure named refusal — a second load of the same file answers the same
+// name.
+func t03R32(t *testing.T) {
+	own, older := t03LineageUnits(t)
+	retired := older[0]
+	retired.Retired = true
+	retired.Reason = "the oldest client is gone"
+	lineage := map[string][]FixedLineageEntry{"Lineage": {retired}}
+	src := t03EmitLineage(t, own, lineage)
+	t03Has(t, src, "// RETIRED: the oldest client is gone",
+		"R32 the retired entry carries the operator's reason")
+	t03Has(t, src, "public const int LineageFixedFloor = 1;", "R32 a retired entry moves the floor past it")
+
+	// IDEMPOTENT: the same lock lays the same retired section, twice. The whole
+	// emitted known section is compared, so a nondeterministic retirement shows.
+	block := func(s string) string {
+		return t02Block(t, s, "public static readonly TableFixedKnownLayout[] LineageFixedKnown = new TableFixedKnownLayout[] {", "};")
+	}
+	again := t03EmitLineage(t, own, lineage)
+	if block(src) != block(again) {
+		t.Error("R32: the same lock laid two different builds; retire is not idempotent")
+	}
+
+	load := csFn(src, "public static long LineageFixedLoad(")
+	if load == "" {
+		t.Fatal("R32: LineageFixedLoad is not emitted")
+	}
+	if n := strings.Count(load, "pick < LineageFixedFloor"); n != 1 {
+		t.Errorf("R32: the floor is tested %d times, want once", n)
+	}
+	at := strings.Index(load, "pick < LineageFixedFloor")
+	knownAt := strings.Index(load, "layout.SequenceEqual(known.Layout)")
+	records := strings.Index(load, "for (int k = 0; k < n; ++k)")
+	if at < 0 || knownAt < 0 || records < 0 {
+		t.Fatalf("R32: the load's shape moved (%d, %d, %d)", at, knownAt, records)
+	}
+	if !(at < knownAt && knownAt < records) {
+		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d)", at, knownAt, records)
+	}
+	// THE REFUSAL IS PURE: its guarded body reads `pick` and the file's hash and
+	// nothing else — no record byte, no destination slot, no plan.
+	body := load[at:]
+	if end := strings.Index(body, "return -1;"); end >= 0 {
+		body = body[:end]
+	}
+	for _, banned := range []string{"values[", "FillRun", "TableFixedWire.Run("} {
+		if strings.Contains(body, banned) {
+			t.Errorf("R32: the floor refusal is not a pure named refusal: it reaches %q", banned)
+		}
+	}
 }
