@@ -222,6 +222,12 @@ export class TableFixedPlan {
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    // ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE under
+    // layout_record_too_large and never lands a short read; record is the
+    // writer's declared root size, the bound every entry's source extent is
+    // held to (docs/FIXED-FORM-ALGORITHM.md §5.2's PLAN).
+    this.tooLarge = false;
+    this.record = 0;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
@@ -843,10 +849,39 @@ const TableFixedDstAux = 2;
 const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
 
+// HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from src. The run
+// loop's own reads are the same arithmetic, entry by entry; this is that
+// arithmetic ONCE, at compile, against the writer's own declared record size
+// (docs/FIXED-FORM-ALGORITHM.md §5.2's PLAN, R14).
+function TableFixedReach(op, size, aux, meta) {
+  switch (op) {
+    case TableFixedOpCount: return 4;               // the live count word
+    case TableFixedOpText: return 4 + size;         // the length word and the units
+    case TableFixedOpWidenF: return 4;              // an f32 on the wire
+    case TableFixedOpConst: return (aux === 0 && (meta & 0xff) !== 0) ? size : 0; // the writer's raw tag
+    default: return size;                           // copy, ordinal, widen: a byte run
+  }
+}
+
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
   if (!TableFixedKeeping(plan, guard)) { return; }
+  // EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+  // (§5.2's PLAN): the plan's source offsets are arithmetic over sizes a WRITER
+  // wrote down, so a layout that names a byte past root.size is refused WHOLE
+  // and never partly compiled. The boundary is past and not at: a layout
+  // reaching EXACTLY to root.size still compiles.
+  let end = src + TableFixedReach(op, size, aux, meta);
+  if (guard !== TableFixedNoGuard) {
+    // A GUARDED ENTRY LOADS THE TAG BEFORE ANYTHING ELSE, so the guard's own
+    // reach counts too. A zero width reads as one.
+    let w = plan.argw | 0;
+    if (w === 0) { w = 1; }
+    const g = guard + w;
+    if (g > end) { end = g; }
+  }
+  if (plan.record !== 0 && end > plan.record) { plan.tooLarge = true; return; }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
   const b = plan.count * TableFixedLanes;
   const e = plan.entries;
@@ -1257,7 +1292,14 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
       const census = new TableFixedReport();
       const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
-      if (made < 0) { continue; }
+      if (made < 0) {
+        // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its
+        // own name, at every room: growing the plan cannot make an entry fit a
+        // record it already overruns. A plan that merely does not fit keeps
+        // growing.
+        if (plan.why === TableFixedRefusal.LayoutRecordTooLarge) { lane = plan; break; }
+        continue;
+      }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
       // the load carries it onto the report ONCE, AFTER the record loop, on a
@@ -1283,6 +1325,12 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.count = 0;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.tooLarge = false;
+  plan.why = TableFixedRefusal.None;
+  // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's declared size,
+  // taken from the layout this plan is compiled against, and never the file's
+  // and never this reader's own bound (§5.2's PLAN, R14).
+  plan.record = TableFixedSize(theirs, 0);
   plan.argw = 1;
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
   // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
@@ -1296,6 +1344,9 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
+  // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own name:
+  // the plan carries layout_record_too_large and no plan runs (R14).
+  if (plan.tooLarge) { plan.why = TableFixedRefusal.LayoutRecordTooLarge; return -1; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
