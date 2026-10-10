@@ -349,6 +349,102 @@ func t05R18(t *testing.T) {
 	t04Has(t, rng, "value.a = value.a.max(0_i32);", "R18 the low end that can fire remains")
 }
 
+// ---- rust/C3 -----------------------------------------------------------------
+
+// t05C3 holds rust/C3 to docs/FIXED-FORM-ALGORITHM.md §4.5's `text` row: "cap
+// := size / unit; v := SLE(4, record+src) clamped into [0, cap], COUNT clamped
+// if it fired". The cap the plan carries is the WRITER's span in UNITS
+// (§4.1), the length word is a four-byte little-endian integer, and the
+// identity read's own scatter clamps the length to the declared bound.
+func t05C3(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	text := t05Arm(runtime, "TableFixedOp::Text => {")
+	if text == "" {
+		t.Fatal("C3: the Text arm is not in the runtime")
+	}
+	t04Has(t, text, "let held = raw.clamp(0, p.aux as i32);",
+		"C3 the length is clamped to the plan's cap")
+	t04Has(t, text, "if held != raw {", "C3 the clamp counts when it fires")
+	t04Has(t, text, "report.clamped += 1;", "C3 the clamp counts once")
+	t04Has(t, runtime, "let unit = if me.kind == 33 { 2u32 } else { 1u32 };",
+		"C3 a wide text's unit is two bytes")
+	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",
+		"C3 the cap is the writer's span in UNITS (§4.1)")
+	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
+	t04Has(t, mod, "let held = raw.clamp(0, 8);",
+		"C3 the identity read clamps the length to the declared bound")
+}
+
+// ---- rust/C4 -----------------------------------------------------------------
+
+// t05C4 holds rust/C4 to docs/FIXED-FORM-ALGORITHM.md §4.5's `text` row: "A
+// content violation REFUSES BY NAME, the verdict the packet reader gives, this
+// form having no `L` to continue past (fix 11)", and to §5.8 row 8 where the
+// reference's `malformed` is named as the thing this page overrules. The name
+// R24 fixes is `text_ill_formed`.
+func t05C4(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, "TextIllFormed,", "C4 ill-formed text is a named reason")
+	t04Has(t, runtime, `Self::TextIllFormed => "text_ill_formed",`,
+		"C4 the reason's name is text_ill_formed")
+	load := t04Fn(t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n"), "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("C4: lineage_fixed_load is not emitted")
+	}
+	at := strings.Index(load, "if damaged != 0 {")
+	if at < 0 {
+		t.Fatal("C4: the emitted load does not test the content pass's `damaged`")
+	}
+	body := load[at:]
+	if end := strings.Index(body, "\n        }"); end >= 0 {
+		body = body[:end]
+	}
+	t04Has(t, body, "return report.refuse(TableFixedReason::TextIllFormed);",
+		"C4 the content violation REFUSES BY NAME")
+	if strings.Contains(body, "report.malformed = true;") {
+		t.Errorf("C4: ill-formed text still raises the malformed flag (§5.8 row 8):\n%s", body)
+	}
+}
+
+// ---- rust/R24 -----------------------------------------------------------------
+
+// t05R24 holds rust/R24 to docs/FIXED-FORM-ALGORITHM.md §4.5: "The CONTENT
+// RULES apply to the USED UNITS and nothing else: UTF-8 validity over `v`
+// bytes, never over `N`; wide code units over `v`, never `2N`"; the text row's
+// `size` is the payload's BYTE span and its `aux` the cap in units; and slack
+// is not a refusal.
+func t05R24(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	t04Has(t, runtime, `Self::TextIllFormed => "text_ill_formed",`,
+		"R24 ill-formed text refuses by name `text_ill_formed`")
+	t04Has(t, runtime, "pub fn table_utf8_valid(bytes: &[u8]) -> bool {",
+		"R24 the narrow content rule exists")
+	t04Has(t, runtime, "pub fn table_utf16_valid(units: &[u16]) -> bool {",
+		"R24 the wide content rule exists")
+
+	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
+	clamp := t04Fn(mod, "lineage_fixed_clamp_body")
+	if clamp == "" {
+		t.Fatal("R24: lineage_fixed_clamp_body is not emitted")
+	}
+	t04Has(t, clamp, "table_utf8_valid(&value.s[..value.s_length.clamp(0, 8) as usize])",
+		"R24 the content rule is over the USED units and never the declared capacity")
+	if strings.Contains(clamp, "[..9]") {
+		t.Error("R24: the content rule reads the declared buffer, not the used length")
+	}
+	// THE LENGTH IS COUNTED IN BYTES AND CLAMPED IN UNITS (§4.1's text row).
+	t04Has(t, runtime, "size: bytes,",
+		"R24 the text entry's span is the payload's BYTE count")
+	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",
+		"R24 the clamp's cap is in UNITS")
+	// SLACK IS UNSPECIFIED ON READ AND NOT A REFUSAL: `bytes(N)` has no content
+	// rule at all, and no content rule reads the bytes a writer never wrote.
+	bytesMod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    b bytes(8)\n}\n")
+	if strings.Contains(bytesMod, "table_utf8_valid") || strings.Contains(bytesMod, "table_utf16_valid") {
+		t.Error("R24: a bytes(N) has no content rule and must not be judged as text (SPEC-TABLES §3.4)")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT05Evolution(t *testing.T) {
@@ -363,6 +459,9 @@ func TestFixedRoadmapRustT05Evolution(t *testing.T) {
 		{id: "rust/E9", check: t05E9},
 		{id: "rust/R16", check: t05R16},
 		{id: "rust/R18", check: t05R18},
+		{id: "rust/C3", check: t05C3},
+		{id: "rust/C4", check: t05C4},
+		{id: "rust/R24", check: t05R24},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
