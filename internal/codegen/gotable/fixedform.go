@@ -693,7 +693,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Retired {
 			g.pf("\t\t// RETIRED: %s\n", e.Reason)
 		}
-		g.pf("\t\tRecord: %d,\n\t\tLayout: []byte{\n", e.Record)
+		g.pf("\t\tLayoutBytes: %d,\n\t\tRecord: %d,\n\t\tLayout: []byte{\n", len(e.Layout), e.Record)
 		g.emitByteArray(e.Layout)
 		g.pf("\t\t},\n\t},\n")
 	}
