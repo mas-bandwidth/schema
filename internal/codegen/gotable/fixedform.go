@@ -287,6 +287,18 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
 		return false
 	}
+	// AND THE TWO BOUNDS ir.TableFixedFormRoots APPLIES, asked where the answer
+	// lives. This leg does not build its roots from that function, so each has
+	// to be named here or it is not applied at all.
+	//
+	// §3.4's RECORD CEILING: past it the table is not a fixed-form root, because
+	// no conforming reader decodes a record that size. ir.TableFixedRecordBounds
+	// names the table and the size at compile time; the form is simply not
+	// emitted for it. Without this the go leg wrote TFixedLoad/TFixedKnown for a
+	// record past 65536 — bytes no peer reads.
+	if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+		return false
+	}
 	// AND THE WALK'S DEPTH BOUND, asked where the answer lives
 	// (ir.TableFixedWithinDepth). This leg does not build its roots from
 	// ir.TableFixedFormRoots, so the bound has to be named here or it is not
