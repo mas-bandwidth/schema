@@ -26,8 +26,11 @@ fixed table Tight { n int32 }
 		t.Fatal("generate emitted no table module")
 	}
 
-	// Tight is a fixed table root: the three batch message verbs exist (§3.3).
-	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages"} {
+	// Tight is a fixed table root: the four message verbs exist (§3.3). The
+	// three batch verbs are functions; LoadRetainMessages is the §6.6 refusal
+	// by name, because retention is a region round trip and a fixed table has
+	// no region.
+	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
 		if !strings.Contains(body, "Tight"+verb) {
 			t.Errorf("fixed table Tight missing message verb Tight%s (docs/SPEC-TABLES.md §3.3)", verb)
 		}
@@ -51,6 +54,9 @@ func TestCaller(t *testing.T) {
 	v.N = 42
 	values := []*Tight{&v}
 	var report TableReport
+	if TightLoadRetainMessages == "" {
+		t.Fatal("fixed table Tight has no LoadRetainMessages refusal (§6.6)")
+	}
 	n := TightMeasureMessages(values, &report)
 	if n <= 0 {
 		t.Fatalf("measure: %d", n)
