@@ -254,6 +254,10 @@ func TestFixedRoadmapCppT01Framing(t *testing.T) {
 		{"cpp/F4", cppT01LayoutMalformedTruncated},
 		{"cpp/F12", cppT01SecondLayout},
 		{"cpp/F9", cppT01BatchTooLarge},
+		{"cpp/R7", cppT01IdentityLane},
+		{"cpp/R8", cppT01LayoutNewer},
+		{"cpp/R9/remaining-boundaries", cppT01KnownHashBoundaries},
+		{"cpp/R13", cppT01RefuseIsTotal},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
@@ -387,4 +391,228 @@ func cppT01BatchTooLarge(t *testing.T, corpus string) {
 			cppT01Probe(t, "VNEW_int_widen", []string{"VOLD_int_widen"}, filepath.Join(corpus, lane.file), body, "")
 		})
 	}
+}
+
+// cpp/R7 — "the identity lane is an index comparison, never a recomputed
+// hash". Algorithm §5.3 step 4 and step 8, and §5.9 #47: "a runtime NEVER
+// computes a hash from layout bytes it holds — not for the IDENTITY LANE (step
+// 8, where the selected entry being the reader's own is an INDEX COMPARISON and
+// never a recomputation)". Two proofs. (1) The generated unit's load looks the
+// header's hash up in the emitted lineage with an index comparison, and
+// `TableFixedHashOf` appears exactly once — its definition. (2)
+// cfloat_res_refine's two entries carry IDENTICAL layout bytes and DIFFERENT
+// hashes (the resolution lives in the digest only), the case a reader that
+// hashed its own bytes would conflate: reading this build's own file takes the
+// identity lane and compiles nothing, while reading the older entry's file
+// under its own hash compiles that entry's plan. The plan cache's `compiles`
+// counter is the observable.
+func cppT01IdentityLane(t *testing.T, corpus string) {
+	newFile := filepath.Join(corpus, "new_cfloat_res_refine.bin")
+	oldFile := filepath.Join(corpus, "old_cfloat_res_refine.bin")
+
+	t.Run("no_hash_computation_in_the_unit", func(t *testing.T) {
+		t.Parallel()
+		files, _ := cppT01Generate(t, "VNEW_cfloat_res_refine", []string{"VOLD_cfloat_res_refine"})
+		text := string(files[cppT01Header(t, files)])
+		if !strings.Contains(text, "FixedLineage[i] == hash") {
+			t.Fatalf("the identity lane is not an index comparison over the emitted lineage (algorithm §5.3 step 8)")
+		}
+		if n := strings.Count(text, "TableFixedHashOf"); n != 1 {
+			t.Fatalf("TableFixedHashOf appears %d times in the generated unit, want 1 (its definition): a runtime derives no hash (§5.9 #47)", n)
+		}
+	})
+
+	_, nl, _ := cppT01Split(t, newFile)
+	_, ol, _ := cppT01Split(t, oldFile)
+	nd, err := os.ReadFile(newFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	od, err := os.ReadFile(oldFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(nl, ol) || bytes.Equal(nd[8:16], od[8:16]) {
+		t.Fatal("the premise fails: cfloat_res_refine must carry equal layout bytes under two hashes")
+	}
+
+	t.Run("own_hash_takes_the_identity_lane", func(t *testing.T) {
+		t.Parallel()
+		cppT01Probe(t, "VNEW_cfloat_res_refine", []string{"VOLD_cfloat_res_refine"}, newFile, `
+    if ( n != 1 || r.refused || r.malformed ) { printf( "own file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( cache.compiles != 0 ) { printf( "the identity lane compiled a plan (%d): the reader's own hash must select the emitted plan\n", cache.compiles ); return 1; }
+`, "")
+	})
+	t.Run("equal_bytes_older_hash_takes_the_entrys_lane", func(t *testing.T) {
+		t.Parallel()
+		cppT01Probe(t, "VNEW_cfloat_res_refine", []string{"VOLD_cfloat_res_refine"}, oldFile, `
+    if ( n != 1 || r.refused || r.malformed ) { printf( "older file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( cache.compiles != 1 || cache.used != 1 )
+        { printf( "equal layout bytes under a different hash did not take the entry's lane: compiles=%d used=%d — the reader matched itself by its bytes\n", cache.compiles, cache.used ); return 1; }
+`, "")
+	})
+}
+
+// cpp/R8 — "a hash in no lineage entry → layout_newer, reporting the file's
+// hash AND NOTHING ELSE". Algorithm §5.3 step 5 and the report table: a hash
+// the lineage does not hold refuses `layout_newer` with the FILE's hash and no
+// counter, and `malformed` is false. The OLD reader reads the widened writer's
+// file, and stranger hashes are stamped over a file whose layout bytes are the
+// reader's own — the hash alone decides.
+func cppT01LayoutNewer(t *testing.T, corpus string) {
+	newFile := filepath.Join(corpus, "new_field_append.bin")
+	oldFile := filepath.Join(corpus, "old_field_append.bin")
+	t.Run("corpus_file", func(t *testing.T) {
+		t.Parallel()
+		cppT01Probe(t, "VOLD_field_append", nil, newFile, `
+    T01_RESET();
+    n = @LOAD@( back, 8, data, len, plan, 4096, &cache, &r );
+    T01_REFUSED( "an old reader handed the newer writer's file", layout_newer, want );
+    if ( want == 0 ) { printf( "the corpus hash is zero: the test cannot tell the file's hash from nothing\n" ); return 1; }
+`, "")
+	})
+	t.Run("stranger_hashes", func(t *testing.T) {
+		t.Parallel()
+		cppT01Probe(t, "VOLD_field_append", nil, oldFile, `
+{
+    static uint8_t orig[1 << 20];
+    const uint64_t strangers[] = { 1ull, 0xDEADBEEFCAFEF00Dull, ~0ull, want ^ ( 1ull << 63 ) };
+    int c;
+    char who[80];
+    memcpy( orig, data, (size_t) len );
+    for ( c = 0; c < 4; ++c )
+    {
+        memcpy( data, orig, (size_t) len );
+        TableFixedPut64( data + kTableFixedHashAt, strangers[c] );
+        snprintf( who, sizeof( who ), "stranger hash %d", c );
+        T01_RESET();
+        n = @LOAD@( back, 8, data, len, plan, 4096, &cache, &r );
+        T01_REFUSED( who, layout_newer, strangers[c] );
+    }
+    memcpy( data, orig, (size_t) len );
+}
+`, "")
+	})
+}
+
+// cpp/R9/remaining-boundaries — "Remaining known-hash length and byte-boundary
+// acceptance" (the R9 work-set's title: a known hash with a different layout
+// length or bytes → layout_malformed). The reference's seven §1.1 malformations
+// under a known hash are its own witness (test/tables/versioning_numbers.cpp,
+// PR #1002); this proves the boundaries that witness does not close: the held
+// hash accepts exactly its own length, and length zero, three short, one short,
+// one long and past the file each come back as the one name, layout_malformed.
+func cppT01KnownHashBoundaries(t *testing.T, corpus string) {
+	body := `
+{
+    static uint8_t orig[1 << 20];
+    const uint32_t L = TableFixedGet32( data + kTableFixedHeaderBytes );
+    const uint32_t lens[] = { 0u, ( L > 3u ) ? ( L - 3u ) : 0u, ( L > 0u ) ? ( L - 1u ) : 0u, L + 1u, 0xFFFFFFFFu };
+    const char * names[] = { "zero", "three short", "one short", "one long", "past the file" };
+    int c;
+    char who[96];
+    memcpy( orig, data, (size_t) len );
+    /* THE ACCEPTANCE BOUNDARY: the held hash with its own length reads. */
+    T01_RESET();
+    n = @LOAD@( back, 8, data, len, plan, 4096, &cache, &r );
+    if ( n < 1 || r.refused || r.malformed || r.reason != 0 ) { printf( "the held hash with its own length must read: n=%lld refused=%d reason=%d\n", (long long) n, r.refused, (int) r.reason ); return 1; }
+    for ( c = 0; c < 5; ++c )
+    {
+        memcpy( data, orig, (size_t) len );
+        TableFixedPut32( data + kTableFixedHeaderBytes, lens[c] );
+        snprintf( who, sizeof( who ), "known hash, layout length %s", names[c] );
+        T01_RESET();
+        n = @LOAD@( back, 8, data, len, plan, 4096, &cache, &r );
+        T01_REFUSED( who, layout_malformed, 0 );
+    }
+    memcpy( data, orig, (size_t) len );
+}
+`
+	for _, lane := range []struct{ name, file string }{
+		{"identity", "new_field_append.bin"}, {"lineage", "old_field_append.bin"},
+	} {
+		t.Run(lane.name, func(t *testing.T) {
+			t.Parallel()
+			cppT01Probe(t, "VNEW_field_append", []string{"VOLD_field_append"}, filepath.Join(corpus, lane.file), body, "")
+		})
+	}
+}
+
+// cpp/R13 — "REFUSE is total: refused+reason and malformed are never both set,
+// every counter stays zero, and not one destination byte is written"
+// (algorithm §5.3's report table). Every refusal name a file load can answer —
+// previous_form, message_form_as_file, newer_form, layout_newer,
+// layout_malformed, batch_too_large, no_layout, plan_too_large,
+// layout_unsupported — is checked against the whole report, and a malformed
+// answer (a nonzero reserved byte) against the converse: `malformed` alone,
+// `refused` and `reason` zero.
+func cppT01RefuseIsTotal(t *testing.T, corpus string) {
+	newer := "VNEW_field_append"
+	older := "VOLD_field_append"
+	t.Run("by_name_and_malformed", func(t *testing.T) {
+		t.Parallel()
+		cppT01Probe(t, newer, []string{older}, filepath.Join(corpus, "new_field_append.bin"), `
+{
+    static uint8_t orig[1 << 20];
+    const int64_t L = len;
+    const int64_t lb = TableFixedGet32( data + kTableFixedHeaderBytes );
+    memcpy( orig, data, (size_t) L );
+
+    data[0] = 1; T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+    T01_REFUSED( "previous_form", previous_form, 0 );
+    memcpy( data, orig, (size_t) L );
+    data[0] = 2; T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+    T01_REFUSED( "message_form_as_file", message_form_as_file, 0 );
+    memcpy( data, orig, (size_t) L );
+    data[0] = 9; T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+    T01_REFUSED( "newer_form", newer_form, 0 );
+    memcpy( data, orig, (size_t) L );
+
+    { const uint64_t stranger = want ^ 1ull; TableFixedPut64( data + kTableFixedHashAt, stranger );
+      T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+      T01_REFUSED( "layout_newer", layout_newer, stranger ); }
+    memcpy( data, orig, (size_t) L );
+
+    data[kTableFixedHeaderBytes + 4] ^= 0x01; T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+    T01_REFUSED( "layout_malformed", layout_malformed, 0 );
+    memcpy( data, orig, (size_t) L );
+
+    T01_RESET(); n = @LOAD@( back, 0, data, L, plan, 4096, &cache, &r );
+    T01_REFUSED( "batch_too_large", batch_too_large, 0 );
+
+    { uint8_t * rec = data + kTableFixedHeaderBytes + 4 + lb; rec[0] ^= 0xFF;
+      T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+      T01_REFUSED( "no_layout", no_layout, 0 ); }
+    memcpy( data, orig, (size_t) L );
+
+    data[3] = 1; T01_RESET(); n = @LOAD@( back, 8, data, L, plan, 4096, &cache, &r );
+    T01_MALFORMED( "nonzero reserved byte" );
+    memcpy( data, orig, (size_t) L );
+}
+`, "")
+	})
+	t.Run("plan_too_large", func(t *testing.T) {
+		t.Parallel()
+		// THE LINEAGE LANE only: the identity plan is emitted, so only a plan
+		// compiled from an older entry can fail to fit the caller's storage.
+		cppT01Probe(t, newer, []string{older}, filepath.Join(corpus, "old_field_append.bin"), `
+    T01_RESET();
+    n = @LOAD@( back, 8, data, len, plan, 0, NULL, &r );
+    T01_REFUSED( "plan_too_large", plan_too_large, 0 );
+`, "")
+	})
+	t.Run("layout_unsupported", func(t *testing.T) {
+		t.Parallel()
+		// THE FLOOR'S FIXTURE (docs/FIXED-FORM-VERSIONING-TESTS.md, "The floor
+		// and the hash"): VOLD_floor/VMID_floor/VNEW_floor is one lineage of
+		// three and the fixture's floor sits at 1, so the oldest file's hash is
+		// in the lineage and BELOW the floor: layout_unsupported, carrying the
+		// file's hash.
+		cppT01Probe(t, "VNEW_floor", []string{"VOLD_floor", "VMID_floor"},
+			filepath.Join(corpus, "old_floor.bin"), `
+    T01_RESET();
+    n = @LOAD@( back, 8, data, len, plan, 4096, &cache, &r );
+    T01_REFUSED( "layout_unsupported", layout_unsupported, want );
+`, "")
+	})
 }
