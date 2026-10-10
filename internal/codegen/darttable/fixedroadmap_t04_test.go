@@ -251,6 +251,66 @@ func t04R32(t *testing.T) {
 	}
 }
 
+// ---- dart/R10 -----------------------------------------------------------------
+
+// t04R10 holds dart/R10 to §5.6 and §5.3 step 7: "the hash is looked up, the
+// floor is checked, and the layout is COMPARED — the seven rules do not fire at
+// run time". The emitted load parses no layout (`TableFixedLayout` is the
+// build-time plan's), walks no stranger's bytes, and never recomputes the
+// header's hash: the header's eight bytes are taken as given and matched on.
+func t04R10(t *testing.T) {
+	text := t04Retire(t, 0)
+	load := t04Fn(text, "lineageFixedLoad")
+	if load == "" {
+		t.Fatal("R10: lineageFixedLoad is not emitted")
+	}
+	t04Has(t, load, "if (layoutBytes != known.layoutBytes) {", "R10 the layout length is a comparison")
+	t04Has(t, load, "bytes[TableFixedLimits.layoutAt + i] != known.layout[i]", "R10 the layout bytes are a comparison")
+	t04Absent(t, load, "TableFixedLayout(", "R10 the load parses a stranger's layout")
+	t04Absent(t, load, "hashOf(", "R10 the load recomputes the header's hash")
+	// THE HASH FUNCTION IS STILL A WIRE IDENTITY: it survives in the runtime for
+	// the writer's stamp and for any later reader, but no load path calls it.
+	t04Has(t, fixedRuntime, "static int hashOf(Uint8List bytes, int at, int length) {", "R10 the hash function")
+}
+
+// ---- dart/R15 -----------------------------------------------------------------
+
+// t04R15 holds dart/R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan
+// selection, on the file's hash; the count and text clamps that REMAIN are the
+// writer's bounds carried by the plan (bill §12.5), which only a backward read
+// over a locked entry can reach; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t04R15(t *testing.T) {
+	text := t04Retire(t, 0)
+	load := t04Fn(text, "lineageFixedLoad")
+	if load == "" {
+		t.Fatal("R15: lineageFixedLoad is not emitted")
+	}
+	miss := strings.Index(load, "report.refused = TableFixedRefusal.layoutNewer;")
+	records := strings.Index(load, "for (var k = 0; k < n; k++) {")
+	if miss < 0 || records < 0 {
+		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
+	}
+	if miss > records {
+		t.Error("R15: an unknown hash is not refused before the first record")
+	}
+	selects := strings.Index(load, "final lane = lineageFixedLineagePlans[pick];")
+	if selects >= 0 && selects < miss {
+		t.Error("R15: a plan is selected before the hash is known")
+	}
+	t04Absent(t, load, "report.unknown += 1", "R15 an unknown field is dropped-and-counted per record on the read path")
+	t04Has(t, load, "report.unknown += censusUnknown;", "R15 unknown is the compile census")
+	// THE COUNT AND TEXT CLAMPS THAT REMAIN ARE THE WRITER'S BOUND carried by
+	// the plan: `size` is the entry's writer-side bound, never the reader's.
+	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R15 the count clamp is the writer's bound")
+	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R15 the text clamp is the writer's span")
+	// A VARIANT PAST THE WRITER'S SET LANDS None AND COUNTS, on the plan's own
+	// writer-side remap — never a forward-read remap to a name the reader has.
+	t04Has(t, fixedRuntime, "if (raw < 0 || raw > remap[remapAt]) {", "R15 a variant past the writer's set is None")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapDartT04Versions(t *testing.T) {
@@ -261,6 +321,8 @@ func TestFixedRoadmapDartT04Versions(t *testing.T) {
 	}{
 		{id: "dart/R3", check: t04R3},
 		{id: "dart/R32", check: t04R32},
+		{id: "dart/R10", check: t04R10},
+		{id: "dart/R15", check: t04R15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
