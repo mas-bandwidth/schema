@@ -365,6 +365,11 @@ public final class TableFixed {
         planTooLarge,
         /** more records than the values array the caller handed in. */
         batchTooLarge,
+        /** ILL-FORMED TEXT in the USED units: a kind 12 payload that is not
+         *  well-formed UTF-8, or a kind 33 payload carrying an unpaired
+         *  surrogate. A content violation REFUSES BY NAME, the verdict the
+         *  packet reader gives, rather than defaulting (ALG 4.5, fix 11). */
+        textIllFormed,
         /** A HASH IN NO LINEAGE ENTRY: the writer is NEWER than this reader, and
          *  the operator's answer is SHIP THE READER. Its report carries the
          *  file's hash AND NOTHING ELSE (ALG 5.3, bill 12.4). */
@@ -439,6 +444,55 @@ public final class TableFixed {
         long v = 0;
         for (int i = 0; i < w; i++) { v |= ((long) (src[at + i] & 0xFF)) << (8 * i); }
         return v;
+    }
+
+    /** KIND 12's CONTENT, over the USED units and nothing else: well-formed
+     *  UTF-8 (ALG 4.5, fix 11; SPEC-TABLES §3's UTF-8 validity). A zero byte is
+     *  U+0000 and well-formed -- the message form forbids it for its own
+     *  framing, and this form has a length. A violation refuses by name. */
+    public static boolean utf8WellFormed(byte[] b, int at, int n) {
+        int i = at;
+        final int end = at + n;
+        while (i < end) {
+            final int c = b[i] & 0xFF;
+            if (c < 0x80) { i++; continue; }
+            final int need;
+            final int lead;
+            if (c >= 0xC2 && c <= 0xDF) { need = 1; lead = c & 0x1F; }
+            else if (c >= 0xE0 && c <= 0xEF) { need = 2; lead = c & 0x0F; }
+            else if (c >= 0xF0 && c <= 0xF4) { need = 3; lead = c & 0x07; }
+            else { return false; }
+            if (i + need >= end) { return false; }
+            int cp = lead;
+            for (int k = 1; k <= need; k++) {
+                final int cc = b[i + k] & 0xFF;
+                if ((cc & 0xC0) != 0x80) { return false; }
+                cp = (cp << 6) | (cc & 0x3F);
+            }
+            if (need == 2 && cp < 0x800) { return false; }
+            if (need == 3 && (cp < 0x10000 || cp > 0x10FFFF)) { return false; }
+            if (cp >= 0xD800 && cp <= 0xDFFF) { return false; }
+            i += need + 1;
+        }
+        return true;
+    }
+
+    /** KIND 33's CONTENT, over the USED code units: SURROGATES ARE PAIRED and a
+     *  lone surrogate is ill-formed (ALG 4.5, fix 7). A zero unit is U+0000 and
+     *  well-formed here, for the reason utf8WellFormed gives. */
+    public static boolean utf16WellFormed(byte[] b, int at, int units) {
+        for (int i = 0; i < units; i++) {
+            final int u = get16(b, at + i * 2);
+            if (u >= 0xD800 && u <= 0xDBFF) {
+                if (i + 1 >= units) { return false; }
+                final int l = get16(b, at + (i + 1) * 2);
+                if (l < 0xDC00 || l > 0xDFFF) { return false; }
+                i++;
+            } else if (u >= 0xDC00 && u <= 0xDFFF) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** run one plan over one record body, landing it in this reader's image. */

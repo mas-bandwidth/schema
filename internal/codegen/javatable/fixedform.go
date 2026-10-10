@@ -1127,6 +1127,7 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    /** land one record image into a value. The image is this reader's own\n")
 	g.pf("     *  body layout, so every offset here is a constant. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.pf("        if (r.refused) { return; }\n")
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitScatterField(f, off, "b", "at", "v", "r", 8)
@@ -1162,6 +1163,14 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
+		if f.Type.Kind == ir.TString {
+			// A CONTENT VIOLATION REFUSES BY NAME (ALG 4.5, fix 11; SPEC-TABLES
+			// §3's UTF-8 validity), over the USED units and nothing else. The
+			// check is BEFORE the slack zeroing, so a violating payload never
+			// reaches storage.
+			g.pf("%sif (!TableFixed.utf8WellFormed(%s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+				ind, buf, at, base+4, val, name, rep)
+		}
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TWString:
@@ -1169,6 +1178,10 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
 		g.pf("%s    %s.%s[i] = (char) TableFixed.get16(%s, %s + %d + i * 2);\n", ind, val, name, buf, at, base+4)
 		g.pf("%s}\n", ind)
+		// A WIDE CONTENT VIOLATION REFUSES BY NAME TOO, over the USED CODE
+		// UNITS: surrogates paired, a lone surrogate ill-formed (ALG 4.5 fix 7).
+		g.pf("%sif (!TableFixed.utf16WellFormed(%s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, buf, at, base+4, val, name, rep)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (char) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	default:
@@ -1238,9 +1251,11 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			g.pf("%s%s.scatter(%s, %s + %d, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep)
+			g.pf("%sif (%s.refused) { return; }\n", ind, rep)
 			return
 		case *ir.Union:
 			g.pf("%s%s.scatter(%s, %s + %d, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep)
+			g.pf("%sif (%s.refused) { return; }\n", ind, rep)
 			return
 		case *ir.Enum:
 			// AN ORDINAL PAST THE LAST VARIANT LANDS None (0) AND COUNTS ONE
@@ -1249,6 +1264,11 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			// POSITION, so a value past the last one names nothing here.
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
+			// A CLAMP THAT CANNOT FIRE IS NOT EMITTED, AND NOTHING MOVES
+			// (ALG 4.5, §5.4): an ordinal whose extent FILLS its storage width
+			// -- 255 variants in a byte, 65535 in two -- has no read-side clamp,
+			// because `q > extent` is a value of that very width and no value
+			// satisfies it.
 			g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
@@ -1361,6 +1381,18 @@ func fixedRawRange(f *ir.Field) (int64, int64, bool) {
 	return lo.Int64(), hi.Int64(), true
 }
 
+// fixedExtentFillsWidth is §5.4's "a clamp that cannot fire is not emitted":
+// an ordinal or arm extent equal to the largest value its storage width can
+// hold has no read-side clamp, because the comparison would be `> extent`
+// against a value of that very width.
+func fixedExtentFillsWidth(count int, storageBytes int64) bool {
+	if storageBytes <= 0 || storageBytes > 8 {
+		return false
+	}
+	max := uint64(1)<<(8*uint(storageBytes)) - 1
+	return uint64(count) >= max
+}
+
 func fixedNarrow(typ, expr string) string {
 	switch typ {
 	case "byte", "short", "int":
@@ -1456,6 +1488,9 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("        // is a value this reader's own storage does not admit, and\n")
 	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
 	g.pf("        // and that its own switch cannot answer.\n")
+	// A CLAMP THAT CANNOT FIRE IS NOT EMITTED, AND NOTHING MOVES (ALG 4.5,
+	// §5.4): a tag whose arm extent FILLS its storage width has no read-side
+	// clamp to emit.
 	g.pf("        if (v.type > %d) { v.type = none; r.clamped++; }\n", len(un.Variants))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
@@ -1693,6 +1728,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 		g.pf("            TableFixed.clampWriterBounds(writerBounds, image, report);\n")
 	}
 	g.pf("            scatter(image, 0, values[k], report);\n")
+	g.pf("            if (report.refused) { return -1; }\n")
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
 	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")
