@@ -229,7 +229,7 @@ func t02GoR2(t *testing.T) {
 	t02GoHas(t, src, fmt.Sprintf("const TFixedBodyBytes = %d", body), "R2 the lock stores the body alone")
 	t02GoHas(t, src, "const TFixedRecordBytes = 8 + TFixedBodyBytes", "R2 COMPILE adds the eight once")
 	block := t02GoBlock(t, src, "var TFixedKnown = []TableFixedKnownLayout{", "\n}\n")
-	t02GoHas(t, block, fmt.Sprintf("Record: %d,", own.Record), "R2 the known entry writes the handed 8 + body verbatim")
+	t02GoHas(t, t02GoNorm(block), fmt.Sprintf("Record: %d,", own.Record), "R2 the known entry writes the handed 8 + body verbatim")
 	t02GoHas(t, t02GoNorm(src), "recordBytes := known.Record", "R2 the record size comes from the lock's entry")
 	if n := t02GoNorm(src); strings.Contains(n, "known.Record + 8") || strings.Contains(n, "8 + known.Record") {
 		t.Error("R2: a backend added the eight a second time")
@@ -240,17 +240,21 @@ func t02GoR2(t *testing.T) {
 
 // t02GoR23 holds R23's static-data clause to this leg's shapes. The rule is
 // "hash, layout, layout_bytes, record_bytes, in that order, with the byte
-// length riding BESIDE the pointer" (§5.9 #19); Go carries layout and its length
-// as one slice, so the members are Hash, Layout, Record and layout_bytes is
-// len(Layout). "The file's hash lands on the report as layout_hash, LAST on the
-// report and zero on every other path" (§5.2, §5.9 #15).
+// length riding BESIDE the pointer" (§5.9 #19): TableFixedKnownLayout carries
+// FOUR members — Hash, Layout, LayoutBytes, Record — and every emitted entry
+// spells its layout_bytes as len(Layout). "The file's hash lands on the report
+// as layout_hash, LAST on the report and zero on every other path" (§5.2,
+// §5.9 #15).
 func t02GoR23(t *testing.T) {
 	src := t02GoEmit(t, unitFrom(t, t02GoFlat))
 
 	known := t02GoBlock(t, src, "type TableFixedKnownLayout struct {", "\n}")
-	if got := t02GoMembers(known); !slices.Equal(got, []string{"Hash", "Layout", "Record"}) {
-		t.Errorf("R23: TableFixedKnownLayout's members are %v, want [Hash Layout Record] — hash, layout, layout_bytes (len(Layout)) and record_bytes in order", got)
+	if got := t02GoMembers(known); !slices.Equal(got, []string{"Hash", "Layout", "LayoutBytes", "Record"}) {
+		t.Errorf("R23: TableFixedKnownLayout's members are %v, want [Hash Layout LayoutBytes Record] — hash, layout, layout_bytes and record_bytes in order", got)
 	}
+	block := t02GoBlock(t, src, "var TFixedKnown = []TableFixedKnownLayout{", "\n}\n")
+	t02GoHas(t, block, fmt.Sprintf("LayoutBytes: %d,", len(t02GoLayoutBytes(t, src))),
+		"R23 each entry's layout_bytes is its layout's own byte length")
 
 	report := t02GoBlock(t, src, "type TableReport struct {", "\n}")
 	if members := t02GoMembers(report); len(members) == 0 || members[len(members)-1] != "LayoutHash" {

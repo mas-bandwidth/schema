@@ -1182,12 +1182,14 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // (upgrade the client). Those are the operator's two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-// on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
-// never from the file.
+// on, the layout bytes verbatim with its byte length BESIDE the pointer, and
+// the RECORD SIZE taken from the lock and never from the file. The members are
+// §5.9 #19's: hash, layout, layout_bytes, record_bytes, in that order.
 type TableFixedKnownLayout struct {
-	Hash   uint64
-	Layout []byte
-	Record int64
+	Hash        uint64
+	Layout      []byte
+	LayoutBytes int
+	Record      int64
 }
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
