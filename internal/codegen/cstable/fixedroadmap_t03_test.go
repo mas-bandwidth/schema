@@ -53,6 +53,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R22", t03R22},
 		{"cs/R3", t03R3},
 		{"cs/R32", t03R32},
+		{"cs/R10", t03R10},
+		{"cs/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -376,4 +378,73 @@ func t03R32(t *testing.T) {
 		"R32 a retired version is refused layout_unsupported by name, reporting the file's hash")
 	t02Has(t, home, "public static readonly TableFixedKnownLayout[] TFixedKnown", "R32 the lineage is immutable static data")
 	t02Has(t, home, "public const int TFixedFloor", "R32 the floor is a compile-time constant, so a second read cannot disagree")
+}
+
+// ---- cs/R10 -----------------------------------------------------------------
+
+// t03R10: R10 [weak] "the run-time walk of a stranger's layout and the recompute
+// of the header's hash are retired" (§5.3 step 4's rule, §5.6). No path computes
+// a hash from layout bytes the runtime holds — HashOf is defined and never
+// called — and the LOAD path parses no layout and compiles no plan: the plan is
+// build-time static data and the header's hash is taken as given.
+func t03R10(t *testing.T) {
+	files := t03Files(t, t03Flat)
+	joined := ""
+	for _, b := range files {
+		joined += string(b)
+	}
+	if n := strings.Count(joined, "HashOf("); n != 1 {
+		t.Errorf("R10: HashOf( occurs %d times in the emitted build, want its one definition and no call: a runtime derives no hash from layout bytes it holds", n)
+	}
+	load := t03Method(t03Home(t, files), "public static long TFixedLoad(\n            Span<T> values,")
+	if load == "" {
+		t.Fatal("R10: the emitted unit has no TFixedLoad(Span<T>, ...)")
+	}
+	for _, banned := range []string{"HashOf(", "ParseLayout(", "Compile(", "fnv"} {
+		if strings.Contains(load, banned) {
+			t.Errorf("R10: the load reaches %q: a stranger's layout is never walked at run time and the header's hash is never recomputed", banned)
+		}
+	}
+	t02Has(t, load, "ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));",
+		"R10 the header's hash is taken as given")
+}
+
+// ---- cs/R15 -----------------------------------------------------------------
+
+// t03R15: R15 [weak] "the four forward-read clamps are retired — count clamp
+// across bounds, range clamp across versions, remap of an unknown variant to
+// None, drop-and-count of an unknown field: each is layout_newer now" (§5.6,
+// §5.8 row 3). The four rows' OLD-REFUSES-NEW column is TestFixedVersioning's,
+// where the older reader refuses the newer writer's file by name; this subtest
+// proves the four rows are in the suite and that the emitted load refuses a hash
+// it does not hold BEFORE any record.
+func t03R15(t *testing.T) {
+	// field_append is the drop-and-count of an unknown field,
+	// array_bounded_grow the count clamp across bounds, range_widen the range
+	// clamp across versions, enum_append the remap of an unknown variant to None.
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		inRows := false
+		for _, r := range csVersionRows {
+			if r.row != row {
+				continue
+			}
+			inRows = true
+			if r.sameHash {
+				t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
+			}
+		}
+		if !inRows {
+			t.Errorf("R15: %s is not in TestFixedVersioning's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+	}
+	load := t03Method(t03Home(t, t03Files(t, t03Flat)), "public static long TFixedLoad(\n            Span<T> values,")
+	if load == "" {
+		t.Fatal("R15: the emitted unit has no TFixedLoad(Span<T>, ...)")
+	}
+	t02Has(t, load, "int pick = TableFixedWire.Select(TFixedKnown, hash);", "R15 the lane is selected by the header's hash")
+	t02Has(t, t02Norm(load), `report.Reason = "layout_newer"; report.LayoutHash = hash;`,
+		"R15 a hash in no lineage entry is layout_newer, reporting the file's hash")
+	if i, j := strings.Index(load, "layout_newer"), strings.Index(load, "for (int k = 0"); i < 0 || (j >= 0 && i > j) {
+		t.Error("R15: the newer refusal does not stand before the record loop")
+	}
 }
