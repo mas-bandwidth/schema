@@ -442,6 +442,66 @@ func t04R29(t *testing.T) {
 	t04Has(t, runtime, "units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)", "R29 the text's cap is the writer's span")
 }
 
+// ---- elixir/E5 ---------------------------------------------------------------
+
+// t04E5 holds elixir/E5 to SPEC-TABLES §3.4's kind 35: "ON THIS FORM THEY ARE
+// ONE BYTE APART ... the edit reads as kind_mismatch and the field takes its
+// declared default", so `?T` and a plain `T` nesting are distinguishable in the
+// layout, the wrapper is one present byte plus its child, and `T` into `?T`
+// lands a CONSTANT present 1 under the row's own guard.
+func t04E5(t *testing.T) {
+	if ir.TableKindOptional != 35 {
+		t.Fatalf("E5: TableKindOptional = %d, want 35", ir.TableKindOptional)
+	}
+	plain := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    link int32\n}\n")
+	optional := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    link ?int32\n}\n")
+	if got := ir.TableFixedTypeBytes(plain.Tables["Lineage"]); got != 4 {
+		t.Errorf("E5: a plain int32 nested body is %d, want 4", got)
+	}
+	if got := ir.TableFixedTypeBytes(optional.Tables["Lineage"]); got != 5 {
+		t.Errorf("E5: a ?int32 body is %d, want 5 — one present byte plus the payload", got)
+	}
+	w := ir.TableFixedWalkRoot(plain.Tables["Lineage"])
+	if len(w) < 2 || w[1].Kind != ir.TableKindI32 {
+		t.Errorf("E5: a plain int32 walks as %v, want the field at kind %d", w, ir.TableKindI32)
+	}
+	wo := ir.TableFixedWalkRoot(optional.Tables["Lineage"])
+	if len(wo) < 2 || wo[1].Kind != ir.TableKindOptional {
+		t.Errorf("E5: a ?int32 walks as %v, want the field at kind %d", wo, ir.TableKindOptional)
+	}
+	runtime := fixedRuntimeBody
+	t04Has(t, runtime, "defp check_composite(35, size, children, facts) do", "E5 the wrapper is its own layout kind")
+	t04Has(t, runtime, "size != facts.sum + 1 -> {:error, :layout_size_mismatch}", "E5 the wrapper is one present byte plus its child")
+	t04Has(t, runtime, "my_kind == 35 and their_kind != 35 ->", "E5 T into ?T is its own emit")
+	t04Has(t, runtime, "{:const, aux_at, 1, 1}", "E5 the present companion lands a constant 1")
+}
+
+// ---- elixir/W2 ---------------------------------------------------------------
+
+// t04W2 holds elixir/W2 to SPEC-TABLES §3.4's present rule: "the payload rides
+// WHOLE whether or not it is present; ZERO on write when the flag is 0". The
+// emitted write body stores the flag and then the payload behind ONE `if`, so
+// an absent optional costs the branch and not one store — the template's zeros
+// are what rides, and a caller's untouched payload storage never reaches the
+// wire.
+func t04W2(t *testing.T) {
+	text, _ := t04Lineage(t,
+		"package probe\n\nfixed table Lineage\n{\n    link int32\n}\n",
+		"package probe\n\nfixed table Lineage\n{\n    link ?int32\n}\n")
+	t04Has(t, text, "if(v_link_present, do: 1, else: 0)::unsigned-8", "W2 the present flag is stored")
+	guard := strings.Index(text, "if v_link_present do")
+	if guard < 0 {
+		t.Fatalf("W2: an absent optional does not guard its store:\n%s", text)
+	}
+	if payload := strings.Index(text, "R.fits(v_link, 32, true)::little-signed-32"); payload < guard {
+		t.Error("W2: the payload's store is not behind the present guard")
+	}
+	t04Has(t, text, "0::size(4)-unit(8)", "W2 an absent optional rides the template's zeros")
+	if n := strings.Count(text, "if v_link_present do"); n != 1 {
+		t.Errorf("W2: the absent-optional guard appears %d times, want once", n)
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapElixirT04Versions(t *testing.T) {
@@ -459,6 +519,8 @@ func TestFixedRoadmapElixirT04Versions(t *testing.T) {
 		{id: "elixir/R20", check: t04R20},
 		{id: "elixir/R21", check: t04R21},
 		{id: "elixir/R29", check: t04R29},
+		{id: "elixir/E5", check: t04E5},
+		{id: "elixir/W2", check: t04W2},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
