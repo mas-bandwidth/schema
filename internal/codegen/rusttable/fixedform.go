@@ -1220,10 +1220,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            let mut damaged = 0i32;\n")
 		g.pf("            %s(&mut values[k], &mut clamped, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
 		g.pf("            report.clamped += clamped as u32;\n")
-		g.pf("            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on\n")
-		g.pf("            // the one FLAG and not on a counter: the field read its declared\n")
-		g.pf("            // default and the rest of the record stands.\n")
-		g.pf("            if damaged != 0 {\n                report.malformed = true;\n            }\n")
+		g.pf("            // ILL-FORMED TEXT IS DAMAGE AND NOT DATA: the content rule was\n")
+		g.pf("            // violated inside the USED units, so the read REFUSES BY NAME\n")
+		g.pf("            // (§4.5, fix 11) — the same verdict the packet reader gives —\n")
+		g.pf("            // and the refusal is TOTAL: no counter stands and nothing past\n")
+		g.pf("            // the damaged record is decoded.\n")
+		g.pf("            if damaged != 0 {\n                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n")
@@ -1481,10 +1483,11 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 // carries no meaning and reading it would be the cost this form exists to avoid.
 //
 // A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and the verdict is the one
-// every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
-// `malformed` is raised, and the rest of the record stands. The packet wire
-// refuses the whole read; here the record is positional, so the damage is one
-// field's and the reader does not lose the others to it.
+// the packet reader gives (§4.5, fix 11): the read REFUSES BY NAME. The field
+// is zeroed to its declared default and `damaged` is raised, and the load turns
+// that flag into ONE `text_ill_formed` refusal — nothing past the damaged record
+// is decoded. The slack is never read, so non-zero slack is not this refusal
+// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
 func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
 	used := fmt.Sprintf("value.%s_length.clamp(0, %d) as usize", f.Name, f.Type.Size)
 	call := fmt.Sprintf("table_utf8_valid(&value.%s[..%s])", f.Name, used)

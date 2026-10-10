@@ -422,6 +422,116 @@ func t05R18(t *testing.T) {
 	}
 }
 
+// ---- rust/C3 -----------------------------------------------------------------
+
+// t05C3 holds rust/C3 to §5.4's `count`/`text` row and SPEC-TABLES §3.4: a
+// text length out of range is clamped ONCE and counted once. A `string(N)`'s
+// length is in BYTES and a `wstring(N)`'s in CODE UNITS, so each clamps at its
+// own declared capacity, and the write side clamps the same number.
+func t05C3(t *testing.T) {
+	files, err := Generate(unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    s string(8) = \"hi\"\n    w wstring(8)\n    y bytes(8)\n}\n"))
+	if err != nil {
+		t.Fatalf("C3: Generate: %v", err)
+	}
+	text := t05Fixed(t, files)
+	scatter := t05Fn(text, "lineage_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("C3: lineage_fixed_scatter is not emitted")
+	}
+	// ONCE PER ENTRY: `held != raw` is the one guard and it raises one clamp.
+	if n := strings.Count(scatter, "let held = raw.clamp(0, 8);"); n != 3 {
+		t.Errorf("C3: the three text fields clamp at %d sites, want 3", n)
+	}
+	if n := strings.Count(scatter, "if held != raw {"); n != 3 {
+		t.Errorf("C3: the clamp guard appears %d times, want once per text entry", n)
+	}
+	if n := strings.Count(scatter, "report.clamped += 1;"); n != 3 {
+		t.Errorf("C3: the text clamp counts at %d sites, want once per text entry", n)
+	}
+	t05Has(t, scatter, "value.s_length = held;", "C3 the narrow length lands the clamped value")
+	t05Has(t, scatter, "value.w_length = held;", "C3 the wide length lands the clamped value")
+	t05Has(t, scatter, "value.y_length = held;", "C3 the byte-buffer length lands the clamped value")
+	// THE WRITE SIDE HOLDS THE SAME BOUND, and it is the text's own capacity.
+	for _, bound := range []string{"value.s_length.clamp(0, 8)", "value.w_length.clamp(0, 8)", "value.y_length.clamp(0, 8)"} {
+		t05Has(t, text, bound, "C3 the write side holds the declared capacity")
+	}
+}
+
+// ---- rust/C4 -----------------------------------------------------------------
+
+// t05C4 holds rust/C4 to FIXED-FORM-ALGORITHM.md §4.5 and §5.8 row 8: "A
+// content violation REFUSES BY NAME, the verdict the packet reader gives". The
+// rust leg's report gains `text_ill_formed`, the emitted load turns the
+// content flag into that named refusal, and the refusal is TOTAL — `refuse`
+// zeroes every counter and clears `malformed`.
+func t05C4(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	t05Has(t, runtime, "TextIllFormed,", "C4 the named text-content refusal")
+	t05Has(t, runtime, "Self::TextIllFormed => \"text_ill_formed\",", "C4 the name the row owes")
+	// REFUSE IS TOTAL.
+	for _, zero := range []string{"self.unknown = 0;", "self.widened = 0;", "self.clamped = 0;", "self.malformed = false;"} {
+		t05Has(t, runtime, zero, "C4 a content refusal is total")
+	}
+	files, err := Generate(unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n"))
+	if err != nil {
+		t.Fatalf("C4: Generate: %v", err)
+	}
+	load := t05Fn(t05Fixed(t, files), "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("C4: lineage_fixed_load is not emitted")
+	}
+	t05Has(t, load, "return report.refuse(TableFixedReason::TextIllFormed);", "C4 ill-formed content refuses BY NAME")
+	at := strings.Index(load, "if damaged != 0 {")
+	if at < 0 {
+		t.Fatal("C4: the content flag's test is not emitted")
+	}
+	body := load[at:]
+	if end := strings.Index(body, "\n"); end >= 0 {
+		_ = end
+	}
+	if !strings.Contains(body[:min(len(body), 120)], "report.refuse(TableFixedReason::TextIllFormed)") {
+		t.Errorf("C4: the content flag does not reach the named refusal:\n%s", body[:min(len(body), 200)])
+	}
+	if strings.Contains(body[:min(len(body), 120)], "report.malformed = true;") {
+		t.Error("C4: ill-formed content still lands `malformed` instead of the named refusal")
+	}
+}
+
+// ---- rust/R24 -----------------------------------------------------------------
+
+// t05R24 holds rust/R24 to SPEC-TABLES §3.4's SLACK RULE and FIXED-FORM-
+// ALGORITHM.md §4.5: the content rules run over the USED UNITS and nothing
+// else; text is counted in its own units — a narrow length in BYTES, a wide
+// length in CODE UNITS with a two-byte payload each — and non-zero slack is
+// neither `malformed` nor a refusal and moves no counter.
+func t05R24(t *testing.T) {
+	files, err := Generate(unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    s string(8) = \"hi\"\n    w wstring(8)\n    y bytes(8)\n}\n"))
+	if err != nil {
+		t.Fatalf("R24: Generate: %v", err)
+	}
+	text := t05Fixed(t, files)
+	scatter := t05Fn(text, "lineage_fixed_scatter")
+	clamp := t05Fn(text, "lineage_fixed_clamp_body")
+	if scatter == "" || clamp == "" {
+		t.Fatal("R24: the scatter or the clamp body is not emitted")
+	}
+	// THE CONTENT CHECK IS OVER THE USED LENGTH, never the declared bound.
+	t05Has(t, clamp, "table_utf8_valid(&value.s[..value.s_length.clamp(0, 8) as usize])", "R24 UTF-8 is checked over the used bytes")
+	t05Has(t, clamp, "table_utf16_valid(&value.w[..value.w_length.clamp(0, 8) as usize])", "R24 UTF-16 is checked over the used units")
+	// COUNTED IN ITS OWN UNITS: the wide payload is two bytes per unit, and
+	// the narrow and byte lengths ride N bytes.
+	t05Has(t, scatter, "for i in 0..8 {", "R24 a wide string walks its declared code units")
+	t05Has(t, scatter, "let at = 16 + 2 * i;", "R24 a wide unit is two bytes on the wire")
+	t05Has(t, scatter, "value.s[..8].copy_from_slice(&b[4..12]);", "R24 a narrow string rides N bytes")
+	t05Has(t, scatter, "value.y.copy_from_slice(&b[36..44]);", "R24 a byte buffer rides N bytes")
+	// SLACK IS UNSPECIFIED ON READ AND NOT A REFUSAL: the runtime says so and
+	// the content check never touches the slack.
+	t05Has(t, string(fixedRuntimeBody), "The checks run over the USED LENGTH and over nothing else", "R24 slack is not read")
+	if strings.Contains(clamp, "[..8]") {
+		t.Error("R24: the content check walks the declared bound instead of the used units")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT05Evolution(t *testing.T) {
@@ -436,6 +546,9 @@ func TestFixedRoadmapRustT05Evolution(t *testing.T) {
 		{id: "rust/E9", check: t05E9},
 		{id: "rust/R16", check: t05R16},
 		{id: "rust/R18", check: t05R18},
+		{id: "rust/C3", check: t05C3},
+		{id: "rust/C4", check: t05C4},
+		{id: "rust/R24", check: t05R24},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {

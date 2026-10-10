@@ -172,6 +172,14 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
+    /// ILL-FORMED TEXT IN THE USED UNITS (docs/SPEC-TABLES.md §3.4's content
+    /// rules; docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11). A narrow string whose
+    /// used bytes are not well-formed UTF-8 or carry a zero byte, and a wide
+    /// string whose used units are an unpaired surrogate or a zero unit, are
+    /// DAMAGE and not data: the read REFUSES BY NAME, the verdict the packet
+    /// reader gives, and nothing past it is decoded. The slack is never read,
+    /// so it is never this refusal.
+    TextIllFormed,
     /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5). The file was written by
     /// a build AHEAD OF THIS ONE: a fixed table reads BACKWARD and never
     /// forward, so there is nothing to try and no layout to walk. The report
@@ -214,6 +222,7 @@ impl TableFixedReason {
             Self::BlockMalformed => "block_malformed",
             Self::PlanTooLarge => "plan_too_large",
             Self::BatchTooLarge => "batch_too_large",
+            Self::TextIllFormed => "text_ill_formed",
             Self::LayoutNewer => "layout_newer",
             Self::LayoutUnsupported => "layout_unsupported",
             Self::LayoutMalformed => "layout_malformed",
