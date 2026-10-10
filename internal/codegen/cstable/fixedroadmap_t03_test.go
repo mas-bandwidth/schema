@@ -21,6 +21,8 @@ package cstable
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -162,6 +164,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R22", t03R22},
 		{"cs/R3", t03R3},
 		{"cs/R32", t03R32},
+		{"cs/R10", t03R10},
+		{"cs/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -433,4 +437,88 @@ func t03R32(t *testing.T) {
 		}
 	}
 	t03Has(t, t03Norm(floor), `report.LayoutHash = hash`, "R32 the refusal reports the file's own hash")
+}
+
+// t03R10: R10 [weak] "the run-time walk of a stranger's layout and the
+// recompute of the header's hash are retired" (§5.6, §5.3 step 4 and step 7).
+// The load path never parses a stranger's layout and never derives a hash from
+// layout bytes: the header's hash is the only fact selecting a lane.
+func t03R10(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R10: FixedLineageOf has no entry for T")
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": {
+		t03Older(own.Wire^0x5a5a5a5a, false),
+	}})
+	if err != nil {
+		t.Fatalf("R10: GenerateLineage: %v", err)
+	}
+	src := string(files[t03File])
+	// §5.3 step 4: the ONLY fnv in the emitted build is TableFixedWire.HashOf's
+	// own definition, which nothing calls.
+	if n := strings.Count(src, "HashOf("); n != 1 {
+		t.Errorf("R10: HashOf( occurs %d times, want its one definition and no call: the recompute of the header's hash is retired", n)
+	}
+	load := t03Method(src, "public static long TFixedLoad(")
+	if load == "" {
+		t.Fatal("R10: the generated source has no TFixedLoad")
+	}
+	for _, banned := range []string{"ParseLayout(", "HashOf(", "fnv", "Compile("} {
+		if strings.Contains(load, banned) {
+			t.Errorf("R10: the load path reaches %q: a stranger's layout is never walked at run time", banned)
+		}
+	}
+	// §5.9 #23: the suite has no skip verb, so it prints one at each retired
+	// case's call site, naming the function, §5.6 and where the coverage is owed.
+	checks, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "cs-tables", "src", "FixedFormChecks.cs"))
+	if err != nil {
+		t.Fatalf("R10: read FixedFormChecks.cs: %v", err)
+	}
+	for _, name := range []string{
+		"TestFixedVCase", "TestFixedPCase", "TestFixedLayoutValidation",
+		"TestFixedNegativeControlForwardRead", "TestFixedFxCrossGeneration",
+	} {
+		if !strings.Contains(string(checks), "SKIPPED: "+name+" — §5.6") {
+			t.Errorf("R10: FixedFormChecks.cs names no §5.6 retirement for %q: the retired case is printed at its call site with where its coverage is owed", name)
+		}
+	}
+}
+
+// t03R15: R15 [weak] "the four forward-read clamps are retired — count clamp
+// across bounds, range clamp across versions, remap of an unknown variant to
+// None, drop-and-count of an unknown field: each is layout_newer now" (§5.6).
+// The four rows' OLD-REFUSES-NEW columns are TestFixedVersioning's
+// (csVersionRows); this subtest proves the four rows are in the suite and that
+// the load refuses a hash the lineage does not hold by name, before any record.
+func t03R15(t *testing.T) {
+	// field_append is the drop-and-count of an unknown field,
+	// array_bounded_grow the count clamp across bounds, range_widen the range
+	// clamp across versions, and enum_append the remap of an unknown variant.
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		found := false
+		for _, r := range csVersionRows {
+			if r.row == row {
+				found = true
+				if r.sameHash {
+					t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("R15: %s is not in TestFixedVersioning's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+	}
+	// And the load itself: a hash in no lineage entry is layout_newer, with the
+	// file's hash, before the record loop runs at all.
+	_, src := t03Generate(t, t03Flat)
+	n := t03Norm(src)
+	t03Has(t, n, `if (pick < 0) { if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
+		"R15 a hash the lineage does not hold is layout_newer, reporting the file's hash")
+	newerAt := strings.Index(n, `report.Reason = "layout_newer"`)
+	recordAt := strings.Index(n, "for (int k = 0; k < n; ++k)")
+	if newerAt < 0 || recordAt < 0 || newerAt > recordAt {
+		t.Errorf("R15: the layout_newer refusal (at %d) does not stand before the record loop (at %d)", newerAt, recordAt)
+	}
 }
