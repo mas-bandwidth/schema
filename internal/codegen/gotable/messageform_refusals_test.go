@@ -196,19 +196,41 @@ func vocabFieldBadKind(kind uint8) []byte {
 	field = append(field, lebs(uint64(len(sub)))...)
 	return append(field, sub...)
 }
-func vocabFieldBadElem(elem uint8) []byte {
-	// "the vocabulary present, exactly once, kind 14, element kind 6"
-	// (docs/SPEC-TABLES.md section 3.3). The bytes after the element byte are
-	// a legal vocabulary entry stream -- one entry, an eight-byte id and its
-	// one-byte kind. The wrong element byte equals that stream's length, so a
-	// reader that skipped the element check and read the element byte as the
-	// length still frames and decodes the entry: the element check is the only
-	// thing that can refuse this field.
-	entry := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0}
-	sub := append([]byte{elem}, entry...)
-	field := []byte{2, 14}
-	field = append(field, lebs(uint64(len(sub)))...)
-	return append(field, sub...)
+func badElemAnnouncement() []byte {
+	ann := make([]byte, AnnounceMeasure())
+	Announce(ann)
+	bad := append([]byte(nil), ann...)
+	off := 1
+	for off < len(bad) {
+		ref := uint64(0)
+		shift := 0
+		for {
+			b := bad[off]
+			off++
+			ref |= uint64(b&0x7f) << shift
+			shift += 7
+			if b&0x80 == 0 {
+				break
+			}
+		}
+		if ref == 0 {
+			break
+		}
+		kind := bad[off]
+		off++
+		if kind == 14 {
+			for bad[off]&0x80 != 0 {
+				off++
+			}
+			off++
+			bad[off] = 9
+			break
+		}
+		if kind == 9 {
+			off += 8
+		}
+	}
+	return bad
 }
 
 func announcement(fields []byte) []byte {
@@ -224,31 +246,31 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 	twice = append(twice, vocabField(6, nil)...)
 	short := append([]byte{1, 9}, 0, 0, 0, 0)
 	cases := []struct {
-		name   string
-		fields []byte
+		name string
+		data []byte
 	}{
-		{"build version missing", vocabField(6, nil)},
-		{"build version twice", twice},
+		{"build version missing", announcement(vocabField(6, nil))},
+		{"build version twice", announcement(twice)},
 		// kind 5 is eight bytes wide, so the framing pre-walk -- which skips a
 		// field by its declared kind -- walks past this one and leaves the
 		// kind != 9 half of the strict check to refuse it. A four-byte kind
 		// here is eaten by tableOpenFramed/EndsEarly first and the test would
 		// pass without the guard.
-		{"build version not kind 9", append([]byte{1, 5, 0, 0, 0, 0, 0, 0, 0, 0}, vocabField(6, nil)...)},
+		{"build version not kind 9", announcement(append([]byte{1, 5, 0, 0, 0, 0, 0, 0, 0, 0}, vocabField(6, nil)...))},
 		// No vocabulary follows, so the framing pre-walk stays Ok and the
 		// !r.Has(8) half of the strict check is the only thing that can
 		// refuse it; an appended vocabulary would hand the guard eight bytes
 		// to read.
-		{"build version fewer than eight bytes", short},
-		{"vocabulary missing", versionField(version)},
-		{"vocabulary not kind 14", append(versionField(version), vocabFieldBadKind(13)...)},
-		{"vocabulary element not kind 6", append(versionField(version), vocabFieldBadElem(9)...)},
+		{"build version fewer than eight bytes", announcement(short)},
+		{"vocabulary missing", announcement(versionField(version))},
+		{"vocabulary not kind 14", announcement(append(versionField(version), vocabFieldBadKind(13)...))},
+		{"vocabulary element not kind 6", badElemAnnouncement()},
 	}
 	for _, tc := range cases {
 		v := new(TableVocabulary)
 		v.Init(make([]TableMessageEntry, TableMessageEntriesHere))
 		var report TableReport
-		if AnnounceRead(v, announcement(tc.fields), &report) || !report.Malformed || report.Verdict == TableOpenRefused || v.Announced {
+		if AnnounceRead(v, tc.data, &report) || !report.Malformed || report.Verdict == TableOpenRefused || v.Announced {
 			t.Fatalf("%s: want malformed and not a refusal, got %+v", tc.name, report)
 		}
 	}
@@ -274,13 +296,9 @@ func TestBatchTooLarge(t *testing.T) {
 	for i := range huge {
 		huge[i] = &Root{}
 	}
-	// MeasureMessages refuses and returns -1. The page also puts the reason on
-	// the TableReport each of the three verbs takes as its last parameter, but
-	// the plain fixed-table MeasureMessages emits no report parameter
-	// (messagewrite.go), so that half of the clause cannot be asserted here;
-	// it is reported not-done, and SaveMessages below carries the reason.
-	if n := RootMeasureMessages(huge); n != -1 {
-		t.Fatalf("measure over 256 bodies: %d", n)
+	var measure TableReport
+	if n := RootMeasureMessages(huge, &measure); n != -1 || measure.Verdict != TableOpenRefused || measure.Reason != "batch_too_large" {
+		t.Fatalf("measure over 256 bodies: %d report: %+v", n, measure)
 	}
 	var save TableReport
 	if RootSaveMessages(huge, make([]byte, 8), &save) != -1 || save.Verdict != TableOpenRefused || save.Reason != "batch_too_large" {
