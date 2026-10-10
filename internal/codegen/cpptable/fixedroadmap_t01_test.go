@@ -190,6 +190,7 @@ func TestFixedRoadmapCppT01Framing(t *testing.T) {
 		{"cpp/F7", cppT01Under20},
 		{"cpp/F8", cppT01RaggedTail},
 		{"cpp/F12", cppT01SecondLayout},
+		{"cpp/F9", cppT01BatchTooLarge},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
@@ -328,6 +329,53 @@ func cppT01SecondLayout(t *testing.T) {
             T01_RESET();
             n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
             T01_REFUSED( "a hash in no entry", layout_newer, stranger );
+        }
+    }
+`)
+}
+
+// cpp/F9 — "batch_too_large". Algorithm §5.3 step 10: "n := rest / record_bytes
+// ; if n > capacity: REFUSE batch_too_large". A three-record file makes capacity
+// 0, 1 and 2 each short and capacity 3 the boundary that reads. The refusal
+// comes before any record is decoded, on the identity lane and on an older
+// lineage entry's lane alike.
+func cppT01BatchTooLarge(t *testing.T) {
+	cppT01ProbeRow(t, "int_widen", `
+    {
+        const int64_t count = 3;
+        int64_t c;
+        char who[64];
+        len = @@ROOT@@FixedSave( values, count, data, (int64_t) sizeof( data ) );
+        if ( len < 20 ) { printf( "the writer produced no multi-record file\n" ); return 1; }
+        for ( c = 0; c < count; ++c )
+        {
+            snprintf( who, sizeof( who ), "batch_too_large capacity=%lld of %lld", (long long) c, (long long) count );
+            T01_RESET();
+            n = @@ROOT@@FixedLoad( back, c, data, len, plan, 4096, NULL, &r );
+            T01_REFUSED( who, batch_too_large, 0 );
+        }
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, count, data, len, plan, 4096, NULL, &r );
+        if ( n != count || r.refused || r.malformed ) { printf( "capacity == count must read: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
+
+        {
+            static uint8_t old[1 << 16];
+            int64_t olen = kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes + count * kT01Old.record_bytes;
+            uint8_t * at;
+            memset( old, 0, (size_t) olen );
+            old[0] = kTableFixedForm;
+            TableFixedPut64( old + kTableFixedHashAt, kT01Old.hash );
+            TableFixedPut32( old + kTableFixedHeaderBytes, (uint32_t) kT01Old.layout_bytes );
+            memcpy( old + kTableFixedHeaderBytes + 4, kT01Old.layout, (size_t) kT01Old.layout_bytes );
+            at = old + kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes;
+            for ( c = 0; c < count; ++c ) { TableFixedPut64( at + c * kT01Old.record_bytes, kT01Old.hash ); }
+            for ( c = 0; c < count; ++c )
+            {
+                snprintf( who, sizeof( who ), "batch_too_large (lineage) capacity=%lld of %lld", (long long) c, (long long) count );
+                T01_RESET();
+                n = @@ROOT@@FixedLoad( back, c, old, olen, plan, 4096, NULL, &r );
+                T01_REFUSED( who, batch_too_large, 0 );
+            }
         }
     }
 `)
