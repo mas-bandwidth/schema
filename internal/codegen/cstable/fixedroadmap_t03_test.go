@@ -51,9 +51,12 @@ package cstable
 // assertion made to pass here.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -130,6 +133,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"cs/R12", t03R12},
+		{"cs/R6", t03R6},
+		{"cs/R22", t03R22},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -161,4 +166,158 @@ func t03R12(t *testing.T) {
 		t.Errorf("R12: the per-record hash check is not before the prefill and the plan run (%d, %d, %d); a no_layout refusal would have written the destination", hash, fill, run)
 	}
 	t03Has(t, load, `report.Reason = "no_layout"`, "R12 the refusal is no_layout by name")
+}
+
+// ---- cs/R6 ------------------------------------------------------------------
+
+// t03R6 holds R6 to SPEC-TABLES §3.4 and ALGORITHM §5.9 #48: "65536 BYTES OF
+// RECORD BODY: THE FORM IS NOT EMITTED, AND THE TABLE IS NAMED", and "Such a
+// table is NOT a fixed-form root, so COMPILE consults no lineage for it and
+// parses no entry of it, even when the LOCK carries one". The leg's own root
+// selection and ir's agree, the ceiling names the table, and a lineage entry for
+// a table with no form is ignored rather than failing the build.
+func t03R6(t *testing.T) {
+	const src = `package probe
+
+fixed table Small
+{
+    keep uint32 = 0
+}
+
+fixed table Huge
+{
+    payload bytes(70000)
+}
+`
+	u := unitFrom(t, src)
+	small := u.Tables["Small"]
+	huge := u.Tables["Huge"]
+	if small == nil || huge == nil {
+		t.Fatal("R6: the fixture declares Small and Huge")
+	}
+	if n := ir.TableFixedTypeBytes(huge); n <= ir.TableFixedRecordMaxBytes {
+		t.Fatalf("R6: the fixture's body is %d bytes, not past the %d-byte ceiling", n, ir.TableFixedRecordMaxBytes)
+	}
+	// (1) NOT A FIXED-FORM ROOT: this leg's own answer and ir's agree.
+	if ir.TableFixedEmitted(u, huge) {
+		t.Error("R6: a table past §3.4's ceiling is not a fixed-form root; the leg still emits the form for Huge")
+	}
+	if !ir.TableFixedEmitted(u, small) {
+		t.Error("R6: the ceiling refuses Huge alone; Small keeps its form")
+	}
+	var roots []string
+	for _, st := range ir.TableFixedFormRoots(u) {
+		roots = append(roots, st.Name)
+	}
+	if len(roots) != 1 || roots[0] != "Small" {
+		t.Errorf("R6: ir.TableFixedFormRoots answers %v, want [Small]", roots)
+	}
+	// (2) THE REFUSAL NAMES THE TABLE, with the ceiling it refuses by.
+	warnings, errs := ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 0 {
+		t.Errorf("R6: a table past the form's ceiling is a warning and not a compile refusal: %v", errs)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "Huge") || !strings.Contains(joined, "65536") {
+		t.Errorf("R6: the warning must name the table and the ceiling: %s", joined)
+	}
+	// (3) NO FORM IS EMITTED, AND NO LINEAGE ENTRY IS PARSED even when the lock
+	// carries one: GENERATE MUST NOT REFUSE IT (#48), and nothing of Huge's
+	// fixed surface reaches the file.
+	own, ok := FixedLineageOf(u, "Small")
+	if !ok {
+		t.Fatal("R6: no lineage entry for Small")
+	}
+	over, ok := FixedLineageOf(u, "Huge")
+	if !ok {
+		t.Fatal("R6: no lineage entry for Huge")
+	}
+	text := t03EmitLineage(t, u, map[string][]FixedLineageEntry{
+		"Small": {own},
+		"Huge":  {over},
+	})
+	for _, bad := range []string{
+		"HugeFixedKnown", "HugeFixedLayout", "HugeFixedRecordBytes", "HugeFixedBodyBytes",
+		fmt.Sprintf("0x%016x", over.Wire),
+	} {
+		if strings.Contains(text, bad) {
+			t.Errorf("R6: a table with no fixed form reached the emitted surface: %q", bad)
+		}
+	}
+	t03Has(t, text, "SmallFixedKnown", "R6 the ceiling refuses Huge alone; Small keeps its form")
+}
+
+// ---- cs/R22 -----------------------------------------------------------------
+
+// t03R22 holds R22 to ALGORITHM §5.5: "Every table or type in it is declared
+// `fixed`; a pointer, map or unbounded array in it is a compile refusal; `T` is
+// never in its own closure" — the rows of docs/FIXED-FORM-VERSIONING-TESTS.md
+// (closure_plain_table, closure_variable_kind, closure_self), refused through
+// the shared compiler this leg generates from.
+func t03R22(t *testing.T) {
+	rows := []struct {
+		name, want, src string
+	}{
+		// "every table or type reached by value is itself fixed"
+		{"a plain table by value", "plain table Child",
+			"package probe\n\ntable Child { x int32 }\n\nfixed table T { child Child }\n"},
+		{"a plain table in an array", "plain table Ship",
+			"package probe\n\ntable Ship { hp int32 }\n\nfixed table T { ships [..4]Ship }\n"},
+		// "a pointer, map or unbounded array in the closure is a compile refusal"
+		{"a pointer", "is a pointer",
+			"package probe\n\ntable Node { x int32 }\n\nfixed table T { head *Node }\n"},
+		{"a map", "is a map",
+			"package probe\n\nfixed table T { ships map[uint32]int32 }\n"},
+		{"an unbounded array", "is an unbounded array",
+			"package probe\n\nfixed table T { entries []int32 }\n"},
+		// "T is never in its own closure"
+		{"itself by value", "T",
+			"package probe\n\nfixed table T { seq uint32\n    next T }\n"},
+		{"itself in an array", "T",
+			"package probe\n\nfixed table T { seq uint32\n    kids [..4]T }\n"},
+		{"itself through a type", "T",
+			"package probe\n\ntype Link { to T }\n\nfixed table T { seq uint32\n    link Link }\n"},
+		{"itself through a pointer", "T",
+			"package probe\n\nfixed table T { seq uint32\n    next *T }\n"},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, perrs := parser.Parse("Probe.schema", []byte(tc.src))
+			if len(perrs) > 0 {
+				t.Fatalf("%s: parse: %v", tc.name, perrs[0])
+			}
+			_, cerrs := check.Unit([]check.SourceFile{{
+				Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(tc.src), AST: f,
+			}})
+			if len(cerrs) == 0 {
+				t.Fatalf("%s: the closure break compiled — %q is a compile refusal", tc.name, tc.want)
+			}
+			var got strings.Builder
+			for _, e := range cerrs {
+				fmt.Fprintf(&got, "%s", e)
+			}
+			if !strings.Contains(got.String(), tc.want) {
+				t.Errorf("%s: the refusal must name %q: %s", tc.name, tc.want, got.String())
+			}
+		})
+	}
+
+	// THE POSITIVE CONTROL: a closure of fixed things alone compiles, and the
+	// leg emits the holder's form — the refusal is the construct's, never the
+	// keyword's.
+	legal := `package probe
+
+fixed table Inner
+{
+    x int32
+}
+
+fixed table T
+{
+    child Inner
+}
+`
+	text := t03Emit(t, legal)
+	t03Has(t, text, "TFixedKnown", "R22 a closure of fixed things alone keeps its form")
 }
