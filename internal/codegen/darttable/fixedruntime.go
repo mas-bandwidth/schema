@@ -1062,14 +1062,26 @@ void tableFixedRun(
         report.widened++;
         break;
       case TableFixedOp.widenFloat:
-        // every f32 value is exactly representable in an f64, infinities and
-        // NaN payloads included, so there is nothing to round and nothing to
-        // lose
-        conv.setFloat64(
-          0,
-          sourceView.getFloat32(s, Endian.little),
-          Endian.little,
-        );
+        // widenF IS THE BIT-EXACT WIDENING (§4's float rung, §5.2's table):
+        // a plain conversion is exact for every exponent but the all-ones
+        // one. The hardware conversion QUIETS a signalling NaN and can drop a
+        // payload bit, so an all-ones exponent with a non-zero payload is
+        // assembled by hand — f64's all-ones exponent, and the f32 mantissa's
+        // 23 bits shifted up by 29 — and the quiet bit is carried as the
+        // writer wrote it. Every other exponent converts exactly.
+        final bits = sourceView.getUint32(s, Endian.little);
+        if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
+          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
+          final exp = 0x7ff0000000000000; // f64's all-ones exponent
+          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
+          conv.setUint64(0, sign | exp | mant, Endian.little);
+        } else {
+          conv.setFloat64(
+            0,
+            sourceView.getFloat32(s, Endian.little),
+            Endian.little,
+          );
+        }
         for (var k = 0; k < 8; k++) {
           image[d + k] = conv.getUint8(k);
         }
