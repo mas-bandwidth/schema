@@ -156,6 +156,9 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"cs/R12", t03R12},
+		{"cs/R6", t03R6},
+		{"cs/R14", t03R14},
+		{"cs/R22", t03R22},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -208,4 +211,139 @@ fixed table T
 	}
 	t03Has(t, t03Norm(load), `if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash) { if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
 		"R12 no_layout is the refusal the check returns, before any byte lands")
+}
+
+// t03R6: R6 [owed] "a table past §3.4's 65536 ceiling is not a fixed-form
+// root: the refusal names the table, no form is emitted, and no lineage entry
+// is parsed for it even when the lock carries one" (§3.4, §5.2, and
+// docs/FIXED-FORM-ALGORITHM.md §5.5). The ceiling is the WIRE's: a reader
+// holds an untrusted peer's layout to it, so past it the fixed form is not
+// emitted and the table keeps form 1, named at compile time.
+func t03R6(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Big
+{
+    blob bytes(70000)
+}
+`)
+	st := t03FindTable(t, u, "Big")
+	if got := ir.TableFixedTypeBytes(st); got <= ir.TableFixedRecordMaxBytes {
+		t.Fatalf("R6: the fixture body = %d, not past %d", got, ir.TableFixedRecordMaxBytes)
+	}
+	for _, r := range ir.TableFixedFormRoots(u) {
+		if r.Name == "Big" {
+			t.Error("R6: a table past the ceiling is a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 0 {
+		t.Errorf("R6: past the ceiling is a warning, not a refusal: %v", errs)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "Big") || !strings.Contains(joined, "ceiling") {
+		t.Errorf("R6: the warning does not name the table and the ceiling: %s", joined)
+	}
+	// THE LOCK MAY CARRY AN ENTRY FOR IT AND STILL NOTHING IS PARSED: the
+	// emitted build holds no byte of that lineage key.
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{
+		"Big": {{Wire: 0x1122334455667788, Layout: []byte{1, 2, 3, 4}, Record: 70008}},
+	})
+	if err != nil {
+		t.Fatalf("R6: GenerateLineage: %v", err)
+	}
+	if _, ok := files["BigTable.cs"]; ok {
+		t.Error("R6: a form was emitted for a table past the ceiling")
+	}
+	for name, body := range files {
+		if strings.Contains(string(body), "0x1122334455667788") {
+			t.Errorf("R6: %s parsed the lock's lineage entry for a table past the ceiling", name)
+		}
+	}
+}
+
+// t03R14: R14 [owed] "layout_record_too_large for an entry reaching past the
+// writer's declared record, not only for the 65536 bound and a zero root"
+// (§5.2's PLAN, fix 3; §5.3's refusal table). Every entry is bounded by the
+// WRITER'S OWN root size; the reader's grown bound is not the writer's, and
+// the name is the compiled lane's own when an entry overruns it.
+func t03R14(t *testing.T) {
+	_, runtime := t03Generate(t, t03Flat)
+	n := t03Norm(runtime)
+	// the two ceilings that already existed
+	t03Has(t, n, `if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }`,
+		"R14 a single entry past the 65536 bound")
+	t03Has(t, n, `if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }`,
+		"R14 a subtree's partial sum past the 65536 bound")
+	t03Has(t, n, `if (root.Size == 0 || root.Size > RecordMaxBytes)`,
+		"R14 the zero root and the 65536 bound")
+	t03Has(t, n, `why = "layout_record_too_large";`,
+		"R14 the zero root and the bound are named")
+	// the writer's own declared record, and one entry reaching past it
+	t03Has(t, n, `TheirBytes = (int)EntryAt(theirs, 0).Size`,
+		"R14 the writer's own declared record is the bound")
+	t03Has(t, n, `int reach = OpReach(stamped.Op, (int)stamped.Size);`,
+		"R14 each entry's reach is the op's, not the size lane's")
+	t03Has(t, n, `case Text: return 4 + size;`,
+		"R14 a text entry reaches past its own units by the length word")
+	t03Has(t, n, `case Count: return 4;`,
+		"R14 a count entry reads its four-byte bound, not the reader's grown run")
+	t03Has(t, n, `(long)stamped.Src + reach > TheirBytes`,
+		"R14 an entry reaching past the writer's declared record is caught")
+	t03Has(t, n, `(long)stamped.Guard + gw > TheirBytes`,
+		"R14 a guarded entry's guard reach is bounded too")
+	t03Has(t, n, `RecordTooLarge = true;`,
+		"R14 the plan is refused WHOLE")
+	t03Has(t, n, `if (c.RecordTooLarge) { return -2; }`,
+		"R14 the compile answers the overrun on its own return")
+	t03Has(t, n, `if (made == -2) { lane.Why = "layout_record_too_large"; break; }`,
+		"R14 the lineage entry's own lane carries layout_record_too_large by name")
+}
+
+// t03R22: R22 [owed] "the closure rule: every table or type reached by value
+// is itself fixed; a pointer, map or unbounded array in the closure is a
+// compile refusal; T is never in its own closure" (docs/SPEC-TABLES.md §2.2,
+// ir.FixedClosureBreaks, docs/FIXED-FORM-ALGORITHM.md §5.5). A fixed table's
+// BY-VALUE closure may hold only fixed bodies; a variable-size construct is a
+// refusal that names the field, the construct and the page.
+func t03R22(t *testing.T) {
+	fixed := unitFrom(t, `package probe
+
+fixed table Inner { a int32 }
+fixed table T { inner Inner }
+`)
+	if breaks := ir.FixedClosureBreaks(func(name string) *ir.Struct { return fixed.Tables[name] }, "T"); len(breaks) != 0 {
+		t.Errorf("R22: a fixed table nested by value is a closure break: %v", breaks)
+	}
+
+	for _, tc := range []struct {
+		name, src, want string
+	}{
+		{"plain table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the plain table Node by value"},
+		{"pointer", "package probe\ntable Node { x int32 }\nfixed table Scene { head *Node }\n", "is a pointer"},
+		{"map", "package probe\nfixed table Fleet { ships map[uint32]int32 }\n", "is a map"},
+		{"unbounded array", "package probe\nfixed table Log { entries []int32 }\n", "is an unbounded array"},
+	} {
+		errs := t03CheckErrs(t, tc.src)
+		if len(errs) == 0 {
+			t.Errorf("R22 %s: the closure break is not a compile refusal", tc.name)
+			continue
+		}
+		got := errs[0].Error()
+		if !strings.Contains(got, tc.want) || !strings.Contains(got, "docs/SPEC-TABLES.md") {
+			t.Errorf("R22 %s: refusal = %q, want it to name %q and the page", tc.name, got, tc.want)
+		}
+	}
+
+	// T IS NEVER IN ITS OWN CLOSURE: a fixed table that reaches itself by value
+	// is refused, so a table cannot be its own closure member.
+	for _, src := range []string{
+		"package probe\nfixed table T { next T }\n",
+		"package probe\nfixed table T { next [4]T }\n",
+		"package probe\nfixed table T { next ?T }\n",
+	} {
+		if errs := t03CheckErrs(t, src); len(errs) == 0 {
+			t.Errorf("R22: a fixed table that reaches itself by value is not refused: %q", src)
+		}
+	}
 }
