@@ -201,6 +201,14 @@ pub enum TableFixedReason {
     LayoutRecordTooLarge,
     /// 7. NOTHING NESTED PAST THE READER'S WALK BOUND
     LayoutTooDeep,
+    /// ILL-FORMED TEXT IN THE USED UNITS (§4.5, fix 11; §5.8 row 8). A
+    /// string(N)'s used bytes are well-formed UTF-8 with no zero among them,
+    /// and a wstring(N)'s used units are paired UTF-16 with no zero unit. A
+    /// payload that is not the text its kind says it is is DAMAGE and not data,
+    /// and the verdict is the packet reader's: a refusal BY NAME, with nothing
+    /// decoded past it. bytes(N) has no content rule and never reaches this
+    /// name.
+    TextIllFormed,
 }
 
 impl TableFixedReason {
@@ -224,6 +232,7 @@ impl TableFixedReason {
             Self::LayoutTreeUnclosed => "layout_tree_unclosed",
             Self::LayoutRecordTooLarge => "layout_record_too_large",
             Self::LayoutTooDeep => "layout_too_deep",
+            Self::TextIllFormed => "text_ill_formed",
         }
     }
 }

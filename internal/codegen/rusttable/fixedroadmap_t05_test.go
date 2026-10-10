@@ -452,6 +452,124 @@ func t05R18(t *testing.T) {
 	}
 }
 
+// ---- rust/C3 -----------------------------------------------------------------
+
+// t05C3 holds rust/C3 to §4.5's text row: "`unit := (meta == wide) ? 2 : 1`;
+// `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`,
+// `COUNT clamped` if it fired." The emitted scatter clamps the used length to
+// the field's cap and counts one, and the compiled plan's Text op clamps to the
+// writer's span in units.
+func t05C3(t *testing.T) {
+	text := t05DocFixed(t)
+	scatter := t05Fn(text, "doc_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("C3: doc_fixed_scatter is not emitted")
+	}
+	if n := strings.Count(scatter, "report.clamped += 1;"); n != 3 {
+		t.Errorf("C3: the scatter counts %d length clamps, want 3 (label, name and the bytes length)", n)
+	}
+	t05Has(t, scatter, "let held = raw.clamp(0, 15);", "C3 the label's cap is its declared bound")
+	t05Has(t, scatter, "let held = raw.clamp(0, 8);", "C3 the wstring's cap is in units")
+	t05Has(t, scatter, "if held != raw {", "C3 a clamp that fired is counted")
+	// THE COMPILED PLAN'S TEXT OP: the length is clamped to the writer's span in
+	// units, and the payload is the span's bytes.
+	runtime := string(fixedRuntimeBody)
+	textArm := t05Between(t05Fn(runtime, "table_fixed_run"), "TableFixedOp::Text => {", "TableFixedOp::Ordinal => {")
+	t05Has(t, textArm, "let held = raw.clamp(0, p.aux as i32);", "C3 the compiled text op clamps to the plan's cap")
+	t05Has(t, textArm, "if held != raw {", "C3 the compiled text op counts a fired clamp")
+	t05Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),", "C3 the cap is the span in units")
+}
+
+// ---- rust/C4 -----------------------------------------------------------------
+
+// t05C4 holds rust/C4 to §4.5 and §5.8 row 8: a content violation REFUSES BY
+// NAME, the packet reader's verdict, and never the reference's `malformed`
+// flag. The name is `text_ill_formed` (roadmap rust/R24) and the emitted load
+// answers it.
+func t05C4(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	t05Has(t, runtime, "TextIllFormed,", "C4 the named reason is a variant")
+	t05Has(t, runtime, `Self::TextIllFormed => "text_ill_formed",`, "C4 the variant names text_ill_formed")
+	text := t05DocFixed(t)
+	load := t05Fn(text, "doc_fixed_load")
+	if load == "" {
+		t.Fatal("C4: doc_fixed_load is not emitted")
+	}
+	t05Has(t, load, "if damaged != 0 {", "C4 the content check has a path")
+	t05Has(t, load, "return report.refuse(TableFixedReason::TextIllFormed);", "C4 ill-formed text refuses BY NAME")
+	// THE REFERENCE'S WRONG TURN IS GONE: the content path never sets the
+	// `malformed` flag. Find the damaged block and read it.
+	at := strings.Index(load, "if damaged != 0 {")
+	block := load[at:]
+	if end := strings.Index(block, "\n                    }"); end >= 0 {
+		block = block[:end]
+	}
+	if strings.Contains(block, "report.malformed") {
+		t.Errorf("C4: the content violation sets `malformed` instead of refusing by name:\n%s", block)
+	}
+	// AND THE CHECK IS THE CONTENT RULE (§4.5, fix 11): a string is UTF-8, a
+	// wstring is paired UTF-16, and a bytes(N) has no content rule at all.
+	clamp := t05Fn(text, "doc_fixed_clamp_body")
+	t05Has(t, clamp, "table_utf8_valid(&value.label[", "C4 a narrow string is checked as UTF-8")
+	t05Has(t, clamp, "table_utf16_valid(&value.name[", "C4 a wide string is checked as paired UTF-16")
+	if strings.Contains(clamp, "value.blob") {
+		t.Error("C4: a bytes(N) is held to a content rule; it is bytes")
+	}
+}
+
+// ---- rust/R24 -----------------------------------------------------------------
+
+// t05R24 holds rust/R24 to its three clauses: "ill-formed text in the USED
+// units refuses by name (text_ill_formed)"; "text is counted in bytes with the
+// clamp in units"; "slack is unspecified on read and not a refusal". The check
+// slices at the CLAMPED USED LENGTH and never at the declared capacity, the
+// plan carries the payload in BYTES and the cap in UNITS, and the slack is
+// never walked.
+func t05R24(t *testing.T) {
+	text := t05DocFixed(t)
+	clamp := t05Fn(text, "doc_fixed_clamp_body")
+	if clamp == "" {
+		t.Fatal("R24: doc_fixed_clamp_body is not emitted")
+	}
+	// IN THE USED UNITS: the slice ends at the clamped length, not at N.
+	t05Has(t, clamp, "table_utf8_valid(&value.label[..value.label_length.clamp(0, 15) as usize])",
+		"R24 the narrow check is over the USED bytes")
+	t05Has(t, clamp, "table_utf16_valid(&value.name[..value.name_length.clamp(0, 8) as usize])",
+		"R24 the wide check is over the USED units")
+	if strings.Contains(clamp, "table_utf8_valid(&value.label[..16]") ||
+		strings.Contains(clamp, "table_utf16_valid(&value.name[..9]") {
+		t.Error("R24: a content check walks the declared capacity; the slack is unspecified")
+	}
+	// TEXT IS COUNTED IN BYTES WITH THE CLAMP IN UNITS: the plan's `size` is the
+	// payload's byte span and its `aux` is the cap in units, and the op clamps
+	// the length word at `aux` before copying `size` bytes.
+	runtime := string(fixedRuntimeBody)
+	textArm := t05Between(t05Fn(runtime, "table_fixed_run"), "TableFixedOp::Text => {", "TableFixedOp::Ordinal => {")
+	t05Has(t, textArm, "let held = raw.clamp(0, p.aux as i32);", "R24 the clamp is in units")
+	t05Has(t, textArm, "tail[..n].copy_from_slice(&src[s + 4..s + 4 + n]);", "R24 the payload is copied in bytes")
+	t05Has(t, runtime, "let unit = if me.kind == 33 { 2u32 } else { 1u32 };", "R24 the unit is two for a wstring and one otherwise")
+	t05Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),", "R24 the cap is the byte span divided by the unit")
+}
+
+// ---- fixtures ----------------------------------------------------------------
+
+// t05DocFixed is the emitted fixed module of the text fixture: a narrow string,
+// a wide string and a bytes(N) side by side, so the one content rule and the
+// two that are the array's (or nothing's) are read against each other.
+func t05DocFixed(t *testing.T) string {
+	t.Helper()
+	u := unitFrom(t, `package probe
+
+fixed table Doc
+{
+    label string(15)
+    name  wstring(8)
+    blob  bytes(4)
+}
+`)
+	return t05Fixed(t, t05Generate(t, u))
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT05Evolution(t *testing.T) {
@@ -466,6 +584,9 @@ func TestFixedRoadmapRustT05Evolution(t *testing.T) {
 		{id: "rust/E9", check: t05E9},
 		{id: "rust/R16", check: t05R16},
 		{id: "rust/R18", check: t05R18},
+		{id: "rust/C3", check: t05C3},
+		{id: "rust/C4", check: t05C4},
+		{id: "rust/R24", check: t05R24},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {

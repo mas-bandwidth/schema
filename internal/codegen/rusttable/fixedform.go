@@ -1219,11 +1219,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            let mut clamped = 0i32;\n")
 		g.pf("            let mut damaged = 0i32;\n")
 		g.pf("            %s(&mut values[k], &mut clamped, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            // ILL-FORMED TEXT REFUSES BY NAME (§4.5, fix 11; §5.8 row 8):\n")
+		g.pf("            // the verdict is the packet reader's name and not this form's\n")
+		g.pf("            // `malformed` flag, and `refuse` zeroes the counters, so the\n")
+		g.pf("            // clamp above is undone with them.\n")
+		g.pf("            if damaged != 0 {\n")
+		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n")
+		g.pf("            }\n")
 		g.pf("            report.clamped += clamped as u32;\n")
-		g.pf("            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on\n")
-		g.pf("            // the one FLAG and not on a counter: the field read its declared\n")
-		g.pf("            // default and the rest of the record stands.\n")
-		g.pf("            if damaged != 0 {\n                report.malformed = true;\n            }\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n")
@@ -1481,10 +1484,10 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 // carries no meaning and reading it would be the cost this form exists to avoid.
 //
 // A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and the verdict is the one
-// every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
-// `malformed` is raised, and the rest of the record stands. The packet wire
-// refuses the whole read; here the record is positional, so the damage is one
-// field's and the reader does not lose the others to it.
+// every other form reaches: THE READ REFUSES BY NAME (`text_ill_formed`, §4.5
+// fix 11; §5.8 row 8). This function MARKS the damage on the `damaged` lane and
+// the LOAD turns the mark into the named refusal, because this pass runs over
+// storage after the plan run (§4.6) and has no report to refuse through itself.
 func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
 	used := fmt.Sprintf("value.%s_length.clamp(0, %d) as usize", f.Name, f.Type.Size)
 	call := fmt.Sprintf("table_utf8_valid(&value.%s[..%s])", f.Name, used)
