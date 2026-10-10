@@ -22,6 +22,7 @@ package cstable
 // the direct assertion their golden left open.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -50,6 +51,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R6", t03R6},
 		{"cs/R14", t03R14},
 		{"cs/R22", t03R22},
+		{"cs/R3", t03R3},
+		{"cs/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -317,4 +320,60 @@ fixed table T { inner Inner }
 	if errs := t03CheckErrs(t, "package probe\nfixed table T { next T }\n"); len(errs) == 0 {
 		t.Error("R22: a fixed table that reaches itself by value is not refused")
 	}
+}
+
+// ---- cs/R3 ------------------------------------------------------------------
+
+// t03R3: R3 [verify] "the floor is 1 + the highest retired index (0 when none);
+// below the floor is layout_unsupported, reporting the file's hash" (§5.2, §5.9
+// #7). The behavioural column is TestFixedVersioning's floor_at, floor_below and
+// floor_raise_live; this subtest pins the FLOOR VALUE off the emitted constant,
+// so a floor that disagreed with the entries it was derived from is red by name.
+func t03R3(t *testing.T) {
+	for _, tc := range []struct {
+		retire int
+		want   int
+	}{
+		{0, 0}, // none retired: the floor is 0
+		{1, 1}, // entry 0 retired: the floor is 1
+		{2, 2}, // entries 0 and 1 retired: 1 + the HIGHEST retired index
+	} {
+		files, err := GenerateLineage(unitFrom(t, t03Flat), map[string][]FixedLineageEntry{"T": t03Older(2, tc.retire)})
+		if err != nil {
+			t.Fatalf("R3: retire=%d: GenerateLineage: %v", tc.retire, err)
+		}
+		want := fmt.Sprintf("public const int TFixedFloor = %d;", tc.want)
+		if !strings.Contains(t03Home(t, files), want) {
+			t.Errorf("R3: retire=%d: the emitted floor is not %q — the floor is 1 + the highest retired index, 0 when none is", tc.retire, want)
+		}
+	}
+}
+
+// ---- cs/R32 -----------------------------------------------------------------
+
+// t03R32: R32 [verify] "retire for real: a retired version is refused by name,
+// once, idempotently" (§5.2, §5.9 #7). The by-name half is TestFixedVersioning's
+// floor_below; this subtest is the ONCE and the IDEMPOTENTLY, read off the
+// emitted build: the retired entries are named at the emission site, the floor
+// is a compile-time constant, the lineage is immutable static data, and the
+// refusal is a straight-line return that leaves no per-call state behind — so a
+// second read of the same retired file sees the same floor and refuses again.
+func t03R32(t *testing.T) {
+	files, err := GenerateLineage(unitFrom(t, t03Flat), map[string][]FixedLineageEntry{"T": t03Older(2, 2)})
+	if err != nil {
+		t.Fatalf("R32: GenerateLineage: %v", err)
+	}
+	home := t03Home(t, files)
+	t02Has(t, home, "public const int TFixedFloor = 2;", "R32 the floor moves to 1 + the highest retired index")
+	if n := strings.Count(home, "// RETIRED:"); n != 2 {
+		t.Errorf("R32: the emitted build names %d retired entries, want the two the lock retired", n)
+	}
+	// A retired version is refused BY NAME, reports the file's hash, and returns
+	// at once — once per read, with nothing left behind to make the next read
+	// disagree.
+	t02Has(t, t02Norm(home),
+		`if (pick < TFixedFloor) { if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
+		"R32 a retired version is refused layout_unsupported by name, reporting the file's hash")
+	t02Has(t, home, "public static readonly TableFixedKnownLayout[] TFixedKnown", "R32 the lineage is immutable static data")
+	t02Has(t, home, "public const int TFixedFloor", "R32 the floor is a compile-time constant, so a second read cannot disagree")
 }
