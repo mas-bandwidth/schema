@@ -17,6 +17,7 @@ package jstable
 // leg already holds is named in a comment and is not re-decided here.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -59,6 +60,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{"js/R6", t03R6},
 		{"js/R14", t03R14},
 		{"js/R22", t03R22},
+		{"js/R3", t03R3},
+		{"js/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -195,5 +198,113 @@ fixed table T { inner Inner }
 	// has no finite record and is refused at the declaration.
 	if errs := t03CheckErrs(t, "package probe\nfixed table T { next T }\n"); len(errs) == 0 {
 		t.Error("R22: a fixed table that reaches itself by value is not refused")
+	}
+}
+
+// t03R3: R3 "the floor is 1 + the highest retired index (0 when none); below
+// the floor is layout_unsupported, reporting the file's hash" (§5.2, §5.7's
+// three floor rows). The behavioural column is TestJSFixedVersioningFloor's
+// (floor_at, floor_below with the file's hash, floor_raise_live); this subtest
+// pins the FLOOR VALUE off the emitted constant, so a floor that disagreed with
+// the entries it was derived from is red by name, and the enforcement sentence
+// off the emitted load path.
+func t03R3(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R3: FixedLineageOf has no entry for T")
+	}
+	for _, tc := range []struct {
+		retire int
+		want   int
+	}{
+		{0, 0}, // none retired: the floor is 0
+		{1, 1}, // entry 0 retired: the floor is 1
+		{2, 2}, // entries 0 and 1 retired: 1 + the HIGHEST retired index
+	} {
+		handed := make([]FixedLineageEntry, 0, tc.retire)
+		for i := 0; i < tc.retire; i++ {
+			handed = append(handed, FixedLineageEntry{
+				Wire: own.Wire ^ (0x1111 * uint64(i+1)), Layout: own.Layout, Record: own.Record, Retired: true,
+			})
+		}
+		files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": handed})
+		if err != nil {
+			t.Fatalf("R3: retire=%d: GenerateLineage: %v", tc.retire, err)
+		}
+		src := t02Source(t, u, files)
+		t02Has(t, src, fmt.Sprintf("export const TFixedFloor = %d;", tc.want),
+			"R3 the floor is 1 + the highest retired index, 0 when none is")
+	}
+	// §5.3 steps 5 and 6: below the floor is layout_unsupported and the report
+	// carries THE FILE'S hash, distinct from layout_newer outside the lineage.
+	src := t02Emit(t, u)
+	t02Has(t, t02Norm(src), "if (pick < TFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }",
+		"R3 below the floor is layout_unsupported reporting the file's hash")
+	t02Has(t, t02Norm(src), "if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }",
+		"R3 outside the lineage stays layout_newer")
+}
+
+// t03R32: R32 "retire for real: a retired version is refused by name, once,
+// idempotently". The by-name and the file's-hash halves are
+// TestJSFixedVersioningFloor's floor_below; this subtest is the ONCE and the
+// IDEMPOTENTLY, read off the emitted load path (node is not on this tree):
+// every call RESETS the report first, recomputes the selection from the file's
+// own header bytes, and answers the floor through TableFixedRefuseHash, which
+// writes the report and returns -1 and touches no destination byte — so the
+// same retired file read twice answers the same name and the same hash with
+// every counter zero both times.
+func t03R32(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R32: FixedLineageOf has no entry for T")
+	}
+	handed := []FixedLineageEntry{{
+		Wire: own.Wire ^ 0x3333, Layout: own.Layout, Record: own.Record, Retired: true,
+	}}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": handed})
+	if err != nil {
+		t.Fatalf("R32: GenerateLineage: %v", err)
+	}
+	src := t02Source(t, u, files)
+	load := jsFn(src, "TFixedLoad")
+	if load == "" {
+		t.Fatal("R32: the emitted load function is missing")
+	}
+	// ONCE: the reset is the first statement, so a second call starts from the
+	// same empty report the first did.
+	open := strings.Index(load, "{")
+	if open < 0 || !strings.HasPrefix(strings.TrimSpace(load[open+1:]), "TableFixedResetReport(report);") {
+		t.Error("R32: the load path does not reset the report first, so a second read is not the first")
+	}
+	// IDEMPOTENTLY: the selection is recomputed from this call's header bytes
+	// and the floor is a module constant; nothing on the path remembers the
+	// previous read.
+	t02Has(t, t02Norm(src), "const pick = TableFixedSelect(TFixedKnown, hashLo, hashHi);",
+		"R32 the selection is recomputed from this call's header bytes")
+	t02Has(t, t02Norm(src), "if (pick < TFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }",
+		"R32 a retired version is refused by name")
+	// REFUSE IS TOTAL AND IT IS THE FILE'S HASH: the refusal writes the report
+	// and returns, and no destination write stands before it.
+	floorAt := strings.Index(load, "TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported")
+	if floorAt < 0 {
+		t.Fatal("R32: the emitted load has no layout_unsupported refusal")
+	}
+	prefix := load[:floorAt]
+	if strings.Contains(prefix, "image[") || strings.Contains(prefix, "values[") {
+		t.Error("R32: a refusal wrote the destination before the floor check")
+	}
+	refuse := jsFn(src, "TableFixedRefuseHash")
+	if refuse == "" {
+		t.Fatal("R32: TableFixedRefuseHash is not emitted")
+	}
+	for _, want := range []string{"report.refused = refusal;", "report.layoutHash =", "return -1;"} {
+		if !strings.Contains(refuse, want) {
+			t.Errorf("R32: TableFixedRefuseHash does not carry %q", want)
+		}
+	}
+	if strings.Contains(refuse, "image") || strings.Contains(refuse, "values") {
+		t.Error("R32: TableFixedRefuseHash touches a destination: a refusal writes report and hash and nothing else")
 	}
 }
