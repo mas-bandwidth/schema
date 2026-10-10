@@ -54,6 +54,8 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{"go/R32", t03R32},
 		{"go/R10", t03R10},
 		{"go/R15", t03R15},
+		{"go/C8", t03C8},
+		{"go/R20", t03R20},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -493,6 +495,77 @@ func TestR15Newer(t *testing.T) {
 }
 `
 	t03RunGo(t, u, lineage, probe)
+}
+
+// ---- go/C8 ------------------------------------------------------------------
+
+// t03C8 holds C8: "fixed-point F-shift / bits(N)". §4.6: "A fixed-point field's
+// bounds are in VALUE UNITS and its storage is raw, so both ends are shifted by
+// F first; a bits(N) clamps to 2^N - 1." The emitted bounds pass carries the
+// shifted raw ends for a fixed(12,4)| min=-8,max=7 and the width's own top for a
+// bits(12), and the read clamps a forged value past them and counts exactly one.
+func t03C8(t *testing.T) {
+	src := t03Emit(t, unitFrom(t, `package probe
+fixed table Probe
+{
+    tilt fixed(12, 4) | min = -8, max = 7
+    mask bits(12)
+}
+`))
+	clamp := funcSource(src, "func ProbeFixedClampBody(")
+	if clamp == "" {
+		t.Fatal("C8: ProbeFixedClampBody was not emitted")
+	}
+	t03Has(t, clamp, "value.Tilt < -128", "C8 a fixed field's raw floor is min shifted by F (min=-8, F=4 → -128)")
+	t03Has(t, clamp, "value.Tilt > 112", "C8 a fixed field's raw ceiling is max shifted by F (max=7, F=4 → 112)")
+	t03Has(t, clamp, "value.Mask > 4095", "C8 a bits(N) clamps to 2^N - 1 (bits(12) → 4095)")
+	// The load runs the pass over storage after the copy, on both plans.
+	load := funcSource(src, "func ProbeFixedLoad(")
+	t03Has(t, load, "ProbeFixedClamp(&values[k], report)", "C8 the bounds pass runs over storage, the same pass for either plan")
+}
+
+// ---- go/R20 -----------------------------------------------------------------
+
+// t03R20 holds R20: "§21.2's landing rules: an added field lands its declared
+// default; a deprecated field is dropped and counted once under unknown per
+// plan; a narrower integer or float is widened exactly and widened counts; a
+// shorter array or string lands with the reader's slack as template zeros; an
+// older enum's ordinals are the reader's, the list being a prefix". Each clause
+// is read at the emitted site that implements it.
+func t03R20(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R20: FixedLineageOf has no entry for T")
+	}
+	src := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": {{
+		Wire: own.Wire ^ 0x99, Layout: own.Layout, Record: own.Record,
+	}}})
+	load := funcSource(src, "func TFixedLoad(")
+	// AN ADDED FIELD LANDS ITS DECLARED DEFAULT: the reader establishes one
+	// Reset image and copies it into exactly the dest ranges the winning plan
+	// does not land (§5.2 prefill, §5.9 #38).
+	t03Has(t, load, "TReset(&def)", "R20 an added field's declared default comes from one Reset image")
+	t03Has(t, load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))",
+		"R20 the image fills exactly the dest ranges the plan does not land")
+	t03Has(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])",
+		"R20 the added field's slot takes the template's default")
+	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER unknown PER PLAN: the
+	// census is compiled per lineage entry (once per peer, never per record) and
+	// added once after the record loop (§5.4).
+	t03Has(t, src, "Unknown:      census.Unknown,", "R20 the unknown census is the compiled plan's, per peer")
+	t03Has(t, src, "if !named && census && c.report != nil {\n\t\t\tc.report.Unknown++",
+		"R20 a peer field the reader does not name is counted once per plan")
+	t03Has(t, load, "report.Unknown += censusUnknown", "R20 the census lands once, after the record loop")
+	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY AND widened COUNTS.
+	t03Has(t, src, "report.Widened++", "R20 a widened integer or float counts widened")
+	// A SHORTER ARRAY OR STRING LANDS WITH THE READER'S SLACK AS TEMPLATE ZEROS.
+	t03Has(t, src, "dst[off] = 0", "R20 a shorter string's slack is the template's zero")
+	t03Has(t, src, "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))",
+		"R20 a shorter array's count is the writer's, its slack the template's")
+	// AN OLDER ENUM'S ORDINALS ARE THE READER'S, THE LIST BEING A PREFIX.
+	t03Has(t, src, "table := unsafe.Slice(p16, int(*p16)+1)",
+		"R20 an older enum's ordinals are remapped through the writer's prefix list")
 }
 
 // itoa is a strconv.Itoa for the one call site, kept local so the imports stay
