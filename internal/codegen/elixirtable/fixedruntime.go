@@ -1809,20 +1809,22 @@ const fixedRuntimeBody = `  @moduledoc """
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
   defp widen_float({:nonfinite, bits}) do
-    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
-    # NaN IS QUIETED, because that is what the reference does. Its rung is the
-    # C++ ` + "`" + `(double) f` + "`" + `, and every hardware f32→f64 convert (cvtss2sd, fcvt)
-    # turns an sNaN into the corresponding qNaN: the payload is carried and the
-    # QUIET BIT — the destination mantissa's top bit — is set. Preserving the
-    # signalling state instead would put a pattern on this side of the rung
-    # that the reference cannot produce, and the byte oracle compares patterns.
+    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 BY BIT SURGERY AND
+    # NEVER THROUGH A FLOAT CONVERSION (docs/SPEC.md §4.3; docs/PORTING.md
+    # "M21 — A float crosses two widths by bit surgery, never by conversion").
+    # A hardware f32→f64 convert (cvtss2sd, fcvt) SETS THE QUIET BIT on a
+    # signalling NaN and drops a payload bit, rewriting a value the wire carried
+    # on the read side, where a byte comparison of the port's own writing catches
+    # nothing. The surgery carries the sign, f64's all-ones exponent and the 23
+    # payload bits into the TOP of the double's 52, so the quiet bit is whatever
+    # the writer wrote.
     #
-    # AN INFINITY IS NOT A NaN and keeps its zero payload: setting the quiet bit
-    # on ±inf would hand back a NaN nobody wrote.
+    # AN INFINITY IS NOT A NaN and keeps its zero payload: the surgery lands it
+    # as an infinity, not a NaN nobody wrote.
     sign = bits >>> 31 &&& 1
     mantissa = bits &&& 0x7FFFFF
     wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29
-    {:nonfinite, if(mantissa == 0, do: wide, else: wide ||| 0x8000000000000)}
+    {:nonfinite, wide}
   end
 
   defp widen_float(value), do: value
