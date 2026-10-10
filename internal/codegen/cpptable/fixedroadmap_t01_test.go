@@ -2,13 +2,13 @@ package cpptable
 
 // TestFixedRoadmapCppT01Framing is the cpp leg's card schema-cpp-t01-framing,
 // the rows file-envelope, batch-capacity and plan-selection of docs/roadmap.sexp's
-// node `fixed-tables` (ROADMAP.md "NEW Fixed Tables"). One subtest per task id
-// this card proves, each driving the GENERATED C++ reader (`<Root>FixedLoad`)
-// against the WRITER the same build lays down (`<Root>FixedSave`): the probe
-// SAVES its own file and then forges it, so the row reads the same C++ reference
-// bytes a corpus would carry without needing the sibling runtime the corpus's
-// dump includes (docs/FIXED-FORM-ALGORITHM.md §5.3's steps, §5.9 #7's report and
-// #47's "a runtime derives no hash"; docs/SPEC-TABLES.md §3.4).
+// node `fixed-tables` (ROADMAP.md "NEW Fixed Tables"). One subtest per task id,
+// each driving the GENERATED C++ reader (`<Root>FixedLoad`) against the WRITER
+// the same build lays down (`<Root>FixedSave`): the probe SAVES its own file and
+// then forges it, so the row reads the same C++ reference bytes a corpus would
+// carry without needing the sibling runtime the corpus's dump includes
+// (docs/FIXED-FORM-ALGORITHM.md §5.3's steps, §5.9 #7's report and #47's "a
+// runtime derives no hash"; docs/SPEC-TABLES.md §3.4).
 //
 // Tasks also held by an existing corpus test are still proved here, because the
 // probe writes its own file: the byte-oracle corpus's sibling runtime is absent
@@ -191,6 +191,12 @@ func TestFixedRoadmapCppT01Framing(t *testing.T) {
 		{"cpp/F8", cppT01RaggedTail},
 		{"cpp/F12", cppT01SecondLayout},
 		{"cpp/F9", cppT01BatchTooLarge},
+		{"cpp/F10", cppT01NoLayout},
+		{"cpp/R7", cppT01IdentityLane},
+		{"cpp/R8", cppT01LayoutNewer},
+		{"cpp/R9/remaining-boundaries", cppT01KnownHashBoundaries},
+		{"cpp/R12", cppT01PerRecordHashBeforePrefill},
+		{"cpp/R13", cppT01RefuseIsTotal},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
@@ -276,6 +282,23 @@ func cppT01RaggedTail(t *testing.T) {
             { printf( "one more whole record walks its hash: n=%lld refused=%d reason=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
         if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.widened != 0 )
             { printf( "one more whole record moved a counter\n" ); return 1; }
+    }
+`)
+}
+
+// cpp/F10 — "no_layout". Algorithm §5.3 step 11: "if LE(8, at) != h: REFUSE
+// no_layout -- BEFORE any byte is landed". A record whose own hash names no
+// layout is refused by name, nothing decoded and no counter moved. (Also
+// TestFixedVersioningRefuseWritesNothing.)
+func cppT01NoLayout(t *testing.T) {
+	cppT01ProbeRow(t, "field_append", `
+    {
+        static uint8_t buf[1 << 20];
+        int64_t blen = @@ROOT@@FixedSave( values, 1, buf, (int64_t) sizeof( buf ) );
+        TableFixedPut64( buf + kTableFixedHeaderBytes + 4 + kT01Identity.layout_bytes, kT01OwnHash ^ 0xABCDull );
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "the per-record hash names no layout", no_layout, 0 );
     }
 `)
 }
@@ -377,6 +400,241 @@ func cppT01BatchTooLarge(t *testing.T) {
                 T01_REFUSED( who, batch_too_large, 0 );
             }
         }
+    }
+`)
+}
+
+// cpp/R7 — "the identity lane is an index comparison, never a recomputed hash".
+// Algorithm §5.3 step 8 and §5.9 #47: "a runtime NEVER computes a hash from
+// layout bytes it holds — not for the IDENTITY LANE". Two proofs. (1) The
+// generated unit calls `TableFixedHashOf` nowhere: its one occurrence is the
+// definition. (2) cfloat_res_refine's two entries have IDENTICAL layout bytes
+// and DIFFERENT hashes (the resolution lives in the digest only), the case a
+// reader that hashed its own bytes would conflate: reading this build's own
+// file leaves the plan cache unbuilt, and reading the older entry's file takes
+// that entry's lane and compiles it.
+func cppT01IdentityLane(t *testing.T) {
+	files, _, _, _ := cppT01Generate(t, "cfloat_res_refine")
+	seen := 0
+	for _, data := range files {
+		seen += strings.Count(string(data), "TableFixedHashOf")
+	}
+	if seen != 1 {
+		t.Fatalf("TableFixedHashOf appears %d times in the generated unit, want 1 (its definition): a runtime derives no hash (§5.9 #47)", seen)
+	}
+
+	cppT01ProbeRow(t, "cfloat_res_refine", `
+    {
+        static TableFixedEntry cache_storage[64 * 256];
+        static uint8_t buf[1 << 20];
+        TableFixedPlanCache cache;
+        int64_t blen, at;
+        if ( kT01Lineage < 2 ) { printf( "cfloat_res_refine needs two lineage entries\n" ); return 1; }
+        if ( kT01Old.layout_bytes != kT01Identity.layout_bytes || memcmp( kT01Old.layout, kT01Identity.layout, (size_t) kT01Old.layout_bytes ) != 0 )
+            { printf( "the premise fails: the two entries must share layout bytes\n" ); return 1; }
+        if ( kT01Old.hash == kT01OwnHash ) { printf( "the premise fails: the two entries must differ in hash\n" ); return 1; }
+
+        TableFixedPlanCacheInit( cache, cache_storage, 256 );
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, 8, data, len, plan, 4096, &cache, &r );
+        if ( n != 1 || r.refused || r.malformed ) { printf( "own file: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
+        if ( cache.compiles != 0 ) { printf( "the identity lane compiled a plan: compiles=%d\n", cache.compiles ); return 1; }
+
+        blen = @@ROOT@@FixedSave( values, 1, buf, (int64_t) sizeof( buf ) );
+        TableFixedPut64( buf + kTableFixedHashAt, kT01Old.hash );
+        for ( at = kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes; at + 8 <= blen; at += kT01Old.record_bytes )
+            TableFixedPut64( buf + at, kT01Old.hash );
+        TableFixedPlanCacheInit( cache, cache_storage, 256 );
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, &cache, &r );
+        if ( n != 1 || r.refused || r.malformed ) { printf( "equal bytes under the older hash: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
+        if ( cache.compiles != 1 ) { printf( "equal bytes under a different hash did not take the entry's lane: compiles=%d\n", cache.compiles ); return 1; }
+    }
+`)
+}
+
+// cpp/R8 — "a hash in no lineage entry → layout_newer, reporting the file's
+// hash AND NOTHING ELSE" (Algorithm §5.3 step 5, §5.9 #7). Stranger hashes
+// stamped over a file whose layout bytes are the lock's own, and a file cut
+// after its layout (no record at all), answer the same: refused + layout_newer
+// + the FILE's hash, no counter and no malformed.
+func cppT01LayoutNewer(t *testing.T) {
+	cppT01ProbeRow(t, "field_append", `
+    {
+        static uint8_t buf[1 << 20];
+        int64_t blen = @@ROOT@@FixedSave( values, 1, buf, (int64_t) sizeof( buf ) );
+        const uint64_t strangers[4] = { 1ull, 0xDEADBEEFCAFEF00Dull, ~0ull, kT01OwnHash ^ ( 1ull << 63 ) };
+        char who[64];
+        int c;
+        if ( kT01OwnHash == 0 ) { printf( "the writer's hash is zero: the test cannot tell the file's hash from nothing\n" ); return 1; }
+        for ( c = 0; c < 4; ++c )
+        {
+            uint64_t s = strangers[c];
+            if ( s == kT01OwnHash || s == kT01Old.hash ) { continue; }
+            TableFixedPut64( buf + kTableFixedHashAt, s );
+            snprintf( who, sizeof( who ), "stranger hash %d", c );
+            T01_RESET();
+            n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+            T01_REFUSED( who, layout_newer, s );
+        }
+        TableFixedPut64( buf + kTableFixedHashAt, strangers[1] );
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, 8, buf, kTableFixedHeaderBytes + 4 + kT01Identity.layout_bytes, plan, 4096, NULL, &r );
+        T01_REFUSED( "a stranger hash with no record", layout_newer, strangers[1] );
+    }
+`)
+}
+
+// cpp/R9/remaining-boundaries — "a known hash with a different layout length or
+// bytes → layout_malformed; the seven §1.1 malformations under a known hash all
+// come back as this one name" (Algorithm §5.3 step 7). The seven-case witness
+// covers the seven rules; what is left is the LENGTH AND BYTE BOUNDARY: a
+// declared length of zero, one entry short, one entry long, and a bent byte,
+// over BOTH the reader's own hash and an older lineage entry's — every answer
+// the one name, as a refusal and not as `malformed`.
+func cppT01KnownHashBoundaries(t *testing.T) {
+	cppT01ProbeRow(t, "field_append", `
+    {
+        static uint8_t own[1 << 20];
+        static uint8_t old[1 << 20];
+        int64_t ownlen = @@ROOT@@FixedSave( values, 1, own, (int64_t) sizeof( own ) );
+        int64_t oldlen;
+        char who[64];
+        int lane;
+
+        memset( old, 0, sizeof( old ) );
+        oldlen = kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes + kT01Old.record_bytes;
+        old[0] = kTableFixedForm;
+        TableFixedPut64( old + kTableFixedHashAt, kT01Old.hash );
+        TableFixedPut32( old + kTableFixedHeaderBytes, (uint32_t) kT01Old.layout_bytes );
+        memcpy( old + kTableFixedHeaderBytes + 4, kT01Old.layout, (size_t) kT01Old.layout_bytes );
+        TableFixedPut64( old + kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes, kT01Old.hash );
+
+        for ( lane = 0; lane < 2; ++lane )
+        {
+            uint8_t * b = ( lane == 0 ) ? own : old;
+            int64_t blen = ( lane == 0 ) ? ownlen : oldlen;
+            const int64_t L = ( lane == 0 ) ? kT01Identity.layout_bytes : kT01Old.layout_bytes;
+            const int64_t lens[3] = { 0, L - 17, L + 17 };
+            int c;
+            for ( c = 0; c < 3; ++c )
+            {
+                TableFixedPut32( b + kTableFixedHeaderBytes, (uint32_t) lens[c] );
+                snprintf( who, sizeof( who ), "lane %d declared length %lld (true %lld)", lane, (long long) lens[c], (long long) L );
+                T01_RESET();
+                n = @@ROOT@@FixedLoad( back, 8, b, blen, plan, 4096, NULL, &r );
+                T01_REFUSED( who, layout_malformed, 0 );
+            }
+            TableFixedPut32( b + kTableFixedHeaderBytes, (uint32_t) L );
+            b[kTableFixedHeaderBytes + 4 + (L - 1)] ^= 0x40;
+            snprintf( who, sizeof( who ), "lane %d one layout byte bent", lane );
+            T01_RESET();
+            n = @@ROOT@@FixedLoad( back, 8, b, blen, plan, 4096, NULL, &r );
+            T01_REFUSED( who, layout_malformed, 0 );
+            b[kTableFixedHeaderBytes + 4 + (L - 1)] ^= 0x40;
+        }
+    }
+`)
+}
+
+// cpp/R12 — "the per-record hash check is before the prefill: no_layout writes
+// nothing". Algorithm §5.3 step 11 and §5.9 #7: the per-record hash is compared
+// BEFORE any byte is landed, so a refusal writes no destination byte — the
+// prefill included. The nested_append pair gives an OLD writer that lacks the
+// NEW field `Vec.w` (default 88), so the compiled plan carries a NONEMPTY fill
+// list; the destination is poisoned AFTER the reset and before the load, so a
+// prefill that ran would show 88 and not 0x5A. (Also
+// TestFixedVersioningRefuseWritesNothing.)
+func cppT01PerRecordHashBeforePrefill(t *testing.T) {
+	cppT01ProbeRow(t, "nested_append", `
+    {
+        static uint8_t old[1 << 16];
+        int64_t olen = kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes + kT01Old.record_bytes;
+        memset( old, 0, (size_t) olen );
+        old[0] = kTableFixedForm;
+        TableFixedPut64( old + kTableFixedHashAt, kT01Old.hash );
+        TableFixedPut32( old + kTableFixedHeaderBytes, (uint32_t) kT01Old.layout_bytes );
+        memcpy( old + kTableFixedHeaderBytes + 4, kT01Old.layout, (size_t) kT01Old.layout_bytes );
+        TableFixedPut64( old + kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes, kT01Old.hash ^ 1ull );
+        T01_RESET();
+        n = @@ROOT@@FixedLoad( back, 8, old, olen, plan, 4096, NULL, &r );
+        T01_REFUSED( "no_layout before the prefill", no_layout, 0 );
+    }
+`)
+}
+
+// cpp/R13 — "REFUSE is total: refused+reason and malformed are never both set,
+// every counter stays zero, and not one destination byte is written" (Algorithm
+// §5.9 #7's table). Every refusal name a file load can answer — previous_form,
+// message_form_as_file, newer_form, layout_newer, layout_unsupported,
+// layout_malformed, plan_too_large, batch_too_large, no_layout — is checked
+// against the whole report, and the malformed answers (a ragged tail, under
+// twenty bytes, a nonzero reserved byte) against the converse.
+func cppT01RefuseIsTotal(t *testing.T) {
+	cppT01ProbeRow(t, "field_append", `
+    {
+        static uint8_t orig[1 << 20];
+        static uint8_t buf[1 << 20];
+        static uint8_t oldbuf[1 << 16];
+        int64_t blen = @@ROOT@@FixedSave( values, 1, orig, (int64_t) sizeof( orig ) );
+        const int64_t L = kT01Identity.layout_bytes;
+        int64_t olen = kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes + kT01Old.record_bytes;
+
+        memset( oldbuf, 0, (size_t) olen );
+        oldbuf[0] = kTableFixedForm;
+        TableFixedPut64( oldbuf + kTableFixedHashAt, kT01Old.hash );
+        TableFixedPut32( oldbuf + kTableFixedHeaderBytes, (uint32_t) kT01Old.layout_bytes );
+        memcpy( oldbuf + kTableFixedHeaderBytes + 4, kT01Old.layout, (size_t) kT01Old.layout_bytes );
+        TableFixedPut64( oldbuf + kTableFixedHeaderBytes + 4 + kT01Old.layout_bytes, kT01Old.hash );
+
+        memcpy( buf, orig, (size_t) blen ); buf[0] = 1;
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "previous_form", previous_form, 0 );
+
+        memcpy( buf, orig, (size_t) blen ); buf[0] = 2;
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "message_form_as_file", message_form_as_file, 0 );
+
+        memcpy( buf, orig, (size_t) blen ); buf[0] = 9;
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "newer_form", newer_form, 0 );
+
+        memcpy( buf, orig, (size_t) blen );
+        { const uint64_t s = kT01OwnHash ^ 1ull; TableFixedPut64( buf + kTableFixedHashAt, s );
+          T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+          T01_REFUSED( "layout_newer", layout_newer, s ); }
+
+        memcpy( buf, orig, (size_t) blen ); buf[kTableFixedHeaderBytes + 4] ^= 0x01;
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "layout_malformed", layout_malformed, 0 );
+
+        memcpy( buf, orig, (size_t) blen );
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 0, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "batch_too_large", batch_too_large, 0 );
+
+        memcpy( buf, orig, (size_t) blen ); TableFixedPut64( buf + kTableFixedHeaderBytes + 4 + L, kT01OwnHash ^ 0xFFFFull );
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_REFUSED( "no_layout", no_layout, 0 );
+
+        memcpy( buf, orig, (size_t) blen );
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen + 1, plan, 4096, NULL, &r );
+        T01_MALFORMED( "ragged tail" );
+
+        memcpy( buf, orig, (size_t) blen );
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, kTableFixedHeaderBytes + 3, plan, 4096, NULL, &r );
+        T01_MALFORMED( "under twenty bytes" );
+
+        memcpy( buf, orig, (size_t) blen ); buf[3] = 1;
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, buf, blen, plan, 4096, NULL, &r );
+        T01_MALFORMED( "nonzero reserved byte" );
+
+        @@ROOT@@FixedSetFloorForTest( 1 );
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, oldbuf, olen, plan, 4096, NULL, &r );
+        T01_REFUSED( "layout_unsupported", layout_unsupported, kT01Old.hash );
+        @@ROOT@@FixedSetFloorForTest( 0 );
+
+        T01_RESET(); n = @@ROOT@@FixedLoad( back, 8, oldbuf, olen, plan, 0, NULL, &r );
+        T01_REFUSED( "plan_too_large", plan_too_large, 0 );
     }
 `)
 }
