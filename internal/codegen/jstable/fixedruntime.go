@@ -222,6 +222,11 @@ export class TableFixedPlan {
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    // R14, §5.2's PLAN: an entry that reached past the WRITER'S declared record
+    // refuses the plan WHOLE under layout_record_too_large. It is its own flag
+    // and not overflow, because more room can never put a byte inside the
+    // writer's record: the retry loop stops here rather than growing.
+    this.recordTooLarge = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
@@ -1257,7 +1262,20 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
       const census = new TableFixedReport();
       const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
-      if (made < 0) { continue; }
+      if (made < 0) {
+        // R14: A PLAN THAT REACHED PAST THE WRITER'S DECLARED RECORD IS REFUSED
+        // WHOLE and never grown into — a larger room cannot put a byte inside
+        // the record the writer declared. The lane carries the name and no
+        // further room is tried (docs/FIXED-FORM-ALGORITHM.md §5.2's PLAN,
+        // §5.9 #36).
+        if (plan.recordTooLarge) {
+          const bad = new TableFixedPlan(1, imageBytes, 1);
+          bad.why = TableFixedRefusal.LayoutRecordTooLarge;
+          lane = bad;
+          break;
+        }
+        continue;
+      }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
       // the load carries it onto the report ONCE, AFTER the record loop, on a
@@ -1277,12 +1295,70 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
   return out;
 }
 
+// THE LAST SOURCE BYTE, EXCLUSIVE, that one plan entry reads — the op's own
+// reach, plus the guard's when the entry is guarded, because a guarded entry
+// loads the tag before the op runs (docs/FIXED-FORM-ALGORITHM.md §4.2, §5.2).
+// A zero guard width reads as one, as C++.
+function TableFixedOpSourceEnd(e, b) {
+  const at = e[b + TableFixedLaneSrc];
+  const size = e[b + TableFixedLaneSize];
+  switch (e[b + TableFixedLaneOp]) {
+    case TableFixedOpCopy:
+    case TableFixedOpOrdinal:
+    case TableFixedOpWiden:
+      return at + size;
+    case TableFixedOpCount:
+      return at + 4;                 // a count word
+    case TableFixedOpText:
+      return at + 4 + size;          // a length, then its units
+    case TableFixedOpWidenF:
+      return at + 4;                 // the f32 source
+    case TableFixedOpConst: {
+      // THE UNION'S None CONST reads the writer's raw tag to count a clamp past
+      // the writer's arm set (its arm count rides in meta); every other const
+      // reads nothing of the record.
+      const aux = e[b + TableFixedLaneAux];
+      const meta = e[b + TableFixedLaneMeta];
+      return (aux === 0 && (meta & 0xff) !== 0) ? at + size : 0;
+    }
+    default:
+      return 0;
+  }
+}
+
+function TableFixedSourceEnd(e, b) {
+  let end = TableFixedOpSourceEnd(e, b);
+  const guard = e[b + TableFixedLaneGuard];
+  if (guard !== TableFixedNoGuard) {
+    let argw = e[b + TableFixedLaneArgW] | 0;
+    if (argw < 1) { argw = 1; } else if (argw > 8) { argw = 8; }
+    const g = guard + argw;
+    if (g > end) { end = g; }
+  }
+  return end;
+}
+
+// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2's PLAN): the
+// bound is the writer's OWN declared root size and not this reader's, because
+// an entry that reached past it would read the NEXT record's bytes. The
+// boundary is PAST and not AT: a layout reaching exactly to the record still
+// compiles.
+function TableFixedPlanPastRecord(plan, record) {
+  if (record === 0) { return false; }
+  const e = plan.entries;
+  for (let i = 0; i < plan.count; i++) {
+    if (TableFixedSourceEnd(e, i * TableFixedLanes) > record) { return true; }
+  }
+  return false;
+}
+
 export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
   plan.count = 0;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.recordTooLarge = false;
   plan.argw = 1;
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
   // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
@@ -1296,6 +1372,9 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
+  // R14 BEFORE the capacity check, on §5.2's order: an entry past the writer's
+  // record is refused by ITS name, and a room too small is plan_too_large.
+  if (TableFixedPlanPastRecord(plan, TableFixedSize(theirs, 0))) { plan.recordTooLarge = true; return -1; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
