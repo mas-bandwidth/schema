@@ -194,11 +194,18 @@ func testSharedS2(t *testing.T) {
 	}
 }
 
-// testSharedS3 asserts shared/S3's owed clause: a second retire of the same
-// hash is idempotent — it rewrites nothing and leaves the file byte-identical
-// (docs/roadmap.sexp shared/S3; docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4).
-// The --retire/--reason clauses and the CLI's "already retired" path are held
-// by cmd/schema.TestSharedS3Gate.
+// testSharedS3 re-exercises shared/S3's --retire clause through the compiler
+// wrapper: a second retire of the same hash is idempotent — it rewrites
+// nothing and leaves the file byte-identical (docs/roadmap.sexp shared/S3;
+// docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4).  This is NOT the owed
+// red-first clause: the idempotency is already held at base — the rendered
+// text is compared and an unchanged file returns rewrote=false
+// (internal/lockfile/lineage.go:717-720), asserted by
+// internal/lockfile.TestLockRetireEntry and cmd/schema.TestSharedS3Gate's
+// "a second retire of the same hash is idempotent" subtest.  shared/S3's
+// "schema lock --floor T=N" clause is an open question the page never settles
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §9, §6b) and is reported unknown in
+// docs/roadmap-evidence/shared.sexp, not decided here.
 func testSharedS3(t *testing.T) {
 	dir, paths, w, olderHash := sharedLockWiden(t)
 	path := filepath.Join(dir, lockfile.FileName)
