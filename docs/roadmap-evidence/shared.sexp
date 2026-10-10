@@ -1,0 +1,4 @@
+(:id "shared/S1" :state :done :evidence ("compiler/sharedroadmap_lock_test.go: TestSharedRoadmapLock/shared/S1" "internal/baseline/baseline_test.go: TestRefusals") :tested-revision "2dea8f3728e1187e1f7864c7c774e8a871a6daba")
+(:id "shared/S2" :state :done :evidence ("compiler/sharedroadmap_lock_test.go: TestSharedRoadmapLock/shared/S2" "internal/lockfile/lineage_test.go: TestLineageSetIsBoundByTheRollup") :tested-revision "2dea8f3728e1187e1f7864c7c774e8a871a6daba")
+(:id "shared/S3" :state :done :evidence ("compiler/sharedroadmap_lock_test.go: TestSharedRoadmapLock/shared/S3" "cmd/schema/shared_s3_gate_test.go: TestSharedS3Gate") :tested-revision "2dea8f3728e1187e1f7864c7c774e8a871a6daba")
+(:id "shared/S4" :state :done :evidence ("compiler/sharedroadmap_lock_test.go: TestSharedRoadmapLock/shared/S4" "compiler/shared_s4_gate_test.go: TestSharedS4Gate") :tested-revision "2dea8f3728e1187e1f7864c7c774e8a871a6daba")
