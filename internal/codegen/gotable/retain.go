@@ -111,6 +111,12 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
+			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
+			// "fixed table T may ride here, a plain table T may not". Retention
+			// on it is a REGION round trip (§6.6), and a fixed-class root has no
+			// region, so the form's LoadRetainMessages is refused by name beside
+			// its SaveRetainMessages refusal rather than answered.
+			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.Name+": retention requires a region round trip through the VARIABLE form")
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
 				g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a variable root and its region directory")
 			}
