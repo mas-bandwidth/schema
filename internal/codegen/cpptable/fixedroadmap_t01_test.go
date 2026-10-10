@@ -208,6 +208,7 @@ func TestFixedRoadmapCppT01Framing(t *testing.T) {
 	}{
 		{"cpp/F4", cppT01LayoutMalformedTruncated},
 		{"cpp/F12", cppT01SecondLayout},
+		{"cpp/F9", cppT01BatchTooLarge},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
@@ -310,4 +311,41 @@ func cppT01SecondLayout(t *testing.T, corpus string) {
     }
 `)
 	})
+}
+
+// cpp/F9 — "batch_too_large". Algorithm §5.3 step 10:
+// "n := rest / record_bytes ; if n > capacity: REFUSE batch_too_large"
+func cppT01BatchTooLarge(t *testing.T, corpus string) {
+	body := `
+    {
+        RESET_BACK();
+        n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
+        const int64_t count = n;
+        int64_t c;
+        char who[64];
+        if ( count < 1 || count > 8 ) { printf( "the corpus file carries no record: n=%lld\n", (long long) count ); return 1; }
+        for ( c = 0; c < count; ++c )
+        {
+            snprintf( who, sizeof( who ), "batch_too_large capacity=%lld of %lld", (long long) c, (long long) count );
+            RESET_BACK();
+            n = @LOAD@( back, c, data, len, plan, 4096, NULL, &r );
+            EXPECT_REFUSED( who, batch_too_large, 0 );
+        }
+        RESET_BACK();
+        n = @LOAD@( back, count, data, len, plan, 4096, NULL, &r );
+        if ( n != count || r.refused || r.malformed || r.reason != 0 )
+        {
+            printf( "capacity == count must read: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.reason );
+            return 1;
+        }
+    }
+`
+	for _, lane := range []struct{ name, file string }{
+		{"identity", "new_int_widen.bin"}, {"lineage", "old_int_widen.bin"},
+	} {
+		t.Run(lane.name, func(t *testing.T) {
+			t.Parallel()
+			cppT01Probe(t, "VNEW_", "int_widen", filepath.Join(corpus, lane.file), body)
+		})
+	}
 }
