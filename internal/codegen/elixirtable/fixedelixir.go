@@ -1008,6 +1008,18 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	}
 	lo, hi := fixedRangeOf(f)
 	if lo == "nil" {
+		// A bits(N) IS RANGED over [0, 2^N - 1] BY ITS OWN WIDTH (docs/SPEC-TABLES.md
+		// §3, §7: "a bits(N) value over its implied [0, 2^N − 1] clamps and
+		// counts"). It is not a declared range and not the storage domain: a
+		// bits(12) rides in a u32 and only its own twelve bits are its range.
+		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < int64(width) {
+			maxv := (int64(1) << uint(f.Type.Width)) - 1
+			return leafDec{
+				spec:  spec,
+				wrap:  call("min", raw(name), rawf("%d", maxv)),
+				count: call("R.clamps", raw("c"), raw(name), raw("0"), rawf("%d", maxv)),
+			}
+		}
 		return leafDec{spec: spec, wrap: raw(name)}
 	}
 	return leafDec{

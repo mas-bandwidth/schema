@@ -1809,20 +1809,19 @@ const fixedRuntimeBody = `  @moduledoc """
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
   defp widen_float({:nonfinite, bits}) do
-    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
-    # NaN IS QUIETED, because that is what the reference does. Its rung is the
-    # C++ ` + "`" + `(double) f` + "`" + `, and every hardware f32→f64 convert (cvtss2sd, fcvt)
-    # turns an sNaN into the corresponding qNaN: the payload is carried and the
-    # QUIET BIT — the destination mantissa's top bit — is set. Preserving the
-    # signalling state instead would put a pattern on this side of the rung
-    # that the reference cannot produce, and the byte oracle compares patterns.
-    #
-    # AN INFINITY IS NOT A NaN and keeps its zero payload: setting the quiet bit
-    # on ±inf would hand back a NaN nobody wrote.
+    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 BY BIT SURGERY AND
+    # NEVER BY A CONVERSION (docs/PORTING.md M21, docs/SPEC-TABLES.md §3): "a
+    # backend that holds a float32 in a wider cell moves the pattern BIT FOR BIT
+    # and never through a float conversion", because "the hardware conversion
+    # sets the QUIET BIT on a signalling NaN and drops a payload the narrower
+    # cell would have kept". The all-ones exponent takes the sign, f64's all-ones
+    # exponent and the 23 payload bits into the TOP of the double's 52, so the
+    # quiet bit rides exactly as the writer wrote it and an infinity keeps its
+    # zero payload.
     sign = bits >>> 31 &&& 1
     mantissa = bits &&& 0x7FFFFF
     wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29
-    {:nonfinite, if(mantissa == 0, do: wide, else: wide ||| 0x8000000000000)}
+    {:nonfinite, wide}
   end
 
   defp widen_float(value), do: value

@@ -247,6 +247,201 @@ func t04R15(t *testing.T) {
 	t04Has(t, text, "R.census(report, census_u, census_k)", "R15 the census lands once, after the loop")
 }
 
+// ---- elixir/E3 ---------------------------------------------------------------
+
+// t04E3 holds elixir/E3 to §5.2's EMIT ladder, in full: "if LADDER(te.kind,
+// me.kind): emit widenf when te is f32 else widen, sign := te.kind is a signed
+// integer or a signed fixed-point". Every required rung is present — 2..5, 6..9,
+// 20..24, 25..29 and 10 -> 11 — the float rung is `widenf`, the sign is the
+// WRITER's kind, and a same-kind widen zero-extends. The non-default and
+// boundary values are written and read by the gate's corpus rows (`int_widen`,
+// `uint_widen`, `float_widen`, `array_elem_widen`, `enum_width`), run by
+// TestFixedVersioningNewReadsOld.
+func t04E3(t *testing.T) {
+	runtime := fixedRuntimeBody
+	for _, rung := range []string{
+		"defp widens?(from, to) when from >= 6 and from <= 9 and to >= 6 and to <= 9, do: to > from",
+		"defp widens?(from, to) when from >= 2 and from <= 5 and to >= 2 and to <= 5, do: to > from",
+		"defp widens?(from, to) when from >= 20 and from <= 24 and to >= 20 and to <= 24, do: to > from",
+		"defp widens?(from, to) when from >= 25 and from <= 29 and to >= 25 and to <= 29, do: to > from",
+		"defp widens?(from, to), do: from == 10 and to == 11",
+	} {
+		t04Has(t, runtime, rung, "E3 the widen ladder")
+	}
+	t04Has(t, runtime, "if their_kind == 10 do", "E3 the float rung is chosen by the writer's kind")
+	t04Has(t, runtime, "{:widenf, their_at, at}", "E3 the float rung is widenF")
+	t04Has(t, runtime, "defp signed_kind?(kind), do: (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 24)", "E3 a ladder widen's sign is the writer's kind")
+	t04Has(t, runtime, "entry = {:widen, their_at, at, their_size, my_size, false}", "E3 a same-kind widen zero-extends")
+	t04Has(t, runtime, "{acc, bump(report, :kind_mismatch)}", "E3 every other pair stays a kind mismatch")
+}
+
+// ---- elixir/C8 ---------------------------------------------------------------
+
+// t04C8 holds elixir/C8 to §3.4's constant-size table and §5.2's fixed-point
+// family: a `fixed(I,F)` rides as the raw scaled integer at its storage width,
+// `I + F`, and the KIND encodes that width and the family and NOT `F` — so an
+// `F`-only edit is a definitions-digest change the lock refuses, never a widen.
+// The declared bounds are in VALUE units and the image is raw, so the clamp's
+// ends are SHIFTED by F. `bits(N)` rides at its declared storage width and is
+// RANGED over `[0, 2^N - 1]`, so a value past its own width clamps and counts
+// (docs/SPEC-TABLES.md §3, §7 "a bits(N) value over its implied [0, 2^N − 1]
+// clamps and counts").
+func t04C8(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Lineage
+{
+    a fixed(4, 4) | min = -8, max = 7
+    b fixed(2, 6) | min = -2, max = 1
+    c fixed(8, 8) | min = -128, max = 127
+    d ufixed(4, 4) | min = 0, max = 15
+    e bits(12)
+}
+`)
+	st := u.Tables["Lineage"]
+	if st == nil {
+		t.Fatal("C8: the fixture declares no Lineage table")
+	}
+	kind := map[string]int{}
+	for _, f := range st.Fields {
+		kind[f.Name] = ir.TableScalarKind(f)
+	}
+	if kind["a"] != 20 || kind["b"] != 20 {
+		t.Errorf("C8: fixed(4,4) and fixed(2,6) are kinds %d and %d, want the same kind 20 — F does not ride in the kind", kind["a"], kind["b"])
+	}
+	if kind["c"] != 21 {
+		t.Errorf("C8: fixed(8,8) is kind %d, want 21 (a 16-bit storage width)", kind["c"])
+	}
+	if kind["d"] != 25 {
+		t.Errorf("C8: ufixed(4,4) is kind %d, want 25 (the unsigned family)", kind["d"])
+	}
+	if kind["e"] != 7 {
+		t.Errorf("C8: bits(12) is kind %d, want 7 — a bits(N) rides at its storage width's integer kind", kind["e"])
+	}
+	if got := ir.TableFixedStorageBytes(st.Fields[4].Type); got != 4 {
+		t.Errorf("C8: bits(12) storage = %d, want 4", got)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("C8: Generate: %v", err)
+	}
+	text := t04Fixed(t, files)
+	// THE F-SHIFT: fixed(4,4) | min=-8,max=7 clamps at the RAW scaled ends
+	// -128..112; the unsigned fixed(4,4) | 0..15 at 0..240.
+	t04Has(t, text, "@r_lineage_a {-128, 112}", "C8 the F-shift scales the signed fixed-point bounds")
+	t04Has(t, text, "@r_lineage_d {0, 240}", "C8 the F-shift scales the unsigned fixed-point bounds")
+	// bits(12)'s own ceiling, and the fixed-point ladder's storage widths.
+	t04Has(t, text, "4095", "C8 bits(12)'s own ceiling")
+	t04Has(t, fixedRuntimeBody, "defp leaf_size(7, size), do: {true, size == 2 or size == 4}", "C8 the bits storage widths")
+	t04Has(t, fixedRuntimeBody, "defp leaf_size(20, size), do: {true, size == 1}", "C8 the fixed-point ladder's bottom rung")
+	t04Has(t, fixedRuntimeBody, "defp leaf_size(24, size), do: {true, size == 16}", "C8 the fixed-point ladder's top rung")
+}
+
+// ---- elixir/R20 --------------------------------------------------------------
+
+// t04R20 holds elixir/R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
+// sites: an added field lands the prefill's declared default; a deprecated field
+// is dropped and counted once per plan through the compile census; a narrower
+// integer or float is widened exactly and counts widened; a shorter array or
+// string lands with the reader's slack as the template's zeros; an older enum's
+// ordinals are the reader's, its list a prefix.
+func t04R20(t *testing.T) {
+	text := t04Retire(t, 0)
+	runtime := fixedRuntimeBody
+	// AN ADDED FIELD: the holes are covered from the DEFAULTS image, which the
+	// assembler splices every gap of.
+	t04Has(t, text, "@lineage_prefill ", "R20 the prefill image is emitted")
+	t04Has(t, text, "R.run(plan, R.detach(body, copy), @lineage_prefill, report)", "R20 an added field lands the declared default")
+	// A DEPRECATED FIELD, counted ONCE per plan.
+	t04Has(t, runtime, "if census, do: bump(report, :unknown), else: report", "R20 an unknown field is counted")
+	t04Has(t, runtime, "census and i == 0", "R20 once per FIELD per peer, not per element")
+	t04Has(t, text, "R.census(report, census_u, census_k)", "R20 the census lands once, after the loop")
+	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
+	t04Has(t, runtime, "defp step([{:widen, src, dst, size, width, signed} | rest], body, writes, report) do", "R20 a narrower integer widens")
+	t04Has(t, runtime, "defp step([{:widenf, src, dst} | rest], body, writes, report) do", "R20 a narrower float widens")
+	if n := strings.Count(runtime, "bump(report, :widened)"); n < 2 {
+		t.Errorf("R20: widened counts at %d sites, want the two rungs", n)
+	}
+	// A SHORTER ARRAY OR STRING: the image is the template's zeros and the plan
+	// writes only the writer's live extent.
+	t04Has(t, runtime, "gap = binary_part(prefill, pos, dst - pos)", "R20 the reader's slack is the template's zeros")
+	t04Has(t, runtime, "defp splice([], pos, prefill, acc) do", "R20 the image is spliced onto the prefill")
+	// AN OLDER ENUM: the remap is by NAME and its list is the writer's count, so
+	// a prefix maps position for position.
+	t04Has(t, runtime, "their_id = id_at(theirs, ti + 1 + j)", "R20 the ordinal is resolved through the plan's remap")
+	t04Has(t, runtime, "{:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}", "R20 the older enum's ordinals are the reader's")
+}
+
+// ---- elixir/R21 --------------------------------------------------------------
+
+// t04R21 holds elixir/R21 to §4's float rung and §5.2's table, and to
+// docs/PORTING.md M21: "a backend that holds a float32 in a WIDER cell moves the
+// pattern BIT FOR BIT and never through a float conversion", because "the
+// hardware conversion sets the QUIET BIT on a signalling NaN and drops a payload
+// the narrower cell would have kept". The emitted runtime takes the sign, an
+// all-ones exponent and the 23 payload bits into the top of the double's 52, and
+// the quiet bit rides exactly as the writer wrote it.
+func t04R21(t *testing.T) {
+	runtime := fixedRuntimeBody
+	t04Has(t, runtime, "defp widen_float({:nonfinite, bits}) do", "R21 the all-ones exponent is handled on the bits")
+	t04Has(t, runtime, "sign = bits >>> 31 &&& 1", "R21 the sign is carried")
+	t04Has(t, runtime, "mantissa = bits &&& 0x7FFFFF", "R21 the 23 payload bits are carried")
+	t04Has(t, runtime, "wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29", "R21 the payload rides in the top of the double's 52")
+	if strings.Contains(runtime, "0x8000000000000") {
+		t.Error("R21: the NaN widening sets the quiet bit; the pattern the writer wrote must ride unchanged (docs/PORTING.md M21)")
+	}
+	t04Has(t, runtime, "defp widen_float(value), do: value", "R21 every other exponent converts exactly")
+}
+
+// ---- elixir/R29 --------------------------------------------------------------
+
+// t04R29 holds elixir/R29 to the 65536 band and to bill §12.5's carried writer
+// bounds. THE BAND: a record body AT 65536 is a fixed root and one byte past it
+// is not (SPEC-TABLES §3.4, "65536 BYTES OF RECORD BODY: THE FORM IS NOT
+// EMITTED, AND THE TABLE IS NAMED"), and a layout entry reaching past the
+// writer's own declared record refuses the plan WHOLE under
+// layout_record_too_large. THE WRITER'S BOUNDS: the count op clamps to the
+// writer's element bound carried by the plan and the text op to the writer's
+// span, so a value forged past what the WRITER could have written clamps and
+// counts while a value the reader merely widened does not.
+func t04R29(t *testing.T) {
+	if ir.TableFixedRecordMaxBytes != 65536 {
+		t.Fatalf("R29: the ceiling is %d, want 65536", ir.TableFixedRecordMaxBytes)
+	}
+	at := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65532)\n}\n")
+	past := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65533)\n}\n")
+	if got := ir.TableFixedTypeBytes(at.Tables["Lineage"]); got != 65536 {
+		t.Fatalf("R29: the AT fixture body is %d, want 65536", got)
+	}
+	found := false
+	for _, r := range ir.TableFixedFormRoots(at) {
+		if r.Name == "Lineage" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("R29: a body AT 65536 is not a fixed-form root")
+	}
+	for _, r := range ir.TableFixedFormRoots(past) {
+		if r.Name == "Lineage" {
+			t.Error("R29: a body one past 65536 is still a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(at, 0)
+	if len(errs) != 0 {
+		t.Errorf("R29: a body at the ceiling is a warning and not a refusal: %v", errs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
+		t.Errorf("R29: the warning does not name the table: %s", joined)
+	}
+	runtime := fixedRuntimeBody
+	t04Has(t, runtime, "@record_max 65536", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, runtime, "defp layout_root({_id, 13, size, _children}) when size > 0 and size <= @record_max", "R29 the zero root and the ceiling")
+	t04Has(t, runtime, "defp any_past?(entries, record), do: Enum.any?(entries, fn e -> src_end(e) > record end)", "R29 an entry past the writer's declared record")
+	t04Has(t, runtime, "{:count, their_at, aux_at, their_n}", "R29 the count clamps to the writer's bound")
+	t04Has(t, runtime, "units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)", "R29 the text's cap is the writer's span")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapElixirT04Versions(t *testing.T) {
@@ -259,6 +454,11 @@ func TestFixedRoadmapElixirT04Versions(t *testing.T) {
 		{id: "elixir/R32", check: t04R32},
 		{id: "elixir/R10", check: t04R10},
 		{id: "elixir/R15", check: t04R15},
+		{id: "elixir/E3/other-required-widens", check: t04E3},
+		{id: "elixir/C8", check: t04C8},
+		{id: "elixir/R20", check: t04R20},
+		{id: "elixir/R21", check: t04R21},
+		{id: "elixir/R29", check: t04R29},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
