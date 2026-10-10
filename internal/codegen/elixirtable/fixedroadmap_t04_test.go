@@ -194,6 +194,59 @@ func t04R32(t *testing.T) {
 	}
 }
 
+// ---- elixir/R10 --------------------------------------------------------------
+
+// t04R10 holds elixir/R10 to §5.6 and §5.3 step 7: "the hash is looked up, the
+// floor is checked, and the layout is COMPARED — the seven rules do not fire at
+// run time". The emitted load parses no layout (the lock's own bytes are parsed
+// once, at module load, by `R.lineage_init/7`) and never recomputes the header's
+// hash: the header's eight bytes are taken as given and matched on, and §1.1's
+// layout rules are not carried into the read path.
+func t04R10(t *testing.T) {
+	text := t04Retire(t, 0)
+	for _, leaked := range []string{"parse_layout", "R.hash(", "check_entry", "check_shape", "known_kind", "leaf_size"} {
+		if strings.Contains(text, leaked) {
+			t.Errorf("R10: the emitted load carries a run-time walk of a stranger's layout (%q)", leaked)
+		}
+	}
+	runtime := fixedRuntimeBody
+	t04Has(t, runtime, "def select(known, floor, hash, layout) do", "R10 the header's hash is taken as given")
+	t04Has(t, runtime, "if byte_size(layout) == k.layout_bytes and layout == k.layout do", "R10 the layout is a byte comparison")
+	t04Has(t, runtime, "THE HEADER'S HASH IS TAKEN AS", "R10 the hash is not re-derived from the wire")
+	t04Has(t, runtime, "def hash(bytes) when is_binary(bytes), do: fnv(bytes, 0xCBF29CE484222325)", "R10 the hash function survives for the writer side")
+	t04Has(t, text, "case R.select(@lineage_known, @lineage_floor, stated, layout) do", "R10 the emitted load takes the stated hash to the select")
+	t04Has(t, text, "R.lineage_lane(__MODULE__, :lineage, i)", "R10 the plan is a lookup, not a walk")
+}
+
+// ---- elixir/R15 --------------------------------------------------------------
+
+// t04R15 holds elixir/R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan is
+// selected, on the file's hash; the count and text clamps that REMAIN are the
+// writer's bounds carried by the plan (bill §12.5), which only a backward read
+// over a locked entry can reach; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t04R15(t *testing.T) {
+	text := t04Retire(t, 0)
+	runtime := fixedRuntimeBody
+	selectAt := strings.Index(text, "case R.select(@lineage_known, @lineage_floor, stated, layout) do")
+	lane := strings.Index(text, "lineage_fixed_lane(i, records, stated, report, cap, bcap, copy)")
+	run := strings.Index(text, "R.run(plan,")
+	if selectAt < 0 || lane < 0 || run < 0 {
+		t.Fatalf("R15: the emitted load's shape moved (%d, %d, %d)", selectAt, lane, run)
+	}
+	if !(selectAt < lane && lane < run) {
+		t.Errorf("R15: a plan is selected before the hash is known (%d, %d, %d)", selectAt, lane, run)
+	}
+	t04Has(t, runtime, "{:error, :layout_newer, hash}", "R15 a hash the lineage does not hold is layout_newer")
+	t04Has(t, runtime, "{:count, their_at, aux_at, their_n}", "R15 the count clamp is the writer's bound")
+	t04Has(t, runtime, "units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)", "R15 the text clamp is the writer's span")
+	t04Has(t, runtime, "if census, do: bump(report, :unknown), else: report", "R15 an unknown field is counted by the compile census")
+	t04Has(t, runtime, "census and i == 0", "R15 once per FIELD per peer, not per element")
+	t04Has(t, text, "R.census(report, census_u, census_k)", "R15 the census lands once, after the loop")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapElixirT04Versions(t *testing.T) {
@@ -204,6 +257,8 @@ func TestFixedRoadmapElixirT04Versions(t *testing.T) {
 	}{
 		{id: "elixir/R3", check: t04R3},
 		{id: "elixir/R32", check: t04R32},
+		{id: "elixir/R10", check: t04R10},
+		{id: "elixir/R15", check: t04R15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
