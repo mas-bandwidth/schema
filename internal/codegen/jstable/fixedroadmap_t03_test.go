@@ -108,6 +108,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{"js/R6", t03R6},
 		{"js/R14", t03R14},
 		{"js/R22", t03R22},
+		{"js/R3", t03R3},
+		{"js/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -291,6 +293,112 @@ fixed table T { inner Inner }
 	// is refused, so a table cannot be its own closure member.
 	if errs := t03CheckErrs(t, "package probe\nfixed table T { next T }\n"); len(errs) == 0 {
 		t.Error("R22: a fixed table that reaches itself by value is not refused")
+	}
+}
+
+// t03R3: R3 [verify] "the floor is 1 + the highest retired index (0 when none);
+// below the floor is layout_unsupported, reporting the file's hash"
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3 step 6, §5.9 #7).
+func t03R3(t *testing.T) {
+	own := FixedLineageEntry{Wire: 0x2222222222222222, Layout: []byte{0, 0, 0, 0, 13}, Record: 12}
+	for _, tc := range []struct {
+		retire []int
+		want   int
+	}{
+		{nil, 0},         // none retired: the floor is 0
+		{[]int{0}, 1},    // entry 0 retired: the floor is 1
+		{[]int{0, 1}, 2}, // 1 + the HIGHEST retired index, and not the count
+	} {
+		handed := []FixedLineageEntry{
+			{Wire: 0x1111111111111111, Layout: []byte{0, 0, 0, 0, 13}, Record: 12},
+			{Wire: 0x3333333333333333, Layout: []byte{0, 0, 0, 0, 13}, Record: 12},
+		}
+		for _, i := range tc.retire {
+			handed[i].Retired = true
+			handed[i].Reason = "retired by the test's lock"
+		}
+		entries, floor := fixedLineageFor(handed, own)
+		if floor != tc.want {
+			t.Errorf("R3: retire=%v: floor = %d, want 1 + the highest retired index = %d, 0 when none is", tc.retire, floor, tc.want)
+		}
+		if len(entries) == 0 || entries[len(entries)-1].Wire != own.Wire {
+			t.Errorf("R3: retire=%v: the lineage does not end on the build's own layout", tc.retire)
+		}
+	}
+
+	// The FLOOR VALUE rides the emitted constant, and LOAD cuts on it after the
+	// hash SELECT and before any layout byte is compared, reporting the FILE'S
+	// hash through the one helper that sets layout_hash.
+	u := unitFrom(t, t03Flat)
+	files := t03LineageFiles(t, u, map[string][]FixedLineageEntry{"T": {
+		{Wire: 0x1111111111111111, Layout: mustOwn(t, u, "T").Layout, Record: mustOwn(t, u, "T").Record, Retired: true, Reason: "retired by the test's lock"},
+	}})
+	src := t03Runtime(t, u, files)
+	t03Has(t, src, "export const TFixedFloor = 1;", "R3 the emitted floor is 1 + the highest retired index")
+	load := t02Norm(jsFn(src, "TFixedLoad"))
+	t03Has(t, load, "const pick = TableFixedSelect(TFixedKnown, hashLo, hashHi);", "R3 the file's hash selects by hash")
+	t03Has(t, load, "if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }",
+		"R3 an unknown hash is layout_newer")
+	t03Has(t, load, "if (pick < TFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }",
+		"R3 below the floor is layout_unsupported")
+	if i, j := strings.Index(load, "TableFixedSelect(TFixedKnown"), strings.Index(load, "pick < TFixedFloor"); i < 0 || j < i {
+		t.Error("R3: the floor cut does not stand after the hash select")
+	}
+	if i := strings.Index(load, "layoutBytes !== known.layoutBytes"); i >= 0 && strings.Index(load, "pick < TFixedFloor") > i {
+		t.Error("R3: the floor cut stands after the layout comparison; it is a step before it")
+	}
+	// The refusal reports the file's hash, and only the two hash refusals do.
+	t03Has(t, src, "report.layoutHash = (BigInt(hashHi >>> 0) << 32n) | BigInt(hashLo >>> 0);",
+		"R3 layout_unsupported reports the file's own hash")
+}
+
+// t03R32: R32 [weak] "retire for real: a retired version is refused by name,
+// once, idempotently". The floor is one number and the lineage one array, so a
+// retired entry stays in the array, the load cuts on the index BEFORE any
+// record byte, and every load resets the report first — which is what makes the
+// refusal the same answer twice.
+func t03R32(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own := mustOwn(t, u, "T")
+	files := t03LineageFiles(t, u, map[string][]FixedLineageEntry{"T": {
+		{Wire: own.Wire ^ 0x5a5a5a5a5a5a5a5a, Layout: own.Layout, Record: own.Record, Retired: true, Reason: "retired by the test's lock"},
+	}})
+	src := t03Runtime(t, u, files)
+
+	// A RETIRED ENTRY STAYS: it keeps its own line in the known array, marked,
+	// so the operator's reason rides with it (docs/FIXED-FORM-ALGORITHM.md §5.2).
+	known := t02Block(t, src, "const TFixedKnown = [", "];")
+	if !strings.Contains(known, "// RETIRED: retired by the test's lock") {
+		t.Errorf("R32: a retired entry is dropped from the lineage instead of kept and cut:\n%s", known)
+	}
+	if n := strings.Count(known, "new TableFixedKnownLayout("); n != 2 {
+		t.Errorf("R32: the lineage holds %d entries, want the retired one and the build's own", n)
+	}
+	t03Has(t, src, "export const TFixedFloor = 1;", "R32 retiring entry 0 moves the floor to 1")
+
+	load := jsFn(src, "TFixedLoad")
+	norm := t02Norm(load)
+	// ONCE: the refusal is one answer and returns before the record loop, and
+	// no counter moves on the way out.
+	t03Has(t, norm, "if (pick < TFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }",
+		"R32 a retired version is refused by name")
+	if i, j := strings.Index(norm, "pick < TFixedFloor"), strings.Index(norm, "for (let k = 0; k < n; k++)"); i < 0 || j < i {
+		t.Error("R32: the floor refusal does not stand before the record loop, so it is not once")
+	}
+	// IDEMPOTENTLY: the report is reset as the load's first statement, so the
+	// second read starts where the first did and answers the same thing.
+	t03Has(t, norm, "function TFixedLoad(values, capacity, bytes, byteLength, plan, report) { TableFixedResetReport(report);",
+		"R32 the load resets the report before it reads anything")
+	if n := strings.Count(load, "TableFixedResetReport(report);"); n != 1 {
+		t.Errorf("R32: the load resets the report %d times, want once and first", n)
+	}
+	// The refusal sets exactly two report facts, so reading again accumulates
+	// nothing.
+	refuse := jsFn(src, "TableFixedRefuseHash")
+	t03Has(t, t02Norm(refuse), "report.refused = refusal;", "R32 the refusal is the report's one answer")
+	t03Has(t, t02Norm(refuse), "report.layoutHash =", "R32 the refusal reports the file's hash")
+	if strings.Contains(refuse, "report.unknown") || strings.Contains(refuse, "report.clamped") || strings.Contains(refuse, "report.widened") {
+		t.Error("R32: a refusal moves a counter, so a second read is not the same answer")
 	}
 }
 
