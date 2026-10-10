@@ -131,7 +131,7 @@ jobs:
       # the version matrix, and serialize.js's engines floor of >= 20 is
       # satisfied by it; this repo proves wire identity, which does not vary
       # by node version.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
 
@@ -270,7 +270,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
 
@@ -370,7 +370,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
 
@@ -525,7 +525,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
