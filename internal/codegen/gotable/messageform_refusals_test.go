@@ -184,6 +184,27 @@ func vocabField(elem uint8, vocab []byte) []byte {
 	field = append(field, lebs(uint64(len(sub)))...)
 	return append(field, sub...)
 }
+
+func vocabFieldSub(elem uint8, vocab []byte) []byte {
+	sub := append([]byte{elem}, lebs(uint64(len(vocab)))...)
+	sub = append(sub, vocab...)
+	return sub
+}
+func vocabFieldBadKind(kind uint8) []byte {
+	sub := vocabFieldSub(6, nil)
+	field := []byte{2, kind}
+	field = append(field, lebs(uint64(len(sub)))...)
+	return append(field, sub...)
+}
+func vocabFieldBadElem(elem uint8) []byte {
+	entry := []byte{1, 2, 0}
+	sub := append([]byte{elem}, lebs(uint64(len(entry)))...)
+	sub = append(sub, entry...)
+	field := []byte{2, 14}
+	field = append(field, lebs(uint64(len(sub)))...)
+	return append(field, sub...)
+}
+
 func announcement(fields []byte) []byte {
 	out := append([]byte{1}, fields...)
 	out = append(out, 0x00)
@@ -214,8 +235,8 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 		// to read.
 		{"build version fewer than eight bytes", short},
 		{"vocabulary missing", versionField(version)},
-		{"vocabulary not kind 14", append(versionField(version), 2, 13)},
-		{"vocabulary element not kind 6", append(versionField(version), vocabField(7, nil)...)},
+		{"vocabulary not kind 14", append(versionField(version), vocabFieldBadKind(13)...)},
+		{"vocabulary element not kind 6", append(versionField(version), vocabFieldBadElem(7)...)},
 	}
 	for _, tc := range cases {
 		v := new(TableVocabulary)
