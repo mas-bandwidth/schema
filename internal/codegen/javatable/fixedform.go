@@ -1269,7 +1269,9 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			// -- 255 variants in a byte, 65535 in two -- has no read-side clamp,
 			// because `q > extent` is a value of that very width and no value
 			// satisfies it.
-			g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
+			if !fixedExtentFillsWidth(len(r.Variants), int64(r.StorageBits/8)) {
+				g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
+			}
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return
@@ -1491,7 +1493,9 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	// A CLAMP THAT CANNOT FIRE IS NOT EMITTED, AND NOTHING MOVES (ALG 4.5,
 	// §5.4): a tag whose arm extent FILLS its storage width has no read-side
 	// clamp to emit.
-	g.pf("        if (v.type > %d) { v.type = none; r.clamped++; }\n", len(un.Variants))
+	if !fixedExtentFillsWidth(len(un.Variants), tag) {
+		g.pf("        if (v.type > %d) { v.type = none; r.clamped++; }\n", len(un.Variants))
+	}
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
