@@ -130,6 +130,34 @@ func t04GoCaseBlock(t *testing.T, op string) string {
 	return rest
 }
 
+// t04GoRecordLoop is the emitted load's record loop, `for k := int64(0); k < n;
+// k++ {` through its matching `}`, found by brace depth. A census the emitter
+// moved inside the loop lands in THIS text and reds by name, so the clause is
+// the PLACEMENT docs/FIXED-FORM-ALGORITHM.md §5.4 fixes ("once per peer and
+// never per record") and not the count, which one line moved cannot show.
+func t04GoRecordLoop(t *testing.T, src string) string {
+	t.Helper()
+	const head = "for k := int64(0); k < n; k++ {"
+	i := strings.Index(src, head)
+	if i < 0 {
+		t.Fatalf("the emitted load has no record loop %q", head)
+	}
+	depth := 0
+	for j := i + len(head) - 1; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[i : j+1]
+			}
+		}
+	}
+	t.Fatalf("the emitted record loop is not closed")
+	return ""
+}
+
 // ---- go/E5 -------------------------------------------------------------------
 
 // t04GoE5 holds go/E5 to SPEC-TABLES §3.4's kind 35: "?T and a plain T nesting
@@ -302,9 +330,12 @@ func t04GoR19(t *testing.T) {
 	if n := strings.Count(norm, "report.Unknown += censusUnknown"); n != 1 {
 		t.Errorf("R19: the census is added %d times, want once per read", n)
 	}
-	// The record loop is where an append could be miscounted; it adds nothing.
-	loop := t02GoNorm(t02GoBlock(t, load, "for k := int64(0); k < n; k++ {", "report.Unknown += censusUnknown"))
-	for _, forbidden := range []string{"report.Unknown++", "report.Censused++"} {
+	// The record loop is where an append could be miscounted; it adds nothing —
+	// the census line included, whose site §5.4 fixes outside the loop. Brace
+	// depth rather than a marker, so a census moved INTO the loop is in this
+	// text and reds by name.
+	loop := t04GoRecordLoop(t, load)
+	for _, forbidden := range []string{"report.Unknown++", "report.Censused++", "report.Unknown += censusUnknown"} {
 		if strings.Contains(loop, forbidden) {
 			t.Errorf("R19: the record loop raises %q; an append the reader knows is not an event", forbidden)
 		}
@@ -351,6 +382,23 @@ func t04GoR16(t *testing.T) {
 	t02GoHas(t, runtime, "if !named && census && c.report != nil {", "R16 an unnamed writer field censuses")
 	t02GoHas(t, runtime, "c.report.Unknown++", "R16 the unknown census")
 	t02GoHas(t, runtime, "census && i == 0", "R16 once per FIELD per peer, not once per element")
+	// unknown NEVER per record: the load hands the loop to `tableFixedRun` and
+	// adds the peer's census ONCE, after the loop — §5.4's "once per peer and
+	// never per record". The clause is the PLACEMENT, so the assertion is that
+	// the record loop body carries no census line at all; the emitter's post-loop
+	// `report.Unknown += censusUnknown` is one line moved into the loop.
+	load := funcSource(t04GoEmitLineage(t,
+		"package probe\n\nfixed table T\n{\n    a int32\n}\n",
+		"package probe\n\nfixed table T\n{\n    a int32\n    b int32\n}\n"), "func TFixedLoad(")
+	if load == "" {
+		t.Fatal("R16: TFixedLoad is not emitted")
+	}
+	if n := strings.Count(t02GoNorm(load), "report.Unknown += censusUnknown"); n != 1 {
+		t.Errorf("R16: the load adds the census %d times, want once per peer", n)
+	}
+	if strings.Contains(t04GoRecordLoop(t, load), "report.Unknown += censusUnknown") {
+		t.Error("R16: the census is added INSIDE the record loop; §5.4 lands it once per peer and never per record")
+	}
 	// widened once per entry per record.
 	if n := strings.Count(t04GoCaseBlock(t, "Widen"), "report.Widened++"); n != 1 {
 		t.Errorf("R16: the widen op counts %d times, want once per entry", n)
