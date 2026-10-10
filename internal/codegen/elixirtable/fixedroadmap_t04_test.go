@@ -202,6 +202,78 @@ func t04R32(t *testing.T) {
 	t04Has(t, text, "%{report | layout_hash: file_hash}", "R32 the refusal reports the file's hash and touches nothing else")
 }
 
+// ---- elixir/R10 -----------------------------------------------------------------
+
+// t04R10 holds elixir/R10 to §5.6 and §5.3 step 7: "the hash is looked up, the
+// floor is checked, and the layout is COMPARED — the seven rules do not fire at
+// run time". The emitted records path parses no layout (`parse_layout` is the
+// module-load lane's, over the LOCK's bytes) and never recomputes the header's
+// hash: the header's eight bytes are taken as given and matched on.
+func t04R10(t *testing.T) {
+	text := t04Retire(t, 0)
+	records := t04Part(t, text, "defp lineage_fixed_records(", "\n  end\n")
+	t04Has(t, records, "case R.select(@lineage_known, @lineage_floor, stated, layout) do", "R10 the hash is looked up and the layout compared")
+	if strings.Contains(records, "parse_layout") {
+		t.Error("R10: the records path parses a stranger's layout")
+	}
+	if strings.Contains(records, "R.hash(") {
+		t.Error("R10: the records path recomputes the header's hash")
+	}
+	if strings.Contains(text, "R.parse_layout") {
+		t.Error("R10: the emitted module walks a stranger's layout")
+	}
+	if strings.Contains(text, "R.hash(") {
+		t.Error("R10: the emitted module recomputes the header's hash")
+	}
+	runtime := fixedRuntimeBody
+	selectBody := t04Part(t, runtime, "def select(known, floor, hash, layout) do", "\n  end\n")
+	t04Has(t, selectBody, "if byte_size(layout) == k.layout_bytes and layout == k.layout do", "R10 the layout is a byte comparison")
+	if strings.Contains(selectBody, "parse_layout") {
+		t.Error("R10: select walks a stranger's layout")
+	}
+	t04Has(t, runtime, "{:error, :layout_malformed, 0}", "R10 a lie about a known version is layout_malformed")
+	t04Has(t, runtime, "def hash(bytes) when is_binary(bytes), do: fnv(bytes, 0xCBF29CE484222325)", "R10 the hash survives for the writer side")
+	t04Has(t, text, "{:ok, stated, layout, records} ->", "R10 the header's hash is taken as given")
+}
+
+// ---- elixir/R15 -----------------------------------------------------------------
+
+// t04R15 holds elixir/R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any plan or record, on the file's
+// hash; the count clamp that REMAINS is the writer's bound carried by the plan
+// (bill §12.5); an unknown variant lands None through the plan's OWN remap and
+// counts; and the unknown-field count lands from the COMPILE census after a
+// returning read, never per record.
+func t04R15(t *testing.T) {
+	text := t04Retire(t, 0)
+	records := t04Part(t, text, "defp lineage_fixed_records(", "\n  end\n")
+	miss := strings.Index(records, "{:error, why, file_hash} ->")
+	ok := strings.Index(records, "{:ok, i} ->")
+	run := strings.Index(records, "lineage_fixed_lane(")
+	if miss < 0 || ok < 0 || run < 0 {
+		t.Fatalf("R15: the records path moved (%d, %d, %d)", miss, ok, run)
+	}
+	if !(miss < ok && ok < run) {
+		t.Errorf("R15: an unknown hash is not refused before any plan or record (%d, %d, %d)", miss, ok, run)
+	}
+	runtime := fixedRuntimeBody
+	t04Has(t, runtime, "{:error, :layout_newer, hash}", "R15 a hash the lineage does not hold is layout_newer")
+	if strings.Contains(runtime, "{:clamp,") {
+		t.Error("R15: a forward-read clamp op survives in the plan")
+	}
+	t04Has(t, runtime, "defp clamp_count(raw, max, report) do", "R15 the surviving count clamp")
+	t04Has(t, runtime, "raw < 0 -> {0, bump(report, :clamped)}", "R15 the count clamp counts")
+	t04Has(t, runtime, "raw > max -> {max, bump(report, :clamped)}", "R15 the count clamp is the writer's bound")
+	t04Has(t, runtime, "defp ordinal(raw, variants, report) when is_integer(variants) do", "R15 an unknown variant lands None through the writer's own count")
+	t04Has(t, runtime, "if raw <= variants, do: {raw, report}, else: {0, bump(report, :clamped)}", "R15 the variant clamp counts once")
+	t04Has(t, runtime, "nil -> if census, do: bump(report, :unknown), else: report", "R15 an unknown field is the compile census, not a per-record count")
+	t04Has(t, runtime, "def census(report, 0, 0), do: report", "R15 the census lands once")
+	if n := strings.Count(text, "R.census(report, census_u, census_k)"); n != 1 {
+		t.Errorf("R15: the census lands %d times, want once after the loop", n)
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapElixirT04Versions(t *testing.T) {
@@ -212,6 +284,8 @@ func TestFixedRoadmapElixirT04Versions(t *testing.T) {
 	}{
 		{id: "elixir/R3", check: t04R3},
 		{id: "elixir/R32", check: t04R32},
+		{id: "elixir/R10", check: t04R10},
+		{id: "elixir/R15", check: t04R15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
