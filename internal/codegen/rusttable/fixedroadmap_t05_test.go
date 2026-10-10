@@ -38,6 +38,7 @@ package rusttable
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -305,6 +306,152 @@ func t05R19(t *testing.T) {
 	}
 }
 
+// ---- rust/E9 -----------------------------------------------------------------
+
+// t05E9 holds rust/E9 to docs/FIXED-FORM-ALGORITHM.md:26: "The §4 counters are
+// unknown, kind_mismatch, widened, clamped, duplicate and malformed; this form
+// raises all but duplicate", and to §5.9's "duplicate is the TEXT form's — the
+// fixed wire never raises it — so a leg whose report has no such member is not
+// missing one." The report carries exactly the counters the wire raises, and
+// `duplicate` appears nowhere.
+func t05E9(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	if strings.Contains(runtime, "duplicate") {
+		t.Error("E9: the fixed runtime names `duplicate`; the fixed wire never raises it")
+	}
+	fields := t05StructFields(runtime, "pub struct TableFixedReport {")
+	want := []string{"unknown", "kind_mismatch", "widened", "clamped", "malformed", "refused", "reason", "layout_hash"}
+	if len(fields) != len(want) {
+		t.Fatalf("E9: TableFixedReport carries %v, want exactly %v", fields, want)
+	}
+	for i := range want {
+		if fields[i] != want[i] {
+			t.Errorf("E9: TableFixedReport member %d is %q, want %q", i, fields[i], want[i])
+		}
+	}
+}
+
+// ---- rust/R16 -----------------------------------------------------------------
+
+// t05R16 holds rust/R16 to §5.4's table, clause by clause: unknown is the
+// COMPILE's, once per peer and never per record; widened is once per entry per
+// record and a folded run is ONE; clamped is once per entry per record for a
+// count and a text; the bounds pass counts a forged ordinal remapped to None on
+// BOTH plans; copy, const, present and ordinal move nothing.
+func t05R16(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	run := t05Fn(runtime, "table_fixed_run")
+	if run == "" {
+		t.Fatal("R16: table_fixed_run is not emitted")
+	}
+	// UNKNOWN AND KIND_MISMATCH ARE THE COMPILE'S, never the loop's.
+	if strings.Contains(run, "report.unknown") || strings.Contains(run, "report.kind_mismatch") {
+		t.Error("R16: the read loop raises the COMPILE census per record")
+	}
+	if n := strings.Count(runtime, "report.unknown += 1;"); n != 1 {
+		t.Errorf("R16: the compile census raises unknown %d times, want once per writer field", n)
+	}
+	// WIDENED: once per entry per record, and only Widen and WidenF raise it.
+	if n := strings.Count(run, "report.widened += 1;"); n != 2 {
+		t.Errorf("R16: widened is raised %d times in the loop, want 2 (Widen, WidenF)", n)
+	}
+	// A FOLDED ELEMENT RUN IS ONE: only Copy entries coalesce, and a widened run
+	// is never folded (§5.9 #33).
+	t05Has(t, runtime, "&& c.plan[out - 1].op == TableFixedOp::Copy", "R16 a folded run is Copy-only")
+	// CLAMPED: once per entry per record for count and text.
+	countArm := t05Between(run, "TableFixedOp::Count => {", "TableFixedOp::Text => {")
+	if n := strings.Count(countArm, "report.clamped += 1;"); n != 1 {
+		t.Errorf("R16: the count clamp is raised %d times, want once", n)
+	}
+	textArm := t05Between(run, "TableFixedOp::Text => {", "TableFixedOp::Ordinal => {")
+	if n := strings.Count(textArm, "report.clamped += 1;"); n != 1 {
+		t.Errorf("R16: the text clamp is raised %d times, want once", n)
+	}
+	// THE BOUNDS PASS ON THE COMPILED PLAN: an unguarded None const whose tag is
+	// past the writer's arm count counts exactly one clamped in the op
+	// (schema#1254, §5.8 row 12).
+	constArm := t05Between(run, "TableFixedOp::Const => {", "\n            }\n        }\n    }\n}")
+	if constArm == "" {
+		t.Fatal("R16: the Const arm is not emitted")
+	}
+	t05Has(t, constArm, "if p.aux == 0 && p.dstsize != 0 && p.guard == TABLE_FIXED_NO_GUARD {",
+		"R16 the forged-tag None path")
+	if n := strings.Count(constArm, "report.clamped += 1;"); n != 1 {
+		t.Errorf("R16: the None-tag bounds pass counts %d times, want exactly one", n)
+	}
+	// AND ON THE IDENTITY PLAN: the scatter closes the enum's range, once.
+	u := unitFrom(t, "package probe\n\nenum Tier { Bronze, Silver, Gold, Platinum }\n\nfixed table Lineage\n{\n    tier Tier\n    seq int32\n}\n")
+	scatter := t05Fn(t05Fixed(t, t05Generate(t, u)), "lineage_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("R16: lineage_fixed_scatter is not emitted")
+	}
+	t05Has(t, scatter, "if raw > 4 {", "R16 the identity plan closes the enum's range")
+	if n := strings.Count(scatter, "report.clamped += 1;"); n != 1 {
+		t.Errorf("R16: the identity plan counts %d clamps, want exactly one", n)
+	}
+	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the ordinal's counter is the
+	// in-range-only None of the bounds pass and not a second count of the remap.
+	ordinalArm := t05Between(run, "TableFixedOp::Ordinal => {", "TableFixedOp::Widen => {")
+	if n := strings.Count(ordinalArm, "report.clamped += 1;"); n != 1 {
+		t.Errorf("R16: the ordinal op counts %d times, want once — and never twice", n)
+	}
+	t05Has(t, ordinalArm, "Some(count) if raw != 0 && raw <= u64::from(*count) => {",
+		"R16 a forged ordinal past the writer's count is the bounds pass's")
+}
+
+// ---- rust/R18 -----------------------------------------------------------------
+
+// t05R18 holds rust/R18 to §5.4: "A clamp that cannot fire is not emitted, and
+// nothing moves. An ordinal whose extent FILLS its storage width — 255 variants
+// in a byte, 65535 in two — has no read-side clamp ... The elided check never
+// clamped, so the counter it would have moved never moved either." The same
+// rule covers a `bits(N)` that fills its storage and a ranged scalar whose
+// declared end sits on its width's limit.
+func t05R18(t *testing.T) {
+	// 255 VARIANTS IN A BYTE: the extent fills the width, so no `if raw >`
+	// comparison is emitted for it.
+	var sb strings.Builder
+	sb.WriteString("package probe\n\nenum Filled {\n")
+	for i := 0; i < 255; i++ {
+		fmt.Fprintf(&sb, "    V%d\n", i)
+	}
+	sb.WriteString("}\n\nfixed table Cap\n{\n    grade Filled\n    seq int32\n}\n")
+	filled := unitFrom(t, sb.String())
+	if got := filled.Enums["Filled"]; got == nil {
+		t.Fatal("R18: the fixture declares no Filled enum")
+	} else if got.Max != 255 {
+		t.Fatalf("R18: the fixture's enum has Max %d, want 255 (one byte full)", got.Max)
+	}
+	text := t05Fixed(t, t05Generate(t, filled))
+	scatter := t05Fn(text, "cap_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("R18: cap_fixed_scatter is not emitted")
+	}
+	if strings.Contains(scatter, "if raw >") {
+		t.Error("R18: a clamp that cannot fire is emitted for a byte-full enum")
+	}
+	if strings.Contains(scatter, "report.clamped") {
+		t.Error("R18: the elided enum clamp still moves a counter")
+	}
+	// A bits(N) THAT FILLS ITS STORAGE: bits(32) at the four-byte storage the
+	// fixed form gives a bits(N) has no clamp, so no clamp body is emitted.
+	bits := unitFrom(t, "package probe\n\nfixed table Cap\n{\n    bits32 bits(32)\n}\n")
+	bitsText := t05Fixed(t, t05Generate(t, bits))
+	if strings.Contains(bitsText, "cap_fixed_clamp_body") {
+		t.Error("R18: a clamp body is emitted for a bits(32) that fills its storage")
+	}
+	// A RANGED SCALAR WHOSE END SITS ON ITS WIDTH: min 0 and max 255 at a byte
+	// are the type's own limits and no comparison can fail.
+	ranged := unitFrom(t, "package probe\n\nfixed table Cap\n{\n    r uint8 | min = 0, max = 255\n}\n")
+	rangedText := t05Fixed(t, t05Generate(t, ranged))
+	if strings.Contains(rangedText, "cap_fixed_clamp_body") {
+		t.Error("R18: a clamp body is emitted for a range that fills its byte")
+	}
+	if strings.Contains(rangedText, "report.clamped") {
+		t.Error("R18: a range that fills its byte still moves a counter")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT05Evolution(t *testing.T) {
@@ -316,6 +463,9 @@ func TestFixedRoadmapRustT05Evolution(t *testing.T) {
 		{id: "rust/E6", check: t05E6},
 		{id: "rust/E8", check: t05E8},
 		{id: "rust/R19", check: t05R19},
+		{id: "rust/E9", check: t05E9},
+		{id: "rust/R16", check: t05R16},
+		{id: "rust/R18", check: t05R18},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
