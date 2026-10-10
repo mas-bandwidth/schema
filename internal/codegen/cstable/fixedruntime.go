@@ -240,6 +240,11 @@ const tableFixedWireSource = `
 
         public const int EntryBytes = 17;
 
+        // Compile's answer when one entry reached past the writer's declared
+        // record (docs/FIXED-FORM-ALGORITHM.md §5.2's PLAN): the plan is refused
+        // WHOLE under layout_record_too_large and never retried at a bigger pool.
+        public const int CompileRecordTooLarge = -2;
+
         public static bool Widens(byte from, byte to)
         {
             if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
@@ -507,8 +512,36 @@ const tableFixedWireSource = `
             public int Count;
             public int Pool;
             public bool Overflow;
+            // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (docs/
+            // FIXED-FORM-ALGORITHM.md §5.2's PLAN: "record := x.root.size —
+            // EVERY entry is bounded by this, and by nothing the file said").
+            // TooLarge is that answer and Record is the writer's declared root
+            // size every entry's source extent is held to.
+            public bool TooLarge;
+            public uint Record;
             public TableReport Report;
             public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
+
+            // HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from
+            // Src (§5.2's PLAN). The run loop checks the same arithmetic record
+            // by record; this is that arithmetic ONCE, at compile time, against
+            // the writer's own declared record. A Count reads the four-byte
+            // count word, not the element run its Size names; a Text entry
+            // reaches its four-byte length word plus its units; a WidenF reads
+            // an f32; a Const reads nothing here (the union's None const reads
+            // the writer's tag through its guard and is covered below); every
+            // other op reads its byte run.
+            private static ulong OpReach(byte op, uint size)
+            {
+                switch (op)
+                {
+                    case TableFixedWire.Count: return 4;
+                    case TableFixedWire.Text: return 4 + (ulong)size;
+                    case TableFixedWire.WidenF: return 4;
+                    case TableFixedWire.Const: return 0;
+                    default: return size;
+                }
+            }
 
             public void Push(in TableFixedEntry e)
             {
@@ -517,6 +550,19 @@ const tableFixedWireSource = `
                 {
                     stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
                 }
+                // EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED
+                // RECORD SIZE. The boundary is past and not at: a layout
+                // reaching EXACTLY to root.size still compiles. A guarded entry
+                // loads the writer's tag before anything else, so the guard's
+                // own reach counts too; a zero width reads as one.
+                ulong reach = (ulong)stamped.Src + OpReach(stamped.Op, stamped.Size);
+                if (stamped.Guard != NoGuard)
+                {
+                    ulong w = stamped.ArgW == 0 ? 1UL : stamped.ArgW;
+                    ulong g = (ulong)stamped.Guard + w;
+                    if (g > reach) { reach = g; }
+                }
+                if (Record != 0 && reach > Record) { TooLarge = true; return; }
                 int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                 int room = Capacity - (Pool + entrySize - 1) / entrySize;
                 if (Count >= room) { Overflow = true; return; }
@@ -835,10 +881,15 @@ const tableFixedWireSource = `
             {
                 Plan = plan,
                 Capacity = plan.Length,
+                // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
+                // declared size, taken from the layout this plan is compiled
+                // against (§5.2's PLAN).
+                Record = EntryAt(theirs, 0).Size,
                 Report = report,
                 ArgW = 1
             };
             MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+            if (c.TooLarge) { return CompileRecordTooLarge; }
             if (c.Overflow) { return -1; }
             return c.Count;
         }
@@ -920,6 +971,10 @@ const tableFixedWireSource = `
                     TableFixedEntry[] buffer = new TableFixedEntry[room];
                     TableReport census = new TableReport();
                     int made = Compile(parsed, my_layout, dst, buffer, census);
+                    // ONE ENTRY PAST THE WRITER'S DECLARED RECORD REFUSES THE
+                    // PLAN WHOLE by that entry's own name and is not retried:
+                    // a bigger pool cannot make an overreaching entry fit.
+                    if (made == CompileRecordTooLarge) { lane.Why = "layout_record_too_large"; break; }
                     if (made < 0)
                     {
                         if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
