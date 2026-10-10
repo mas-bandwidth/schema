@@ -1062,16 +1062,32 @@ void tableFixedRun(
         report.widened++;
         break;
       case TableFixedOp.widenFloat:
-        // every f32 value is exactly representable in an f64, infinities and
-        // NaN payloads included, so there is nothing to round and nothing to
-        // lose
-        conv.setFloat64(
-          0,
-          sourceView.getFloat32(s, Endian.little),
-          Endian.little,
-        );
+        // f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE BITS.
+        // The hardware conversion QUIETS a signalling NaN and can drop a
+        // payload bit, so the widened double is assembled by hand for every
+        // all-ones exponent: the sign is carried, the exponent becomes f64's
+        // all-ones, and the 23-bit mantissa shifts left by 29 to become the
+        // 52-bit one, which carries the quiet bit as the writer wrote it
+        // (§4). Every other exponent converts exactly, so the hardware path is
+        // the value and nothing else.
+        final bits = sourceView.getUint32(s, Endian.little);
+        final allOnes = (bits & 0x7f800000) == 0x7f800000;
+        final nan = allOnes && (bits & 0x007fffff) != 0;
+        var wide = 0;
+        if (nan) {
+          final sign = bits >>> 31;
+          final mant = bits & 0x007fffff;
+          wide = (sign << 63) | 0x7ff0000000000000 | (mant << 29);
+        } else {
+          conv.setFloat64(
+            0,
+            sourceView.getFloat32(s, Endian.little),
+            Endian.little,
+          );
+          wide = conv.getUint64(0, Endian.little);
+        }
         for (var k = 0; k < 8; k++) {
-          image[d + k] = conv.getUint8(k);
+          image[d + k] = (wide >>> (8 * k)) & 0xff;
         }
         report.widened++;
         break;

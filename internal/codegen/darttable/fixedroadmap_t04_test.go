@@ -311,6 +311,202 @@ func t04R15(t *testing.T) {
 	t04Has(t, fixedRuntime, "if (raw < 0 || raw > remap[remapAt]) {", "R15 a variant past the writer's set is None")
 }
 
+// ---- dart/E3 ------------------------------------------------------------------
+
+// t04E3 holds dart/E3 to §5.2's EMIT ladder, in full: the rungs 2..5, 6..9,
+// 20..24, 25..29 and 10 -> 11; `widens` only ever widens upward inside one
+// family, the float rung is `widenFloat`, the sign is the WRITER's kind, and a
+// same-kind widen zero-extends. The non-default and boundary values are written
+// and read by the gate's corpus rows (`int_widen`, `uint_widen`, `float_widen`,
+// `array_elem_widen`, `enum_width`), which `make tables-dart-fixed-form` runs.
+func t04E3(t *testing.T) {
+	runtime := fixedRuntime
+	for _, rung := range []string{
+		"if (from >= 6 && from <= 9 && to >= 6 && to <= 9) {",
+		"if (from >= 2 && from <= 5 && to >= 2 && to <= 5) {",
+		"if (from >= 20 && from <= 24 && to >= 20 && to <= 24) {",
+		"if (from >= 25 && from <= 29 && to >= 25 && to <= 29) {",
+		"return from == 10 && to == 11; // f32 -> f64",
+	} {
+		t04Has(t, runtime, rung, "E3 the widen ladder")
+	}
+	t04Has(t, runtime, "final op = theirKind == 10", "E3 the float rung is chosen by the writer's kind")
+	t04Has(t, runtime, "TableFixedOp.widenFloat", "E3 the float rung is widenFloat")
+	t04Has(t, runtime, "(mySize & 0xff) | (signedKind(theirKind) ? 0x100 : 0),", "E3 a ladder widen's sign is the writer's kind")
+	t04Has(t, runtime, "static bool signedKind(int kind) =>", "E3 the writer's sign decides the extension")
+	t04Has(t, runtime, "(kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);", "E3 only a signed integer or signed fixed-point sign-extends")
+}
+
+// ---- dart/C8 ------------------------------------------------------------------
+
+// t04C8 holds dart/C8 to §3.4's constant-size table and §5.2's fixed-point
+// family: a `fixed(I,F)` rides as the raw scaled integer at its storage width,
+// `I + F`, and the KIND encodes that width and the family and NOT `F` — so an
+// `F`-only edit is a definitions-digest change the lock refuses, never a widen.
+// `bits(N)` rides at its declared storage width and is clamped at `N`'s own
+// ceiling, which is not a storage limit.
+func t04C8(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Lineage
+{
+    a fixed(4, 4) | min = -8, max = 7
+    b fixed(2, 6) | min = -2, max = 1
+    c fixed(8, 8) | min = -128, max = 127
+    d ufixed(4, 4) | min = 0, max = 15
+    e bits(12)
+}
+`)
+	st := u.Tables["Lineage"]
+	if st == nil {
+		t.Fatal("C8: the fixture declares no Lineage table")
+	}
+	kind := map[string]int{}
+	for _, f := range st.Fields {
+		kind[f.Name] = ir.TableScalarKind(f)
+	}
+	if kind["a"] != 20 || kind["b"] != 20 {
+		t.Errorf("C8: fixed(4,4) and fixed(2,6) are kinds %d and %d, want the same kind 20 — F does not ride in the kind", kind["a"], kind["b"])
+	}
+	if kind["c"] != 21 {
+		t.Errorf("C8: fixed(8,8) is kind %d, want 21 (a 16-bit storage width)", kind["c"])
+	}
+	if kind["d"] != 25 {
+		t.Errorf("C8: ufixed(4,4) is kind %d, want 25 (the unsigned family)", kind["d"])
+	}
+	if kind["e"] != 7 {
+		t.Errorf("C8: bits(12) is kind %d, want 7 — a bits(N) rides at its storage width's integer kind", kind["e"])
+	}
+	if got := ir.TableFixedStorageBytes(st.Fields[4].Type); got != 4 {
+		t.Errorf("C8: bits(12) storage = %d, want 4", got)
+	}
+	text := t04Emit(t, `package probe
+
+fixed table Lineage
+{
+    e bits(12)
+}
+`)
+	decode := t04Fn(text, "lineageFixedDecode")
+	if decode == "" {
+		t.Fatal("C8: lineageFixedDecode is not emitted")
+	}
+	t04Has(t, decode, "4095", "C8 bits(12)'s own ceiling")
+	t04Has(t, fixedRuntime, "case 20: // fixed8", "C8 the fixed-point ladder's 8-bit rung")
+	t04Has(t, fixedRuntime, "case 25: // ufixed8", "C8 the unsigned fixed-point family")
+	t04Has(t, fixedRuntime, "return size == 16 ? 1 : 0;", "C8 the fixed-point ladder's 128-bit top rung")
+}
+
+// ---- dart/R20 -----------------------------------------------------------------
+
+// t04R20 holds dart/R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
+// sites: an added field lands the prefill's declared default; a deprecated
+// field is dropped and counted once per plan through the compile census; a
+// narrower integer or float is widened exactly and counts widened; a shorter
+// array or string lands with the reader's slack as the template's zeros; an
+// older enum's ordinals are the reader's, its list a prefix.
+func t04R20(t *testing.T) {
+	text, _ := t04Lineage(t,
+		"package probe\n\nfixed table Lineage\n{\n    lead uint32 = 1\n    tail uint32 = 2\n}\n",
+		"package probe\n\nfixed table Lineage\n{\n    lead uint32 = 1\n    w    int32 = 77\n    tail uint32 = 2\n}\n")
+	// AN ADDED FIELD LANDS ITS DECLARED DEFAULT: the prefill image carries the
+	// new field's value (77 = 0x4d) at its declared offset, and the load copies
+	// exactly the ranges the plan does not land.
+	t04Has(t, text, "final Uint8List lineageFixedPrefill = Uint8List.fromList(const <int>[", "R20 the prefill image is emitted")
+	t04Has(t, text, "0x4d, 0x00, 0x00, 0x00,", "R20 an added field lands the declared default")
+	load := t04Fn(text, "lineageFixedLoad")
+	if load == "" {
+		t.Fatal("R20: lineageFixedLoad is not emitted")
+	}
+	t04Has(t, load, "tableFixedFillRun(fills, fillCount, lineageFixedPrefill, plan.image);", "R20 the holes are what the plan does not write")
+	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
+	// time the peer's field is seen, and an array's element 0 is the only one
+	// that censuses.
+	runtime := fixedRuntime
+	t04Has(t, runtime, "if (!named && census) {", "R20 an unknown field is counted")
+	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per peer, not per element")
+	t04Has(t, load, "report.unknown += censusUnknown;", "R20 the census lands once, after the loop")
+	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
+	t04Has(t, runtime, "report.widened++;", "R20 a widen counts")
+	// A SHORTER ARRAY OR STRING: the reader's slack is the template's zeros
+	// because the image the plan fills is zeroed and the prefill restores the
+	// declared defaults over the ranges the plan leaves alone.
+	t04Has(t, runtime, "void tableFixedFillRun(", "R20 the fill run restores the declared defaults")
+	// AN OLDER ENUM: the remap is by NAME and its list is the writer's count, so
+	// a prefix maps position for position.
+	t04Has(t, runtime, "if (raw < 0 || raw > remap[remapAt]) {", "R20 the ordinal is bounded by the writer's variant count")
+	t04Has(t, runtime, "landed = remap[remapAt + raw];", "R20 the older enum's ordinals are the reader's")
+}
+
+// ---- dart/R21 -----------------------------------------------------------------
+
+// t04R21 holds dart/R21 to §4's float rung and §5.2's table: "widenf is the f32
+// at src as an f64 at dst ... both are exact by construction, NaN payloads
+// included". The hardware f32-to-f64 conversion QUIETS a signalling NaN and can
+// drop a payload bit, so the emitted runtime assembles every all-ones exponent
+// by hand — the sign carried, f64's all-ones exponent, and the 23-bit mantissa
+// shifted left by 29, which carries the quiet bit as the writer wrote it.
+func t04R21(t *testing.T) {
+	runtime := fixedRuntime
+	t04Has(t, runtime, "final bits = sourceView.getUint32(s, Endian.little);", "R21 the f32 rides on its bits")
+	t04Has(t, runtime, "final allOnes = (bits & 0x7f800000) == 0x7f800000;", "R21 the all-ones exponent is tested on the bits")
+	t04Has(t, runtime, "final nan = allOnes && (bits & 0x007fffff) != 0;", "R21 a NaN is an all-ones exponent with a live mantissa")
+	t04Has(t, runtime, "0x7ff0000000000000", "R21 f64's all-ones exponent")
+	t04Has(t, runtime, "(mant << 29)", "R21 the 23-bit mantissa becomes the 52-bit one")
+	t04Absent(t, runtime, "image[d + k] = conv.getUint8(k);", "R21 the float rung still copies the hardware conversion's bytes")
+}
+
+// ---- dart/R29 -----------------------------------------------------------------
+
+// t04R29 holds dart/R29 to the 65536 band and to bill §12.5's carried writer
+// bounds. THE BAND: a record body AT 65536 is a fixed root and one byte past it
+// is not (SPEC-TABLES §3.4, "65536 BYTES OF RECORD BODY: THE FORM IS NOT
+// EMITTED, AND THE TABLE IS NAMED"), and a layout entry reaching past the
+// writer's own declared record refuses the plan WHOLE under
+// layout_record_too_large. THE WRITER'S BOUNDS: the count op clamps to the
+// writer's element bound carried by the plan and the text op to the writer's
+// span, so a value forged past what the WRITER could have written clamps and
+// counts while a value the reader merely widened does not.
+func t04R29(t *testing.T) {
+	if ir.TableFixedRecordMaxBytes != 65536 {
+		t.Fatalf("R29: the ceiling is %d, want 65536", ir.TableFixedRecordMaxBytes)
+	}
+	at := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65532)\n}\n")
+	past := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65533)\n}\n")
+	if got := ir.TableFixedTypeBytes(at.Tables["Lineage"]); got != 65536 {
+		t.Fatalf("R29: the AT fixture body is %d, want 65536", got)
+	}
+	found := false
+	for _, r := range ir.TableFixedFormRoots(at) {
+		if r.Name == "Lineage" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("R29: a body AT 65536 is not a fixed-form root")
+	}
+	for _, r := range ir.TableFixedFormRoots(past) {
+		if r.Name == "Lineage" {
+			t.Error("R29: a body one past 65536 is still a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(at, 0)
+	if len(errs) != 0 {
+		t.Errorf("R29: a body at the ceiling is a warning and not a refusal: %v", errs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
+		t.Errorf("R29: the warning does not name the table: %s", joined)
+	}
+	runtime := fixedRuntime
+	t04Has(t, runtime, "static const int recordMaxBytes = 65536;", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, runtime, "if (size(0) == 0 || size(0) > TableFixedLimits.recordMaxBytes) {", "R29 the root is a table inside the ceiling")
+	t04Has(t, runtime, "if (plan.record != 0 && end > plan.record) {", "R29 an entry past the writer's declared record")
+	t04Has(t, runtime, "} else if (counted > size) {", "R29 the count clamps to the writer's bound")
+	t04Has(t, runtime, "} else if (used > cap) {", "R29 the text clamps to the writer's span")
+	t04Has(t, runtime, "theirN,", "R29 the count's bound is the writer's")
+	t04Has(t, runtime, "final units = (mySize - 4) < (theirSize - 4)", "R29 the text's cap is the writer's span in units")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapDartT04Versions(t *testing.T) {
@@ -323,6 +519,11 @@ func TestFixedRoadmapDartT04Versions(t *testing.T) {
 		{id: "dart/R32", check: t04R32},
 		{id: "dart/R10", check: t04R10},
 		{id: "dart/R15", check: t04R15},
+		{id: "dart/E3/other-required-widens", check: t04E3},
+		{id: "dart/C8", check: t04C8},
+		{id: "dart/R20", check: t04R20},
+		{id: "dart/R21", check: t04R21},
+		{id: "dart/R29", check: t04R29},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
