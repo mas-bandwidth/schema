@@ -202,8 +202,17 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 	}{
 		{"build version missing", vocabField(6, nil)},
 		{"build version twice", twice},
-		{"build version not kind 9", append([]byte{1, 4, 0, 0, 0, 0, 0, 0, 0, 0}, vocabField(6, nil)...)},
-		{"build version fewer than eight bytes", append(short, vocabField(6, nil)...)},
+		// kind 5 is eight bytes wide, so the framing pre-walk -- which skips a
+		// field by its declared kind -- walks past this one and leaves the
+		// kind != 9 half of the strict check to refuse it. A four-byte kind
+		// here is eaten by tableOpenFramed/EndsEarly first and the test would
+		// pass without the guard.
+		{"build version not kind 9", append([]byte{1, 5, 0, 0, 0, 0, 0, 0, 0, 0}, vocabField(6, nil)...)},
+		// No vocabulary follows, so the framing pre-walk stays Ok and the
+		// !r.Has(8) half of the strict check is the only thing that can
+		// refuse it; an appended vocabulary would hand the guard eight bytes
+		// to read.
+		{"build version fewer than eight bytes", short},
 		{"vocabulary missing", versionField(version)},
 		{"vocabulary not kind 14", append(versionField(version), 2, 13)},
 		{"vocabulary element not kind 6", append(versionField(version), vocabField(7, nil)...)},
