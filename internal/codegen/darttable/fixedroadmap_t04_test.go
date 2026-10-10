@@ -336,6 +336,22 @@ func t04R15(t *testing.T) {
 	if strings.Contains(fixedRuntime, "remap.get(") {
 		t.Error("R15: a forward-read remap survives in the runtime")
 	}
+	// THE RANGE CLAMP ACROSS VERSIONS IS RETIRED: the compiled plan carries no
+	// range at all — its nine lanes are op, src, dst, size, aux, guard, arg,
+	// meta and the guard's width, and the ninth is last — so a plan compiled
+	// from a stranger's layout has nowhere to hold the writer's ends. A ranged
+	// leaf is clamped in the DECODE against the READER's own declared ends
+	// (schema#1164, statement B), not against a peer's.
+	t04Has(t, fixedRuntime, "static const int lanes = 9;", "R15 the plan carries no range lane")
+	t04Has(t, fixedRuntime, "static const int argW = 8;", "R15 the ninth lane is the guard's width")
+	ranged, _ := t04Lineage(t,
+		"package probe\n\nfixed table Lineage\n{\n    x int32 | min = 0, max = 100\n}\n",
+		"package probe\n\nfixed table Lineage\n{\n    x int32 | min = 0, max = 200\n}\n")
+	decode := t04Fn(ranged, "lineageFixedDecode")
+	if decode == "" {
+		t.Fatal("R15: lineageFixedDecode is not emitted for a ranged leaf")
+	}
+	t04Has(t, decode, "if (value.x > 200) {", "R15 the range clamp is the READER's own declared end")
 }
 
 
