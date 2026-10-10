@@ -2,9 +2,7 @@ package main
 
 import (
 	"backenddemo"
-	"blobdemo"
 	"fmt"
-	"graphdemo"
 	"os"
 	"vocab9demo"
 	"vocabdemo"
@@ -89,6 +87,7 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		codec := findMessageCodec(unit, f[3])
 		if codec == nil {
+			fmt.Printf("%s ABSENT plain table: §3.3\n", f[1])
 			if err := spillAbsent(out, f[1]); err != nil {
 				return err
 			}
@@ -114,20 +113,6 @@ func surfaceMessage(lines []line, out string) error {
 }
 
 var messageCodecs = []messageCodec{
-	regionMessageRow("blobdemo", "Catalog", func() *blobdemo.TableVocabulary {
-		v := new(blobdemo.TableVocabulary)
-		v.Init(make([]blobdemo.TableMessageEntry, blobdemo.TableMessageEntriesHere))
-		return v
-	}, blobdemo.AnnounceMeasure, blobdemo.Announce, blobdemo.AnnounceRead, blobdemo.CatalogLoadMessagesMeasure, blobdemo.CatalogLoadMessages, blobdemo.CatalogMeasureMessages, blobdemo.CatalogSaveMessages, func(r *blobdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
-	}),
-	regionMessageRow("graphdemo", "Scene", func() *graphdemo.TableVocabulary {
-		v := new(graphdemo.TableVocabulary)
-		v.Init(make([]graphdemo.TableMessageEntry, graphdemo.TableMessageEntriesHere))
-		return v
-	}, graphdemo.AnnounceMeasure, graphdemo.Announce, graphdemo.AnnounceRead, graphdemo.SceneLoadMessagesMeasure, graphdemo.SceneLoadMessages, graphdemo.SceneMeasureMessages, graphdemo.SceneSaveMessages, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
-	}),
 	messageRow("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))

@@ -20,19 +20,9 @@ func (g *tableGen) emitRetainMessageRuntime() {
 	g.pf("%s", source)
 }
 func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
-	if !st.IsTable || st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
-		return
-	}
-	bytes, str := ir.PointerReachableBlobs(st)
-	mask := 0
-	if bytes {
-		mask |= 1
-	}
-	if str {
-		mask |= 2
-	}
-	n, typ := st.Name, g.storageName(st.Name)
-	g.pf("func %sLoadRetainMessages(values []*%s,region []byte,vocabulary *TableVocabulary,data []byte,retains []TableRetain,report *TableReport)(int64,bool){if report==nil{var ignored TableReport;report=&ignored};plain,count:=tableMessageBatchOpen(vocabulary,data,report);r:=TableRetainMessageReader{tableMessagePlainReader:plain};defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values))||count>int64(len(retains)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};if len(region)==0||uintptr(unsafe.Pointer(&region[0]))%%uintptr(tableRegionAlign)!=0{r.Report.Malformed=true;return 0,false};clear(region);used:=int64(0);for i:=int64(0);i<count;i++{r.Retain=&retains[i];p,ok:=tableMessageRegionIntoRetain(&r,%sTableType(),%d,region,&used);values[i]=(*%s)(p);if !ok{return i,false}};return count,tableMessageBatchClose(&r.tableMessagePlainReader)}\n", n, typ, n, mask, typ)
+	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
+	// "fixed table T may ride here, a plain table T may not".
+	// Retention is a region round trip (§6.6), and fixed tables have no regions.
 }
 func (g *tableGen) retainMessagePush(index string) string {
 	if index == "" {

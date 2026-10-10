@@ -52,10 +52,10 @@ func TestStandalonePair(t *testing.T){
  if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO")=="1" {t.Logf("allocation observations on %s; NOT CERTIFIED",runtime.Version())}
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport
  if !RootFromJson(&b,[]byte("{\"head\":{\"&node\":1,\"n\":7},\"alias\":{\"&node\":1},\"data\":[2,3],\"entries\":{\"9\":{\"n\":4},\"-2\":{\"n\":5}},\"blob\":\"YWJj\"}"),&report)||!b.Lock(){t.Fatal("source")};root:=b.AsConst()
- wire:=make([]byte,RootMeasure(root));RootSave(root,wire);text:=make([]byte,RootToJsonMeasure(root));RootToJson(root,text);cook:=make([]byte,RootCookMeasure(root));RootCookFrom(root,cook,TableByteOrderLittle);roots:=[]*Root{root};message:=make([]byte,RootMeasureMessages(roots,nil));RootSaveMessages(roots,message,nil)
+ wire:=make([]byte,RootMeasure(root));RootSave(root,wire);text:=make([]byte,RootToJsonMeasure(root));RootToJson(root,text);cook:=make([]byte,RootCookMeasure(root));RootCookFrom(root,cook,TableByteOrderLittle)
  var pool [32][]byte;var live [32]int;for i:=range pool{pool[i]=alignedAllocation(65536)};calls,frees,fail:=0,0,0
  pair:=TableAllocator{Alloc:func(n int64)[]byte{calls++;if calls==fail{return nil};for i:=range pool{if live[i]==0&&n+9<=int64(len(pool[i])){live[i]=int(n)+9;clear(pool[i]);return pool[i][:n+9]}};panic("pool exhausted")},Free:func(b []byte){for i:=range pool{if &b[0]==&pool[i][0]{if len(b)!=live[i]||live[i]==0{panic("wrong allocation released")};live[i]=0;frees++;return}};panic("foreign allocation")}}
- wireOut,textOut,cookOut,messageOut:=make([]byte,len(wire)),make([]byte,len(text)),make([]byte,len(cook)),make([]byte,len(message))
+ wireOut,textOut,cookOut:=make([]byte,len(wire)),make([]byte,len(text)),make([]byte,len(cook))
  operations:=[]struct{name string;call func()bool}{
  {"wire measure",func()bool{return RootMeasure(root,&pair)==int64(len(wire))}},
  {"wire save",func()bool{return RootSave(root,wireOut,&pair)==int64(len(wire))&&bytes.Equal(wireOut,wire)}},
@@ -63,8 +63,6 @@ func TestStandalonePair(t *testing.T){
  {"json save",func()bool{return RootToJson(root,textOut,pair)==int64(len(text))&&bytes.Equal(textOut,text)}},
  {"cook measure",func()bool{return RootCookMeasure(root,&pair)==int64(len(cook))}},
  {"cook save",func()bool{return RootCookFrom(root,cookOut,TableByteOrderLittle,&pair)&&bytes.Equal(cookOut,cook)}},
- {"message measure",func()bool{return RootMeasureMessages(roots,nil,&pair)==int64(len(message))}},
- {"message save",func()bool{return RootSaveMessages(roots,messageOut,nil,&pair)==int64(len(message))&&bytes.Equal(messageOut,message)}},
  {"retain measure",func()bool{return RootMeasureRetain(root,nil,pair)==int64(len(wire))}},
  {"retain save",func()bool{return RootSaveRetain(root,nil,wireOut,&report,pair)==int64(len(wire))&&bytes.Equal(wireOut,wire)}},
  }

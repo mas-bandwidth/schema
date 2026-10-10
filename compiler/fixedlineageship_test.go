@@ -233,9 +233,9 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 // against which the others are read.
 var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// internal/codegen/gotable/fixedform.go: Hash, an optional RETIRED note,
-	// then Record.
+	// LayoutBytes, then Record.
 	"go": func(h uint64) *regexp.Regexp {
-		return regexp.MustCompile(fmt.Sprintf(`Hash:\s+0x%016x,\n(?:\s*//[^\n]*\n)?\s*Record:\s*(\d+),`, h))
+		return regexp.MustCompile(fmt.Sprintf(`Hash:\s+0x%016x,\n(?:\s*//[^\n]*\n)?(?:\s*LayoutBytes:\s*\d+,\n)?\s*Record:\s*(\d+),`, h))
 	},
 	// internal/codegen/ctable/fixedform.go: one brace-initialized row, the
 	// layout's length taken by sizeof, the record size last.
