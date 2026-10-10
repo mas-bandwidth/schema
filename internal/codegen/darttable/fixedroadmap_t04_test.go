@@ -331,8 +331,8 @@ func t04R15(t *testing.T) {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
 	t04Has(t, load, "report.unknown += censusUnknown;", "R15 unknown is the compile census")
-	t04Has(t, fixedRuntime, "counted > size", "R15 the count clamp is the writer's bound")
-	t04Has(t, fixedRuntime, "used > cap", "R15 the text clamp is the writer's span")
+	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R15 the count clamp is the writer's bound")
+	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R15 the text clamp is the writer's span")
 	if strings.Contains(fixedRuntime, "remap.get(") {
 		t.Error("R15: a forward-read remap survives in the runtime")
 	}
@@ -541,8 +541,8 @@ func t04R29(t *testing.T) {
 	}
 	t04Has(t, fixedRuntime, "size(0) == 0 || size(0) > TableFixedLimits.recordMaxBytes", "R29 the reader holds the peer's layout to the same ceiling")
 	t04Has(t, fixedRuntime, "plan.record != 0 && end > plan.record", "R29 an entry past the writer's declared record")
-	t04Has(t, fixedRuntime, "counted > size", "R29 the count clamps to the writer's bound")
-	t04Has(t, fixedRuntime, "used > cap", "R29 the text clamps to the writer's span")
+	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R29 the count clamps to the writer's bound")
+	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R29 the text clamps to the writer's span")
 	// THE COUNT'S BOUND IS THE WRITER'S: the plan compiles the count op with
 	// the WRITER's element count, never the reader's wider one.
 	t04Has(t, fixedRuntime, "final theirN = theirElem != 0 ? (theirSize - head) ~/ theirElem : 0;", "R29 the count's bound is the writer's")
