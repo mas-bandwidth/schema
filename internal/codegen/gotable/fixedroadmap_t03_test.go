@@ -50,6 +50,8 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{"go/R6", t03R6},
 		{"go/R14", t03R14},
 		{"go/R22", t03R22},
+		{"go/R3", t03R3},
+		{"go/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -285,6 +287,113 @@ fixed table V { x int32 }
 	if !strings.Contains(self, "cycle") || !strings.Contains(self, "T") {
 		t.Errorf("R22: a self-reaching table is not refused as a cycle: %s", self)
 	}
+}
+
+// ---- go/R3 ------------------------------------------------------------------
+
+// t03R3 holds R3: "the floor is 1 + the highest retired index (0 when none);
+// below the floor is layout_unsupported, reporting the file's hash". §5.2: the
+// floor is one past the highest retired lineage index; a known hash below it is
+// layout_unsupported, which (§5.3) reports THE FILE'S hash. The emitted
+// constant is read for each retirement shape, and the emitted load's refusal is
+// read for the name and the hash.
+func t03R3(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R3: FixedLineageOf has no entry for T")
+	}
+	older := []FixedLineageEntry{
+		{Wire: own.Wire ^ 0x1111111111111111, Layout: own.Layout, Record: own.Record},
+		{Wire: own.Wire ^ 0x2222222222222222, Layout: own.Layout, Record: own.Record},
+	}
+	for _, tc := range []struct {
+		retire []int
+		want   int
+	}{
+		{nil, 0},
+		{[]int{0}, 1},
+		{[]int{1}, 2},
+		{[]int{0, 1}, 2},
+	} {
+		entries := append([]FixedLineageEntry(nil), older...)
+		for _, i := range tc.retire {
+			entries[i].Retired = true
+			entries[i].Reason = "the client is gone"
+		}
+		src := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": entries})
+		t03Has(t, src, "const TFixedFloor = "+itoa(tc.want),
+			"R3 the floor is 1 + the highest retired index, 0 when none is")
+	}
+	src := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": older})
+	t03Has(t, src, "if pick < TFixedFloor {\n\t\treturn tableFixedRefuseHash(report, \"layout_unsupported\", hash)\n\t}",
+		"R3 below the floor is layout_unsupported, reporting the file's hash")
+}
+
+// ---- go/R32 -----------------------------------------------------------------
+
+// t03R32 holds R32: "retire for real: a retired version is refused by name,
+// once, idempotently". §5.2's fixedLineage carries the retired entry with the
+// operator's reason and moves the floor; the emitted load refuses it by name
+// with the file's hash, and a second GenerateLineage of the same lock lays the
+// same floor. The behavioural half (a file at the floor reads, one below
+// refuses once with the hash) runs against the emitted module.
+func t03R32(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R32: FixedLineageOf has no entry for T")
+	}
+	retired := FixedLineageEntry{Wire: own.Wire ^ 0x33, Layout: own.Layout, Record: own.Record, Retired: true, Reason: "the oldest client is gone"}
+	src := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": {retired}})
+	t03Has(t, src, "// RETIRED: the oldest client is gone",
+		"R32 the retired entry carries the operator's reason")
+	t03Has(t, src, "const TFixedFloor = 1", "R32 a retired entry moves the floor past it")
+	// IDEMPOTENT: the same lock lays the same floor and the same retired entry,
+	// twice. The whole emitted build is compared through its deterministic
+	// fixed-form section, not the file map's iteration order.
+	block := func(src string) string {
+		return t02GoBlock(t, src, "var TFixedKnown = []TableFixedKnownLayout{", "\n}\n")
+	}
+	again := t03EmitLineage(t, u, map[string][]FixedLineageEntry{"T": {retired}})
+	if block(src) != block(again) {
+		t.Error("R32: the same lock laid two different builds; retire is not idempotent")
+	}
+	// A FORGED FILE stamped with the retired entry's hash refuses by name, with
+	// the file's own hash, once, leaving every counter zero and the destination
+	// fresh. Both reads answer the same in one process.
+	probe := `package probe
+import "testing"
+func stamp(hash uint64, layout []byte) []byte {
+    file := make([]byte, TableFixedHeaderBytes+4+len(layout)+int(TFixedRecordBytes))
+    file[0] = TableFixedForm
+    tableFixedPut64(file[TableFixedHashAt:], hash)
+    tableFixedPut32(file[TableFixedHeaderBytes:], uint32(len(layout)))
+    copy(file[TableFixedHeaderBytes+4:], layout)
+    tableFixedPut64(file[TableFixedHeaderBytes+4+len(layout):], hash)
+    return file
+}
+func TestR32Once(t *testing.T) {
+    known := TFixedKnown[0]
+    file := stamp(known.Hash, known.Layout)
+    want := known.Hash
+    for half := 0; half < 2; half++ {
+        got := []T{{X: 0x5a5a, Y: 0x5a5a}}
+        var r TableReport
+        n := TFixedLoad(got, file, make([]TableFixedEntry, 64), &r)
+        if n != -1 || r.Verdict != TableOpenRefused || r.Reason != "layout_unsupported" {
+            t.Fatalf("half %d: n=%d %+v, want -1 layout_unsupported by name", half, n, r)
+        }
+        if r.LayoutHash != want {
+            t.Fatalf("half %d: layout_hash=%#x, want the file's own %#x", half, r.LayoutHash, want)
+        }
+        if r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 {
+            t.Fatalf("half %d: a refusal moved something: %+v", half, r)
+        }
+    }
+}
+`
+	t03RunGo(t, u, map[string][]FixedLineageEntry{"T": {retired}}, probe)
 }
 
 // itoa is a strconv.Itoa for the one call site, kept local so the imports stay
