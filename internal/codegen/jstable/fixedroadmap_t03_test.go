@@ -18,6 +18,8 @@ package jstable
 // by name in one place.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -110,6 +112,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{"js/R22", t03R22},
 		{"js/R3", t03R3},
 		{"js/R32", t03R32},
+		{"js/R10", t03R10},
+		{"js/R15", t03R15},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -402,3 +406,113 @@ func t03R32(t *testing.T) {
 	}
 }
 
+// t03R10: R10 [weak] "the run-time walk of a stranger's layout and the
+// recompute of the header's hash are retired" (docs/FIXED-FORM-ALGORITHM.md
+// §5.3 step 4 and §5.6). The load takes the header's hash as given and reads
+// under the LOCK's bytes, and the whole emitted build carries no recompute of
+// the header's hash.
+func t03R10(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own := mustOwn(t, u, "T")
+	files := t03LineageFiles(t, u, map[string][]FixedLineageEntry{"T": {
+		{Wire: own.Wire ^ 0x5a5a5a5a5a5a5a5a, Layout: own.Layout, Record: own.Record},
+	}})
+	load := jsFn(t03Runtime(t, u, files), "TFixedLoad")
+	if load == "" {
+		t.Fatal("R10: the emitted module has no TFixedLoad")
+	}
+	norm := t02Norm(load)
+	// A STRANGER'S LAYOUT IS NEVER WALKED AT RUN TIME: the load compares the
+	// file's layout with the lock's bytes and compiles nothing.
+	for _, banned := range []string{"TableFixedParseLayout(", "TableFixedCompile(", "TableFixedSubtree(", "TableFixedMatchChildren("} {
+		if strings.Contains(norm, banned) {
+			t.Errorf("R10: the load reaches %q; a stranger's layout is never walked at run time", banned)
+		}
+	}
+	// AND NO HASH IS DERIVED FROM LAYOUT BYTES IT HOLDS (§5.3 step 4).
+	if strings.Contains(norm, "TableFixedHashOf(") {
+		t.Error("R10: the load recomputes the header's hash from layout bytes")
+	}
+	for name, body := range files {
+		text := string(body)
+		// The ONLY mention of the hash function is its definition: the writer
+		// spells the compile-time constant and the load takes the header's hash
+		// as given (§5.3 step 4, §5.9 #23).
+		if all, defs := strings.Count(text, "TableFixedHashOf("), strings.Count(text, "export function TableFixedHashOf("); all != defs {
+			t.Errorf("R10: %s calls TableFixedHashOf: the recompute of the header's hash is retired, on every path and not only the load's", name)
+		}
+	}
+	// THE PLANS ARE LAID DOWN AT MODULE LOAD from the lock's own bytes: the
+	// decode of a known layout and the one plan-per-entry walk are top-level,
+	// and the header's hash stays the two lanes the writer emitted.
+	src := t03Runtime(t, u, files)
+	t03Has(t, src, "const TFixedLineagePlans = TableFixedLineagePlans(TFixedKnown,", "R10 the plans are laid down at module load")
+	t03Has(t, t02Norm(src), "TableFixedDecodeLayout(", "R10 a known layout is decoded once, off the load path")
+	t03Has(t, t02Norm(load), "const hashLo = ((bytes[TableFixedHashAt]", "R10 the header's hash is taken as given")
+	// §5.9 #23: a leg whose suite has no skip PRINTS one instead. The js leg's
+	// retirement print is test/js-tables/fixedform.mjs's `retired(name, why)`,
+	// naming where the stranger's-walk coverage is owed.
+	main, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "js-tables", "fixedform.mjs"))
+	if err != nil {
+		t.Fatalf("R10: read test/js-tables/fixedform.mjs: %v", err)
+	}
+	if !strings.Contains(string(main), "function retired(name, why)") {
+		t.Error("R10: fixedform.mjs has no `retired(name, why)` print, so no retired case is named at its call site")
+	}
+	for _, name := range []string{"versioning", "negativeControls", "layoutValidation"} {
+		if !strings.Contains(string(main), "retired(\""+name+"\"") {
+			t.Errorf("R10: fixedform.mjs names no retirement for %q: §5.9 #23 wants the retired case named with where its coverage is owed", name)
+		}
+	}
+}
+
+// t03R15: R15 [verify] "the four forward-read clamps are retired — count clamp
+// across bounds, range clamp across versions, remap of an unknown variant to
+// None, drop-and-count of an unknown field: each is layout_newer now"
+// (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, §5.6;
+// docs/FIXED-FORM-VERSIONING-TESTS.md "The old contract's tests, retired by
+// name").
+func t03R15(t *testing.T) {
+	// THE FOUR CLAUSES' ROWS: field_append is the drop-and-count of an unknown
+	// field, array_bounded_grow the count clamp across bounds, range_widen the
+	// range clamp across versions, enum_append the remap of an unknown variant
+	// to None. Each has an OLD-REFUSES-NEW column and none is a same-hash row.
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		inRows := false
+		same := false
+		for _, r := range jsVersionRows {
+			if r.row == row {
+				inRows, same = true, r.sameHash
+			}
+		}
+		if !inRows {
+			t.Errorf("R15: %s is not in jsVersionRows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+		if same {
+			t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
+		}
+	}
+
+	// AND THE REPLACEMENT IS THE ONE ANSWER: a hash in no lineage entry refuses
+	// layout_newer BEFORE any record, and the load itself moves no counter.
+	u := unitFrom(t, t03Flat)
+	src := t03Runtime(t, u, t03Files(t, u))
+	load := jsFn(src, "TFixedLoad")
+	norm := t02Norm(load)
+	t03Has(t, norm, "if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }",
+		"R15 an unknown hash is layout_newer, and it is the file's hash alone")
+	if i, j := strings.Index(norm, "TableFixedRefusal.LayoutNewer"), strings.Index(norm, "for (let k = 0; k < n; k++)"); i < 0 || j < i {
+		t.Error("R15: layout_newer does not stand before the record loop, so a forward read is not refused whole")
+	}
+	if strings.Contains(load, "report.clamped++") || strings.Contains(load, "report.unknown++") || strings.Contains(load, "report.kindMismatch++") {
+		t.Error("R15: the load moves a counter; the four forward-read clamps are retired and the answer is layout_newer alone")
+	}
+	// The names the forward reads used stay spelled on the refusal report, so a
+	// peer is told which of the two answers it got.
+	for _, want := range []string{
+		`case TableFixedRefusal.LayoutNewer: return "layout_newer";`,
+		`case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";`,
+	} {
+		t03Has(t, src, want, "R15 the refusal's own name")
+	}
+}
