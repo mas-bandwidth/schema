@@ -4187,8 +4187,15 @@ func TableEntitySaveMessageBody(w *TableMessageWriter, value *TableEntity) bool 
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableEntityMeasureMessages(values []*TableEntity) int64 {
+func TableEntityMeasureMessages(values []*TableEntity, report ...*TableReport) int64 {
+	var r *TableReport
+	if len(report) > 0 {
+		r = report[0]
+	}
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if r != nil {
+			tableMessageRefuse(r, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -5084,8 +5091,15 @@ func TableStatSaveMessageBody(w *TableMessageWriter, value *TableStat) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableStatMeasureMessages(values []*TableStat) int64 {
+func TableStatMeasureMessages(values []*TableStat, report ...*TableReport) int64 {
+	var r *TableReport
+	if len(report) > 0 {
+		r = report[0]
+	}
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if r != nil {
+			tableMessageRefuse(r, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
@@ -7188,8 +7202,15 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableMixedMeasureMessages(values []*TableMixed) int64 {
+func TableMixedMeasureMessages(values []*TableMixed, report ...*TableReport) int64 {
+	var r *TableReport
+	if len(report) > 0 {
+		r = report[0]
+	}
 	if len(values) < 1 || len(values) > TableMessageBatchMax {
+		if r != nil {
+			tableMessageRefuse(r, "batch_too_large")
+		}
 		return -1
 	}
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}

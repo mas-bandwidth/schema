@@ -16,7 +16,7 @@ type messageCodec struct {
 	loadMeasure func([]byte) int64
 }
 
-func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
+func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T, ...*R) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
 	var own *V
 	values := make([]T, 256)
 	pointers := make([]*T, 256)
