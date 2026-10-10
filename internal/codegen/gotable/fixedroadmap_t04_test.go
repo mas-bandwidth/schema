@@ -436,6 +436,9 @@ func TestFixedRoadmapGoT04VersionsEvolution(t *testing.T) {
 	}{
 		{"go/E5", t04GoE5},
 		{"go/W2", t04GoW2},
+		{"go/E6", t04GoE6},
+		{"go/E8", t04GoE8},
+		{"go/R19", t04GoR19},
 	}
 	for _, tc := range tasks {
 		t.Run(tc.id, func(t *testing.T) {
