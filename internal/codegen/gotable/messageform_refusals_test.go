@@ -197,9 +197,15 @@ func vocabFieldBadKind(kind uint8) []byte {
 	return append(field, sub...)
 }
 func vocabFieldBadElem(elem uint8) []byte {
-	entry := []byte{1, 2, 0}
-	sub := append([]byte{elem}, lebs(uint64(len(entry)))...)
-	sub = append(sub, entry...)
+	// "the vocabulary present, exactly once, kind 14, element kind 6"
+	// (docs/SPEC-TABLES.md section 3.3). The bytes after the element byte are
+	// a legal vocabulary entry stream -- one entry, an eight-byte id and its
+	// one-byte kind. The wrong element byte equals that stream's length, so a
+	// reader that skipped the element check and read the element byte as the
+	// length still frames and decodes the entry: the element check is the only
+	// thing that can refuse this field.
+	entry := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0}
+	sub := append([]byte{elem}, entry...)
 	field := []byte{2, 14}
 	field = append(field, lebs(uint64(len(sub)))...)
 	return append(field, sub...)
@@ -236,7 +242,7 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 		{"build version fewer than eight bytes", short},
 		{"vocabulary missing", versionField(version)},
 		{"vocabulary not kind 14", append(versionField(version), vocabFieldBadKind(13)...)},
-		{"vocabulary element not kind 6", append(versionField(version), vocabFieldBadElem(7)...)},
+		{"vocabulary element not kind 6", append(versionField(version), vocabFieldBadElem(9)...)},
 	}
 	for _, tc := range cases {
 		v := new(TableVocabulary)
