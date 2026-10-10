@@ -121,6 +121,20 @@ func t04Saved(t *testing.T, classes, class string) (path string, body int) {
 	return path, t04RecordsAt(t, path) + 8
 }
 
+// t04RunProbeDeep runs a read probe with the probe's DEEP poison, which fills
+// the FINAL text buffers too. §5.3's "not one destination byte is written" is
+// asserted over the text storage itself and not only the mutable length word
+// beside it; the shallow poison cannot reach a `final byte[]`.
+func t04RunProbeDeep(t *testing.T, classes, class, file string) probeRun {
+	t.Helper()
+	_, javaBin := javaTools(t)
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class, file, "deep").CombinedOutput()
+	if err != nil {
+		t.Fatalf("java %s %s deep: %v\n%s", class, filepath.Base(file), err, out)
+	}
+	return parseProbe(t, string(out))
+}
+
 // t04TextProbe is a single-field text table and the four ingredients every text
 // row needs: the leg's save probe (with the caller's setters), the leg's read
 // probe, one saved file and the body offset.
@@ -404,9 +418,51 @@ func t04R16(t *testing.T) {
 	if strings.Count(load, "report.unknown += censusUnknown;") != 1 {
 		t.Error("R16: the unknown census must land exactly once per read")
 	}
-	runtime := string(files["TableFixed.java"])
-	if n := strings.Count(runtime, "report.widened++;"); n != 2 {
-		t.Errorf("R16: the runtime counts widened %d times, want exactly 2 — once in opWiden and once in opWidenF", n)
+
+	// AND `widened` IS EXACT, not merely nonzero. §5.4: "a folded element run is
+	// ONE and an unfolded one is min(their_n, my_n), and a widened run is never
+	// folded, so a fixture asserts that EXACT count (§5.9 #33)". `[..4]int16`
+	// into `[..4]int32` is FOUR widen entries per record, and `widened != 0`
+	// cannot tell that from the folded run the ruling forbids
+	// (docs/FIXED-FORM-ALGORITHM.md:1503, "four elements sent, is four widen
+	// entries and counts 4 per record, on every leg").
+	classes = t03Build(t, t.TempDir(), "array_elem_widen", []sideSpec{
+		{key: "reads", schema: "VNEW_array_elem_widen.schema", older: []string{"VOLD_array_elem_widen.schema"}},
+		{key: "refuses", schema: "VOLD_array_elem_widen.schema"},
+	}, map[string]string{
+		"Probe_saveold.java": t03SaveLoadProbe("Probe_saveold", "vold_array_elem_widen", "ArrayElemWiden", `
+        vals[0].valsCount = 4;
+        vals[0].vals[0] = -1; vals[0].vals[1] = -32768; vals[0].vals[2] = 32767; vals[0].vals[3] = 100;`),
+	})
+	saved, _ = t04Saved(t, classes, "Probe_saveold")
+	w := runProbe(t, classes, "Probe_reads", saved)
+	if w.n != 1 || w.refused || w.malformed {
+		t.Fatalf("R16: the widened array must read: %+v", w)
+	}
+	if w.widened != 4 {
+		t.Errorf("R16: widened=%d, want EXACTLY 4 — four elements sent through a grown width are FOUR widen entries per record, never a folded run (§5.4, §5.9 #33)", w.widened)
+	}
+	if w.clamped != 0 || w.unknown != 0 || w.kindMismatch != 0 {
+		t.Errorf("R16: the widened array moved another counter: %+v", w)
+	}
+
+	// AND A FOLDED RUN IS ONE. The scalar rung is ONE entry per record — the
+	// narrowest folded run — so it owes `widened == 1` exactly, not zero and not
+	// the array's four (§5.4: "widened once per entry per record").
+	classes = t03Build(t, t.TempDir(), "int_widen", []sideSpec{
+		{key: "reads", schema: "VNEW_int_widen.schema", older: []string{"VOLD_int_widen.schema"}},
+		{key: "refuses", schema: "VOLD_int_widen.schema"},
+	}, map[string]string{
+		"Probe_saveold.java": t03SaveLoadProbe("Probe_saveold", "vold_int_widen", "IntWiden", `
+        vals[0].v = -32768;`),
+	})
+	saved, _ = t04Saved(t, classes, "Probe_saveold")
+	w = runProbe(t, classes, "Probe_reads", saved)
+	if w.n != 1 || w.refused || w.malformed {
+		t.Fatalf("R16: the scalar widen must read: %+v", w)
+	}
+	if w.widened != 1 {
+		t.Errorf("R16: widened=%d, want exactly 1 for the folded single-entry run (§5.4: widened once per entry per record)", w.widened)
 	}
 }
 
@@ -533,6 +589,21 @@ fixed table T
 	}
 	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
 		t.Errorf("C4: a content refusal moved a counter: %+v", r)
+	}
+	// AND REFUSE IS TOTAL (§5.3): the check runs over the USED units BEFORE the
+	// scatter writes a destination byte, so the poisoned destination — the
+	// FINAL text buffer, which only the probe's DEEP poison reaches — is
+	// untouched. A check that ran after the arraycopy leaves the forged bytes
+	// there and the length word beside them.
+	deep := t04RunProbeDeep(t, x.classes, "Probe_reads", forged)
+	if !deep.refused || deep.reason != "textIllFormed" {
+		t.Errorf("C4: the deep-poison read: refused=%v reason=%s, want textIllFormed", deep.refused, deep.reason)
+	}
+	if deep.value["s"] != "bytes:5a5a5a5a5a5a5a5a" {
+		t.Errorf("C4: the refusal wrote the destination text buffer: s=%s, want the 0x5A poison untouched — not one destination byte (§5.3)", deep.value["s"])
+	}
+	if deep.value["sLength"] != "1515870810" {
+		t.Errorf("C4: the refusal wrote the destination length: sLength=%s, want the 0x5A poison untouched", deep.value["sLength"])
 	}
 }
 
@@ -672,5 +743,45 @@ fixed table T
 	yr := runProbe(t, y.classes, "Probe_reads", y.forge(t, "clean.bin", func(b []byte) []byte { return b }))
 	if yr.refused || yr.malformed || yr.value["sLength"] != "2" {
 		t.Errorf("R24: the two-byte code point must land at length 2: %+v", yr)
+	}
+
+	// (d) THE USED-UNIT CHECK IS TOTAL EVEN BESIDE A CLAMP. §5.3: "no counter
+	// moves, nothing is decoded, and not one destination byte is written — the
+	// prefill included". A ranged neighbour carrying 200 must not move
+	// `clamped` before an ill-formed `s` refuses, and the poisoned destination
+	// must be untouched: the check reads the wire's USED units before the plan
+	// lands a byte, so a check that ran inside scatter (after the arraycopy and
+	// after the clamp) goes red here by name.
+	z := t04TextBuild(t, `package t04r24c
+
+fixed table T
+{
+    r int32 | min = 0, max = 100
+    s string(8)
+}
+`, `
+        byte[] s = "hi".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        System.arraycopy(s, 0, vals[0].s, 0, s.length);
+        vals[0].sLength = s.length;
+        vals[0].r = 200;`)
+	pair := z.forge(t, "clamp_illformed.bin", func(b []byte) []byte {
+		b[z.body+8] = 0xFF // s's first USED byte: no UTF-8 sequence starts with it
+		return b
+	})
+	pr := t04RunProbeDeep(t, z.classes, "Probe_reads", pair)
+	if !pr.refused || pr.reason != "textIllFormed" {
+		t.Errorf("R24: the paired clamp: refused=%v reason=%s, want textIllFormed", pr.refused, pr.reason)
+	}
+	if pr.clamped != 0 {
+		t.Errorf("R24: the paired clamp moved clamped=%d, want 0 — REFUSE is total and counts nothing before it (§5.3)", pr.clamped)
+	}
+	if pr.value["r"] != "1515870810" {
+		t.Errorf("R24: the paired clamp wrote the destination r=%s, want the 0x5A poison: the clamp must not run before the refusal", pr.value["r"])
+	}
+	if pr.value["sLength"] != "1515870810" {
+		t.Errorf("R24: the paired clamp wrote sLength=%s, want the 0x5A poison", pr.value["sLength"])
+	}
+	if pr.value["s"] != "bytes:5a5a5a5a5a5a5a5a" {
+		t.Errorf("R24: the paired clamp wrote the text buffer: s=%s, want the 0x5A poison — not one destination byte (§5.3)", pr.value["s"])
 	}
 }

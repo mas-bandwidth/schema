@@ -652,6 +652,7 @@ func (g *fixedGen) emitType(st *ir.Struct, root bool) {
 	g.emitBodyConstant(st, body)
 	g.emitWriteBody(st)
 	g.emitScatter(st)
+	g.emitValidate(st)
 	if root {
 		g.emitRoot(st, body)
 	}
@@ -1245,6 +1246,93 @@ func slackZero(typ string) string {
 	return ""
 }
 
+// emitValidate writes a type's CONTENT PRE-PASS: the USED units of every text
+// field over ONE record image, refusing by name before scatter writes a
+// destination byte or moves a counter (ALGORITHM §4.5 fix 11; §5.3, "REFUSE is
+// total: no counter moves, nothing is decoded, and not one destination byte is
+// written — the prefill included"). It mirrors scatter's walk because it must
+// reach every text field scatter can, and it reads the SAME length words
+// scatter reads, clamped the SAME way but WITHOUT counting: the count is
+// scatter's, and the pre-pass moves nothing.
+func (g *fixedGen) emitValidate(st *ir.Struct) {
+	g.pf("    /** check the USED units of every text field in one record image and\n")
+	g.pf("     *  refuse by name before scatter writes a byte or moves a counter. */\n")
+	g.pf("    public static void validate(byte[] b, int at, TableFixed.Report r) {\n")
+	g.pf("        if (r.refused) { return; }\n")
+	off := int64(0)
+	for _, f := range st.Fields {
+		g.emitValidateField(f, off, "b", "at", "r", 8)
+		off += fixedFieldBytes(f)
+	}
+	g.pf("    }\n\n")
+}
+
+// emitValidateField is emitScatterField's read-only twin for the text rule: the
+// same offsets, the same clamp bounds, and no store.
+func (g *fixedGen) emitValidateField(f *ir.Field, off int64, buf, at, rep string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	base := off
+	if f.Type.Optional {
+		base += fixedPresentBytes
+	}
+	switch {
+	case f.KeyEnum != "":
+		g.emitValidateLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, rep, indent)
+	case f.Array == ir.ArrayFixed:
+		g.emitValidateLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, rep, indent)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%s{\n", ind)
+		g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, base)
+		g.pf("%s    if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.ArrayBound, f.ArrayBound)
+		g.emitValidateLoop(f, base+fixedCountBytes, "n", buf, at, rep, indent+4)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		g.pf("%s{\n", ind)
+		g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, base)
+		g.pf("%s    if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s    if (!TableFixed.utf8WellFormed(%s, %s + %d, n)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+				ind, buf, at, base+4, rep)
+		}
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%s{\n", ind)
+		g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, base)
+		g.pf("%s    if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s    if (!TableFixed.utf16WellFormed(%s, %s + %d, n)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, buf, at, base+4, rep)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitValidateElement(f, base, buf, at, rep, indent)
+	}
+}
+
+// emitValidateLoop walks one array's elements the way emitScatterLoop does, and
+// only for the text rule.
+func (g *fixedGen) emitValidateLoop(f *ir.Field, base int64, count, buf, at, rep string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elem := fixedElementBytes(f)
+	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
+	g.emitValidateElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), rep, indent+4)
+	g.pf("%s}\n", ind)
+}
+
+// emitValidateElement reaches a nested type's own text fields; every scalar or
+// enum arm moves no text and is skipped.
+func (g *fixedGen) emitValidateElement(f *ir.Field, off int64, buf, at, rep string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%s%s.validate(%s, %s + %d, %s);\n", ind, fixedClass(r.Name), buf, at, off, rep)
+			g.pf("%sif (%s.refused) { return; }\n", ind, rep)
+		case *ir.Union:
+			g.pf("%s%s.validate(%s, %s + %d, %s);\n", ind, fixedClass(r.Name), buf, at, off, rep)
+			g.pf("%sif (%s.refused) { return; }\n", ind, rep)
+		}
+	}
+}
+
 func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep string, indent int, owner *ir.Field) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
@@ -1507,6 +1595,34 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	}
 	g.pf("            default: break;\n")
 	g.pf("        }\n    }\n")
+
+	g.pf("    /** the tag, then the SELECTED arm's text fields; the pre-pass counts\n")
+	g.pf("     *  nothing, so a content refusal moves no counter and writes no byte. */\n")
+	g.pf("    public static void validate(byte[] b, int at, TableFixed.Report r) {\n")
+	g.pf("        if (r.refused) { return; }\n")
+	g.pf("        int t;\n")
+	switch tag {
+	case 4:
+		g.pf("        t = TableFixed.get32(b, at + 0);\n")
+	case 8:
+		g.pf("        t = (int) TableFixed.get64(b, at + 0);\n")
+	default:
+		g.pf("        t = %s;\n", fixedLoad("b", "at", 0, tag, false))
+	}
+	if !fixedExtentFillsWidth(len(un.Variants), tag) {
+		g.pf("        if (t > %d) { t = none; }\n", len(un.Variants))
+	}
+	g.pf("        switch (t) {\n")
+	for i, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		g.pf("            case %d: {\n", i+1)
+		g.emitValidateElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "r", 16)
+		g.pf("                break;\n            }\n")
+	}
+	g.pf("            default: break;\n")
+	g.pf("        }\n    }\n")
 	g.pf("}\n")
 }
 
@@ -1722,6 +1838,14 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        // refusal has written not one destination byte.\n")
 	g.pf("        for (int k = 0; k < n; k++) {\n")
 	g.pf("            if (TableFixed.get64(data, at) != fileHash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("            // THE CONTENT PRE-PASS RUNS BEFORE THE PREFILL, THE PLAN AND THE\n")
+	g.pf("            // SCATTER, so a content refusal writes nothing and moves nothing\n")
+	g.pf("            // (§5.3). On the identity lane the wire body IS this build's own\n")
+	g.pf("            // layout, so the generated pass reads it directly; a compiled\n")
+	g.pf("            // lane's text entries are read through the plan's own offsets.\n")
+	g.pf("            if (fileHash == hash) { %s.validate(data, at + 8, report); }\n", fixedClass(st.Name))
+	g.pf("            TableFixed.validateText(entries, made, data, at + 8, bodySize, report);\n")
+	g.pf("            if (report.refused) { return -1; }\n")
 	g.pf("            for (int h = 0; h < holeN; h++) {\n")
 	g.pf("                final int off = hole[h * 2];\n")
 	g.pf("                final int hn = hole[h * 2 + 1];\n")

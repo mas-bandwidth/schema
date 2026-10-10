@@ -626,6 +626,38 @@ public final class TableFixed {
         }
     }
 
+    /** THE CONTENT PRE-PASS for a COMPILED lane: the USED units of every text
+     *  entry, read from the WIRE before the plan run lands a byte or moves a
+     *  counter. A violation refuses by name, so REFUSE is total (5.3): no
+     *  counter moves, nothing is decoded, and not one destination byte is
+     *  written. The identity plan carries no text entry -- it is one copy -- so
+     *  the generated per-type validate covers that lane with the same rule. A
+     *  bounds violation is skipped here and named malformed by run. An entry
+     *  under a union arm is checked only when its guard selects it, exactly as
+     *  run checks it. */
+    public static void validateText(Entry[] plan, int count, byte[] src,
+                                    int srcAt, int srcLength, Report report) {
+        for (int i = 0; i < count; i++) {
+            final Entry p = plan[i];
+            if (p.op != opText) { continue; }
+            if (p.guard != noGuard) {
+                final int gw = guardWidth(p.argw);
+                if (p.guard < 0 || p.guard + gw > srcLength) { continue; }
+                if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }
+            }
+            final int unit = (p.meta == textWide) ? 2 : 1;
+            final int cap = p.size / unit;
+            if (p.src < 0 || p.src + 4 + p.size > srcLength) { continue; }
+            int v = get32(src, srcAt + p.src);
+            if (v < 0) { v = 0; } else if (v > cap) { v = cap; }
+            if (p.meta == textWide) {
+                if (!utf16WellFormed(src, srcAt + p.src + 4, v)) { report.refuse(Reason.textIllFormed); return; }
+            } else {
+                if (!utf8WellFormed(src, srcAt + p.src + 4, v)) { report.refuse(Reason.textIllFormed); return; }
+            }
+        }
+    }
+
     /** §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves,
      *  straight-line over the record image after the plan run and before the
      *  scatter. spec is a flat array of {dst, width, signed, lo, hi} rows,
