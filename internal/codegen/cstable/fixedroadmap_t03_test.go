@@ -20,6 +20,7 @@ package cstable
 // the behaviour was missing, implemented in the leg's own runtime.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -159,6 +160,8 @@ func TestFixedRoadmapCSharpT03PlansVersions(t *testing.T) {
 		{"cs/R6", t03R6},
 		{"cs/R14", t03R14},
 		{"cs/R22", t03R22},
+		{"cs/R3", t03R3},
+		{"cs/R32", t03R32},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -346,4 +349,88 @@ fixed table T { inner Inner }
 			t.Errorf("R22: a fixed table that reaches itself by value is not refused: %q", src)
 		}
 	}
+}
+
+// t03R3: R3 [verify] "the floor is 1 + the highest retired index (0 when
+// none); below the floor is layout_unsupported, reporting the file's hash"
+// (§5.2's FLOOR, §5.3 step 6, §5.9 #7). The behavioural column is
+// TestFixedVersioningFloor's (floor_at, floor_below with the file's hash,
+// floor_raise_live); this subtest pins the FLOOR VALUE itself off the emitted
+// constant, so a floor that disagreed with the entries it was derived from is
+// red by name.
+func t03R3(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R3: FixedLineageOf has no entry for T")
+	}
+	for _, tc := range []struct {
+		retire int
+		want   int
+	}{
+		{0, 0}, // none retired: the floor is 0
+		{1, 1}, // entry 0 retired: the floor is 1
+		{2, 2}, // entries 0 and 1 retired: 1 + the HIGHEST retired index
+	} {
+		var older []FixedLineageEntry
+		for i := range 2 {
+			older = append(older, t03Older(own.Wire^uint64(i+1), i < tc.retire))
+		}
+		files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": older})
+		if err != nil {
+			t.Fatalf("R3: retire=%d: GenerateLineage: %v", tc.retire, err)
+		}
+		src := string(files[t03File])
+		want := fmt.Sprintf("public const int TFixedFloor = %d;", tc.want)
+		if !strings.Contains(src, want) {
+			t.Errorf("R3: retire=%d: the emitted floor is not %q — the floor is 1 + the highest retired index, 0 when none is", tc.retire, want)
+		}
+	}
+	// Below the floor reports THE FILE'S hash and the name, and moves nothing
+	// else (§5.9 #7, §5.2's FLOOR).
+	_, src := t03Generate(t, t03Flat)
+	t03Has(t, t03Norm(src), `if (pick < TFixedFloor) { if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
+		"R3 below the floor is layout_unsupported, reporting the file's hash")
+}
+
+// t03R32: R32 [verify] "retire for real: a retired version is refused by name,
+// once, idempotently" (§5.2's FLOOR, §5.3 step 6, §5.9 #23). The by-name half
+// is TestFixedVersioningFloor's floor_below; this subtest pins the RETIRED
+// print at the entry and the load's floor lane: a single straight-line branch
+// that carries the name and the file's hash and mutates nothing else, so a
+// second read of the same file answers identically.
+func t03R32(t *testing.T) {
+	u := unitFrom(t, t03Flat)
+	own, ok := FixedLineageOf(u, "T")
+	if !ok {
+		t.Fatal("R32: FixedLineageOf has no entry for T")
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"T": {
+		t03Older(own.Wire^0x11, true),
+	}})
+	if err != nil {
+		t.Fatalf("R32: GenerateLineage: %v", err)
+	}
+	src := string(files[t03File])
+	// the retired entry is printed by name at the entry, with why (§5.9 #23)
+	t03Has(t, src, "// RETIRED: retired by the test's lock",
+		"R32 the retired entry is printed by name with its reason")
+	// one floor lane, one name, one hash — and no counter or value on it
+	if n := strings.Count(src, `report.Reason = "layout_unsupported"`); n != 1 {
+		t.Errorf("R32: layout_unsupported is set at %d sites, want the one floor lane", n)
+	}
+	if n := strings.Count(src, "if (pick < TFixedFloor)"); n != 1 {
+		t.Errorf("R32: the floor is tested at %d sites, want one", n)
+	}
+	load := t03Method(src, "public static long TFixedLoad(")
+	if load == "" {
+		t.Fatal("R32: the generated source has no TFixedLoad")
+	}
+	floor := t03Block(t, load, "if (pick < TFixedFloor)", "return -1;")
+	for _, banned := range []string{"Unknown", "KindMismatch", "Clamped", "Widened", "Malformed"} {
+		if strings.Contains(floor, banned) {
+			t.Errorf("R32: the floor lane mutates %s; a retired read answers once and moves nothing", banned)
+		}
+	}
+	t03Has(t, t03Norm(floor), `report.LayoutHash = hash`, "R32 the refusal reports the file's own hash")
 }
