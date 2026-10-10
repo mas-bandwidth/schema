@@ -250,6 +250,178 @@ func t05R19(t *testing.T) {
 	t05Has(t, load, "report.unknown += census.0;", "R19 the census lands once, after the record loop")
 }
 
+// ---- rust/E9 -----------------------------------------------------------------
+
+// t05E9 holds rust/E9 to FIXED-FORM-ALGORITHM.md §4 and §29: the fixed form
+// "raises all but `duplicate`" — `duplicate` is the TEXT form's counter for a
+// repeated map key, and a fixed table refuses a map field outright (its only
+// keyed structure is the enum-keyed array, indexed by variant with no key on
+// the wire). This leg's report carries the fixed form's own members and no
+// `duplicate`, and the emitted module never raises one.
+func t05E9(t *testing.T) {
+	runtime := string(fixedRuntimeBody)
+	for _, member := range []string{
+		"pub unknown: u32,", "pub kind_mismatch: u32,", "pub widened: u32,",
+		"pub clamped: u32,", "pub malformed: bool,", "pub refused: bool,",
+	} {
+		t05Has(t, runtime, member, "E9 the fixed form's own counter set")
+	}
+	if strings.Contains(runtime, "duplicate") {
+		t.Error("E9: the fixed runtime carries a `duplicate` member; §4 raises all but duplicate")
+	}
+	files, err := Generate(unitFrom(t, "package probe\n\nenum Key { a, b, c }\n\nfixed table Lineage\n{\n    slots [Key]int32\n    seq int32 = 0\n}\n"))
+	if err != nil {
+		t.Fatalf("E9: Generate: %v", err)
+	}
+	if text := t05Fixed(t, files); strings.Contains(text, "duplicate") {
+		t.Error("E9: the emitted fixed module raises `duplicate`")
+	}
+}
+
+// ---- rust/R16 -----------------------------------------------------------------
+
+// t05R16 holds rust/R16 to §5.4's table, clause by clause: the COMPILE census
+// is once per field per peer and never per record (the array and keyed walks
+// census only element 0); `widened` is once per entry per record and a folded
+// element run is ONE, which this leg gets by folding Copy entries only and
+// never a widen; `clamped` is once per entry per record for `count`/`text` and
+// the bounds pass owns the forged ordinal; copy, const, present and ordinal
+// land a value and move nothing.
+func t05R16(t *testing.T) {
+	// A PAIR drives the emitted load, where the compile census LANDS.
+	pair, _, _ := t05Pair(t,
+		"package probe\n\nfixed table Lineage\n{\n    a int32 = 0\n    seq int32 = 0\n}\n",
+		"package probe\n\nfixed table Lineage\n{\n    a int32 = 0\n    seq int32 = 0\n    w int32 = 77\n}\n")
+	load := t05Fn(pair, "lineage_fixed_load")
+	if load == "" {
+		t.Fatal("R16: lineage_fixed_load is not emitted")
+	}
+	runtime := string(fixedRuntimeBody)
+	// THE CENSUS IS PER FIELD PER PEER, at COMPILE.
+	t05Has(t, runtime, "if !named && census {", "R16 unknown is the compile census of an unnamed writer field")
+	t05Has(t, runtime, "report.unknown += 1;", "R16 the census counts one")
+	t05Has(t, runtime, "census && i == 0,", "R16 a counted array censuses element 0 only")
+	t05Has(t, runtime, "census && k == 0,", "R16 a keyed array censuses slot 0 only")
+	t05Has(t, load, "report.unknown += census.0;", "R16 the census lands ONCE per peer, never per record")
+	t05Has(t, load, "report.kind_mismatch += census.1;", "R16 kind_mismatch is the compile census too")
+	// WIDENED: once per entry per record, and only a Copy run folds.
+	if n := strings.Count(runtime, "report.widened += 1;"); n != 2 {
+		t.Errorf("R16: widened is raised at %d sites, want the widen and widenF ops", n)
+	}
+	t05Has(t, runtime, "c.plan[out - 1].op == TableFixedOp::Copy", "R16 only a Copy run folds, so a widened run is never folded")
+	t05Has(t, runtime, "c.plan[i].op == TableFixedOp::Copy", "R16 the fold needs BOTH neighbours to be Copy")
+	// CLAMPED: once per entry per record for count and text.
+	t05Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R16 the count op clamps once per entry")
+	t05Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R16 the text op clamps once per entry")
+	// THE BOUNDS PASS COUNTS A FORGED ORDINAL REMAPPED TO None on the same
+	// bytes for either plan: the compiled plan's exact entry and the identity
+	// plan's scatter both land `0` and count ONE, so the second sight of the
+	// remapped `0` cannot count again.
+	t05Has(t, runtime, "if raw > u64::from(*count) {", "R16 the ordinal past the writer's count counts one")
+	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the Copy arm carries no
+	// counter, and the only counts in the runtime are the ones above.
+	copyArm := t05Arm(runtime, "TableFixedOp::Copy => {", "TableFixedOp::Count => {")
+	if copyArm == "" {
+		t.Fatal("R16: the Copy arm is not emitted")
+	}
+	for _, counter := range []string{"report.clamped", "report.widened", "report.unknown"} {
+		if strings.Contains(copyArm, counter) {
+			t.Errorf("R16: the Copy op moves %q; copy lands a value and moves nothing", counter)
+		}
+	}
+}
+
+// t05Arm slices one emitted match arm out of the runtime body, from `open` to
+// `next`, answering "" when the shape moved.
+func t05Arm(body, open, next string) string {
+	at := strings.Index(body, open)
+	if at < 0 {
+		return ""
+	}
+	end := strings.Index(body[at:], next)
+	if end < 0 {
+		return ""
+	}
+	return body[at : at+end]
+}
+
+// ---- rust/R18 -----------------------------------------------------------------
+
+// t05R18 holds rust/R18 to §5.4's closing paragraph: "A clamp that cannot fire
+// is not emitted, and nothing moves." An ordinal whose extent FILLS its storage
+// width — 255 variants in a byte — has no read-side comparison to make, and a
+// union whose every tag value names an arm has none either. The elided check
+// never clamped, so the counter it would have moved never moves. A `bits(N)`
+// that fills its own lane is the same rule at the width clamp.
+func t05R18(t *testing.T) {
+	// 255 VARIANTS IN A BYTE: tagMax(1) is 255, so the extent is full.
+	var e strings.Builder
+	e.WriteString("package probe\n\nenum Wide {")
+	for i := 1; i <= 255; i++ {
+		fmt.Fprintf(&e, " v%d,", i)
+	}
+	e.WriteString(" }\n\nfixed table Lineage\n{\n    e Wide = v1\n}\n")
+	u := unitFrom(t, e.String())
+	f := u.Tables["Lineage"].Fields[0]
+	if extent, ok := fixedEnumExtent(f, 1); ok {
+		t.Errorf("R18: a 255-variant byte enum answers extent %d, want no check at all", extent)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("R18: Generate: %v", err)
+	}
+	emitted := t05Fixed(t, files)
+	if strings.Contains(emitted, "report.clamped") {
+		t.Error("R18: a full-width enum emitted a clamp that cannot fire")
+	}
+	scatter := t05Fn(emitted, "lineage_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("R18: lineage_fixed_scatter is not emitted")
+	}
+	if strings.Contains(scatter, "if raw >") {
+		t.Error("R18: a full-width enum still emits its useless comparison")
+	}
+	t05Has(t, scatter, "value.e = raw;", "R18 the full-width ordinal rides verbatim")
+
+	// 255 ARMS AT WIDTH 1: every tag value names an arm, so there is no
+	// out-of-range tag to clamp.
+	var ub strings.Builder
+	ub.WriteString("package probe\n\n")
+	for i := 1; i <= 255; i++ {
+		fmt.Fprintf(&ub, "type A%d { m int32 = 0 }\n", i)
+	}
+	ub.WriteString("\nunion Pick {\n")
+	for i := 1; i <= 255; i++ {
+		fmt.Fprintf(&ub, "    a%d A%d\n", i, i)
+	}
+	ub.WriteString("}\n\nfixed table Lineage\n{\n    pick Pick\n}\n")
+	uu := unitFrom(t, ub.String())
+	if got := len(uu.Unions["Pick"].Variants); got != 255 {
+		t.Fatalf("R18: the fixture carries %d arms, want 255", got)
+	}
+	if tagMax(1) != 255 {
+		t.Fatalf("R18: tagMax(1) is %d, want 255", tagMax(1))
+	}
+	ufiles, err := Generate(uu)
+	if err != nil {
+		t.Fatalf("R18: Generate union: %v", err)
+	}
+	uEmitted := t05Fixed(t, ufiles)
+	if strings.Contains(uEmitted, "if tag_raw >") {
+		t.Error("R18: a full-width union tag still emits its useless comparison")
+	}
+	t05Has(t, t05Fn(uEmitted, "pick_fixed_scatter"), "value.tag = tag_raw;", "R18 a full-width tag rides verbatim")
+
+	// `bits(32)` FILLS ITS OWN LANE: the check is elided the same way.
+	bfiles, err := Generate(unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    n bits(32)\n}\n"))
+	if err != nil {
+		t.Fatalf("R18: Generate bits: %v", err)
+	}
+	if text := t05Fixed(t, bfiles); strings.Contains(text, "report.clamped") {
+		t.Error("R18: bits(32) fills its lane exactly and must emit NO clamp")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT05Evolution(t *testing.T) {
@@ -261,6 +433,9 @@ func TestFixedRoadmapRustT05Evolution(t *testing.T) {
 		{id: "rust/E6", check: t05E6},
 		{id: "rust/E8", check: t05E8},
 		{id: "rust/R19", check: t05R19},
+		{id: "rust/E9", check: t05E9},
+		{id: "rust/R16", check: t05R16},
+		{id: "rust/R18", check: t05R18},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
