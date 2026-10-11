@@ -234,26 +234,50 @@ fixed table T
 		t.Fatal("R16: the emitted runtime has no TableFixedRun")
 	}
 
-	// widened once per entry: the widen op and the float-widen op each move it
-	// once, and nowhere else.
+	// widened once per entry per record: the widen op and the float-widen op
+	// each move it once, and nowhere else.
 	if n := strings.Count(run, "report.widened++;"); n != 2 {
 		t.Errorf("R16: report.widened++ occurs %d time(s) in the run loop, want the two widen ops once each", n)
+	}
+	// The per-ENTRY number, and the fold that never crosses a widen (§5.4 line
+	// 958, §5.9 #33): the array op sends min(their_n, my_n) element entries, and
+	// the ONE coalescer folds only COPY entries, so a widened run is one entry
+	// per element and never one folded entry.
+	compile := jsFn(src, "TableFixedCompileEntry")
+	if !strings.Contains(t02Norm(compile), "const n = theirN < myN ? theirN : myN;") {
+		t.Error("R16: the array op does not send min(their_n, my_n) element entries (§5.4, §5.9 #33)")
+	}
+	coal := jsFn(src, "TableFixedCoalesce")
+	if n := strings.Count(coal, "TableFixedOpCopy"); n != 2 {
+		t.Errorf("R16: the coalescer names op COPY %d time(s), want the two fold sides and no other op", n)
+	}
+	if strings.Contains(coal, "TableFixedOpWiden") {
+		t.Error("R16: the coalescer folds a widen run; §5.9 #33 forbids a fold across a widen")
+	}
+
+	// `unknown` once per peer at COMPILE and never per record (§5.4 line 956):
+	// the MATCH carries the one census site, and the record loop carries none.
+	match := jsFn(src, "TableFixedMatchChildren")
+	if n := strings.Count(match, "report.unknown++"); n != 1 {
+		t.Errorf("R16: the MATCH at COMPILE carries report.unknown++ %d time(s), want the one site that runs once per unnamed peer field", n)
+	}
+	if n := strings.Count(run, "report.unknown++"); n != 0 {
+		t.Errorf("R16: the record loop moves `unknown` %d time(s); §5.4 counts it once per peer and never per record", n)
 	}
 
 	// clamped once per entry, per record: a count clamp and a text clamp each
 	// count once, at the one site that reads the number.
-	count := jsFn(src, "TableFixedRun")
-	if !strings.Contains(t02Norm(count), "else if (v > size) { v = size; report.clamped++; }") {
+	if !strings.Contains(t02Norm(run), "else if (v > size) { v = size; report.clamped++; }") {
 		t.Error("R16: the count op does not clamp once to the writer's bound the plan carries")
 	}
-	if !strings.Contains(t02Norm(count), "const cap = (size / unit) | 0;") ||
-		!strings.Contains(t02Norm(count), "else if (v > cap) { v = cap; report.clamped++; }") {
+	if !strings.Contains(t02Norm(run), "const cap = (size / unit) | 0;") ||
+		!strings.Contains(t02Norm(run), "else if (v > cap) { v = cap; report.clamped++; }") {
 		t.Error("R16: the text op does not clamp its length once in the USED units (§3.4)")
 	}
 
 	// A forged ordinal remapped to None counts on BOTH plans: the compiled
 	// plan's ordinal op counts it, and the identity projection counts it too.
-	if !strings.Contains(t02Norm(count), "if (raw > arms) { report.clamped++; }") {
+	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.clamped++; }") {
 		t.Error("R16: the compiled plan does not count a forged ordinal remapped to None")
 	}
 	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.Rank > 3) { value.Rank = 0; report.clamped++; }") {
@@ -265,6 +289,12 @@ fixed table T
 	if strings.Contains(copyCase, "report.") {
 		t.Error("R16: the COPY op moves a counter; a clean copy moves nothing")
 	}
+	// present moves nothing: the optional wrapper's present byte is a COPY at
+	// the wrapper's own lane (§5.4 line 961), and the copy body above is the one
+	// that moves nothing.
+	if !strings.Contains(t02Norm(compile), "TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);") {
+		t.Error("R16: the optional wrapper's present byte is not a COPY that moves nothing (§5.4)")
+	}
 	// const moves nothing except the forged-ordinal guard it carries.
 	constCase := t02Block(t, run, "case TableFixedOpConst: {", "break;")
 	if n := strings.Count(constCase, "report.clamped++"); n != 1 {
@@ -272,6 +302,17 @@ fixed table T
 	}
 	if n := strings.Count(constCase, "report.widened++") + strings.Count(constCase, "report.unknown++"); n != 0 {
 		t.Error("R16: the CONST op moves widened or unknown; a const moves neither")
+	}
+	// ordinal lands its value and moves nothing: the remap to None is the bounds
+	// pass's to count (§5.4 line 961), and the single counter in the case body IS
+	// that guard — no second count, and no other op counter.
+	ordinalCase := t02Block(t, run, "case TableFixedOpOrdinal: {", "break;")
+	if n := strings.Count(ordinalCase, "report.clamped++"); n != 1 {
+		t.Errorf("R16: the ORDINAL op carries %d clamped sites, want only the bounds pass's forged guard", n)
+	}
+	if n := strings.Count(ordinalCase, "report.widened") + strings.Count(ordinalCase, "report.unknown") +
+		strings.Count(ordinalCase, "report.kindMismatch") + strings.Count(ordinalCase, "report.duplicate"); n != 0 {
+		t.Error("R16: the ORDINAL op moves a counter beyond the bounds pass; the op lands its value and moves nothing (§5.4)")
 	}
 }
 
