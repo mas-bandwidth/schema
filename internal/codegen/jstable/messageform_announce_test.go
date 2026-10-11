@@ -52,10 +52,12 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 				if string(got) != string(want) {
 					t.Fatalf("Announce bytes = %d, the manifest's %s = %d — they disagree", len(got), uc.name, len(want))
 				}
-				if want := strconv.Itoa(len(got)); !strings.Contains(src, "AnnounceMeasure") || !strings.Contains(src, "TableMessageAnnouncement.length") {
-					t.Fatal("AnnounceMeasure must answer the constant array's length")
-				} else {
-					_ = want
+				// The length AnnounceMeasure answers IS the constant array's
+				// length, not a walk's — "a constant byte array and its length
+				// rather than as a walk" (docs/SPEC-TABLES.md §3.3).
+				if !strings.Contains(src, "export function Announce(buffer) {") ||
+					!strings.Contains(src, "export function AnnounceMeasure() { return TableMessageAnnouncement.length; }") {
+					t.Fatal("Announce and AnnounceMeasure must ride as the constant array and its length")
 				}
 			})
 		}
