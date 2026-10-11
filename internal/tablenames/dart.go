@@ -69,19 +69,24 @@ func init() {
 		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
 		Name{Name: "TableMessageShapeEnd", What: "the announced message bit codec: step over one shape's width facts"},
 		Name{Name: "TableMessageSkipField", What: "the announced message bit codec: step over one unknown body field's payload by its kind (§3.3)"},
-		// THE ANNOUNCEMENT SURFACE'S LIBRARY-SCOPE CLASSES AND VERBS. A class
-		// at library scope claims a name exactly as the fixed form's classes do
+		// THE ANNOUNCEMENT SURFACE'S LIBRARY-SCOPE CLASSES. A class at
+		// library scope claims a name exactly as the fixed form's classes do
 		// (TableFixedReport, TableFixedPlan, ...), so TableVocabulary,
-		// TableMessageEntry and TableReport are claimed here too. The three
-		// free functions the page names — announce, announceMeasure,
-		// announceRead (docs/SPEC-TABLES.md §3.3, §6.1) — are claimed in this
-		// registry's PascalCase form, the bijection stated above; the C, C++
-		// and Go legs already claim those three spellings.
+		// TableMessageEntry and TableReport are claimed here.
+		//
+		// THE THREE FREE-FUNCTION VERBS ARE DELIBERATELY NOT REGISTERED. The
+		// page names them — announce, announceMeasure and announceRead
+		// (docs/SPEC-TABLES.md §3.3, §6.1) — but the name scan in compiler/
+		// tablesdart_test.go collects only identifiers the emitted source
+		// spells table*/Table*, and a lowerCamelCase free function is neither,
+		// so a registration here would be a claim the scan reports as
+		// unemitted. The names stay claimed for every target by the Go, C++
+		// and C legs (internal/tablenames/go.go, cpp.go, c.go), so the
+		// checker's claim set is unchanged; registering them for Dart needs
+		// the scan widened, which is not this card's file. The §11 sentence
+		// that puts them in this registry is reported not done.
 		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
 		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
 		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
-		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
-		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit (§3.3)"},
-		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table (§3.3)"},
 	)
 }
