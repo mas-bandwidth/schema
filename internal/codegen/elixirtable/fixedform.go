@@ -260,15 +260,35 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		case *ir.Struct:
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
+			fixedCollectUnion(r, map[string]bool{}, seen, order)
 		}
 	}
 	*order = append(*order, st)
+}
+
+// fixedCollectUnion descends through a union's arms for the structs the closure
+// reaches. An arm that names a `type` descends into it; an arm that is ITSELF A
+// UNION descends into THAT union's arms in turn, so a nested union's own arm
+// structs are part of the closure and its helper is emitted where its caller's
+// dispatch names it (docs/FIXED-FORM-ALGORITHM.md §4.1 "an arm inside an arm
+// answers to the OUTER tag"). seenUnion is fresh per union field, so a union
+// cycle cannot loop this walk.
+func fixedCollectUnion(u *ir.Union, seenUnion, seen map[string]bool, order *[]*ir.Struct) {
+	if seenUnion[u.Name] {
+		return
+	}
+	seenUnion[u.Name] = true
+	for _, v := range u.Variants {
+		if v.F == nil {
+			continue
+		}
+		switch r := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			if v.F.Type.Kind == ir.TNamed {
+				fixedCollectTypes(r, seen, order)
+			}
+		case *ir.Union:
+			fixedCollectUnion(r, seenUnion, seen, order)
+		}
+	}
 }
