@@ -71,4 +71,66 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 			t.Fatal("the fixed form's runtime names a duplicate counter; §5.4's fixed report never raises one")
 		}
 	})
+
+	// c/C3 "text length clamp" (docs/SPEC-TABLES.md §3.4, the `text` op of
+	// docs/FIXED-FORM-ALGORITHM.md §5.4: the length is clamped into [0, cap] and
+	// `clamped` counts once per entry). The generated C is self-contained — no
+	// sibling runtime, no oracle — so this one RUNS: save a value whose used
+	// length is the bound, forge the length word past it, and read the clamp
+	// landing the whole payload with `clamped == 1`.
+	t.Run("c/C3", func(t *testing.T) {
+		t.Parallel()
+		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
+#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+int main(void)
+{
+    Texty value, out;
+    TableReport r;
+    static TableFixedEntry plan[4096];
+    uint8_t buf[4096];
+    int64_t n, off;
+    texty_reset(&value);
+    value.s_length = 8;
+    memcpy(value.s, "abcdefgh", 8);
+    n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
+    CHECK(n > 0);
+    off = kTableFixedHeaderBytes + 4 + texty_fixed_layout_bytes + 8; /* header + layout length + layout + the record hash */
+    table_fixed_put32(buf + off, 100u); /* the length word, forged past the bound 8 */
+    memset(&r, 0, sizeof(r));
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    CHECK(n == 1);
+    CHECK(!r.refused && !r.malformed);
+    CHECK(r.clamped == 1);
+    CHECK(out.s_length == 8);
+    CHECK(memcmp(out.s, "abcdefgh", 8) == 0);
+    return 0;
+}
+`)
+	})
+
+	// c/C5 "wide text code units" (docs/SPEC-TABLES.md §3.4: a wstring(N)'s
+	// length is in UTF-16 CODE UNITS and the payload is two bytes each): the
+	// wide-text content check rides in the unit that declares the field and the
+	// length is scaled by the two bytes of a unit.
+	t.Run("c/C5", func(t *testing.T) {
+		t.Parallel()
+		body := t05All(generate(t, "package probe\nfixed table Wide { w wstring(8) }\n"))
+		t05Want(t, body, "static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )")
+		t05Want(t, body, "2 * value->w_length")
+	})
+
+	// c/C4 "text content refuses BY NAME" (docs/SPEC-TABLES.md §3.4: the content
+	// rules of §3 apply to the USED UNITS and a violation is `malformed`): a
+	// string(N)'s used bytes are checked as well-formed UTF-8, and a payload
+	// that is not text is DAMAGE — the field takes its declared default and
+	// malformed rises, no name is read off it.
+	t.Run("c/C4", func(t *testing.T) {
+		t.Parallel()
+		body := t05All(generate(t, "package probe\nfixed table Texty { s string(8) }\n"))
+		t05Want(t, body, "table_wire_utf8( (const uint8_t *) value->s, (uint64_t) value->s_length )")
+		t05Want(t, body, "(*damaged)++")
+	})
 }
