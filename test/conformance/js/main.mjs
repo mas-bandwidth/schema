@@ -449,6 +449,96 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- the MESSAGE surface (docs/SPEC-TABLES.md §3.3)
+//
+// A message's id table is somewhere else (test/conformance/README.md, "The
+// surfaces"): the CONNECTION's announcement carries it, the driver reads that
+// first into one direction's vocabulary, and the batch resolves against it.
+// The verbs are PLURAL, because the form's primitive is a BATCH of bodies of
+// one root and a single message is the batch of one; a `message` case whose
+// batch wire holds one body still drives LoadMessages and SaveMessages with a
+// count of one.
+//
+// THE ROW LIST IS THE MANIFEST'S. Each row names a connection's unit and the
+// root its batch carries; the manifest's `message` lines are the corpus's
+// claim, this table is the leg's, and TestMessageFormConformanceJavaScript
+// (internal/codegen/jstable) holds the two to one set. The third column is
+// the generated unit table that carries the unit's TableVocabulary and its
+// Announce, AnnounceMeasure, AnnounceRead, MeasureMessages, SaveMessages and
+// LoadMessages verbs (docs/SPEC-TABLES.md §3.3, "THE SURFACE, OWED TO §11's
+// CLAIMED SET").
+const messageRows = [
+  ["backenddemo", "LoginRequest", "examples/BackenddemoTable.js"],
+  ["backenddemo", "MatchResult", "examples/BackenddemoTable.js"],
+  ["backenddemo", "StorePurchase", "examples/BackenddemoTable.js"],
+  ["vocabdemo", "Wide09", "vocab/VocabdemoTable.js"],
+  ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js"],
+  ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js"],
+  ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js"],
+  ["graphdemo", "Scene", "pointers/GraphdemoTable.js"],
+];
+
+function messageRow(unit, root) {
+  for (const r of messageRows) {
+    if (r[0] === unit && r[1] === root) { return r; }
+  }
+  return null;
+}
+
+async function surfaceMessage(lines, outDir) {
+  for (const f of kind(lines, "message")) {
+    // message <name> <connection> <root> <file-form wire> <message-form wire>
+    let unit = "", announcementPath = "";
+    for (const c of lines) {
+      if (c[0] === "connection" && c[1] === f[2]) { unit = c[2]; announcementPath = c[4]; break; }
+    }
+    const row = messageRow(unit, f[3]);
+    // A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD
+    // GO, `<case>.absent`, and the matrix counts it (test/conformance/README.md,
+    // "Exit codes"). The JavaScript table backend does not emit the form-2
+    // verbs yet (jstable, "Table wire codecs are deferred to #516"), so every
+    // message row answers absent until it does; the surface is still announced
+    // so the matrix counts the rows rather than the feature, and this is the
+    // one place the leg says which rows it cannot answer.
+    if (row === null) {
+      writeFileSync(join(outDir, f[1] + ".absent"), "");
+      continue;
+    }
+    let unitTable;
+    try {
+      unitTable = await load(row[2]);
+    } catch {
+      writeFileSync(join(outDir, f[1] + ".absent"), "");
+      continue;
+    }
+    if (typeof unitTable.AnnounceRead !== "function" ||
+        typeof unitTable[`${row[1]}LoadMessages`] !== "function" ||
+        typeof unitTable[`${row[1]}MeasureMessages`] !== "function" ||
+        typeof unitTable[`${row[1]}SaveMessages`] !== "function") {
+      writeFileSync(join(outDir, f[1] + ".absent"), "");
+      continue;
+    }
+    // AnnounceRead the connection's announcement, LoadMessages the batch
+    // against it, MeasureMessages the batch, SaveMessages, and write the bytes.
+    const announcement = new Uint8Array(readFileSync(announcementPath));
+    const wire = new Uint8Array(readFileSync(f[5]));
+    const vocabulary = unitTable.TableVocabularyNew();
+    if (!unitTable.AnnounceRead(vocabulary, announcement)) {
+      fail(f[1] + ": the announcement was refused: " + announcementPath);
+    }
+    const values = [];
+    const report = {};
+    const count = unitTable[`${row[1]}LoadMessages`](values, vocabulary, wire, report);
+    if (count < 1) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+    const size = unitTable[`${row[1]}MeasureMessages`](values, count, report);
+    const bytes = new Uint8Array(size);
+    if (unitTable[`${row[1]}SaveMessages`](values, count, bytes, report) !== size) {
+      fail(f[1] + ": message save " + JSON.stringify(report));
+    }
+    writeFileSync(join(outDir, f[1]), bytes);
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -459,10 +549,13 @@ if (args.length < 2) {
 const lines = readManifest(args[0]);
 const surface = args[1];
 if (surface === "list") {
-  // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-  // PREVIOUS form and the corpus is pinned in the id-table form
-  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row.
-  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
+  // the WIRE surface is ABSENT: this port writes the wire's PREVIOUS form and
+  // the corpus is pinned in the id-table form (docs/SPEC-TABLES.md §3).
+  // schema#516 is the port's row. `message` IS listed and answers a row at a
+  // time: this backend does not emit the form-2 verbs yet, so every row is
+  // `<case>.absent` (§3.3), which the matrix counts rather than reading as a
+  // feature the leg lacks.
+  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
   process.exit(0);
 }
 if (args.length < 3) {
@@ -478,5 +571,6 @@ switch (surface) {
   case "block-dump": surfaceBlockDump(lines, outDir); break;
   case "forgery": surfaceForgery(lines, outDir); break;
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
+  case "message": await surfaceMessage(lines, outDir); break;
   default: process.exit(2);
 }
