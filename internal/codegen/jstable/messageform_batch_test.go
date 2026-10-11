@@ -93,6 +93,20 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 			t.Fatalf("damage: %v\n%s", err, out)
 		}
 	})
+
+	t.Run("compressed_float", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		u := loadUnitPaths(t, []string{repoPath("bench/corpus/BenchTable.schema")})
+		st := findTable(t, u, "TableMixed")
+		probe := messageCompressedFloatProbe(u, st)
+		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+			"ann.bin": ir.TableAnnouncement(u),
+		}, probe)
+		if err != nil {
+			t.Fatalf("compressed float: %v\n%s", err, out)
+		}
+	})
 }
 
 // ---- the manifest, read here rather than copied: a new row is a new subtest
@@ -320,6 +334,54 @@ const fCount = %[1]sFixedLoad([new %[1]s()], 1, new Uint8Array([2, 0, 0]), 3, pl
 if (fCount !== -1 || fReport.refused !== 2 || TableFixedRefusalName(fReport.refused) !== "message_form_as_file") {
   fail("message form as file: " + JSON.stringify(fReport));
 }
+`, st.Name))
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+// messageCompressedFloatProbe is the one row the conformance corpus does not
+// reach: a fixed root carrying a quantized float, over the bench corpus's
+// `TableMixed` (bench/corpus/BenchTable.schema). Its `server_time`, `aim_x`,
+// `aim_y`, `aim_z` and `ping` all declare `resolution`, so their bodies hold
+// shape `Packing === 2` and the read walks the compressed-float lane.
+func messageCompressedFloatProbe(u *ir.Unit, st *ir.Struct) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, ""))
+	b.WriteString(fmt.Sprintf(`
+// "the message form quantizes and reads floats by the packet wire's rule bit
+// for bit and there is one rule for both wires" (§3.3): a compressed float on
+// the announced grid comes back the same float, so one message saved then
+// loaded reproduces the message byte for byte.
+const value = new %[1]s();
+value.ServerTime = 123.45;
+value.AimX = 0.5;
+value.AimY = -0.25;
+value.AimZ = 0.75;
+value.Ping = 37.5;
+const buf = new Uint8Array(65536);
+const saveReport = {};
+const n = %[1]sSaveMessages([value], buf, saveReport);
+if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(saveReport)); }
+const storage = Array.from({ length: 256 }, () => new %[1]s());
+const loadReport = {};
+const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+  fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
+}
+// "file to message to file reproduces a compressed float only when the float
+// already lies on the announced grid" (§3.3): these five are grid points, so
+// the value the batch decodes to, saved as a batch, is the batch byte for byte.
+const buf2 = new Uint8Array(65536);
+const saveReport2 = {};
+const n2 = %[1]sSaveMessages([storage[0]], buf2, saveReport2);
+if (n2 !== n || !bytesEq(buf.subarray(0, n), buf2.subarray(0, n2))) {
+  fail("compressed-float round trip bytes differ");
+}
+if (Math.abs(storage[0].ServerTime - 123.45) > 0.02) { fail("ServerTime " + storage[0].ServerTime); }
+if (Math.abs(storage[0].AimX - 0.5) > 0.02) { fail("AimX " + storage[0].AimX); }
+if (Math.abs(storage[0].AimY + 0.25) > 0.02) { fail("AimY " + storage[0].AimY); }
+if (Math.abs(storage[0].AimZ - 0.75) > 0.02) { fail("AimZ " + storage[0].AimZ); }
+if (Math.abs(storage[0].Ping - 37.5) > 0.02) { fail("Ping " + storage[0].Ping); }
 `, st.Name))
 	b.WriteString(probeTail())
 	return b.String()

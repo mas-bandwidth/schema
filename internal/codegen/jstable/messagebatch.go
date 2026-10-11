@@ -209,7 +209,7 @@ export function tableMessageReadScalar(r, s) {
     if (index > s.QCount) { index = s.QCount; }
     const ratio = Math.fround(index / s.QCount);
     const scaled = Math.fround(ratio * s.QDelta);
-    lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : tableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
+    lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
   }
   return [[lo, hi], true];
 }
