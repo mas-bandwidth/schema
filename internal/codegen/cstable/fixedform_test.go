@@ -181,11 +181,14 @@ func guardedPlanHasArgW(src string, want int) bool {
 		}
 		args := src[:close]
 		src = src[close+2:]
-		if strings.Contains(args, "TableFixedWire.NoGuard") {
+		parts := strings.Split(args, ",")
+		if len(parts) < 11 {
 			continue
 		}
-		last := strings.TrimSpace(args[strings.LastIndex(args, ",")+1:])
-		return last == fmt.Sprintf("%d", want)
+		if strings.TrimSpace(parts[4]) == "TableFixedWire.NoGuard" {
+			continue
+		}
+		return strings.TrimSpace(parts[10]) == fmt.Sprintf("%d", want)
 	}
 }
 
