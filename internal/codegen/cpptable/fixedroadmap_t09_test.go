@@ -177,6 +177,19 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"TableFixedPutF64( b + 71, value.f64 );",
 			},
 		},
+		{
+			// "Compressed-float declarations stored as float32". §3.4: a
+			// compressed float rides AS the float32 itself, so the storage is
+			// float, the wire word is TableFixedPutF32, and the declared range
+			// min = -1 / max = 1 is held by the bounds pass.
+			id: "compressed-floats/cpp/valid-data",
+			want: []string{
+				"float cf = 0.0f;",
+				"TableFixedPutF32( b + 79, value.cf );",
+				"clamped += (int) ( value.cf < -1.0f ) | (int) ( value.cf > 1.0f );",
+				"value.cf = ( value.cf < -1.0f ) ? -1.0f : ( ( value.cf > 1.0f ) ? 1.0f : value.cf );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
