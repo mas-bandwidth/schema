@@ -348,6 +348,77 @@ func t03GoR32(t *testing.T) {
 	}
 }
 
+// ---- go/R10 -----------------------------------------------------------------
+
+// t03GoR10 holds R10 to §5.6 and §5.3 step 7: "the hash is looked up, the floor
+// is checked, and the layout is COMPARED — the seven rules do not fire at run
+// time". The emitted load parses no layout, walks no stranger's bytes, and never
+// recomputes the header's hash: the header's eight bytes are taken as given and
+// matched on.
+func t03GoR10(t *testing.T) {
+	text, _ := t03GoRetire(t, 0)
+	load := t03GoLoad(t, text, "Lineage")
+	t03GoHas(t, load, "layout[i] != known.Layout[i]", "R10 the layout is a byte comparison")
+	t03GoHas(t, load, `return tableFixedRefuse(report, "layout_malformed")`, "R10 a lie about a known version is layout_malformed")
+	t03GoHas(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])", "R10 the header's hash is taken as given")
+	t03GoHasNot(t, load, "tableFixedParseLayout(", "R10 the load walks a stranger's layout")
+	t03GoHasNot(t, load, "tableFixedCompile(", "R10 the load compiles on the load path")
+	t03GoHasNot(t, load, "tableFixedHash(", "R10 the load recomputes the header's hash")
+	// THE HASH IS STILL A WIRE IDENTITY: the fnv site survives for the build's
+	// own constant, but no emitted module computes one at run time.
+	if strings.Contains(text, "0xcbf29ce484222325") || strings.Contains(text, "0x100000001b3") {
+		t.Error("R10: the emitted module holds an FNV site a runtime could compute with")
+	}
+	t03GoHas(t, tableFixedRuntime, "func tableFixedParseLayout(", "R10 the layout walk survives for the build-time plans")
+}
+
+// ---- go/R15 -----------------------------------------------------------------
+
+// t03GoR15 holds R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan
+// selection, on the file's hash; the count and text clamps that REMAIN are the
+// writer's bounds carried by the plan (bill §12.5), which only a backward read
+// over a locked entry can reach; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t03GoR15(t *testing.T) {
+	// The four clauses' rows, so a row quietly dropped from the corpus suite is
+	// red by name: field_append (drop-and-count of an unknown field),
+	// array_bounded_grow (count clamp), range_widen (range clamp),
+	// enum_append (remap of an unknown variant to None).
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		found := false
+		for _, r := range versionRows {
+			if r.row == row {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("R15: %s is not in TestFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+	}
+	text, _ := t03GoRetire(t, 0)
+	load := t03GoLoad(t, text, "Lineage")
+	miss := strings.Index(load, `return tableFixedRefuseHash(report, "layout_newer", hash)`)
+	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	if miss < 0 || records < 0 {
+		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
+	}
+	if miss > records {
+		t.Error("R15: an unknown hash is not refused before the first record")
+	}
+	if strings.Contains(load, "report.Unknown++") {
+		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
+	}
+	t03GoHas(t, load, "report.Unknown += censusUnknown", "R15 unknown is the compile census, once per plan")
+	t03GoHas(t, load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch", "R15 the census is the lane's, landed after the record loop")
+	// THE CLAMPS THAT REMAIN ARE THE WRITER'S BOUNDS, reached only over a
+	// locked entry — never a forward read of a stranger's layout.
+	runtime := tableFixedRuntime
+	t03GoHas(t, runtime, "v > int32(p.Size)", "R15 the count clamp is the writer's bound")
+	t03GoHas(t, runtime, "uint32(v) > capn", "R15 the text clamp is the writer's span")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
@@ -361,6 +432,8 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{id: "go/R22", check: t03GoR22},
 		{id: "go/R3", check: t03GoR3},
 		{id: "go/R32", check: t03GoR32},
+		{id: "go/R10", check: t03GoR10},
+		{id: "go/R15", check: t03GoR15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
