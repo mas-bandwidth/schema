@@ -21,6 +21,9 @@ package javatable
 // whose bite is a VALUE (java/R30's rides-as-the-float) and not a literal.
 
 import (
+	"encoding/binary"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -155,20 +158,78 @@ func t05C13(t *testing.T) {
 }
 
 // t05R17 is R17 "a bool or present byte that is not 0/1 normalises and counts
-// nothing": the two landings above carry no counter beside them, so a peer's
-// 0x02 is true and moves no counter.
+// nothing", asserted on the VALUE and the COUNTERS a real read lands, never on
+// the source text. ALGORITHM §4.5: "a bool ... lands as `byte != 0`, normalised
+// to the language's own true. 0x02 is not a bool a reader stores verbatim".
+// The leg's own OLD writer saves one Hbb record; the scalar `flag` byte, the
+// optional's present byte and one `flags` element are forged to 0x02 at the
+// body offsets §2 and §3 fix (the 20-byte header, the layout of LE(4, b+16)
+// bytes, the record's u64 hash, then the body IN DECLARED ORDER); and both
+// readers take the forged file: the OLD build by identity and the NEW build
+// through a plan COMPILED from the OLD layout. Each must land exactly what it
+// lands from the unforged file — `true` — and move no counter.
 func t05R17(t *testing.T) {
-	files := t05Files(t, "VNEW_hostile_bool.schema")
-	src, ok := files["HbbFixed.java"]
-	if !ok {
-		t.Fatal("R17: the emitter wrote no HbbFixed.java")
+	pkgOld := javaPackageOf(versioningSchemaUnit(t, "VOLD_hostile_bool.schema"))
+	if pkgOld == "" {
+		t.Fatal("R17: the OLD side declares no package")
 	}
-	for _, line := range []string{
-		"v.flag = b[at + 0] != 0;",
-		"v.linkPresent = b[at + 1] != 0;",
-	} {
-		if !strings.Contains(src, line) {
-			t.Errorf("R17: the normalising line %q is not emitted (a counter beside it would change the line)", line)
+	classes := t03Build(t, t.TempDir(), "hostile_bool", []sideSpec{
+		{key: "reads", schema: "VNEW_hostile_bool.schema", older: []string{"VOLD_hostile_bool.schema"}},
+		{key: "refuses", schema: "VOLD_hostile_bool.schema"},
+	}, map[string]string{
+		"Probe_capability.java": t03SaveLoadProbe("Probe_capability", pkgOld, "Hbb", `
+        vals[0].flag = true;
+        vals[0].linkPresent = true;
+        vals[0].flags[3] = true;`),
+	})
+	clean := t03BytesOf(t, t03RunSaveLoad(t, classes, "Probe_capability"))
+	raw, err := os.ReadFile(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) < 20 {
+		t.Fatalf("R17: the saved file is %d bytes, shorter than the header", len(raw))
+	}
+	// §2: the layout's byte length is LE(4, b+16); §2's record is the u64 hash
+	// then the body; §3's body is the fields in declared order at their
+	// constant sizes: flag @0, link's present @1, link.n @2, lead @6,
+	// flags @10, trail @18.
+	body := 20 + int(binary.LittleEndian.Uint32(raw[16:20])) + 8
+	if body+22 != len(raw) || raw[body] != 1 || raw[body+1] != 1 || raw[body+13] != 1 ||
+		binary.LittleEndian.Uint32(raw[body+6:]) != 1 || binary.LittleEndian.Uint32(raw[body+18:]) != 2 {
+		t.Fatalf("R17: the saved record is not the declared-order body this test forges (body at %d of %d): % x", body, len(raw), raw[min(body, len(raw)):])
+	}
+	forged := append([]byte(nil), raw...)
+	forged[body] = 0x02    // flag
+	forged[body+1] = 0x02  // link's present byte
+	forged[body+13] = 0x02 // flags[3]
+	path := filepath.Join(t.TempDir(), "hostile_bool.bin")
+	if err := os.WriteFile(path, forged, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
+		want := runProbe(t, classes, probe, clean)
+		got := runProbe(t, classes, probe, path)
+		if got.n != 1 || got.refused || got.malformed {
+			t.Fatalf("R17 %s: the forged 0x02 bytes must read, never damage: %+v", probe, got)
+		}
+		// NORMALISES: 0x02 lands as the language's own true.
+		for _, k := range []string{"flag", "linkPresent"} {
+			if got.value[k] != "true" {
+				t.Errorf("R17 %s: %s landed %q from a 0x02 byte, want true — a bool lands as `byte != 0`", probe, k, got.value[k])
+			}
+		}
+		// ... and exactly as the lawful 0x01 lands: every field of the record.
+		for k, v := range want.value {
+			if got.value[k] != v {
+				t.Errorf("R17 %s: %s landed %q from the forged file, want %q as from the lawful one", probe, k, got.value[k], v)
+			}
+		}
+		// COUNTS NOTHING: a non-0/1 bool or present byte is no clamp and no
+		// damage, so every counter stands at zero.
+		if got.clamped != 0 || got.widened != 0 || got.unknown != 0 || got.kindMismatch != 0 {
+			t.Errorf("R17 %s: a 0x02 bool or present byte moved a counter: clamped=%d widened=%d unknown=%d kindMismatch=%d, want all 0",
+				probe, got.clamped, got.widened, got.unknown, got.kindMismatch)
 		}
 	}
 }
