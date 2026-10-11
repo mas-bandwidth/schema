@@ -24,6 +24,12 @@ import (
 // to a line with no LF/CRLF terminator.
 var headerLineRE = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$`)
 
+// headerKeyRE is the admitted key grammar alone: one letter then
+// letters/digits/hyphens, the same key rule headerLineRE applies. The shared
+// checked-write validation uses it to refuse an extra whose key Render could
+// not spell as a header line (TEXT GRAMMAR).
+var headerKeyRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+
 // deadlineRE is the customer spelling DEADLINE accepts: "finish within N
 // minutes." with a checked conversion into deadline_minutes.
 var deadlineRE = regexp.MustCompile(`^finish within ([0-9]+) minutes\.$`)

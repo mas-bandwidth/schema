@@ -110,7 +110,9 @@ func TestParseRenderCorpus(t *testing.T) {
 		}
 	})
 
-	// PATHS none / - / empty all parse as empty lists.
+	// PATHS none / - / empty all parse as empty lists, and the empty spelling
+	// survives the Render -> Parse round trip: an empty list renders no PATHS
+	// line, so the re-parsed record is empty too and the wire is unchanged.
 	for _, spelling := range []string{"none", "-", ""} {
 		spelling := spelling
 		t.Run("paths-empty-"+spelling, func(t *testing.T) {
@@ -122,6 +124,20 @@ func TestParseRenderCorpus(t *testing.T) {
 			}
 			if r.root.Paths.Count != 0 {
 				t.Fatalf("PATHS %q parsed to %d entries", spelling, r.root.Paths.Count)
+			}
+			text, rep, err := Render(r)
+			if err != nil {
+				t.Fatalf("Render PATHS %q: %v (report %+v)", spelling, err, rep)
+			}
+			r2, err := Parse(text)
+			if err != nil {
+				t.Fatalf("Parse(Render(PATHS %q)): %v", spelling, err)
+			}
+			if r2.root.Paths.Count != 0 {
+				t.Fatalf("PATHS %q re-parsed to %d entries after Render", spelling, r2.root.Paths.Count)
+			}
+			if !bytes.Equal(r2.Wire(), r.Wire()) {
+				t.Fatalf("PATHS %q round trip changed the wire", spelling)
 			}
 		})
 	}
@@ -195,24 +211,28 @@ func TestParseRefusesAStrandedKey(t *testing.T) {
 	})
 }
 
+// bodyBoundaryCases is the body-suffix matrix shared by TestParseBodyBoundary
+// and TestRenderRoundTrip: blank lines, prose positions, CRLF, empty bodies and
+// final-newline variants.
+var bodyBoundaryCases = []struct {
+	name string
+	text string
+	body string
+}{
+	{"direct-prose", "RESULT: x sha=000000000000 tier: pro\nprose\n", "prose\n"},
+	{"no-final-newline", "RESULT: x sha=000000000000 tier: pro\nprose", "prose"},
+	{"inter-header-blanks", "RESULT: x sha=000000000000 tier: pro\n\nREPO: r\n\nBASE: b\nbody\n", "body\n"},
+	{"trailing-blank", "RESULT: x sha=000000000000 tier: pro\n\n", "\n"},
+	{"blanks-before-prose", "RESULT: x sha=000000000000 tier: pro\n\n\nprose\n", "\n\nprose\n"},
+	{"empty-body", "RESULT: x sha=000000000000 tier: pro\n", ""},
+	{"crlf", "RESULT: x sha=000000000000 tier: pro\r\nprose\r\n", "prose\r\n"},
+}
+
 // TestParseBodyBoundary pins the body-suffix rule across blank lines, prose
 // positions, CRLF, empty bodies and final-newline variants.
 func TestParseBodyBoundary(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name string
-		text string
-		body string
-	}{
-		{"direct-prose", "RESULT: x sha=000000000000 tier: pro\nprose\n", "prose\n"},
-		{"no-final-newline", "RESULT: x sha=000000000000 tier: pro\nprose", "prose"},
-		{"inter-header-blanks", "RESULT: x sha=000000000000 tier: pro\n\nREPO: r\n\nBASE: b\nbody\n", "body\n"},
-		{"trailing-blank", "RESULT: x sha=000000000000 tier: pro\n\n", "\n"},
-		{"blanks-before-prose", "RESULT: x sha=000000000000 tier: pro\n\n\nprose\n", "\n\nprose\n"},
-		{"empty-body", "RESULT: x sha=000000000000 tier: pro\n", ""},
-		{"crlf", "RESULT: x sha=000000000000 tier: pro\r\nprose\r\n", "prose\r\n"},
-	}
-	for _, tc := range cases {
+	for _, tc := range bodyBoundaryCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -346,6 +366,30 @@ func TestRenderRoundTrip(t *testing.T) {
 		t.Fatal("repeated round trips are not stable")
 	}
 
+	// Every body-boundary case also round trips: Parse -> Render -> Parse keeps
+	// the owned wire, so the exact opaque suffix never grows a separator.
+	for _, tc := range bodyBoundaryCases {
+		tc := tc
+		t.Run("boundary-"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			r, err := Parse([]byte(tc.text))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			text, rep, err := Render(r)
+			if err != nil {
+				t.Fatalf("Render: %v (report %+v)", err, rep)
+			}
+			r2, err := Parse(text)
+			if err != nil {
+				t.Fatalf("Parse(Render(Parse(t))): %v", err)
+			}
+			if !bytes.Equal(r2.Wire(), r.Wire()) {
+				t.Fatalf("Parse(Render(Parse(t))) changed the wire for %q", tc.name)
+			}
+		})
+	}
+
 	json, _, err := ToJSON(rec)
 	if err != nil {
 		t.Fatalf("ToJSON: %v", err)
@@ -359,5 +403,87 @@ func TestRenderRoundTrip(t *testing.T) {
 	}
 	if got := stringData(&rec3.root.Body, nil); !bytes.Equal(got, wantBody) {
 		t.Fatal("FromJSON(ToJSON(parsed)) changed the body")
+	}
+}
+
+// TestExtrasCheckedWriteRefused proves the shared checked-write validation
+// refuses an extra whose key is not an admitted header key or whose key or
+// value carries a CR or LF, and an extra key duplicating a mapped header name,
+// so Render's informational text stays a sequence of admitted header lines
+// (HEADER MAPPING, docs/SPEC-TABLES.md §16).
+func TestExtrasCheckedWriteRefused(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		json string
+		want string
+	}{
+		{"space-in-key", `{"id":"x","sha":"000000000000","tier":"pro","extra":[{"key":"BAD KEY","value":"v"}]}`, "not an admitted header key"},
+		{"colon-in-key", `{"id":"x","sha":"000000000000","tier":"pro","extra":[{"key":"A:B","value":"v"}]}`, "not an admitted header key"},
+		{"lf-in-value", `{"id":"x","sha":"000000000000","tier":"pro","extra":[{"key":"LEG","value":"a\nb"}]}`, "CR or LF"},
+		{"cr-in-value", `{"id":"x","sha":"000000000000","tier":"pro","extra":[{"key":"LEG","value":"a\rb"}]}`, "CR or LF"},
+		{"reserved-key", `{"id":"x","sha":"000000000000","tier":"pro","extra":[{"key":"REPO","value":"v"}]}`, "duplicates a mapped header key"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec, err := FromJSON([]byte(tc.json))
+			if err == nil {
+				t.Fatalf("FromJSON accepted malformed extras: %v", rec)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("refusal does not name %q: %v", tc.want, err)
+			}
+		})
+	}
+}
+
+// TestRenderInformationalMachineState proves a loaded record whose machine
+// state (stream, epoch, column, holder, attempt, head, branch) is populated
+// renders its informational text — RESULT, the mapped keys and the body — while
+// the record's owned wire is unchanged; parsing that text leaves the machine
+// fields at their declaration defaults (docs/SPEC-TABLES.md §16).
+func TestRenderInformationalMachineState(t *testing.T) {
+	t.Parallel()
+	wire := buildPopulated(t)
+	rec, rep, err := Load(wire)
+	if err != nil {
+		t.Fatalf("Load: %v (report %+v)", err, rep)
+	}
+	text, rep, err := Render(rec)
+	if err != nil {
+		t.Fatalf("Render: %v (report %+v)", err, rep)
+	}
+	if !bytes.Equal(rec.Wire(), wire) {
+		t.Fatal("Render changed the record's wire")
+	}
+	if !bytes.HasPrefix(text, []byte("RESULT: card-1234 sha=")) {
+		t.Fatalf("render does not start with RESULT: %q", text[:40])
+	}
+	if !bytes.Contains(text, []byte("REPO: mas-bandwidth/schema\n")) {
+		t.Fatal("render is missing REPO")
+	}
+	if !bytes.HasSuffix(text, []byte(makeBody(t))) {
+		t.Fatal("render does not end with the exact body bytes")
+	}
+	back, err := Parse(text)
+	if err != nil {
+		t.Fatalf("Parse(render): %v", err)
+	}
+	if back.root.Epoch != 0 || back.root.Attempt != 0 {
+		t.Fatal("parse of the informational text reconstructed machine scalars")
+	}
+	if s := rowStr(back.root.Stream[:], back.root.StreamLength); s != "" {
+		t.Fatalf("parse reconstructed stream %q", s)
+	}
+	if s := rowStr(back.root.Holder[:], back.root.HolderLength); s != "" {
+		t.Fatalf("parse reconstructed holder %q", s)
+	}
+	if s := rowStr(back.root.Head[:], back.root.HeadLength); s != "" {
+		t.Fatalf("parse reconstructed head %q", s)
+	}
+	if s := rowStr(back.root.Branch[:], back.root.BranchLength); s != "" {
+		t.Fatalf("parse reconstructed branch %q", s)
 	}
 }
