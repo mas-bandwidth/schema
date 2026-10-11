@@ -62,10 +62,14 @@ func dartTableAnnouncementConstant(u *ir.Unit) string {
 }
 
 // dartMessageAnnounceRuntime is the shared Dart runtime for the announcement
-// surface. It is a static class so nothing lands at library scope, the same
-// rule the fixed runtime follows. The names are the reference's own — the C#
-// leg spells them `TableVocabulary`, `Announce`, `AnnounceMeasure`,
-// `AnnounceRead` — so a reader crossing legs reads one vocabulary of names.
+// surface. The descriptors and the report are classes, so their names are
+// reached through the class; the helper functions the read walks are free at
+// library scope, the same shape the fixed runtime's free helpers take, so each
+// is registered in internal/tablenames for the Dart backend and a schema
+// declaring one is refused rather than generating Dart that does not compile.
+// The names are the reference's own — the C# leg spells them `TableVocabulary`,
+// `Announce`, `AnnounceMeasure`, `AnnounceRead` — so a reader crossing legs
+// reads one vocabulary of names.
 const dartMessageAnnounceRuntime = `
 // ---------------------------------------------------------------------------
 // THE MESSAGE FORM'S ANNOUNCEMENT, form byte 2 (docs/SPEC-TABLES.md §3.3)

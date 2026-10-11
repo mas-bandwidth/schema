@@ -51,5 +51,20 @@ func init() {
 		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
 		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
+		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
+		// form byte 2. It is emitted for a unit that declares a fixed root,
+		// beside the fixed runtime, and it puts helper FUNCTIONS at library
+		// scope — the same shape as the fixed form's free helpers above —
+		// so each is claimed on this list's own rule: a schema declaring one
+		// would otherwise generate Dart that does not compile. The C#, Go and
+		// C++ legs register their announcement runtimes' spellings the same
+		// way.
+		Name{Name: "TableAnnouncement", What: "the announced message bit codec: the compiler-settled announcement bytes (§3.3)"},
+		Name{Name: "TableAnnouncementLength", What: "the announced message bit codec: the announcement's length, emitted beside the bytes (§3.3)"},
+		Name{Name: "TableMessageBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
+		Name{Name: "TableMessageEntryEnd", What: "the announced message bit codec: step over one entry's id, kind and shape"},
+		Name{Name: "TableMessageKnownKind", What: "the announced message bit codec: whether a kind is in the closed set"},
+		Name{Name: "TableMessageLeb", What: "the announced message bit codec: the canonical LEB128 length every length takes (§3)"},
+		Name{Name: "TableMessageShapeEnd", What: "the announced message bit codec: step over one shape's width facts"},
 	)
 }
