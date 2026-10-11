@@ -11,11 +11,14 @@ package cstable
 //
 // A clause already held by an existing test of this leg is named by that test in
 // the card's verdicts and is not repeated here; this file carries the direct
-// assertion of every clause that had none. The runtime acceptance a capability
-// row asks for is asserted at the emitter boundary: the generated write body
-// serialises the construct with non-default and boundary values, the generated
-// prefill/read restores it, and the leg runs neither of those against a sibling
-// `../serialize.cs` here, which this card names as not run rather than fakes.
+// assertion of every clause that had none. The capability row's WRITE and READ
+// are both asserted at the emitter boundary: the generated write body serialises
+// the construct with non-default and boundary values, and the generated read —
+// TFixedSlots, the closures the load runs on the record body — lands the same
+// values back. The runtime execution a capability row can also ask for
+// (`make tables-cs-leg`, and the generated-probe harness of TestFixedVersioning)
+// needs a dotnet SDK and the sibling `../serialize.cs`; neither is here, so this
+// card names those targets not run rather than fakes them.
 
 import (
 	"testing"
@@ -106,6 +109,14 @@ func t10ResetBody(t *testing.T, src string) string {
 	return t02Norm(t02Block(t, src, "public static void TableReset(T value)", "\n        }"))
 }
 
+// t10ReadSlots reads the generated TFixedSlots array back, so an assertion names
+// the READ of a construct — the slot closures the load runs on the record body —
+// and not the whole file.
+func t10ReadSlots(t *testing.T, src string) string {
+	t.Helper()
+	return t02Norm(t02Block(t, src, "TFixedSlots = new TableFixedSlot<T>[] {", "};"))
+}
+
 // t10OptionalScalarsRow: optional-scalars [capability] "Optional scalar and enum
 // fields: valid-data write/read acceptance" (§3.4 record, ?T; ALGORITHM §3).
 // A `?T` is a PRESENT BYTE and then the payload, and the payload rides only when
@@ -135,6 +146,19 @@ func t10OptionalScalarsRow(t *testing.T) {
 			t.Errorf("optional-scalars: TableReset does not clear the present byte: %q absent", want)
 		}
 	}
+	// THE READ SIDE. The load runs TFixedSlots on the record body: the present
+	// byte's slot sets the bool, and the payload's slot lands only when the load
+	// selected it — so the construct is READ with the same gate it is written
+	// with.
+	slots := t10ReadSlots(t, src)
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.NumPresent = v != 0, reset: (t) => { t.NumPresent = false; }),",
+		"optional-scalars: the scalar's present byte is read into the present bool")
+	t02Has(t, slots, "t.Num = unchecked((int)v)",
+		"optional-scalars: the scalar's payload is read into the value")
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.MarkPresent = v != 0, reset: (t) => { t.MarkPresent = false; }),",
+		"optional-scalars: the enum's present byte is read into the present bool")
+	t02Has(t, slots, "if (v > 2) { t.Mark = 0; if (rep != null) rep.Clamped++; } else { t.Mark = (Grade)v; }",
+		"optional-scalars: the enum ordinal is read, bounded at its declared top")
 }
 
 // t10OptionalArraysRow: optional-arrays [capability] "Optional arrays: valid-data
@@ -168,6 +192,16 @@ func t10OptionalArraysRow(t *testing.T) {
 			t.Errorf("optional-arrays: TableReset does not clear the wrapper: %q absent", want)
 		}
 	}
+	// THE READ SIDE. The load runs the present slot, then the count slot, then the
+	// element slot: the wrapper is READ by the same three slots the writer gates
+	// on, and the element slot casts the record bytes back into the buffer.
+	slots := t10ReadSlots(t, src)
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.OptionalPresent = v != 0, reset: (t) => { t.OptionalPresent = false; }),",
+		"optional-arrays: the present byte is read into the present bool")
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.OptionalCount = (int)v, reset: (t) => { t.OptionalCount = 0; }),",
+		"optional-arrays: the count is read behind the present byte")
+	t02Has(t, slots, "MemoryMarshal.Cast<byte, Cell>(b.Slice(0, Math.Min(b.Length, t.Optional.Length * 1))).CopyTo(t.Optional)",
+		"optional-arrays: the elements are read back into the wrapper's buffer")
 }
 
 // t10ScalarDefaultsRow: scalar-defaults [capability] "Scalar and enum defaults:
@@ -184,6 +218,13 @@ func t10ScalarDefaultsRow(t *testing.T) {
 	t02Has(t, reset, "value.G = global::Probe.Grade.Gold;", "scalar-defaults: TableReset restores the enum's default")
 	t02Has(t, n, "BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.X);", "scalar-defaults: the write body writes the scalar")
 	t02Has(t, n, "b.Slice(4)[0] = (byte)value.G;", "scalar-defaults: the write body writes the enum")
+	// THE READ SIDE. The load's slots carry the same declared default as the
+	// prefill, and the enum ordinal is read bounded at its declared top.
+	slots := t10ReadSlots(t, src)
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.X = unchecked((int)v), reset: (t) => { t.X = 42; }),",
+		"scalar-defaults: the scalar's read slot restores its declared default")
+	t02Has(t, slots, "reset: (t) => { t.G = global::Probe.Grade.Gold; }",
+		"scalar-defaults: the enum's read slot restores its declared default")
 }
 
 // t10TextBytesFlagsDefaultsRow: text-bytes-flags-defaults [capability] "String,
@@ -213,6 +254,20 @@ func t10TextBytesFlagsDefaultsRow(t *testing.T) {
 		"text-bytes-flags-defaults: the write body copies the byte-buffer bytes")
 	t02Has(t, n, "BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(20), (ulong)value.Caps);",
 		"text-bytes-flags-defaults: the write body writes the flags bitset")
+	// THE READ SIDE. The load's slots carry the declared default for the length,
+	// the bytes and the flags: a record the writer left at its default reads back
+	// as the declared default.
+	slots := t10ReadSlots(t, src)
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.NameLength = (int)v, reset: (t) => { t.NameLength = 8; }),",
+		"text-bytes-flags-defaults: the string length's read slot restores its default")
+	t02Has(t, slots, "reset: (t) => { if (t.Name != null) { Array.Clear(t.Name, 0, t.Name.Length); t.Name[0] = 0x75; t.Name[1] = 0x6e; t.Name[2] = 0x74; t.Name[3] = 0x69; t.Name[4] = 0x74; t.Name[5] = 0x6c; t.Name[6] = 0x65; t.Name[7] = 0x64; } }",
+		"text-bytes-flags-defaults: the string bytes' read slot restores its default")
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.TagLength = (int)v, reset: (t) => { t.TagLength = 2; }),",
+		"text-bytes-flags-defaults: the byte-buffer length's read slot restores its default")
+	t02Has(t, slots, "reset: (t) => { if (t.Tag != null) { Array.Clear(t.Tag, 0, t.Tag.Length); t.Tag[0] = 0x61; t.Tag[1] = 0x62; } }",
+		"text-bytes-flags-defaults: the byte-buffer bytes' read slot restores its default")
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.Caps = v, reset: (t) => { t.Caps = 3ul; }),",
+		"text-bytes-flags-defaults: the flags read slot restores its default")
 }
 
 // contains is strings.Contains, named so a missing clause reads as a clause.
