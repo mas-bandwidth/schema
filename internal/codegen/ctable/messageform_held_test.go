@@ -1,14 +1,26 @@
 package ctable
 
-import "testing"
+import (
+	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 // TestMessageFormHeldC asserts, one subtest per clause, the refusals and
 // reports the MESSAGE FORM names on the generated C surface
 // (docs/SPEC-TABLES.md §3.3). Each clause drives a unit whose root is a
 // `fixed table` — the form is a fixed table's (§3.3) — and every assertion
 // quotes the sentence it implements. The rows of
-// testdata/conformance/tables/MANIFEST.txt are answered by the leg's own
-// conformance driver and are not re-run here.
+// testdata/conformance/tables/MANIFEST.txt pin the reference bytes below.
 func TestMessageFormHeldC(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -32,6 +44,7 @@ fixed table Root {
 		{"bytes_after_pad", cMsgBytesAfterPadProbe},
 		{"form_byte", cMsgFormByteProbe},
 	}
+	cMessageManifestRows(t)
 	for _, clause := range clauses {
 		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
@@ -156,7 +169,7 @@ static size_t vocab_field(uint8_t * out, uint8_t elem, const uint8_t * vocab, si
 {
     uint8_t sub[64]; size_t sn = 0, n = 2;
     sub[sn++] = elem; sn += put_lebs(sub + sn, (uint64_t)len);
-    if(len) memcpy(sub + sn, vocab, len); sn += len;
+    if(len) { memcpy(sub + sn, vocab, len); } sn += len;
     out[0] = 2; out[1] = 14; n += put_lebs(out + n, (uint64_t)sn);
     memcpy(out + n, sub, sn); return n + sn;
 }
@@ -328,3 +341,162 @@ int main(void)
     return 0;
 }
 `
+
+// cMessageManifestRows holds the announcement and batch bytes of §3.3 against
+// every connection and message row the conformance manifest names.
+func cMessageManifestRows(t *testing.T) {
+	t.Helper()
+	root := filepath.Join("..", "..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, connections := map[string]string{}, map[string][]string{}
+	var rows [][]string
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		switch f[0] {
+		case "unit":
+			units[f[1]] = f[2]
+		case "connection":
+			connections[f[1]] = f
+			rows = append(rows, f)
+		case "message":
+			rows = append(rows, f)
+		}
+	}
+	for _, row := range rows {
+		t.Run(row[0]+"/"+row[1], func(t *testing.T) {
+			t.Parallel()
+			connection := row
+			if row[0] == "message" {
+				connection = connections[row[2]]
+			}
+			path := filepath.Join(root, units[connection[2]])
+			paths := []string{path}
+			if !strings.HasSuffix(path, ".schema") {
+				var err error
+				paths, err = filepath.Glob(filepath.Join(path, "*.schema"))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			var sources []check.SourceFile
+			for _, path := range paths {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ast, diags := parser.Parse(path, data)
+				if len(diags) > 0 {
+					t.Fatal(diags)
+				}
+				name := filepath.Base(path)
+				sources = append(sources, check.SourceFile{Path: path, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: data, AST: ast})
+			}
+			unit, diags := check.Unit(sources)
+			if len(diags) > 0 {
+				t.Fatal(diags)
+			}
+			expected, err := os.ReadFile(filepath.Join(root, connection[4]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := "#include <stdint.h>\n#include <stdlib.h>\n#include <string.h>\n"
+			files, err := Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name := range files {
+				if strings.HasSuffix(name, "Table.h") {
+					source += fmt.Sprintf("#include %q\n", name)
+				}
+			}
+			source += fmt.Sprintf("static const uint8_t expected[] = {%s};\n", cMessageBytes(expected))
+			if row[0] == "connection" {
+				// "The announcement is a compile-time constant byte array with a length." (§3.3)
+				source += "int main(void){uint8_t out[sizeof(expected)];return announce(out,sizeof(out))!=sizeof(expected)||memcmp(out,expected,sizeof(out));}\n"
+			} else {
+				wire, err := os.ReadFile(filepath.Join(root, row[5]))
+				if err != nil {
+					t.Fatal(err)
+				}
+				source += fmt.Sprintf("static const uint8_t wire[] = {%s};\n", cMessageBytes(wire))
+				fn := ""
+				for i, r := range row[3] {
+					if r >= 'A' && r <= 'Z' {
+						if i > 0 {
+							fn += "_"
+						}
+						fn += strings.ToLower(string(r))
+					} else {
+						fn += string(r)
+					}
+				}
+				source += "int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};int64_t count=1;uint8_t out[sizeof(wire)];if(!announce_read(&v,expected,sizeof(expected),&report))return 1;"
+				if row[1] == "graph_tree" {
+					source += fmt.Sprintf("const %s * values[1]={0};int64_t need=%s_load_measure_messages(&v,wire,sizeof(wire));if(need<0)return 2;uint8_t * region=malloc((size_t)need);if(!region)return 3;if(!%s_load_messages(values,&count,region,need,&v,wire,sizeof(wire),&report))return 4;", row[3], fn, fn)
+				} else {
+					source += fmt.Sprintf("%s values[1];if(!%s_load_messages(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
+				}
+				// "A batch of bodies is the unit this form reads and writes." (§3.3)
+				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)
+			}
+			runCMessageUnit(t, unit, source)
+		})
+	}
+}
+
+// cMessageBytes embeds the reference bytes without changing their pins (§3.3).
+func cMessageBytes(data []byte) string {
+	parts := make([]string, len(data))
+	for i, b := range data {
+		parts[i] = fmt.Sprint(b)
+	}
+	return strings.Join(parts, ",")
+}
+
+// runCMessageUnit executes the generated C announcement and batch surface (§3.3).
+func runCMessageUnit(t *testing.T, u *ir.Unit, source string) {
+	t.Helper()
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		t.Fatal("C message conformance requires cc")
+	}
+	files, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := filepath.Join(dir, "main.c")
+	if err := os.WriteFile(main, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", dir, main}
+	for name := range files {
+		if strings.HasSuffix(name, ".c") {
+			args = append(args, filepath.Join(dir, name))
+		}
+	}
+	binary := filepath.Join(dir, "probe")
+	args = append(args, "-lm", "-o", binary)
+	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile: %v\n%s", err, out)
+	}
+	if out, err := exec.Command(binary).CombinedOutput(); err != nil {
+		t.Fatalf("§3.3 reference bytes differ: %v\n%s", err, out)
+	}
+}
