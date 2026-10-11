@@ -10,3 +10,7 @@
 (:id "cpp/R5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t02_test.go: TestFixedRoadmapCppT02Plans/cpp/R5") :tested-revision "7919ed88de8e4d1246cd0cb6167c8cdfa909d9b6")
 (:id "cpp/W11" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t02_test.go: TestFixedRoadmapCppT02Plans/cpp/W11") :tested-revision "7919ed88de8e4d1246cd0cb6167c8cdfa909d9b6")
 (:id "cpp/W12" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t02_test.go: TestFixedRoadmapCppT02Plans/cpp/W12") :tested-revision "7919ed88de8e4d1246cd0cb6167c8cdfa909d9b6")
+(:id "cpp/C3" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C3") :tested-revision "f49df24b8aa9d96c607bbdf2c83d39fbb3d2cd2e")
+(:id "cpp/C5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C5") :tested-revision "f49df24b8aa9d96c607bbdf2c83d39fbb3d2cd2e")
+(:id "cpp/C4" :state :unknown :note "the cpp emitter sets report->malformed and defaults the field (internal/codegen/cpptable/fixedform.go:863 emitFixedTextContent) where docs/FIXED-FORM-ALGORITHM.md:341 rules a refusal by name; closing it moves the shared TableMessageReason vocabulary and contradicts test/conformance/cpp/rows/C5.cpp, outside this card's PATHS")
+(:id "cpp/R24" :state :unknown :note "text_ill_formed is absent from the cpp refusal vocabulary and the reference sets malformed instead (docs/FIXED-FORM-ALGORITHM.md:912, and :1144's row 8 failing line)")
