@@ -276,6 +276,36 @@ int main(void)
     CHECK(back.oo.type == 1);
     CHECK(back.oo.as.o.mm.as.m.i.type == 1);
     CHECK(back.oo.as.o.mm.as.m.i.as.a.x == 42);
+
+    /* THE COMPILED PATH CARRIES THE SAME CHAIN (§5.8 row 6). My OWN layout
+       compiled against itself is the compiled path with nothing else moving,
+       and a THREE-union chain must build a three-link pool there, not refuse
+       the third inline lane. The plan's pool is laid in the plan's own
+       storage, so table_fixed_run reads it from the plan's base. */
+    {
+        TableFixedLayoutView parsed;
+        TableReport cr;
+        TableFixedEntry compiled[256];
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        int32_t made;
+        int32_t clamped = 0, widened = 0;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        const uint8_t * body = wire + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( root_fixed_layout ) + 8;
+        Root held;
+        memset(&cr, 0, sizeof(cr));
+        CHECK(table_fixed_parse_layout(root_fixed_layout, (int64_t) sizeof( root_fixed_layout ), &parsed, &why));
+        made = table_fixed_compile(&parsed, root_fixed_layout, (int32_t) sizeof( root_fixed_layout ),
+                                   root_fixed_dst, root_fixed_cover, root_fixed_cover_count,
+                                   compiled, 256, &guarded, &fill_at, &fill_count, &cr);
+        CHECK(made > 0);
+        memset(&held, 0xAA, sizeof(held));
+        table_fixed_run(compiled, (const TableFixedGuardLink *) (const void *) compiled, made, guarded,
+                        body, (uint8_t *) &held, &clamped, &widened);
+        CHECK(held.oo.as.o.mm.as.m.i.as.a.x == 42);
+        CHECK(held.oo.as.o.mm.as.m.i.type == 1);
+    }
     return 0;
 }
 `, identityCCFlags()...)
