@@ -3,19 +3,19 @@ package cstable
 // fixedroadmap_t10 — the cs leg's optional, default and text/flags/bytes rows of
 // docs/roadmap.sexp's node `fixed-tables` (ROADMAP.md "NEW Fixed Tables"):
 // optional-scalars, optional-arrays, scalar-defaults and
-// text-bytes-flags-defaults, the four capability rows no other test of this leg
-// asserts. The law is docs/SPEC-TABLES.md §3.4's message form and fixed form and
-// docs/FIXED-FORM-ALGORITHM.md §3 (the prefill) and §4.6 (the bounds pass). One
-// subtest per task id, and the assertion under each is the clause the task's own
-// title states, read off the C# this leg emits and the ir walk it renders.
+// text-bytes-flags-defaults. The law is docs/SPEC-TABLES.md §3.4's message form
+// and fixed form and docs/FIXED-FORM-ALGORITHM.md §3 (the prefill) and §4.6 (the
+// bounds pass). One subtest per task id.
 //
-// A clause already held by an existing test of this leg is named by that test in
-// the card's verdicts and is not repeated here; this file carries the direct
-// assertion of every clause that had none. The runtime acceptance a capability
-// row asks for is asserted at the emitter boundary: the generated write body
-// serialises the construct with non-default and boundary values, the generated
-// prefill/read restores it, and the leg runs neither of those against a sibling
-// `../serialize.cs` here, which this card names as not run rather than fakes.
+// THIS FILE ASSERTS THE EMITTER CLAUSE ONLY, AND THE ROWS ARE `unknown`.
+// Each of the four rows is a [capability] task: the leg must write and read the
+// construct with non-default and boundary values in a target a gate runs. That
+// write/read acceptance is a RUNTIME clause and this harness does not run it: it
+// reads the generated C# text, so no value is written and read back. The runtime
+// target needs a `dotnet` toolchain and a sibling `../serialize.cs`, neither of
+// which is present in this run, which the card names as not run rather than
+// fakes. The four rows are therefore recorded `unknown` in the card's verdicts
+// and the emitter clause below is not presented as the capability proof.
 
 import (
 	"testing"
