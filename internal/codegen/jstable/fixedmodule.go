@@ -108,6 +108,10 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 		// unit with a fixed root. A plain `table` unit emits none of it.
 		if len(jsFixedUnitRoots(g.unit)) > 0 {
 			g.pf("%s", messageAnnouncementRuntime(g.unit))
+			// THE MESSAGE FORM'S BATCH BODY CODEC (§3.3): the bit writer and
+			// reader and the scalar/skip walk, beside the announcement surface,
+			// for the plural verbs the roots below emit.
+			g.pf("%s", messageBatchRuntime())
 		}
 		g.gen.unit = g.unit
 		// A TABLE gets its storage class here; a `type` already has one, from
@@ -158,6 +162,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 	}
 	for _, st := range roots {
 		g.emitRoot(st)
+		g.emitMessageRoot(st)
 	}
 }
 

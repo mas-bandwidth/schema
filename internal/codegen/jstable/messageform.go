@@ -210,7 +210,7 @@ function TableMessageKindBits(k) {
 }
 const TableMessageFloat = new Float32Array(1);
 const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
-function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
+export function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
 function TableMessageShape() {
   return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
 }
@@ -305,7 +305,7 @@ function TableMessageEntryEqual(a, b) {
   return a !== null && b !== null && a.Id === b.Id &&
     TableMessageShapeEqual(a.Shape, b.Shape) && TableMessageShapeEqual(a.Element, b.Element);
 }
-function TableMessageRefuse(report, reason) {
+export function TableMessageRefuse(report, reason) {
   report.Verdict = TableMessageOpenRefused;
   report.Reason = reason;
   return false;

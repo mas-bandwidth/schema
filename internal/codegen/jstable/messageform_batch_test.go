@@ -1,0 +1,532 @@
+package jstable
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// TestMessageFormBatchJavaScript holds the BATCH half of the message form
+// (docs/SPEC-TABLES.md §3.3) on the JavaScript leg, one subtest per clause,
+// over the message rows the tables manifest pins. The bytes ARE the C++
+// reference's; the manifest names the units and the connections.
+//
+// EVERY CLAUSE IS ASSERTED OVER THE EMITTED MODULE, not a Go model of it: the
+// generated tree is written and run under the leg's own node (jsNode), the way
+// messageform_announce_test.go runs its columns. A surface the leg does not
+// emit, or emits broken, turns a subtest red here.
+func TestMessageFormBatchJavaScript(t *testing.T) {
+	t.Parallel()
+
+	units, connections, rows := parseMessageManifest(t)
+
+	t.Run("round_trip", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		for _, row := range rows {
+			row := row
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				conn, ok := connections[row.connection]
+				if !ok {
+					t.Fatalf("message %q names connection %q with no connection line", row.name, row.connection)
+				}
+				u := loadUnitPaths(t, units[conn.unit])
+				if ir.VariableTables(u)[row.root] {
+					// §3.3: "a plain `table T` may not" ride the message form,
+					// so the JavaScript leg answers this message row ABSENT and
+					// asserts nothing (the manifest row and the C++ reference
+					// stay as they are).
+					return
+				}
+			st := findTable(t, u, row.root)
+			probe := messageRoundTripProbe(u, st, row.name, conn.path, row.batch)
+				out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+					"ann.bin":   mustRead(t, conn.path),
+					"batch.bin": mustRead(t, row.batch),
+				}, probe)
+				if err != nil {
+					t.Fatalf("round trip %s: %v\n%s", row.name, err, out)
+				}
+			})
+		}
+	})
+
+	t.Run("refusals", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		u := loadUnitPaths(t, units["backenddemo"])
+		st := findTable(t, u, "LoginRequest")
+		conn := connections["backend_conn"]
+		probe := messageRefusalProbe(u, st, conn.path)
+		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+			"ann.bin": mustRead(t, conn.path),
+		}, probe)
+		if err != nil {
+			t.Fatalf("refusals: %v\n%s", err, out)
+		}
+	})
+
+	t.Run("damage", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		u := loadUnitPaths(t, units["backenddemo"])
+		st := findTable(t, u, "LoginRequest")
+		conn := connections["backend_conn"]
+		probe := messageDamageProbe(u, st, conn.path)
+		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+			"ann.bin": mustRead(t, conn.path),
+		}, probe)
+		if err != nil {
+			t.Fatalf("damage: %v\n%s", err, out)
+		}
+	})
+}
+
+// ---- the manifest, read here rather than copied: a new row is a new subtest
+
+type messageConn struct {
+	unit, path string
+}
+
+type messageRow struct {
+	name, connection, root, file, batch string
+}
+
+func parseMessageManifest(t *testing.T) (map[string][]string, map[string]messageConn, []messageRow) {
+	t.Helper()
+	data, err := os.ReadFile("../../../testdata/conformance/tables/MANIFEST.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := map[string][]string{}
+	connections := map[string]messageConn{}
+	var rows []messageRow
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		switch f[0] {
+		case "unit":
+			if len(f) >= 3 {
+				for i := 2; i < len(f); i++ {
+					f[i] = repoPath(f[i])
+				}
+				units[f[1]] = f[2:]
+			}
+		case "connection":
+			if len(f) >= 5 {
+				connections[f[1]] = messageConn{unit: f[2], path: repoPath(f[4])}
+			}
+		case "message":
+			if len(f) >= 6 {
+				rows = append(rows, messageRow{name: f[1], connection: f[2], root: f[3], file: repoPath(f[4]), batch: repoPath(f[5])})
+			}
+		}
+	}
+	if len(units) == 0 || len(rows) == 0 {
+		t.Fatal("the manifest carries no message rows")
+	}
+	return units, connections, rows
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return data
+}
+
+// repoPath prefixes a manifest path with the repository root, which the test
+// reaches from internal/codegen/jstable (the manifest's paths are repo-relative).
+func repoPath(p string) string { return "../../../" + p }
+
+// loadUnitPaths parses one unit's source files, the announce test's rule: a
+// directory contributes its *.schema files, a named file contributes itself.
+func loadUnitPaths(t *testing.T, paths []string) *ir.Unit {
+	t.Helper()
+	var files []check.SourceFile
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		if info.IsDir() {
+			entries, err := os.ReadDir(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".schema") && len(e.Name()) > len(".schema") {
+					names = append(names, filepath.Join(p, e.Name()))
+				}
+			}
+		} else {
+			names = append(names, p)
+		}
+		for _, name := range names {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ast, perrs := parser.Parse(name, data)
+			if len(perrs) > 0 {
+				t.Fatalf("parse %s: %v", name, perrs[0])
+			}
+			files = append(files, check.SourceFile{
+				Path:  name,
+				Name:  filepath.Base(name),
+				Base:  strings.TrimSuffix(filepath.Base(name), ".schema"),
+				Bytes: data,
+				AST:   ast,
+			})
+		}
+	}
+	u, cerrs := check.Unit(files)
+	if len(cerrs) > 0 {
+		t.Fatalf("check %v: %v", paths, cerrs[0])
+	}
+	return u
+}
+
+// ---- the three probes
+
+func messageRoundTripProbe(u *ir.Unit, st *ir.Struct, rowName, announcement, batch string) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, announcement))
+	b.WriteString(fmt.Sprintf(`
+// LoadMessages reads one buffer into the caller's storage and allocates
+// nothing; SaveMessages takes an array of bodies of one root and writes one
+// buffer; MeasureMessages sizes the buffer (docs/SPEC-TABLES.md §3.3).
+const storage = Array.from({ length: 256 }, () => new %[1]s());
+const batch = new Uint8Array(readFileSync("./batch.bin"));
+const loadReport = {};
+const count = %[1]sLoadMessages(storage, v, batch, loadReport);
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+  fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
+}
+// "loading either form and saving the other reproduces the other's pinned
+// bytes" (§3.3): the value the batch decodes to, saved as a batch, is the
+// batch byte for byte.
+const buf = new Uint8Array(%[2]d);
+const saveReport = {};
+const n = %[1]sSaveMessages([storage[0]], buf, saveReport);
+if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(saveReport)); }
+const saved = buf.subarray(0, n);
+if (saved.length !== batch.length || !bytesEq(saved, batch)) {
+  fail("SaveMessages bytes differ from the reference's batch");
+}
+const measureReport = {};
+const m = %[1]sMeasureMessages([storage[0]], measureReport);
+if (m !== batch.length || measureReport.Verdict !== 0) { fail("MeasureMessages: " + m + " != " + batch.length); }
+`, st.Name, 65536))
+	b.WriteString("\n")
+	emitJSONChecks(&b, u, st, rowName, "storage[0]", "  ")
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+func messageRefusalProbe(u *ir.Unit, st *ir.Struct, announcement string) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, announcement))
+	b.WriteString(fmt.Sprintf(`
+// "`+"`M`"+` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (§3.3): Measure
+// and Save both refuse and return -1, with the reason on the report.
+const many = Array.from({ length: 257 }, () => new %[1]s());
+const wmReport = {};
+if (%[1]sMeasureMessages(many, wmReport) !== -1 || wmReport.Verdict !== 1 || wmReport.Reason !== "batch_too_large") {
+  fail("MeasureMessages over 256 bodies: " + JSON.stringify(wmReport));
+}
+const wsReport = {};
+if (%[1]sSaveMessages(many, new Uint8Array(65536), wsReport) !== -1 || wsReport.Verdict !== 1 || wsReport.Reason !== "batch_too_large") {
+  fail("SaveMessages over 256 bodies: " + JSON.stringify(wsReport));
+}
+// "`+"`M`"+` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME"
+// (§3.3): the count is read before any body, nothing is decoded, and the
+// returned count is the wire's M.
+const three = Array.from({ length: 3 }, () => new %[1]s());
+const threeBuf = new Uint8Array(65536);
+const threeSave = {};
+const threeN = %[1]sSaveMessages(three, threeBuf, threeSave);
+const threeBatch = threeBuf.subarray(0, threeN);
+const shortStorage = Array.from({ length: 2 }, () => new %[1]s());
+const shortReport = {};
+const shortCount = %[1]sLoadMessages(shortStorage, v, threeBatch, shortReport);
+if (shortCount !== 3 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Malformed) {
+  fail("LoadMessages above capacity: count=" + shortCount + " " + JSON.stringify(shortReport));
+}
+// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME" (§3.3).
+const unannounced = new TableVocabulary();
+unannounced.Init(new Array(%[2]d));
+const noReport = {};
+const noCount = %[1]sLoadMessages(shortStorage, unannounced, threeBatch, noReport);
+if (noCount !== -1 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabulary") {
+  fail("LoadMessages with no vocabulary: " + JSON.stringify(noReport));
+}
+`, st.Name, len(ir.TableVocabulary(u))))
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+func messageDamageProbe(u *ir.Unit, st *ir.Struct, announcement string) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, announcement))
+	b.WriteString(fmt.Sprintf(`
+const storage = Array.from({ length: 256 }, () => new %[1]s());
+// "DAMAGE INSIDE BODY `+"`k`"+` DELIVERS BODIES 1 TO `+"`k - 1`"+`" (§3.3): one
+// malformed counts and nothing at or after body k is read. Body 1 is an empty
+// body, body 2 opens with a reference above the entry count E.
+const damaged = new Uint8Array([2, 1, 0xc0, 0x0f]);
+const dReport = {};
+const dCount = %[1]sLoadMessages(storage, v, damaged, dReport);
+if (dCount !== 1 || !dReport.Malformed || dReport.Verdict !== 0) {
+  fail("damage inside body 2: count=" + dCount + " " + JSON.stringify(dReport));
+}
+// "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
+const padded = new Uint8Array([2, 0, 0, 0]);
+const pReport = {};
+const pCount = %[1]sLoadMessages(storage, v, padded, pReport);
+if (!pReport.Malformed) { fail("bytes after the pad did not read as malformed: " + JSON.stringify(pReport)); }
+if (pCount !== 1) { fail("bytes-after-pad count=" + pCount); }
+// "FORM BYTE `+"`2`"+` IS THE MESSAGE FORM" (§3.3): a byte this reader does not
+// carry is a REFUSAL by name, never damage.
+const newer = new Uint8Array([3, 0, 0]);
+const nReport = {};
+const nCount = %[1]sLoadMessages(storage, v, newer, nReport);
+if (nCount !== -1 || nReport.Verdict !== 1 || nReport.Reason !== "newer_form" || nReport.Malformed) {
+  fail("newer form: " + JSON.stringify(nReport));
+}
+// "message_form_as_file" is the FILE reader's answer to a batch handed where a
+// file was expected (§3.3, §3.4).
+const plan = %[1]sFixedNewPlan();
+const fReport = {};
+const fCount = %[1]sFixedLoad([new %[1]s()], 1, new Uint8Array([2, 0, 0]), 3, plan, fReport);
+if (fCount !== -1 || fReport.refused !== 2 || TableFixedRefusalName(fReport.refused) !== "message_form_as_file") {
+  fail("message form as file: " + JSON.stringify(fReport));
+}
+`, st.Name))
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+func messageProbeHeader(u *ir.Unit, st *ir.Struct, announcement string) string {
+	home := messageHomeBase(u)
+	return fmt.Sprintf(`import { readFileSync } from "node:fs";
+import { TableVocabulary, AnnounceRead, TableMessageEntriesHere, TableFixedRefusal, TableFixedRefusalName, %[2]s } from "./%[1]s.js";
+import { %[2]sMeasureMessages, %[2]sSaveMessages, %[2]sLoadMessages, %[2]sFixedNewPlan, %[2]sFixedLoad } from "./%[3]s.js";
+let failures = 0;
+function fail(why) { console.error("FAIL: " + why); failures++; }
+function bytesEq(a, b) {
+  if (a.length !== b.length) { return false; }
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
+  return true;
+}
+const v = new TableVocabulary();
+v.Init(new Array(TableMessageEntriesHere));
+const ann = new Uint8Array(readFileSync("./ann.bin"));
+const announceReport = {};
+if (!AnnounceRead(v, ann, announceReport)) { fail("AnnounceRead: " + JSON.stringify(announceReport)); }
+`, home, st.Name, messageRootBase(u, st))
+}
+
+func probeTail() string {
+	return `
+if (failures !== 0) { process.exit(1); }
+console.log("ok");
+`
+}
+
+// messageHomeBase is the basename of the runtime home module (docs/
+// SPEC-TABLES.md §19.2): the one that carries the announcement surface.
+func messageHomeBase(u *ir.Unit) string {
+	for name, b := range generatedTree(u) {
+		if strings.Contains(string(b), "TableMessageAnnouncement = new Uint8Array(") {
+			return strings.TrimSuffix(name, ".js")
+		}
+	}
+	panic("no home module")
+}
+
+// messageRootBase is the basename of the module that carries one root's
+// message verbs, found by the verb the root emits.
+func messageRootBase(u *ir.Unit, st *ir.Struct) string {
+	for name, b := range generatedTree(u) {
+		if strings.Contains(string(b), "export function "+st.Name+"MeasureMessages") {
+			return strings.TrimSuffix(name, ".js")
+		}
+	}
+	panic("no root module for " + st.Name)
+}
+
+// generatedTree emits the whole generated JavaScript tree once, the packet
+// modules and the table modules, for finding the home and the root modules.
+func generatedTree(u *ir.Unit) map[string][]byte {
+	files, err := js.Generate(u)
+	if err != nil {
+		panic(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		panic(err)
+	}
+	for k, v := range tables {
+		files[k] = v
+	}
+	return files
+}
+
+// jsRunMessageProbe writes the unit's whole generated tree plus `extra` files
+// into one directory and runs `probe` there under the leg's own node.
+func jsRunMessageProbe(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string) ([]byte, error) {
+	t.Helper()
+	files := generatedTree(u)
+	dir := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, data := range extra {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
+}
+
+// ---- the JSON value comparison, generated from the manifest's json files ----
+
+func emitJSONChecks(b *strings.Builder, u *ir.Unit, st *ir.Struct, rowName, expr, ind string) {
+	path := filepath.Join("../../../testdata/conformance/tables/json", rowName+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// The message row names the same instance as an `instance` row, whose
+		// text is the value's (§3.3): "its text is the file-form vector's
+		// byte for byte". A row without a json file has nothing to compare.
+		return
+	}
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.UseNumber()
+	var node any
+	if err := dec.Decode(&node); err != nil {
+		return
+	}
+	b.WriteString("// \"the two forms are two encodings of one value\" (§3.3): the batch\n")
+	b.WriteString("// decodes to the same value the file form's text names.\n")
+	emitStructChecks(b, st, node, expr, ind)
+}
+
+func emitStructChecks(b *strings.Builder, st *ir.Struct, node any, expr, ind string) {
+	obj, _ := node.(map[string]any)
+	for _, f := range st.Fields {
+		val, ok := obj[f.Name]
+		if !ok {
+			continue
+		}
+		member := expr + "." + ir.GoExportName(f.Name)
+		emitFieldCheck(b, f, val, member, ind)
+	}
+}
+
+func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string) {
+	switch {
+	case f.Type.Kind == ir.TString:
+		s, _ := val.(string)
+		raw := []byte(s)
+		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length"))
+		b.WriteString(fmt.Sprintf("%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member))
+	case f.Type.Kind == ir.TBytes:
+		s, _ := val.(string)
+		raw, _ := base64.StdEncoding.DecodeString(s)
+		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length"))
+		b.WriteString(fmt.Sprintf("%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member))
+	case f.Type.Kind == ir.TWString:
+		s, _ := val.(string)
+		var units []uint16
+		for _, r := range []rune(s) {
+			units = append(units, uint16(r))
+		}
+		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(units), member+".Length"))
+	case enumRefOf(f) != nil:
+		e := enumRefOf(f)
+		s, _ := val.(string)
+		ord := 0
+		if s != "None" {
+			for i, v := range e.Variants {
+				if v == s {
+					ord = i + 1
+				}
+			}
+		}
+		b.WriteString(fmt.Sprintf("%sif (%s !== %d) { fail(%q + \" = \" + %s); }\n", ind, member, ord, member, member))
+	case isStructRef(f.Type):
+		emitStructChecks(b, f.Type.Ref.(*ir.Struct), val, member, ind)
+	case f.Array != ir.ArrayNone:
+		arr, _ := val.([]any)
+		for i, elem := range arr {
+			emitFieldCheck(b, messageElementField(f), elem, member+"["+strconv.Itoa(i)+"]", ind)
+		}
+	default:
+		lit := jsonScalarLit(f, val)
+		if lit != "" {
+			b.WriteString(fmt.Sprintf("%sif (%s !== %s) { fail(%q + \" = \" + %s); }\n", ind, member, lit, member, member))
+		}
+	}
+}
+
+func jsonScalarLit(f *ir.Field, val any) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		if bv, ok := val.(bool); ok {
+			return fmt.Sprintf("%t", bv)
+		}
+	case ir.TFloat32, ir.TFloat64:
+		if n, ok := val.(json.Number); ok {
+			return n.String()
+		}
+	}
+	n, ok := val.(json.Number)
+	if !ok {
+		return ""
+	}
+	bigv, ok := new(big.Int).SetString(n.String(), 10)
+	if !ok {
+		return n.String()
+	}
+	if fixedIsBig(f.Type) {
+		return bigv.String() + "n"
+	}
+	return bigv.String()
+}
+
+func byteList(raw []byte) string {
+	parts := make([]string, 0, len(raw))
+	for _, b := range raw {
+		parts = append(parts, strconv.Itoa(int(b)))
+	}
+	return strings.Join(parts, ", ")
+}
