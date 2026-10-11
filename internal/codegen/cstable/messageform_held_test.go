@@ -55,6 +55,17 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+conn.key)
 		})
 	}
+	for _, conn := range csHeldRuntimeConns {
+		conn := conn
+		t.Run("connection_"+conn.key, func(t *testing.T) {
+			t.Parallel()
+			rowOut, rowErr := csHeldRuntimeAttempt(t, conn)
+			if rowErr == nil {
+				t.Fatalf("connection_%s built without the sibling runtime; its announcement check must run", conn.key)
+			}
+			t.Skipf("not run: the packet emitter names the sibling ../serialize.cs runtime this checkout does not carry:\n%s", csHeldFirstErrors(rowOut))
+		})
+	}
 	for _, msg := range csHeldMsgs {
 		msg := msg
 		t.Run("message_"+msg.name, func(t *testing.T) {
@@ -73,17 +84,11 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 
 // csHeldNotRun names the manifest `connection`/`message` rows this leg cannot
 // answer, so every row of testdata/conformance/tables/MANIFEST.txt is spoken by
-// this test and none is silently omitted. docs/SPEC-TABLES.md §3.3: the shared
-// declarations a table unit's codec names (its enums, flags and types) are the
-// packet emitter's, and for a unit that also declares a pointer the packet
-// emitter's file names the sibling serialize.cs runtime this checkout does not
-// carry, so the target is named as not run, never faked. `message_graph_tree`'s
-// root `Scene` is a plain `table`, and §3.3 is a fixed table's: the row is
-// answered ABSENT by the form's own declaration, exactly as the Go leg's
-// goldens test answers it.
+// this test and none is silently omitted. `message_graph_tree`'s root `Scene`
+// is a plain `table`, and §3.3 is a fixed table's: the row is answered ABSENT
+// by the form's own declaration, exactly as the Go leg's goldens test answers
+// it.
 var csHeldNotRun = []struct{ name, why string }{
-	{"connection_graph_conn", "graphdemo's shared declarations ride the packet emitter, which names ../serialize.cs"},
-	{"connection_retain_conn", "tblrt2's shared declarations ride the packet emitter, which names ../serialize.cs"},
 	{"message_graph_tree", "§3.3 is a fixed table's; Scene is a plain table"},
 }
 
@@ -175,6 +180,76 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	return append(compileOut, runOut...), runErr
+}
+
+// csHeldRuntimeAttempt generates one csHeldRuntimeUnits unit with both emitters
+// and compiles it as a library, returning the compiler's own output and error.
+// The unit is compiled whole, with its packet file kept, so the refusal the
+// missing sibling `../serialize.cs` runtime produces is the build's real one,
+// not a guess: the connection row is named as not run only when this attempt
+// says the runtime it needs is what is missing.
+func csHeldRuntimeAttempt(t *testing.T, conn csHeldConn) (string, error) {
+	t.Helper()
+	var unit csHeldUnit
+	for _, u := range csHeldRuntimeUnits {
+		if u.pkg == conn.pkg {
+			unit = u
+		}
+	}
+	if unit.pkg == "" {
+		t.Fatalf("no runtime unit for %s", conn.pkg)
+	}
+	dir := t.TempDir()
+	u := unitFrom(t, csHeldSchemaFor(t, unit))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := csharp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, packet)
+	var sources []string
+	for name, data := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
+	csc, refs, _ := csDotnetToolchain(t)
+	dotnet := csDotnet()
+	lib := filepath.Join(dir, "csmsgrow.dll")
+	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:library", "-unsafe",
+		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + lib}
+	for _, ref := range refs {
+		args = append(args, "-r:"+ref)
+	}
+	args = append(args, sources...)
+	compile := exec.Command(dotnet, args...)
+	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
+	out, err := compile.CombinedOutput()
+	return string(out), err
+}
+
+// csHeldFirstErrors keeps the first compiler error lines of an attempt's
+// output, so a not-run skip names what the build actually refused on instead
+// of an assumed reason.
+func csHeldFirstErrors(out string) string {
+	var lines []string
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "error CS") {
+			lines = append(lines, strings.TrimSpace(line))
+			if len(lines) == 3 {
+				break
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return out
+	}
+	return strings.Join(lines, "\n")
 }
 
 // csDotnet is the dotnet command the leg's Makefile pins, DOTNET or the name on
@@ -524,6 +599,17 @@ var csHeldUnits = []csHeldUnit{
 	{"tables/vocab9", "vocab9demo", "Vocab9demo", "N"},
 }
 
+// csHeldRuntimeUnits are the two manifest units whose connection rows the Go
+// leg answers and this leg's own build does not carry: their packet emitter
+// names the sibling `../serialize.cs` runtime this checkout does not stage, and
+// this card's rule that such a target is NAMED AS NOT RUN and never faked
+// holds. Each row's subtest attempts the build and reports the compiler's own
+// refusal, so the not-run status is evidenced rather than assumed.
+var csHeldRuntimeUnits = []csHeldUnit{
+	{"tables/pointers", "graphdemo", "Graphdemo", "G"},
+	{"test/tables/R2.schema", "tblr2", "Tblr2", "T"},
+}
+
 // csHeldConn is one MANIFEST `connection` row: the unit whose whole vocabulary
 // it carries, the announcement wire, and the build version the row pins.
 type csHeldConn struct{ key, pkg, wire, version string }
@@ -532,6 +618,14 @@ var csHeldConns = []csHeldConn{
 	{"backend_conn", "backenddemo", "backend_conn.bin", "0x851cdd594a04b3fd"},
 	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xfc8907630599b68c"},
 	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0xbf9435fb11bd7357"},
+}
+
+// csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
+// build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
+// the build version the row pins.
+var csHeldRuntimeConns = []csHeldConn{
+	{"graph_conn", "graphdemo", "graph_conn.bin", "0x8478eba1cb4a55e5"},
+	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file
@@ -554,34 +648,54 @@ var csHeldMsgs = []csHeldMsg{
 }
 
 // csHeldUnitSchemas reads the manifest units off the tree, each as one source:
-// the unit is the whole directory, so the per-file `package` lines are folded
-// into the one the directory declares.
+// a unit line names either a directory (its *.schema files) or one file, so the
+// per-file `package` lines are folded into the one the unit declares
+// (parseManifest's rule in the Go leg's goldens test).
 func csHeldUnitSchemas(t *testing.T) []string {
 	t.Helper()
 	var out []string
 	for _, u := range csHeldUnits {
-		paths, err := filepath.Glob(filepath.Join("..", "..", "..", u.dir, "*.schema"))
+		out = append(out, csHeldSchemaFor(t, u))
+	}
+	return out
+}
+
+// csHeldSchemaFor reads one unit's schemas as one source: the unit line names
+// either a directory (its *.schema files) or one file, and the per-file
+// `package` lines are folded into the one the unit declares (the Go leg's
+// parseManifest/loadUnitPaths rule).
+func csHeldSchemaFor(t *testing.T, u csHeldUnit) string {
+	t.Helper()
+	base := filepath.Join("..", "..", "..", u.dir)
+	info, err := os.Stat(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	if info.IsDir() {
+		paths, err = filepath.Glob(filepath.Join(base, "*.schema"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(paths) == 0 {
-			t.Fatalf("no schemas under %s", u.dir)
-		}
-		src := "package " + u.pkg + "\n"
-		for _, path := range paths {
-			b, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			part := strings.ReplaceAll(string(b), "package "+u.pkg, "")
-			// The pointer corpus carries a C++ native mapping the C# leg has no
-			// use for; as a single probe file it cannot ride, so it is dropped.
-			part = strings.ReplaceAll(part, ` | cpp_native = ColourMath, cpp_include = "graph_colour.h"`, "")
-			src += part + "\n"
-		}
-		out = append(out, src)
+	} else {
+		paths = []string{base}
 	}
-	return out
+	if len(paths) == 0 {
+		t.Fatalf("no schemas under %s", u.dir)
+	}
+	src := "package " + u.pkg + "\n"
+	for _, path := range paths {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		part := strings.ReplaceAll(string(b), "package "+u.pkg, "")
+		// The pointer corpus carries a C++ native mapping the C# leg has no
+		// use for; as a single probe file it cannot ride, so it is dropped.
+		part = strings.ReplaceAll(part, ` | cpp_native = ColourMath, cpp_include = "graph_colour.h"`, "")
+		src += part + "\n"
+	}
+	return src
 }
 
 // csHeldCompose is the source the compiler is handed: the clause harness with
@@ -658,9 +772,13 @@ func csHeldRowsClass(t *testing.T) string {
 }
 
 func csHeldConnMethod(c csHeldConn) string {
+	p := csHeldPre(c.pkg)
 	return fmt.Sprintf(`    static void Conn_%s()
     {
         const string row = %q;
+        byte[] announcement = %ss.Announce().ToArray();
+        if (%ss.AnnounceMeasure() != announcement.Length) { Fail(row, "announce measure " + %ss.AnnounceMeasure() + " != " + announcement.Length); return; }
+        if (!Same(announcement, Corpus(%q))) { Fail(row, "the announcement bytes differ from the manifest wire"); return; }
         var vocab = new %sv();
         var report = new %sr();
         %ss.AnnounceRead(vocab, Corpus(%q), report);
@@ -668,7 +786,7 @@ func csHeldConnMethod(c csHeldConn) string {
         if (vocab.BuildVersion != %sUL) { Fail(row, "build version " + vocab.BuildVersion.ToString("x16")); return; }
         Ok(row);
     }
-`, c.key, c.key, csHeldPre(c.pkg), csHeldPre(c.pkg), csHeldPre(c.pkg), c.wire, c.version)
+`, c.key, c.key, p, p, p, c.wire, p, p, p, c.wire, c.version)
 }
 
 func csHeldMsgMethod(m csHeldMsg) string {
