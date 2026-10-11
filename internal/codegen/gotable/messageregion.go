@@ -7,8 +7,14 @@ import (
 
 // Message batches use one caller-owned region. Every body's directory comes
 // first, then its records, then its root, matching the C++ message layout.
+//
+// docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S, and that is a
+// declaration, not a derivation ... `fixed table T` may ride here, a plain
+// `table T` may not". This region overload family is the VARIABLE root's
+// message surface; a fixed root's batch verbs come from emitMessageWrite and
+// emitMessageRead, so the form is emitted for no root here.
 func (g *tableGen) emitRegionMessage(st *ir.Struct) {
-	if st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
+	if st.IsMapEntry() || !st.FixedDeclared || !ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	n, typ := st.Name, g.storageName(st.Name)

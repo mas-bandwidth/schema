@@ -20,7 +20,11 @@ func (g *tableGen) emitRetainMessageRuntime() {
 	g.pf("%s", source)
 }
 func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
-	if !st.IsTable || st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
+	// docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S ... a plain
+	// `table T` may not". A retaining message load is the message form's, so a
+	// plain root no longer carries it; a fixed root never had a region to
+	// retain into, and retention stays the variable FILE root's (§6.6).
+	if !st.IsTable || st.IsMapEntry() || st.FixedDeclared || ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	bytes, str := ir.PointerReachableBlobs(st)
