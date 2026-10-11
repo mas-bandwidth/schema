@@ -291,6 +291,45 @@ int main(void)
 }
 `,
 		},
+		{
+			id: "signed-fixed-point/c/valid-data",
+			schema: `package probe
+fixed table FixedPoint
+{
+    v fixed(16, 16) | min = -1, max = 1
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+` + t09Check + `
+int main(void)
+{
+    FixedPoint value[5], loaded[5];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[0].v = 32768;    /* 0.5 in whole units */
+    value[1].v = 65536;    /* 1.0, the declared max */
+    value[2].v = -65536;   /* -1.0, the declared min */
+    value[3].v = 131072;   /* 2.0: clamped to the raw max 65536 */
+    value[4].v = -131072;  /* -2.0: clamped to the raw min -65536 */
+    need = fixed_point_fixed_measure(5);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(fixed_point_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = fixed_point_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    CHECK(n == 5);
+    CHECK(!report.malformed && !report.refused && report.clamped == 2);
+    CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == -65536);
+    CHECK(loaded[3].v == 65536 && loaded[4].v == -65536);
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
