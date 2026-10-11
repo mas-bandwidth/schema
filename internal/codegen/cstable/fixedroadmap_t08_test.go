@@ -255,6 +255,44 @@ else
         if (i >= lane.Split && !g) { bad += ProbeLog.Fail("W6 lineage: entry " + i + " above the split carries NO guard"); }
     }
 }`)
+
+	// THE POOL GATE (§5.9 #42): the enum lays its remap table in the pool
+	// BEFORE the Push that would reject the other half, so the discarded pass
+	// must test its half first or it spends the pool and a plan that fits comes
+	// back plan_too_large. A buffer sized for ONE pass's table and the one
+	// entry it lands must still hold the plan: LayTable runs once, not twice.
+	// The enum's C# type is declared by the packet form, which the driven
+	// reader does not compile, so the fixture declares it beside the table.
+	var poolSchema strings.Builder
+	poolSchema.WriteString("package probe\n\nenum Tier\n{\n")
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&poolSchema, "    v%d\n", i)
+	}
+	poolSchema.WriteString("}\n\nfixed table Old\n{\n    t Tier\n}\n\nfixed table New\n{\n    t Tier\n    extra int32 = 5\n}\n")
+	var tierDecl strings.Builder
+	tierDecl.WriteString("namespace Probe\n{\n    public enum Tier : byte\n    {\n        None = 0,\n")
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&tierDecl, "        v%d = %d,\n", i, i+1)
+	}
+	tierDecl.WriteString("        Count = 40,\n        Max = 40,\n    }\n\n    public static partial class Schema\n    {\n        public static string EnumNameTier(ulong value)\n        {\n            switch (value)\n            {\n                case (ulong)Tier.None:\n                    return \"None\";\n")
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&tierDecl, "                case (ulong)Tier.v%d:\n                    return \"v%d\";\n", i, i)
+	}
+	tierDecl.WriteString("                default:\n                    return \"???\";\n            }\n        }\n    }\n}\n")
+	t08CSOK(t, poolSchema.String(), `int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<Probe.TableFixedEntry>();
+int tableBytes = (40 + 1) * 2; // the fixture's Tier has 40 variants
+int cap = 1 + (tableBytes + entrySize - 1) / entrySize;
+if (!Probe.Schema.TableFixedWire.ParseLayout(Probe.Schema.OldFixedLayout, out var theirs, out var why))
+{
+    bad += ProbeLog.Fail("W6 pool: parse Old: " + why);
+}
+else
+{
+    Probe.TableFixedEntry[] buffer = new Probe.TableFixedEntry[cap];
+    Probe.TableReport report = new Probe.TableReport();
+    int made = Probe.Schema.TableFixedWire.Compile(theirs, Probe.Schema.NewFixedLayout, Probe.Schema.NewFixedDst, buffer, report, out int split);
+    if (made < 0) { bad += ProbeLog.Fail("W6 pool: a plan that fits one pass came back plan_too_large at capacity " + cap); }
+}`, tierDecl.String())
 }
 
 // t08P1: P1 [verify] "identity == compiled" — SPEC-TABLES §3.4: "THE SAME LOOP
@@ -384,7 +422,12 @@ static class ProbeMain
 // pack, and runs it with `dotnet exec`, returning the combined output. It
 // fails, never skips: a driven subtest that cannot reach a reader is a red
 // clause, not a pass.
-func t08RunCS(t *testing.T, schemaSrc, body string) string {
+//
+// An enum's C# type is declared by the PACKET form, not the table form, and
+// the driven reader compiles the table form alone; extra holds any such type
+// declarations the fixture references, one file per string, written beside the
+// generated files.
+func t08RunCS(t *testing.T, schemaSrc, body string, extra ...string) string {
 	t.Helper()
 	u := unitFrom(t, schemaSrc)
 	files, err := Generate(u)
@@ -398,6 +441,11 @@ func t08RunCS(t *testing.T, schemaSrc, body string) string {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, src := range extra {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("ProbeExtra%d.cs", i)), []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -453,10 +501,11 @@ func t08RunCS(t *testing.T, schemaSrc, body string) string {
 }
 
 // t08CSOK runs the body and asserts the driver printed PROBE OK, failing with
-// the driver's own words otherwise.
-func t08CSOK(t *testing.T, schemaSrc, body string) {
+// the driver's own words otherwise. extra holds type declarations the fixture
+// references that the table form does not itself emit (an enum's C# type).
+func t08CSOK(t *testing.T, schemaSrc, body string, extra ...string) {
 	t.Helper()
-	out := t08RunCS(t, schemaSrc, body)
+	out := t08RunCS(t, schemaSrc, body, extra...)
 	if strings.Contains(out, "FAIL ") || !strings.Contains(out, "PROBE OK") {
 		t.Fatalf("the driven reader failed:\n%s", out)
 	}

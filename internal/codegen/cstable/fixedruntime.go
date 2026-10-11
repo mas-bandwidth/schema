@@ -810,6 +810,14 @@ const tableFixedWireSource = `
                 }
                 case 30: // Enum
                 {
+                    // THE HALF TEST PRECEDES THE ALLOCATION (docs/FIXED-FORM-ALGORITHM.md
+                    // §5.9 #42): a kind that allocates before it pushes must
+                    // test its half first, or the discarded pass spends the pool
+                    // and a plan that fits comes back plan_too_large. The remap
+                    // table is laid in the pool BEFORE the Push that would
+                    // reject the other half, so the enum tests its half here and
+                    // the discarded pass never calls LayTable.
+                    if ((guard != NoGuard) != c.WantGuarded) { break; }
                     // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
                     // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
                     // ordinal takes the remap table.
