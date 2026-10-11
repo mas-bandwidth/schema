@@ -420,10 +420,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		}
 		// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
 		// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
-		// which is every unguarded and singly-nested entry.
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %d }, /* %s */\n",
+		// which is every unguarded and singly-nested entry. The offset is a BYTE
+		// OFFSET from the pool's base — the identity pool is this static array,
+		// a compiled plan's pool is laid in the plan's own storage, one rule.
+		guardIndex := "0"
+		if e.GuardCount > 0 {
+			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, /* %s */\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, e.GuardIndex, e.Note)
+			e.GuardCount, guardIndex, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
@@ -683,6 +689,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        if ( %s_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = %s_fixed_lineage[pick].reason; return -1; }\n", n, n)
 		g.pf("        if ( %s_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n", n)
 		g.pf("        entries = %s_fixed_lineage[pick].entries;\n", n)
+		g.pf("        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,\n")
+		g.pf("           and a chain-carrying entry's guard_index is a BYTE OFFSET from\n")
+		g.pf("           that base — the same arithmetic the identity plan's static pool\n")
+		g.pf("           reads by (§5.8 row 6). */\n")
+		g.pf("        entry_guards = (const TableFixedGuardLink *) (const void *) entries;\n")
 		g.pf("        entry_count = %s_fixed_lineage[pick].count;\n", n)
 		g.pf("        entry_guarded = %s_fixed_lineage[pick].guarded;\n", n)
 		g.pf("        fill = %s_fixed_lineage[pick].fill;\n", n)
