@@ -1423,6 +1423,18 @@ func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
 			}
 			return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
 		}
+		// AN ARM THAT IS ITSELF A UNION IS A CALL TO THAT UNION'S OWN WRITER and
+		// not a leaf: the nested union answers the OUTER tag's dispatch (the arm
+		// is only reached when the outer tag names it) and its own arm selection
+		// survives inside the call (§4.1 "an arm inside an arm answers to the
+		// OUTER tag").
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			into := fmt.Sprintf("%s%s_fixed_write_into(%s, acc)", g.unionModule(r), ir.RustSnake(r.Name), name)
+			if slack == 0 {
+				return raw(into)
+			}
+			return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
+		}
 	}
 	segs := []string{"acc::binary", g.leafSegment(f, name)}
 	if slack > 0 {
@@ -1439,6 +1451,16 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s(arm, c, m)", g.decodeName(r)),
+				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+			}
+		}
+		// AN ARM THAT IS ITSELF A UNION DECODES THROUGH THAT UNION'S OWN
+		// PROJECTION, reached only when the OUTER tag names this arm — the inner
+		// union's arm selection is its own nested match, never the outer tag's
+		// (§4.1 "an arm inside an arm answers to the OUTER tag").
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			return []string{
+				fmt.Sprintf("{v, c, m} = %s%s_fixed_decode(arm, c, m)", g.unionModule(r), ir.RustSnake(r.Name)),
 				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
 			}
 		}
