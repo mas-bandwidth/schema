@@ -285,7 +285,7 @@ func t08P3(t *testing.T) {
 // capacity (`:plan_too_large`), and the emitted lane returns each by name.
 func t08P4(t *testing.T) {
 	text := t08Module(t, t08Scalars)
-	t08Has(t, fixedRuntimeBody, "{:error, :layout_record_too_large, report}", "P4 an entry past the writer's record is refused")
+	t08Has(t, fixedRuntimeBody, "any_past?(entries, record) ->\n        {:error, :layout_record_too_large, report}", "P4 an entry past the writer's record is refused")
 	t08Has(t, fixedRuntimeBody, "n > capacity ->\n        {:error, :plan_too_large, report}", "P4 a plan past capacity is refused")
 	t08Has(t, text, "when made > cap ->", "P4 the declared capacity is checked")
 	t08Has(t, text, "{:error, :plan_too_large, report}", "P4 the lane answers plan_too_large by name")
