@@ -108,7 +108,7 @@ public final class TableVocabulary {
         public long baseLo, baseHi;
         public long min, max;
         public float qMin, qMax, qRes, qDelta;
-        public int steps;
+        public long steps;
     }
 
     // The read report, pared to what the announcement surface names: the strict
@@ -368,10 +368,15 @@ public final class TableVocabulary {
                 if (!(s.qMin < s.qMax) || !(s.qRes > 0)) { return null; }
                 s.qDelta = s.qMax - s.qMin;
                 float values = s.qDelta / s.qRes;
-                if (Float.isNaN(s.qDelta) || Float.isNaN(values)) { return null; }
+                // A TRIPLE WHOSE delta OR delta/res IS NOT FINITE IN FLOAT32 is a
+                // hostile width like any other (§3.3): refused, no vocabulary.
+                if (!Float.isFinite(s.qDelta) || !Float.isFinite(values)) { return null; }
                 values = Math.max(1.0f, Math.min(4294967040.0f, values));
-                s.steps = (int) Math.ceil(values);
-                s.bits = bitCount(s.steps);
+                // count = ceil(delta / res) clamped to [1, 4294967040] (§3.3), a
+                // count the 32-bit unsigned width holds, then bits_required(0, count).
+                long count = (long) Math.ceil((double) values);
+                s.steps = count;
+                s.bits = bitCount(count);
                 return s;
             }
             return null; // a packing outside the closed set
@@ -420,15 +425,16 @@ public final class TableVocabulary {
     }
 
     static boolean sameShape(Entry a, Entry b) {
-        if (a.shape.kind != b.shape.kind || a.shape.packing != b.shape.packing
-            || a.shape.bits != b.shape.bits || a.shape.baseLo != b.shape.baseLo
-            || a.shape.baseHi != b.shape.baseHi || a.shape.min != b.shape.min
-            || a.shape.max != b.shape.max) { return false; }
+        if (!sameShapeFacts(a.shape, b.shape)) { return false; }
         if (a.element == null || b.element == null) { return a.element == b.element; }
-        return a.element.kind == b.element.kind && a.element.packing == b.element.packing
-            && a.element.bits == b.element.bits && a.element.baseLo == b.element.baseLo
-            && a.element.baseHi == b.element.baseHi && a.element.min == b.element.min
-            && a.element.max == b.element.max;
+        return sameShapeFacts(a.element, b.element);
+    }
+
+    static boolean sameShapeFacts(Shape a, Shape b) {
+        return a.kind == b.kind && a.packing == b.packing && a.bits == b.bits
+            && a.baseLo == b.baseLo && a.baseHi == b.baseHi && a.min == b.min
+            && a.max == b.max && a.qMin == b.qMin && a.qMax == b.qMax
+            && a.qRes == b.qRes && a.steps == b.steps;
     }
 }
 `
