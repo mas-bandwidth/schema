@@ -114,6 +114,7 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"vocabulary_too_large_entries",
 			"malformed_missing_version",
 			"malformed_missing_vocabulary",
+			"malformed_noncanonical",
 			"unknown_scalar",
 			"unknown_array",
 			"unknown_table",
@@ -332,6 +333,13 @@ func announceProbe(u *announceUnit) string {
 	fmt.Fprintf(&b, "const UNKNOWN_ARRAY: [u8; %d] = [%s];\n", len(unknownArray), rustBytes(unknownArray))
 	fmt.Fprintf(&b, "const UNKNOWN_TABLE: [u8; %d] = [%s];\n\n", len(unknownTable), rustBytes(unknownTable))
 
+	// 2.3: "An encoding past ten bytes, or a tenth byte with a bit above the
+	// 64th value bit, is malformed on the same rule" (docs/SPEC-TABLES.md:3707):
+	// a minimal announcement whose vocabulary element length is a ten-byte LEB
+	// with its tenth byte above 0x01.
+	nonCanonical := forgedNonCanonicalLength()
+	fmt.Fprintf(&b, "const NONCANONICAL: [u8; %d] = [%s];\n\n", len(nonCanonical), rustBytes(nonCanonical))
+
 	b.WriteString("fn main() {\n")
 	// 2.1: the constant and its length.
 	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
@@ -372,6 +380,11 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &MISSING_VOCAB, &mut report);\n")
 	b.WriteString("        say(\"malformed_missing_vocabulary\", !ok && report.malformed && !report.refused, \"a body without the vocabulary is not malformed\");\n    }\n")
+	// 2.3: a non-canonical ten-byte LEB is malformed, never a refusal.
+	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
+	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
+	b.WriteString("        let ok = announce_read(&mut vocab, &NONCANONICAL, &mut report);\n")
+	b.WriteString("        say(\"malformed_noncanonical\", !ok && report.malformed && !report.refused, \"a non-canonical ten-byte LEB is not malformed\");\n    }\n")
 	// 2.3: an unknown field is skipped and counted, the two strict checks kept:
 	// the read still fills the vocabulary the page names, the build version kept.
 	for _, c := range []struct{ id, cnst, why string }{
@@ -424,4 +437,25 @@ func forgedWithField(announcement []byte, kind byte, payload []byte, id uint64) 
 	out = append(out, announcement[end:len(announcement)-8]...)
 	out = binary.LittleEndian.AppendUint64(out, id)
 	return binary.LittleEndian.AppendUint64(out, count+1)
+}
+
+// forgedNonCanonicalLength is a minimal announcement whose only defect is one
+// non-canonical LEB128: the vocabulary field's element length is spelled in
+// ten bytes — nine 0x80 continuation bytes and a final 0x02 — so the tenth
+// byte carries a bit above the 64th value bit. "An encoding past ten bytes, or
+// a tenth byte with a bit above the 64th value bit, is malformed on the same
+// rule" (docs/SPEC-TABLES.md:3707). Both strict fields are present and valid,
+// so a reader that drops the tenth byte's high bit accepts a zero-entry
+// vocabulary; a reader that holds the rule answers malformed.
+func forgedNonCanonicalLength() []byte {
+	out := []byte{0x01}                                                           // the form byte
+	out = append(out, 0x01, 0x09)                                                 // the build version: reference 1, kind 9
+	out = binary.LittleEndian.AppendUint64(out, 0x1234)                           // its eight bytes
+	out = append(out, 0x02, 0x0e, 0x0b)                                           // the vocabulary: reference 2, kind 14, framed length 11
+	out = append(out, 0x06)                                                       // element kind 6
+	out = append(out, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02) // the non-canonical ten-byte length
+	out = append(out, 0x00)                                                       // the body terminator
+	out = binary.LittleEndian.AppendUint64(out, 0xffff_ffff_ffff_fffe)            // slot 1: the build version id
+	out = binary.LittleEndian.AppendUint64(out, 0xffff_ffff_ffff_fffd)            // slot 2: the vocabulary id
+	return binary.LittleEndian.AppendUint64(out, 2)                               // the entry count
 }

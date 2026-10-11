@@ -470,7 +470,11 @@ fn read_u32(bytes: &[u8], at: usize) -> u32 {
 }
 
 /// A canonical LEB128, the announcement's own integer: the announcement is a
-/// form-1 FILE and takes §3's rule (§3.3).
+/// form-1 FILE and takes §3's rule (§3.3). "An encoding past ten bytes, or a
+/// tenth byte with a bit above the 64th value bit, is malformed on the same
+/// rule" (docs/SPEC-TABLES.md:3707), so the tenth byte may carry only the
+/// 64th value bit: shift 63 with a byte past 0x01 is a bit past it and is
+/// refused.
 fn read_leb(bytes: &[u8], at: &mut usize) -> (u64, bool) {
     let mut value = 0u64;
     let mut shift = 0u32;
@@ -478,6 +482,9 @@ fn read_leb(bytes: &[u8], at: &mut usize) -> (u64, bool) {
         let b = bytes[*at];
         *at += 1;
         if shift >= 64 {
+            return (0, false);
+        }
+        if shift == 63 && b > 1 {
             return (0, false);
         }
         value |= ((b & 0x7f) as u64) << shift;
