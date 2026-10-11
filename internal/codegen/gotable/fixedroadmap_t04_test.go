@@ -15,6 +15,16 @@ package gotable
 // `-run TestFixedRoadmapGoT04VersionsEvolution`. A clause that needs the emitted
 // code to RUN lives in a case inside the emitted runtime the plan reaches; this
 // card asserts the runtime's own rule at its site.
+//
+// TWO TASKS IN THIS ROW ARE NAMED, NOT SUBTESTED. go/R19's clean-pair clause is
+// already held by `TestFixedVersioningNewReadsOld`, which loads the reference's
+// corpus and asserts `Unknown/KindMismatch/Clamped/Duplicate == 0` per row; that
+// load needs the byte oracle (`make tables-fixedform-corpus`), so this card
+// names that test instead of adding a source-shape neighbour. go/R16 is reported
+// `unknown`: its last clause — "copy/const/present/ordinal move nothing" — is not
+// held on this leg, which counts `clamped` in the `ordinal` and `const` ops
+// rather than in the bounds pass (§5.4's "counts twice", fix 27, schema#1254),
+// and the numeric clauses need a running load this card cannot build.
 
 import (
 	"strings"
@@ -33,7 +43,6 @@ func TestFixedRoadmapGoT04VersionsEvolution(t *testing.T) {
 		{"go/W2", t04GoW2},
 		{"go/E6", t04GoE6},
 		{"go/E8", t04GoE8},
-		{"go/R19", t04GoR19},
 		{"go/E9", t04GoE9},
 		{"go/R16", t04GoR16},
 		{"go/R18", t04GoR18},
@@ -277,23 +286,15 @@ func t04GoE8(t *testing.T) {
 
 // ---- go/R19 -----------------------------------------------------------------
 
-// t04GoR19 holds R19 to the ops a clean NEW-READS-OLD uses: an appended field,
-// variant, arm, flag or keyed slot lands through the copy and present ops (and
-// the const hole prefill), and §5.4's counters are moved by none of them, so a
-// clean old file moves no counter at all. The tag op is the one read-loop op
-// that may count an unknown arm, and it is not reached by a clean pair.
-func t04GoR19(t *testing.T) {
-	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
-	if run == "" {
-		t.Fatal("R19: tableFixedRun is not emitted")
-	}
-	for _, op := range []string{"case tableFixedCopy:", "case tableFixedBool:"} {
-		body := t02GoBlock(t, run, op, "case tableFixed")
-		if strings.Contains(body, "report.") {
-			t.Errorf("R19: %s moves a counter; the copy and present ops land an appended value and count nothing", op)
-		}
-	}
-}
+// go/R19's clause — "a clean NEW-READS-OLD of an appended field, variant, arm,
+// flag or keyed slot moves no counter at all" — is held by
+// `TestFixedVersioningNewReadsOld` (fixedversioning_test.go), which reads each
+// row of docs/FIXED-FORM-VERSIONING-TESTS.md over the reference's corpus and
+// asserts `Unknown/KindMismatch/Clamped/Duplicate == 0` on a clean backward read.
+// No subtest is added here: a source-shape assertion on the copy and present op
+// bodies is §5.4's neighbour row and not this task's clean-pair clause, and the
+// real assertion needs the byte oracle the corpus gate builds. The verdict names
+// that test.
 
 // ---- go/E9 ------------------------------------------------------------------
 
@@ -318,12 +319,24 @@ func t04GoE9(t *testing.T) {
 
 // ---- go/R16 -----------------------------------------------------------------
 
-// t04GoR16 holds R16 to §5.4's exact counters. Unknown and KindMismatch are the
-// COMPILE census (once per peer, never per record) and the load adds the census
-// once; Widened moves once per entry per record (the two widen cases and no
-// others); Clamped moves once per entry for the count and text ops and in the
-// bounds pass for the ordinal remapped to None on BOTH plans; the copy and
-// present ops move nothing.
+// t04GoR16 asserts the §5.4 counter clauses this leg HOLDS, and its comment
+// records the clause it does not. The COMPILE census is once per peer and never
+// per record: §5.4's "once per peer and never per record" is emitted as
+// `censusUnknown, censusKind = lane.Unknown, lane.KindMismatch` (one lane read)
+// and ONE `report.Unknown += censusUnknown` after the record loop, so no record
+// and no second read of the same peer moves it. `widened` is once per entry per
+// record: the widen and float-widen op cases each carry exactly one
+// `report.Widened++` inside the per-entry loop, and §5.4's "a folded element run
+// is ONE" is the copy/present fold (`tableFixedRuns` folds only
+// `tableFixedCopy`/`tableFixedBool`), so a widen run is never folded. `count`
+// and `text` clamp once per entry. THIS SUBTEST DOES NOT PROVE THE TITLE'S LAST
+// CLAUSE. §5.4 puts the forged ordinal's `clamped` in the BOUNDS PASS, on both
+// plans, and says "a port that counts in the op as well counts twice"
+// (docs/FIXED-FORM-ALGORITHM.md §5.4), and fix 27 says the leg that already
+// counts it IN THE OP has the OP to move; this leg counts it in
+// `tableFixedOrdinal` (the compiled plan) and in `tableFixedConst` (the identity
+// plan) — schema#1254, §5.8 row 12 — which is the opposite of "copy, const,
+// present, ordinal move nothing". So the task is reported unknown, not done.
 func t04GoR16(t *testing.T) {
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if run == "" {
@@ -337,18 +350,15 @@ func t04GoR16(t *testing.T) {
 	}
 	for _, op := range []string{"case tableFixedCount:", "case tableFixedText:"} {
 		if !strings.Contains(t02GoBlock(t, run, op, "case tableFixed"), "report.Clamped++") {
-			t.Errorf("R16: %s does not clamp exactly once per entry", op)
+			t.Errorf("R16: %s does not clamp once per entry", op)
 		}
 	}
-	if !strings.Contains(t02GoBlock(t, run, "case tableFixedOrdinal:", "case tableFixedWiden:"), "report.Clamped++") {
-		t.Error("R16: a forged ordinal past the writer's set does not land None and count clamped on the compiled plan")
+	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
+	if n := strings.Count(load, "report.Unknown += censusUnknown"); n != 1 {
+		t.Errorf("R16: the load adds the unknown census %d times, want once per peer", n)
 	}
-	if i := strings.Index(run, "case tableFixedConst:"); i < 0 || !strings.Contains(run[i:], "report.Clamped++") {
-		t.Error("R16: the identity plan's bounds pass does not count the same forged ordinal; the two plans must count the same one")
-	}
-	census := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
-	if n := strings.Count(census, "report.Unknown += censusUnknown"); n != 1 {
-		t.Errorf("R16: the load adds the unknown census %d times, want exactly once per peer", n)
+	if n := strings.Count(load, "censusUnknown, censusKind = lane.Unknown, lane.KindMismatch"); n != 1 {
+		t.Errorf("R16: the census lane is read %d times, want once per peer", n)
 	}
 }
 
