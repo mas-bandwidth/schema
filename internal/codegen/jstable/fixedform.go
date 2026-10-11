@@ -116,6 +116,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Union:
 			widest := int64(0)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm holds nothing, so it widens nothing
+				}
 				if n := fixedFieldBytes(v.F); n > widest {
 					widest = n
 				}
@@ -129,7 +132,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 // fixedUnionTagBytes is the storage width of a union's tag ordinal.
 func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Max) / 8) }
 
-// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// THE CLOSURE TEST IS ir.TableFixedSupported (this leg asks the payload-free
+// sibling ir.TableFixedSupportedPayloadFreeArms, whose body is the same
+// function one arm wider) AND THERE IS ONE OF IT. This file
 // used to carry a private copy — the same function byte for byte, with its own
 // `16` where ir holds `ir.TableFixedMaxDepth` — and the private copy is what
 // SELECTED THE EMITTED FORM. The red-team read of 2026-09-11 found what that
@@ -283,6 +288,15 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
 				fixedDst{dst: at, aux: at})
 			for _, v := range r.Variants {
+				if v.F == nil {
+					// A PAYLOAD-FREE ARM HAS A LAYOUT ENTRY AND NO BYTES
+					// (docs/FIXED-FORM-ALGORITHM.md §2, kind 32): the tag names
+					// it and nothing lands, so the entry is what the arm list
+					// is compared by and its size is zero.
+					w.push(fixedLayoutEntry{id: ir.TableWireId(v.WireName()), kind: ir.TableKindNoPayload, size: 0, children: 0, note: v.Name},
+						fixedDst{})
+					continue
+				}
 				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
 			}
 			return
@@ -373,6 +387,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm reaches no nested type
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
