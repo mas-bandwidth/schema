@@ -165,6 +165,18 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"value->cf > 1.0f",
 			},
 		},
+		{
+			// "Signed fixed-point fields". §3.4: fixed(16, 16) is 32 wire bits
+			// in an int32 storage and its declared range -1..1 scales to the
+			// raw clamp literals -65536..65536.
+			id: "signed-fixed-point/c/valid-data",
+			want: []string{
+				"int32_t fx;",
+				"table_fixed_put32( b + 82, (uint32_t) value->fx );",
+				"value->fx < -65536",
+				"value->fx > 65536",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
