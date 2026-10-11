@@ -20,9 +20,10 @@ package cpptable
 // rules a content violation a REFUSAL BY NAME (text_ill_formed), the verdict
 // the packet reader gives, where the reference set `malformed`: the shared
 // vocabulary member lives in cpptable.go and the clamp that raises it is this
-// leg's own. test/conformance/cpp/rows/C5.cpp still states the old `malformed`
-// verdict for the same bytes and is outside this card's PATHS; it is named as a
-// proposed follow-up in the report, never touched here.
+// leg's own. test/conformance/cpp/rows/C5.cpp states the same refusal-by-name
+// verdict for the wide in-range case and is in this card's PATHS; the leg's
+// fixed-form harnesses (test/tables/fixedform_main.cpp, fixedform_properties.cpp)
+// carry the verdict for the narrow case.
 
 import (
 	"fmt"

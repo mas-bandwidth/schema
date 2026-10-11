@@ -1450,9 +1450,11 @@ static void absent_optional_case()
 // THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), on this
 // form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
 // among them — the same rule SPEC.md §4.7 puts on the packet wire, where the
-// whole read refuses. HERE THE RECORD IS POSITIONAL, so the damage is one
-// field's and the reader does not lose the others to it: THE FIELD READS ITS
-// DECLARED DEFAULT, one `malformed` counts, and the rest of the record stands.
+// whole read refuses. A PAYLOAD THAT IS NOT TEXT REFUSES BY NAME here too
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): the load answers -1, `refused`
+// is set, `malformed` is not, the name is `text_ill_formed`, and no counter
+// moves — REFUSE is total (§5.8). The damaged field does NOT read a declared
+// default; nothing past the refusal is decoded.
 //
 // The check runs over the USED LENGTH and over nothing else. The slack carries
 // no meaning, and reading a whole declared bound to check bytes that mean
@@ -1488,14 +1490,13 @@ static void text_content_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
-               "text content: the record reads" );
-        check( r.malformed, cases[k].what );
-        check( back.label_length == 2 && std::strcmp( back.label, "fx" ) == 0,
-               "TEXT CONTENT: the damaged field reads its DECLARED DEFAULT" );
-        check( back.keep == 1234u && back.nested.a == 7,
-               "TEXT CONTENT: and the rest of the record stands — the damage is one field's" );
-        check( !r.refused, "TEXT CONTENT: damage is not a refusal" );
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == -1,
+               "text content: ill-formed content refuses the read" );
+        check( r.refused && !r.malformed, cases[k].what );
+        check( r.reason == tblfx1::text_ill_formed,
+               "TEXT CONTENT: the refusal carries the name text_ill_formed" );
+        check( r.clamped == 0 && r.widened == 0,
+               "TEXT CONTENT: a refusal moves no counter — REFUSE is total" );
 
         // THE NEGATIVE CONTROL: the read loop alone, with no content pass after
         // it. The same record, the same plan, and the bytes that are not text

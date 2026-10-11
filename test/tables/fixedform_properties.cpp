@@ -586,12 +586,12 @@ static void run_properties()
                             check( rid.clamped > 0, what );
                         }
                     }
-                    if ( before.utf8_bad && !rid.malformed )
+                    if ( before.utf8_bad && !rid.refused )
                     {
                         std::snprintf( what, sizeof( what ),
-                                       "P3 %s identity byte %zu: invalid UTF-8 was not malformed",
+                                       "P3 %s identity byte %zu: invalid UTF-8 was not refused by name",
                                        F::name, at );
-                        check_red( false, "text-content/identity/invalid-utf8-is-not-malformed", what );
+                        check( false, what );
                     }
                 }
             }
@@ -1310,9 +1310,13 @@ static void probe_text_content()
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                                plan.data(), kPlanCap, NULL, &r );
-    check( n == 1 || r.malformed || r.refused, "probe text-content: the read answers" );
-    check_red( r.malformed, "text-content/identity/invalid-utf8-is-not-malformed",
-               "probe text-content: invalid UTF-8 in a string(N)'s used bytes is malformed" );
+    // ILL-FORMED CONTENT IN THE USED BYTES REFUSES BY NAME (docs/FIXED-FORM-
+    // ALGORITHM.md §4.5, fix 11): the verdict the packet reader gives, where the
+    // reference once set `malformed`. Nothing is decoded and no counter moves.
+    check( n == -1 && r.refused && !r.malformed && r.reason == tblfx1::text_ill_formed,
+           "probe text-content: invalid UTF-8 in a string(N)'s used bytes refuses by name" );
+    check( r.clamped == 0 && r.widened == 0,
+           "probe text-content: the refusal moves no counter" );
 }
 
 static void probe_absent_optional()
