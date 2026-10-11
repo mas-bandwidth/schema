@@ -911,7 +911,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// whole body to a single move.\n")
 	g.pf("pub const %s_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {\n", up)
 	g.pf("    src: 0,\n    dst: 0,\n    size: %s_FIXED_BODY_BYTES as u32,\n    aux: 0,\n", up)
-	g.pf("    guard: TABLE_FIXED_NO_GUARD,\n    op: TableFixedOp::Copy,\n    arg: 0,\n    argw: 1,\n    dstsize: 0,\n    sign: 0,\n}];\n\n")
+	g.pf("    guard_off: 0,\n    guard_count: 0,\n    op: TableFixedOp::Copy,\n    dstsize: 0,\n    sign: 0,\n}];\n\n")
 
 	// THE LINEAGE, LAID DOWN AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5.2,
 	// COMPILE(lock, T)): the lock's entries OLDEST FIRST, this build's own
@@ -970,12 +970,18 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	if len(lineage) > 1 {
 		planCap := max(int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
+		// THE GUARD CHAIN'S POOL CAPACITY: each union arm lays its chain down
+		// as one contiguous run of (guard, arg, argw) links, and the chain's
+		// only bound is the layout's depth (64), so 64 links an entry is the
+		// worst a run can be and 64 an arm the worst the pool needs (§4.1).
+		guardCap := max(1024, 64*len(entries))
 		g.pf("/// THE PLAN'S DECLARED CAPACITY, per lineage entry. The build sizes the\n")
 		g.pf("/// storage BY CONSTRUCTION and the capacity is REAL: an entry whose plan\n")
 		g.pf("/// does not fit records `plan_too_large` ON THAT ENTRY, and LOAD reports it\n")
 		g.pf("/// by name if a file ever selects that layout (§5.9 #4).\n")
 		g.pf("pub const %s_FIXED_PLAN_CAP: usize = %d;\n", up, planCap)
-		g.pf("pub const %s_FIXED_REMAP_CAP: usize = %d;\n\n", up, remapCap)
+		g.pf("pub const %s_FIXED_REMAP_CAP: usize = %d;\n", up, remapCap)
+		g.pf("pub const %s_FIXED_GUARD_CAP: usize = %d;\n\n", up, guardCap)
 
 		g.pf("/// THE PLANS, ONE PER LINEAGE ENTRY. Every one of them is made from THE\n")
 		g.pf("/// LOCK'S OWN BYTES and never from a file's: PLAN walks the layout the lock\n")
@@ -985,6 +991,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("/// nothing, parses no layout, and cannot fail for want of a plan.\n")
 		g.pf("pub struct %sFixedPlans {\n", st.Name)
 		g.pf("    pub entries: [[TableFixedEntry; %s_FIXED_PLAN_CAP]; %d],\n", up, len(lineage))
+		g.pf("    pub guards: [[TableFixedGuard; %s_FIXED_GUARD_CAP]; %d],\n", up, len(lineage))
 		g.pf("    pub remap: [[u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
 		g.pf("    pub count: [usize; %d],\n", len(lineage))
 		g.pf("    /// THE COMPILE CENSUS, which is the PLAN'S OWN NUMBER: `unknown` once\n")
@@ -1002,6 +1009,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("static %s_FIXED_PLANS: std::sync::LazyLock<%sFixedPlans> = std::sync::LazyLock::new(|| {\n", up, st.Name)
 		g.pf("    let mut out = %sFixedPlans {\n", st.Name)
 		g.pf("        entries: [[TableFixedEntry::default(); %s_FIXED_PLAN_CAP]; %d],\n", up, len(lineage))
+		g.pf("        guards: [[TableFixedGuard::default(); %s_FIXED_GUARD_CAP]; %d],\n", up, len(lineage))
 		g.pf("        remap: [[0u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
 		g.pf("        count: [0usize; %d],\n", len(lineage))
 		g.pf("        unknown: [0u32; %d],\n", len(lineage))
@@ -1024,10 +1032,10 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("                out.reason[i] = TableFixedReason::LayoutMalformed;\n")
 		g.pf("                continue;\n            }\n        };\n")
 		g.pf("        let mut census = TableFixedReport::default();\n")
-		g.pf("        let (entries, remap) = (&mut out.entries[i], &mut out.remap[i]);\n")
+		g.pf("        let (entries, guards, remap) = (&mut out.entries[i], &mut out.guards[i], &mut out.remap[i]);\n")
 		g.pf("        match table_fixed_compile(\n")
 		g.pf("            &theirs,\n            &mine,\n            &%s_FIXED_COUNTED,\n", up)
-		g.pf("            &mut entries[..],\n            &mut remap[..],\n            &mut census,\n        ) {\n")
+		g.pf("            &mut entries[..],\n            &mut guards[..],\n            &mut remap[..],\n            &mut census,\n        ) {\n")
 		g.pf("            Some(n) => {\n")
 		g.pf("                out.count[i] = n;\n")
 		g.pf("                out.unknown[i] = census.unknown;\n")
@@ -1153,10 +1161,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    // deref above the identity test compiles every older plan the first time\n")
 		g.pf("    // anybody reads its OWN layout, which is the common read.\n")
 		g.pf("    let entries: &[TableFixedEntry];\n")
+		g.pf("    let guards: &[TableFixedGuard];\n")
 		g.pf("    let table: &[u16];\n")
 		g.pf("    let census: (u32, u32);\n")
 		g.pf("    if identity {\n")
 		g.pf("        entries = &%s_FIXED_PLAN;\n", up)
+		g.pf("        guards = &[];\n")
 		g.pf("        table = &[];\n")
 		g.pf("        census = (0u32, 0u32);\n")
 		g.pf("    } else {\n")
@@ -1167,6 +1177,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            // something that is not a layout (§5.9 #8).\n")
 		g.pf("            return report.refuse(plans.reason[found]);\n        }\n")
 		g.pf("        entries = &plans.entries[found][..plans.count[found]];\n")
+		g.pf("        guards = &plans.guards[found];\n")
 		g.pf("        table = &plans.remap[found];\n")
 		g.pf("        census = (plans.unknown[found], plans.kind_mismatch[found]);\n")
 		g.pf("    }\n")
@@ -1175,6 +1186,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    // identity plan is the only plan there is, and every other hash was\n")
 		g.pf("    // already refused by name above.\n")
 		g.pf("    let entries: &[TableFixedEntry] = &%s_FIXED_PLAN;\n", up)
+		g.pf("    let guards: &[TableFixedGuard] = &[];\n")
 		g.pf("    let table: &[u16] = &[];\n")
 		g.pf("    let census = (0u32, 0u32);\n")
 	}
@@ -1209,7 +1221,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            let z = h.size as usize;\n")
 	g.pf("            image[o..o + z].copy_from_slice(&%s_FIXED_DEFAULTS[o..o + z]);\n", up)
 	g.pf("        }\n")
-	g.pf("        table_fixed_run(entries, table, &record[8..], &mut image, report);\n")
+	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
