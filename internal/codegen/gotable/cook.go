@@ -230,17 +230,13 @@ func (g *cookGen) blockHasRecord(name string) bool {
 	return g.blocks != nil && blockHome(g.unit, g.blocks) != "" && g.blocks.Layout(name) != nil
 }
 
-// blockOwnsRuntime reports whether the unit's BLOCK form already emits the
-// shared constants — BuildVersion above all. The two accelerators share one
-// package, so exactly one of them defines each name.
-func (g *cookGen) blockOwnsRuntime() bool {
-	return g.blocks != nil && blockHome(g.unit, g.blocks) != ""
-}
-
 func (g *cookGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
-		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), !g.blockOwnsRuntime()))
+		// BuildVersion lives in the TABLE source for every table-bearing unit,
+		// so the cook never spells it: one package, exactly one definition
+		// (docs/SPEC-TABLES.md §20.7).
+		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), false))
 		for _, name := range g.cook.order {
 			if g.blockHasRecord(name) {
 				continue
