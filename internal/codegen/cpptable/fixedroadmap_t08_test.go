@@ -15,6 +15,7 @@ package cpptable
 // which is how a green verdict is not a skip over an unrun row.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,22 @@ func t08Root(t *testing.T, u *ir.Unit) *ir.Struct {
 	return roots[len(roots)-1]
 }
 
+// t08Emit is [Generate]'s source for a unit, all files joined, so a clause can
+// read any emitted spelling without knowing which file carries it.
+func t08Emit(t *testing.T, u *ir.Unit) string {
+	t.Helper()
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var b strings.Builder
+	for name, data := range files {
+		fmt.Fprintf(&b, "// ---- %s ----\n", name)
+		b.Write(data)
+	}
+	return b.String()
+}
+
 func TestFixedRoadmapCppT08WritesConformance(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -107,6 +124,8 @@ func TestFixedRoadmapCppT08WritesConformance(t *testing.T) {
 		{"cpp/W7", t08W7},
 		{"cpp/W16", t08W16},
 		{"cpp/R28", t08R28},
+		{"cpp/W6", t08W6},
+		{"cpp/P1", t08P1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -238,5 +257,65 @@ func t08R28(t *testing.T) {
 	}
 	if !strings.Contains(tableFixedRuntime, "if ( c.depth > 64 ) { c.hostile = true; return; }") {
 		t.Error("R28: the walk does not refuse a chain past 64")
+	}
+}
+
+// t08W6: cpp/W6 "plan partition / split". The plan is PARTITIONED — every
+// unguarded entry first, then every guarded one — and `guarded` is where the
+// second half starts (ir/fixedform.go TableFixedBuildPlan, the runtime's "A
+// PLAN IS PARTITIONED"). The run loop walks the unguarded half with no guard
+// test at all, then the guarded half with the conjunction.
+func t08W6(t *testing.T) {
+	u := t08Unit(t, t08Union)
+	st := t08Root(t, u)
+	plan, guarded := ir.TableFixedBuildPlanNormalised(u, st)
+
+	if guarded <= 0 || guarded >= len(plan) {
+		t.Fatalf("W6: the split %d of %d leaves is not a partition of both halves", guarded, len(plan))
+	}
+	for i, e := range plan {
+		unguarded := e.Guard == ir.TableFixedNoGuard
+		if unguarded != (i < guarded) {
+			t.Fatalf("W6: leaf %d is on the wrong side of the split at %d: guard=%d", i, guarded, e.Guard)
+		}
+	}
+
+	src := t08Emit(t, u)
+	if !strings.Contains(src, "RootFixedPlanGuarded = ") {
+		t.Error("W6: the emitted plan does not lay the split down as a constant")
+	}
+	for _, want := range []string{
+		"for ( int32_t i = 0; i < guarded; ++i )",
+		"for ( int32_t i = guarded; i < count; ++i )",
+	} {
+		if !strings.Contains(tableFixedRuntime, want) {
+			t.Errorf("W6: the run loop does not carry the partition loop %q", want)
+		}
+	}
+}
+
+// t08P1: cpp/P1 "identity == compiled". Identity is a plan walked by the SAME
+// loop as a plan compiled from a stranger's layout (fixedform.go: "Identity is
+// a PLAN walked by the same loop"). The emitted load selects the identity plan
+// by the file's own hash and the compiled plan by a known-older hash, and both
+// reach the ONE TableFixedRun call site — there is no second identity path.
+func t08P1(t *testing.T) {
+	u := t08Unit(t, t08Union)
+	src := t08Emit(t, u)
+
+	if n := strings.Count(src, "TableFixedRun( entries, entry_count, entry_guarded,"); n != 1 {
+		t.Fatalf("P1: the load has %d run call sites, want the one shared loop", n)
+	}
+	for _, want := range []string{
+		"const TableFixedEntry * entries = RootFixedPlan;",
+		"entries = dest;",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("P1: the load does not reach the shared loop through %q", want)
+		}
+	}
+	// The shared loop is the partition walk, defined once.
+	if n := strings.Count(tableFixedRuntime, "inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,"); n != 1 {
+		t.Fatalf("P1: the runtime defines %d TableFixedRun loops, want one", n)
 	}
 }
