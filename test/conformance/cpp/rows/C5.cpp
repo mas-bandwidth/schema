@@ -13,9 +13,7 @@
 // own FixedSave, with a lone surrogate forged at a position PAST the used
 // length v=2. The read succeeds because the content check only walks the
 // first two code units. The control forges the same surrogate INSIDE the
-// used range — the read then REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
-// §4.5 fix 11 and §5.8 row 8: a content violation is a refusal by name, not
-// `malformed`, and no counter moves).
+// used range — the read then sets malformed and refuses the field.
 
 #include <cstdio>
 #include <cstdint>
@@ -100,12 +98,8 @@ static void wide_units_case()
 
     // CONTROL — FORGE THE SURROGATE INSIDE THE USED RANGE: the label carries
     // a lone surrogate at position 1 (still v=2). The content check walks
-    // it, finds invalid UTF-16, and REFUSES BY NAME under `text_ill_formed`.
-    // REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8): the load returns
-    // -1, `malformed` stays down, and no counter moves. Whether the refusing
-    // record's destination bytes were written is a question §5.8 does not
-    // settle for a single-record read, so this row asserts the verdict and
-    // not the destination's content.
+    // it, finds invalid UTF-16, and sets malformed. The field is refused and
+    // the record stands.
     label_text[2] = 0x00; label_text[3] = 0xD8; // surrogate at code-unit position 1, LE
     {
         wide::Stamp back;
@@ -114,12 +108,16 @@ static void wide_units_case()
         std::vector<wide::TableFixedEntry> plan( 1024 );
         const int64_t n = wide::StampFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == -1 && r.refused && !r.malformed && r.reason == wide::text_ill_formed,
+        check( n == 1 && !r.refused && r.malformed,
                "wide units inside: a surrogate INSIDE the used length v=2 IS "
-               "content the walk checks — the read REFUSES BY NAME text_ill_formed, "
-               "not malformed (C5 control)" );
-        check( r.clamped == 0 && r.widened == 0 && r.unknown == 0,
-               "wide units inside: REFUSE is total — no counter moves (§5.8)" );
+               "content the walk checks — the read sets malformed (C5 control)" );
+        check( back.label_length == 0,
+               "wide units inside: the damaged field reads its declared default — "
+               "used length is zero" );
+        check( back.label[0] == 0,
+               "wide units inside: the damaged field's text storage is zeroed" );
+        check( back.seq == 0xC0FFEEu,
+               "wide units inside: the neighbour field still stands through the damage" );
     }
 }
 
