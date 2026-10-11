@@ -35,7 +35,9 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 		g.pf("}\n")
 	}
 	g.pf("w.Put(0,TableMessageRefBitsHere);return !w.Overflow\n}\n")
-	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
+	// "fixed table T may ride here, a plain table T may not".
+	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}
 	n := st.Name
