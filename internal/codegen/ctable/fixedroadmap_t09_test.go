@@ -134,6 +134,15 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"value->bitsv > 4095ull",
 			},
 		},
+		{
+			// "32-bit floating-point fields". §3.4: float32 is float storage
+			// written by the 32-bit IEEE-754 wire move.
+			id: "float32-values/c/valid-data",
+			want: []string{
+				"float f32;",
+				"table_fixed_putf32( b + 66, value->f32 );",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
