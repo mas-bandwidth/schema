@@ -50,6 +50,7 @@ package darttable
 // dart/W2 [verify]: absent optional skips store.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -502,6 +503,38 @@ func t04R21(t *testing.T) {
 	}
 	if !strings.Contains(rest, "(bits & 0x7f800000) == 0x7f800000") {
 		t.Error("R21: the widenFloat op widens through the hardware conversion alone")
+	}
+	// Run the emitted Dart against the versioning corpus, and inspect the raw
+	// destination image before Dart decodes the f64 as a double. This exercises
+	// the negative signaling NaN's sign, payload, exponent and still-clear quiet
+	// bit (§5.2, §5.9 #18).
+	corpus := fixedCorpus(t)
+	dartBin := dartBinary(t)
+	body := `  final data = File(FILE).readAsBytesSync();
+  final head = ByteData.sublistView(data);
+  final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);
+  final recordAt = t.TableFixedLimits.layoutAt + layoutBytes;
+  final negative = Uint8List.fromList(data);
+  ByteData.sublistView(negative).setUint32(recordAt + 8 + 4, 0xFF8ABCDE, Endian.little);
+  final negativeValues = <t.FloatWiden>[t.FloatWiden()];
+  t.initFloatWiden(negativeValues[0]);
+  final negativePlan = t.floatWidenFixedNewPlan();
+  final negativeReport = t.TableFixedReport();
+  final n = LOAD(negativeValues, negativeValues.length, negative,
+      negative.length, negativePlan, negativeReport);
+  check(n == 1 && negativeReport.widened == 1,
+      'negative signalling-NaN widening did not execute: n=$n ${why(negativeReport)}');
+  // 0xFF8ABCDE -> 0xFFF1579BC0000000: sign retained, exponent widened,
+  // payload shifted exactly, and the f64 quiet bit remains clear.
+  const want = <int>[0x00, 0x00, 0x00, 0xC0, 0x9B, 0x57, 0xF1, 0xFF];
+  for (var i = 0; i < want.length; i++) {
+    check(negativePlan.image[4 + i] == want[i],
+        'negative signalling-NaN bit $i is ${negativePlan.image[4 + i]}, want ${want[i]}');
+  }`
+	out, err := runVersionProbe(t, dartBin, "VNEW_float_widen", []string{"VOLD_float_widen"}, 0,
+		filepath.Join(corpus, "old_float_widen.bin"), body)
+	if err != nil {
+		t.Fatalf("R21 emitted Dart probe: %v\n%s", err, out)
 	}
 }
 
