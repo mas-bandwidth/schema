@@ -69,5 +69,19 @@ func init() {
 		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
 		Name{Name: "TableMessageShapeEnd", What: "the announced message bit codec: step over one shape's width facts"},
 		Name{Name: "TableMessageSkipField", What: "the announced message bit codec: step over one unknown body field's payload by its kind (§3.3)"},
+		// THE ANNOUNCEMENT SURFACE'S LIBRARY-SCOPE CLASSES AND VERBS. A class
+		// at library scope claims a name exactly as the fixed form's classes do
+		// (TableFixedReport, TableFixedPlan, ...), so TableVocabulary,
+		// TableMessageEntry and TableReport are claimed here too. The three
+		// free functions the page names — announce, announceMeasure,
+		// announceRead (docs/SPEC-TABLES.md §3.3, §6.1) — are claimed in this
+		// registry's PascalCase form, the bijection stated above; the C, C++
+		// and Go legs already claim those three spellings.
+		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
+		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
+		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
+		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
+		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit (§3.3)"},
+		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table (§3.3)"},
 	)
 }
