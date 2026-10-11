@@ -3,15 +3,19 @@ package jstable
 // THE MESSAGE FORM'S CONFORMANCE GATE (docs/SPEC-TABLES.md §3.3,
 // test/conformance/README.md, "The surfaces"): the driver's `message` surface.
 //
-// Two clauses. The first holds the driver SOURCE to the contract: it registers
-// the `message` surface in its `list`, its `messageRows` table is the
-// manifest's own distinct (unit, root) pairs, and its handler carries the
+// Three clauses. The first holds the driver SOURCE to the contract: it
+// registers the `message` surface in its `list`, its `messageRows` table is
+// the manifest's own distinct (unit, root) pairs, and its handler carries the
 // path that writes the saved bytes rather than only `<case>.absent`. The
 // second RUNS the driver over the manifest's message rows against a generated
 // tree and requires one file per row — the bytes when the leg's tree carries
 // the form-2 verbs, `<case>.absent` when a row's unit or root the form refuses
 // is not reachable — and at least one answer, so a built tree that answers
 // nothing fails rather than skipping. It skips BY NAME when node is absent.
+// The third holds the SHIPPED CONFORMANCE TARGET to the units the driver
+// reads: `CONFORMANCE_LEGS` names only build/tables-generated-js/.stamp, so a
+// row whose unit the stamp recipe does not generate can only ever answer
+// `<case>.absent` in `make conformance`, however well the driver is wired.
 
 import (
 	"maps"
@@ -72,10 +76,110 @@ func TestMessageFormConformanceJavaScript(t *testing.T) {
 		}
 	})
 
+	t.Run("makefile_generates_the_message_units", func(t *testing.T) {
+		t.Parallel()
+
+		// THE CONFORMANCE TARGET BUILDS THE UNITS THE DRIVER READS. The
+		// driver's message rows each name a generated unit; `make conformance`
+		// builds only what `CONFORMANCE_LEGS` names, and for this leg that is
+		// build/tables-generated-js/.stamp and nothing else (make/js.mk), so
+		// the stamp recipe is the whole of the tree the harness hands the
+		// driver (test/conformance/README.md, "ci.json"). A unit the recipe
+		// does not generate cannot be imported by the driver's `load`, so every
+		// row it carries is written `<case>.absent` and the matrix reads the
+		// surface as the feature the leg lacks — the outcome this card exists
+		// to replace.
+		// THE UNITS THE LEG CARRIES. The `backend` unit's Envelope holds a
+		// table-side union, which this target does not carry and names refused
+		// (docs/SPEC-TABLES.md §2.6, §11 — the refusal is the compiler's, before
+		// the emitter runs), so its rows are the `<case>.absent` the matrix
+		// counts and it is not among the units this target must generate. Every
+		// other unit the driver's message rows name is one the leg can carry, and
+		// the shipped recipe is the only thing that generates them.
+		recipe := stampRecipe(t, "build/tables-generated-js/.stamp")
+		refused := map[string]bool{"backend": true}
+		carried := 0
+		for _, dir := range driverMessageDirs(t) {
+			if refused[dir] {
+				continue
+			}
+			carried++
+			want := "--out build/tables-generated-js/" + dir + " tables/" + dir
+			if !strings.Contains(recipe, want) {
+				t.Errorf("the JavaScript conformance target does not generate the `%s` unit its message driver reads: want `./bin/schema generate --lang js %s` in the build/tables-generated-js/.stamp recipe (make/js.mk)", dir, want)
+			}
+		}
+		if carried == 0 {
+			t.Fatal("the driver's message rows name no unit this target carries — the clause would pass over the empty set")
+		}
+	})
+
 	t.Run("harness_message_rows", func(t *testing.T) {
 		t.Parallel()
 		assertDriverAnswersMessages(t)
 	})
+}
+
+// driverMessageDirs is the set of generated unit directories the driver's
+// messageRows table reads, the first component of each row's module path
+// (`backend/BackenddemoTable.js` -> `backend`), sorted.
+func driverMessageDirs(t *testing.T) []string {
+	t.Helper()
+	source := driverSource(t)
+	start := strings.Index(source, "const messageRows = [")
+	if start < 0 {
+		t.Fatalf("the JavaScript driver declares no messageRows table (test/conformance/js/main.mjs)")
+	}
+	end := strings.Index(source[start:], "];")
+	if end < 0 {
+		t.Fatal("the messageRows table is not closed: no `];` follows `const messageRows = [`")
+	}
+	re := regexp.MustCompile(`\["[A-Za-z0-9_]+", "[A-Za-z0-9_]+", "([A-Za-z0-9_]+)/`)
+	seen := map[string]bool{}
+	var dirs []string
+	for _, m := range re.FindAllStringSubmatch(source[start:start+end], -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			dirs = append(dirs, m[1])
+		}
+	}
+	sort.Strings(dirs)
+	if len(dirs) == 0 {
+		t.Fatalf("the messageRows table carries no row (test/conformance/js/main.mjs)")
+	}
+	return dirs
+}
+
+// stampRecipe is the recipe lines of one make target, the tab-indented lines
+// that follow its `target:` line up to the next column-zero line, so an
+// assertion about what the target builds reads the recipe and not a comment
+// beside it.
+func stampRecipe(t *testing.T, target string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "make", "js.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, target+":") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("make/js.mk declares no %s target", target)
+	}
+	var b strings.Builder
+	for _, l := range lines[start+1:] {
+		if !strings.HasPrefix(l, "\t") {
+			break
+		}
+		b.WriteString(l)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // manifestMessageRoots is the manifest's distinct (unit, root) pairs, its unit

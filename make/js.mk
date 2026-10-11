@@ -78,7 +78,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its JS WIRE surface is refused by name (§11) and its
@@ -91,6 +91,17 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang js --out build/tables-generated-js/v2 test/tables/V2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p1 test/tables/P1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p3 test/tables/P3.schema
+	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
+	# conformance driver's `message` surface AnnounceReads a connection's
+	# announcement, LoadMessages the form-2 batch against it and SaveMessages
+	# the bytes, and the units those rows name must be generated here or the
+	# shipped leg answers every one of them absent. vocab/vocab9 are the units
+	# test/vocabgen writes, whose vocabulary passes 127 ids so a message names
+	# slots on both sides of the one-byte boundary. (The `backend` unit's
+	# Envelope holds a table-side union this target refuses by name — §2.6,
+	# §11 — so those rows stay absent until the compiler carries the form.)
+	./bin/schema generate --lang js --out build/tables-generated-js/vocab tables/vocab
+	./bin/schema generate --lang js --out build/tables-generated-js/vocab9 tables/vocab9
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#
