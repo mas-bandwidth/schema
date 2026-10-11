@@ -353,11 +353,13 @@ func manifestMessageRows(t *testing.T) []manifestMessageRow {
 }
 
 // runManifestMessageRows pins every manifest `message` row whose root is a
-// fixed table with a plain closure (no enum, union, keyed or pointer field):
-// LoadMessages of the batch gives a value, MeasureMessages equals the batch's
-// length, and SaveMessages gives the pinned bytes back exactly (§3.3). A row
-// whose closure the carried reader cannot yet compile is skipped rather than
-// asserted, and is named in the report rather than here.
+// fixed table: MeasureMessages equals the batch's length and SaveMessages gives
+// the pinned bytes back exactly (§3.3). A root that is a plain `table` rather
+// than a `fixed table` is not a message-form root at all ("the form is a fixed
+// table's", §3.3), so its row asserts nothing, exactly as the Go leg's answer
+// does (gotable/messageform_goldens_test.go's VariableTables skip). The clause's
+// "the values the form-1 instance decodes to" half is answered NOT DONE rather
+// than here: the Java leg emits no form-1 reader (messageManifestDriver's note).
 func runManifestMessageRows(t *testing.T) {
 	t.Helper()
 	root, err := filepath.Abs("../../..")
@@ -368,9 +370,6 @@ func runManifestMessageRows(t *testing.T) {
 		u := loadUnitDir(t, root, row.unitDir)
 		st, ok := u.Tables[row.root]
 		if !ok || !st.FixedDeclared {
-			continue
-		}
-		if !plainMessageClosure(st, map[string]bool{}) {
 			continue
 		}
 		batch, err := os.ReadFile(filepath.Join(root, row.batchPath))
@@ -384,33 +383,6 @@ func runManifestMessageRows(t *testing.T) {
 		runMessageDriverPkg(t, u.Package, messageBatchClosure(u, files, row.root),
 			messageManifestDriver(u, row.root, hexOf(batch)))
 	}
-}
-
-// plainMessageClosure reports whether a root's closure has no enum, union,
-// keyed or pointer field — the shapes whose generated reader the carried work
-// does not yet compile (reported, not this card's). A plain root is the one
-// whose batch this card pins byte for byte.
-func plainMessageClosure(st *ir.Struct, seen map[string]bool) bool {
-	if seen[st.Name] {
-		return true
-	}
-	seen[st.Name] = true
-	for _, f := range st.Fields {
-		if f.Type.Pointer || f.KeyEnum != "" {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Enum, *ir.Union:
-				return false
-			case *ir.Struct:
-				if !plainMessageClosure(r, seen) {
-					return false
-				}
-			}
-		}
-	}
-	return true
 }
 
 // messageBatchClosure keeps only the files one root's batch needs: the shared
@@ -433,8 +405,14 @@ func messageBatchClosure(u *ir.Unit, files map[string][]byte, root string) map[s
 	return out
 }
 
-// messageManifestDriver compiles one manifest row's root and asserts the batch
-// it loads saves back to the pinned bytes exactly (§3.3).
+// messageManifestDriver compiles one manifest row's root and asserts the two
+// halves of §3.3 this leg can pin: MeasureMessages equals the batch's length
+// and SaveMessages of the batch's value gives the pinned bytes back exactly.
+// The third half — "LoadMessages of the batch gives the values the form-1
+// instance decodes to" — is answered NOT DONE rather than here: the Java leg
+// emits no form-1 reader (form 1 is not emitted for Java, javatable.go), so
+// the manifest's form-1 file is unreadable and the batch's value cannot be
+// compared against the instance it decodes.
 func messageManifestDriver(u *ir.Unit, root, batchHex string) string {
 	const tmpl = `package @PKG@;
 
@@ -459,6 +437,10 @@ public final class Driver {
         final TableMessage.Report r = new TableMessage.Report();
         final long c = @MSG@.loadMessages(got, batch, vocab, r);
         if (c != 1 || r.refused || r.malformed) fail("load " + c + " " + r.reason);
+
+        // "MeasureMessages sizes the buffer" (§3.3), so it equals the batch's
+        // length, and "SaveMessages of them gives the batch bytes back exactly"
+        // (§3.3).
         final long m = @MSG@.measureMessages(got, r);
         if (m != batch.length) fail("measure " + m + " want " + batch.length);
         final byte[] out = new byte[(int) m];

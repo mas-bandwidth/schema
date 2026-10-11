@@ -430,7 +430,7 @@ func (g *messageGen) scalarRead(f *ir.Field, expr, entry, ind string) {
 
 func (g *messageGen) enumRead(f *ir.Field, expr, ind string) {
 	en := enumRef(f)
-	g.pf("%s{ final long ref = r.get(vocabulary.refBits); if (ref == 0) { %s = 0; } else { final long id = vocabulary.name(ref);\n", ind, expr)
+	g.pf("%s{ final long slot = r.get(vocabulary.refBits); if (slot == 0) { %s = 0; } else { final long id = vocabulary.name(slot);\n", ind, expr)
 	for i, v := range en.Variants {
 		kw := "if"
 		if i > 0 {
@@ -462,7 +462,7 @@ func (g *messageGen) arrayRead(f *ir.Field, expr, entry, ind string) {
 
 func (g *messageGen) keyedRead(f *ir.Field, expr, entry, ind string) {
 	el := messageElementField(f)
-	g.pf("%s{ final long n = r.count(%s.shape); for (int i = 0; i < n; i++) { final long ref = r.get(vocabulary.refBits); final long id = vocabulary.name(ref);\n", ind, entry)
+	g.pf("%s{ final long n = r.count(%s.shape); for (int i = 0; i < n; i++) { final long slot = r.get(vocabulary.refBits); final long id = vocabulary.name(slot);\n", ind, entry)
 	for i, v := range f.KeyEnumRef.Variants {
 		kw := "if"
 		if i > 0 {
@@ -477,7 +477,7 @@ func (g *messageGen) keyedRead(f *ir.Field, expr, entry, ind string) {
 
 func (g *messageGen) unionRead(f *ir.Field, expr, ind string) {
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("%s{ final long ref = r.get(vocabulary.refBits); if (ref == 0) { %s.type = 0; } else { final TableVocabulary.Entry arm = vocabulary.entry(ref);\n", ind, expr)
+	g.pf("%s{ final long slot = r.get(vocabulary.refBits); if (slot == 0) { %s.type = 0; } else { final TableVocabulary.Entry arm = vocabulary.entry(slot);\n", ind, expr)
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
 		kw := "if"
