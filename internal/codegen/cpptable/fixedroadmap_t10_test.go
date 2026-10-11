@@ -233,6 +233,12 @@ func TestFixedRoadmapCppT10FloatsComposites(t *testing.T) {
 			pkg:    "vnew_enum_append",
 			body:   cppEnumValuesBody,
 		},
+		{
+			id:     "nested-keyed-arrays/cpp/valid-data",
+			schema: filepath.Join("..", "..", "..", "test", "tables", "VNEW_keyed_array_enum_append.schema"),
+			pkg:    "vnew_keyed_array_enum_append",
+			body:   cppNestedKeyedBody,
+		},
 	}
 	for _, c := range table {
 		t.Run(c.id, func(t *testing.T) {
