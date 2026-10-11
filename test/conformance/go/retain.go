@@ -20,7 +20,11 @@ func retainSurface(lines []line, out string, saves bool) error {
 			continue
 		}
 		if f[0] == "retain-message" {
-			if err := retainMessage(lines, f, out, saves); err != nil {
+			// A retain-message row's root is a plain `table` — `Node` in RT1,
+			// the only root this surface names — which carries no message verbs
+			// (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride the
+			// form), so the driver answers ABSENT and names the reason.
+			if err := spillAbsentReason(out, f[1], "plain table: §3.3"); err != nil {
 				return err
 			}
 			continue
@@ -86,81 +90,4 @@ func retainSurface(lines []line, out string, saves bool) error {
 		}
 	}
 	return nil
-}
-
-func retainMessage(lines []line, f line, out string, saves bool) error {
-	if f[3] != "tblrt1" || f[4] != "Node" {
-		return spillAbsent(out, f[1])
-	}
-	var announcement []byte
-	var err error
-	for _, c := range lines {
-		if c[0] == "connection" && c[1] == f[2] {
-			announcement, err = os.ReadFile(c[4])
-			if err != nil {
-				return err
-			}
-			break
-		}
-	}
-	var vocabulary tblrt1.TableVocabulary
-	vocabulary.Init(make([]tblrt1.TableMessageEntry, 4096))
-	var report tblrt1.TableReport
-	if !tblrt1.AnnounceRead(&vocabulary, announcement, &report) {
-		return fmt.Errorf("%s announcement: %+v", f[1], report)
-	}
-	wire, err := os.ReadFile(f[5])
-	if err != nil {
-		return err
-	}
-	n := tblrt1.NodeLoadMessagesMeasure(&vocabulary, wire)
-	if n < 0 {
-		return fmt.Errorf("%s measure refused", f[1])
-	}
-	raw := make([]byte, n+63)
-	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	region := raw[off : off+uintptr(n)]
-	count := int(wire[1]) + 1
-	values := make([]*tblrt1.Node, count)
-	stores := make([]tblrt1.TableRetain, count)
-	idCapacity := 1 << 17
-	if f[7] != "full" {
-		idCapacity, err = strconv.Atoi(f[7])
-		if err != nil {
-			return err
-		}
-	}
-	for i := range stores {
-		stores[i] = tblrt1.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblrt1.TableRetainId, idCapacity)}
-	}
-	if f[6] == "short" {
-		if _, ok := tblrt1.NodeLoadRetainMessages(values, region, &vocabulary, wire, stores, &report); !ok {
-			return fmt.Errorf("%s capacity probe", f[1])
-		}
-		for i := range stores {
-			stores[i].Bytes = stores[i].Bytes[:max(0, stores[i].Used-1)]
-		}
-	}
-	report = tblrt1.TableReport{}
-	got, ok := tblrt1.NodeLoadRetainMessages(values, region, &vocabulary, wire, stores, &report)
-	if !ok || got != int64(count) || report.Malformed {
-		return fmt.Errorf("%s retaining message load: %+v", f[1], report)
-	}
-	retained, lost, unknown := report.Retained, report.RetainLost, report.Unknown
-	var combined []byte
-	for i, v := range values {
-		size := tblrt1.NodeMeasureRetain(v, &stores[i])
-		if size < 0 {
-			return fmt.Errorf("%s measure retain", f[1])
-		}
-		buffer := make([]byte, size)
-		if tblrt1.NodeSaveRetain(v, &stores[i], buffer, &report) != size {
-			return fmt.Errorf("%s save retain", f[1])
-		}
-		combined = append(combined, buffer...)
-	}
-	if !saves {
-		combined = []byte(fmt.Sprintf("%d,%d,%d %d\n", retained, lost, unknown, report.RetainLost-lost))
-	}
-	return spill(out, f[1], combined)
 }
