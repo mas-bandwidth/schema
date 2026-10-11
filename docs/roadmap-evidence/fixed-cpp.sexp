@@ -10,3 +10,5 @@
 (:id "cpp/R27" :state :unknown :note "the clause is that build/fixedform-corpus/manifest.txt is the single value oracle every leg reads to; the manifest is not built here (no sibling ../serialize runtime), so its rows cannot be asserted")
 (:id "cpp/P3" :state :unknown :note "the clause is hostile bytes, sweep + sanitizer; the sweep is test/tables/fixedform_hostile_bytes.cpp, which needs the sibling ../serialize runtime and a sanitizer build this job cannot make")
 (:id "cpp/P4" :state :unknown :note "the clause is wrong plan goes red; proving it needs two builds (identity and compiled) probed against forged corpus bytes, which needs the sibling ../serialize runtime and the corpus this job does not have")
+(:id "cpp/W7" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t08_test.go: TestFixedRoadmapCppT08WritesConformance/cpp/W7") :tested-revision "450bca8497b22766a123cc97beb3b828d5fc4a71")
+(:id "cpp/R28" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t08_test.go: TestFixedRoadmapCppT08WritesConformance/cpp/R28") :tested-revision "450bca8497b22766a123cc97beb3b828d5fc4a71")
