@@ -116,6 +116,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"enum-values/c/valid-data", cT10EnumValues},
+		{"utf16-values/c/valid-data", cT10UTF16Values},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -158,5 +159,43 @@ fixed table Lineage
         { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
     if ( back[0].tier != TIER_NONE ) { printf( "none tier=%d\n", (int) back[0].tier ); return 1; }
     if ( back[0].seq != 2147483646 ) { printf( "none seq=%d\n", (int) back[0].seq ); return 1; }
+`)
+}
+
+// utf16-values/c/valid-data — "Bounded UTF-16 string fields: valid-data
+// write/read acceptance". §3.4: "`wstring(N)` — 4 (the length in CODE UNITS,
+// int32 LE) + 2N bytes — the length is in UTF-16 CODE UNITS and the payload is
+// two bytes each". The text fills the bound (16 code units), a surrogate pair
+// first so a reader that treats code units as scalars moves a neighbour, and
+// every other code unit distinct.
+func cT10UTF16Values(t *testing.T) {
+	cT10Run(t, `package probe
+fixed table WstringGrow
+{
+    lead  uint32 = 1
+    text  wstring(16)
+    trail uint32 = 2
+}
+`, "WstringGrow", `
+    {
+        int k;
+        v.lead = 0xAAAAAAAAu;
+        v.trail = 0xBBBBBBBBu;
+        v.text[0] = 0xD83D; v.text[1] = 0xDE00;
+        for ( k = 2; k < 16; ++k ) { v.text[k] = (uint16_t) ( 0x100 + k ); }
+        v.text_length = 16;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
+            { printf( "the row moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
+        if ( back[0].text_length != 16 ) { printf( "text_length=%d\n", (int) back[0].text_length ); return 1; }
+        if ( back[0].text[0] != 0xD83D || back[0].text[1] != 0xDE00 )
+            { printf( "the surrogate pair came apart: %04x %04x\n", back[0].text[0], back[0].text[1] ); return 1; }
+        for ( k = 2; k < 16; ++k )
+            if ( back[0].text[k] != (uint16_t) ( 0x100 + k ) )
+                { printf( "code unit %d is %04x\n", k, back[0].text[k] ); return 1; }
+    }
 `)
 }
