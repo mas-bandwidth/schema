@@ -62,6 +62,13 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 // highest retired index, 0 when none is (§5.2).
 func (g *fixedGen) fixedLineage(st *ir.Struct, own FixedLineageEntry) ([]FixedLineageEntry, int) {
 	entries := append([]FixedLineageEntry(nil), g.lineage[st.Name]...)
+	// A RETIRED HASH IS REFUSED BY NAME ONCE, IDEMPOTENTLY (docs/roadmap.sexp
+	// the `elixir/R32` task, "retire for real: a retired version is refused by
+	// name, once, idempotently"): the retired list carries one entry per retired
+	// hash, so a lock that names the same retired layout twice emits what naming
+	// it once does — one retired entry and one floor step. A well-formed lock
+	// holds one entry per layout, so this only keeps a hand-played lock honest.
+	entries = dedupeLineage(entries)
 	last := len(entries) - 1
 	if last < 0 || entries[last].Wire != own.Wire {
 		entries = append(entries, own)
@@ -73,4 +80,19 @@ func (g *fixedGen) fixedLineage(st *ir.Struct, own FixedLineageEntry) ([]FixedLi
 		}
 	}
 	return entries, floor
+}
+
+// dedupeLineage keeps the FIRST entry for each wire hash, in order: a hash is
+// one layout and the lineage names it once.
+func dedupeLineage(entries []FixedLineageEntry) []FixedLineageEntry {
+	out := make([]FixedLineageEntry, 0, len(entries))
+	seen := make(map[uint64]bool, len(entries))
+	for _, e := range entries {
+		if seen[e.Wire] {
+			continue
+		}
+		seen[e.Wire] = true
+		out = append(out, e)
+	}
+	return out
 }
