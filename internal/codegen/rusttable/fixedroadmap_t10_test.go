@@ -19,12 +19,19 @@ package rusttable
 // (`LINEAGE_FIXED_DEFAULTS`), so a defaults row is proved by writing the values
 // the declaration names and holding the bytes to that image.
 //
-// `union-field-arms` is proved by the SUPPORTED shape — arms that are named
-// types holding a scalar, a text and an array field (docs/roadmap.sexp's
-// "Text inside a type arm is a different supported shape") — because a DIRECT
-// text or array arm payload is refused by the shared fixed-form gate
-// (ir.TableFixedSupported, ir/fixedform.go). The direct scalar arm is proved
-// too.
+// `union-field-arms` is NOT among these subtests: its node asks for a DIRECT
+// text or array arm payload (docs/roadmap.sexp, union-field-arms/rust/valid-data
+// `:remaining` "Implement direct text/byte-buffer/array arm layout and
+// emitters"), and this backend writes and reads neither. The shared gate
+// ADMITS them — ir.TableFixedSupported (ir/fixedform.go:241) refuses only a
+// pointer, map, unbounded array, keyed array or optional arm, so a direct
+// string(N) or [..N]T arm falls through to true — but this backend's own
+// unionRowable (internal/codegen/rusttable/cook.go:391) refuses those same
+// arms, and the effect is a SILENT drop of the WHOLE fixed form: GenerateLineage
+// returns only build_version.rs, no `<base>_fixed.rs`. The supported shape (a
+// text or array nested inside a type arm) is the sibling task union-values; the
+// direct scalar arm alone does not prove a title that also names text and
+// array. That row is reported :unknown in docs/roadmap-evidence/fixed-rust.sexp.
 //
 // `payload-free-arms` is also NOT among these subtests: the shared eligibility
 // rule admits a payload-free arm (ir/fixedform.go's TableFixedSupported skips a
@@ -189,41 +196,6 @@ fn main() {
     v.p = 0b101;
     let o = round(v);
 
-    // union-field-arms: each supported arm shape under its own tag.
-    let mut v1 = LineageRow::default();
-    v1.picks_count = 1;
-    v1.picks[0].set_sa(ScalarArmRow { n: -5 });
-    let scalar_ok = round(v1).picks[0].sa().map(|a| a.n) == Some(-5);
-    let mut v2 = LineageRow::default();
-    v2.picks_count = 1;
-    v2.picks[0].set_ta({
-        let mut t = TextArmRow::default();
-        t.s_length = 6;
-        t.s[..6].copy_from_slice(b"abcdef");
-        t
-    });
-    let text_ok = round(v2).picks[0]
-        .ta()
-        .map(|t| (t.s_length, t.s[..t.s_length as usize].to_vec()))
-        == Some((6, b"abcdef".to_vec()));
-    let mut v3 = LineageRow::default();
-    v3.picks_count = 1;
-    v3.picks[0].set_aa({
-        let mut a = ArrayArmRow::default();
-        a.a_count = 3;
-        a.a = [i32::MIN, 0, i32::MAX];
-        a
-    });
-    let array_ok = round(v3).picks[0].aa().map(|a| (a.a_count, a.a[2])) == Some((3, i32::MAX));
-    let mut v3b = LineageRow::default();
-    v3b.sc.set_cnt(i32::MAX);
-    let direct_ok = round(v3b).sc.cnt() == Some(i32::MAX);
-    say(
-        "union-field-arms",
-        scalar_ok && text_ok && array_ok && direct_ok,
-        "a scalar, text or array arm payload did not land under its tag",
-    );
-
     // union-arrays: the count then the arm images.
     let union_ok = o.picks_count == 2
         && o.picks[0].sa().map(|a| a.n) == Some(i32::MIN)
@@ -346,7 +318,6 @@ func TestFixedRoadmapRustT10CompositesOptionals(t *testing.T) {
 		id  string
 		say string
 	}{
-		{"union-field-arms/rust/valid-data", "union-field-arms"},
 		{"union-arrays/rust/valid-data", "union-arrays"},
 		{"optional-scalars/rust/valid-data", "optional-scalars"},
 		{"optional-arrays/rust/valid-data", "optional-arrays"},
