@@ -108,6 +108,7 @@ func TestFixedRoadmapDartT07Writes(t *testing.T) {
 		{"dart/W3", t07W3},
 		{"dart/W5", t07W5},
 		{"dart/W8", t07W8},
+		{"dart/W7", t07W7},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -303,5 +304,50 @@ func t07W8(t *testing.T) {
 	}
 	if name.dst != name.aux-fixedCountBytes {
 		t.Errorf("W8: the text Dst (%d) is not the length field before the buffer (Aux %d - 4): the TEXT row is the other way round", name.dst, name.aux)
+	}
+}
+
+// t07W7: W7 "arg and meta are two lanes". docs/FIXED-FORM-ALGORITHM.md §4.1:
+// "`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never
+// share one. (fix 12) A `string(N)` under a union arm needs both, and one lane
+// gives whichever was stamped last: a byte string under arm `2` read as WIDE,
+// or an entry that runs only when the tag equals the flavour — under the wrong
+// arm." A guarded text entry carries the arm's ordinal in `arg` and the text
+// flavour in `meta`, and the two numbers differ.
+func t07W7(t *testing.T) {
+	src, st := t07GuardSrc(t)
+	plan := fixedIdentityPlan(st)
+	found := false
+	for _, e := range plan {
+		if e.op != fixedOpText || e.guard == fixedNoGuard {
+			continue
+		}
+		found = true
+		if e.arg != 2 {
+			t.Errorf("W7: the guarded text entry's arg is %d, want the arm ordinal 2", e.arg)
+		}
+		if e.meta != fixedTextUtf8 {
+			t.Errorf("W7: the guarded text entry's meta is %d, want the text flavour %d", e.meta, fixedTextUtf8)
+		}
+		if e.arg == e.meta {
+			t.Errorf("W7: arg and meta are both %d, so one lane could carry them", e.arg)
+		}
+	}
+	if !found {
+		t.Fatal("W7: no guarded text entry on the identity plan, so the two-lane clause cannot bite")
+	}
+	rows := t02Rows(t, src, "guardFixedIdentity")
+	sawText := false
+	for _, row := range rows {
+		if len(row) < 9 || row[0] != fixedOpText || row[5] == fixedNoGuard {
+			continue
+		}
+		sawText = true
+		if row[6] != 2 || row[7] != fixedTextUtf8 {
+			t.Errorf("W7: the emitted row is (arg %d, meta %d), want the ordinal 2 and the flavour %d in TWO lanes", row[6], row[7], fixedTextUtf8)
+		}
+	}
+	if !sawText {
+		t.Fatal("W7: the emitted identity plan carries no guarded text row")
 	}
 }
