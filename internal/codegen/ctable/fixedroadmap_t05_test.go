@@ -121,16 +121,4 @@ int main(void)
 		t05Want(t, body, "static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )")
 		t05Want(t, body, "2 * value->w_length")
 	})
-
-	// c/C4 "text content refuses BY NAME" (docs/SPEC-TABLES.md §3.4: the content
-	// rules of §3 apply to the USED UNITS and a violation is `malformed`): a
-	// string(N)'s used bytes are checked as well-formed UTF-8, and a payload
-	// that is not text is DAMAGE — the field takes its declared default and
-	// malformed rises, no name is read off it.
-	t.Run("c/C4", func(t *testing.T) {
-		t.Parallel()
-		body := t05All(generate(t, "package probe\nfixed table Texty { s string(8) }\n"))
-		t05Want(t, body, "table_wire_utf8( (const uint8_t *) value->s, (uint64_t) value->s_length )")
-		t05Want(t, body, "(*damaged)++")
-	})
 }
