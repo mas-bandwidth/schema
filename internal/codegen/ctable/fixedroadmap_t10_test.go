@@ -120,6 +120,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		{"byte-buffers/c/valid-data", cT10ByteBuffers},
 		{"keyed-arrays/c/valid-data", cT10KeyedArrays},
 		{"nested-keyed-arrays/c/valid-data", cT10NestedKeyedArrays},
+		{"union-field-arms/c/valid-data", cT10UnionFieldArms},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -300,6 +301,66 @@ fixed table Lineage
             for ( j = 0; j < 2; ++j )
                 if ( back[0].rows[i].cards[j] != (uint32_t) ( 0x100u * ( i + 1 ) + j ) )
                     { printf( "row %d card %d is %08x\n", i, j, back[0].rows[i].cards[j] ); return 1; }
+    }
+`)
+}
+
+// union-field-arms/c/valid-data — "Union arms holding scalar, text or array
+// fields: valid-data write/read acceptance" (§2.6; §3.4 constant arm storage).
+// §3.4: "a UNION — the tag ordinal at its tag type's storage width + max over
+// the arms of C(arm) — tag, then the WIDEST ARM". The selected arm's payload
+// holds a scalar, a bounded text field and a fixed array, each on non-default
+// and boundary values, so a leg that dropped one part of the arm's storage
+// reads a stray default.
+//
+// THE ARMS HERE ARE TYPE ARMS — a text or array field nested INSIDE a type the
+// arm names — which is the shape this leg admits. A DIRECT text, bytes or array
+// arm payload (`union Pick { label string(64) }`) is refused by the shared
+// fixed-form gate (ir/fixedform.go TableFixedSupported), a separate, excluded
+// case the roadmap records as union-field-arms/c :implementation :partial.
+func cT10UnionFieldArms(t *testing.T) {
+	cT10Run(t, `package probe
+type Alpha
+{
+    x    int32 = 0
+    name string(8)
+    arr  [4]int32
+}
+type Beta { y int32 = 0 }
+union Pick
+{
+    alpha Alpha
+    beta  Beta
+}
+fixed table Lineage
+{
+    pick Pick
+    seq  int32 = 0
+}
+`, "Lineage", `
+    {
+        int k;
+        static const char msg[] = "fixed";
+        v.pick.type = PICK_TYPE_ALPHA;
+        v.pick.as.alpha.x = -2147483647;
+        memcpy( v.pick.as.alpha.name, msg, sizeof( msg ) );
+        v.pick.as.alpha.name_length = 5;
+        for ( k = 0; k < 4; ++k ) { v.pick.as.alpha.arr[k] = (int32_t) ( 1000 + k ); }
+        v.seq = 2147483647;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].pick.type != PICK_TYPE_ALPHA ) { printf( "arm=%d\n", (int) back[0].pick.type ); return 1; }
+        if ( back[0].pick.as.alpha.x != -2147483647 ) { printf( "x=%d\n", (int) back[0].pick.as.alpha.x ); return 1; }
+        if ( back[0].pick.as.alpha.name_length != 5 )
+            { printf( "name_length=%d\n", (int) back[0].pick.as.alpha.name_length ); return 1; }
+        if ( memcmp( back[0].pick.as.alpha.name, msg, 5 ) != 0 )
+            { printf( "name=%.*s\n", (int) back[0].pick.as.alpha.name_length, back[0].pick.as.alpha.name ); return 1; }
+        for ( k = 0; k < 4; ++k )
+            if ( back[0].pick.as.alpha.arr[k] != (int32_t) ( 1000 + k ) )
+                { printf( "arr[%d]=%d\n", k, (int) back[0].pick.as.alpha.arr[k] ); return 1; }
+        if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
     }
 `)
 }
