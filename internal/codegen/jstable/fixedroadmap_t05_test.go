@@ -117,7 +117,10 @@ func t05RoundTrip(t *testing.T, olderName, newerName, check string) {
 	if olderEntry.Wire != own.Wire {
 		lineage = []string{older}
 	}
-	read := fmt.Sprintf(t05ReadClean, file, check)
+	// EVERY backward read owes the §5.4 clean-read predicate, so the round trip
+	// emits it unconditionally: `check` is the row's own value clause on top
+	// (empty for a lane whose whole clause IS the counter census, R19).
+	read := fmt.Sprintf(t05ReadClean, file, t05CleanRead+check)
 	if out, err := jsRunVersionProbe(t, node, newer, lineage, 0, table, read); err != nil {
 		t.Fatalf("newer reader, %s: %v\n%s", newerName, err, out)
 	}
