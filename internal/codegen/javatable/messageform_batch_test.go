@@ -76,6 +76,34 @@ func TestMessageFormBatchJava(t *testing.T) {
 			})
 		}
 	})
+	t.Run("2.2-named-batch-refusals", func(t *testing.T) {
+		t.Parallel()
+		u := loadUnitDir(t, root, "tables/backend")
+		runBatchJava(t, u, `
+    public static void main(String[] args) {
+        LoginRequestFixed.Value[] values=new LoginRequestFixed.Value[257];byte[] image=new byte[LoginRequestFixed.bodyBytes];
+        TableVocabulary.Report r=new TableVocabulary.Report();
+        // §3.3: M above 256 refuses at measure time, with -1 and batch_too_large.
+        if(TableVocabulary.loginRequestMeasureMessages(values,257,image,r)!=-1||!r.refused||!"batch_too_large".equals(r.reason))fail("measure capacity");
+        r=new TableVocabulary.Report();if(TableVocabulary.loginRequestSaveMessages(values,257,new byte[2],image,r)!=-1||!r.refused||!"batch_too_large".equals(r.reason))fail("save capacity");
+        r=new TableVocabulary.Report();
+        // §3.3: a peer that never announced is refused, not malformed, without decoding.
+        TableVocabulary.loginRequestLoadMessages(values,257,new byte[]{2,0,0},new TableVocabulary(),image,r);
+        if(!r.refused||r.malformed||!"no_vocabulary".equals(r.reason))fail("no vocabulary");
+        TableVocabulary v=new TableVocabulary();v.reset(4096);TableVocabulary.announceRead(v,TableVocabulary.tableAnnouncement,new TableVocabulary.Report());
+        // §3.3: "A caller with more bodies calls again"; the largest single batch is 256.
+        LoginRequestFixed.Value[] edge=new LoginRequestFixed.Value[256];
+        for(int i=0;i<edge.length;i++){edge[i]=new LoginRequestFixed.Value();edge[i].playerId=7;}
+        int length=TableVocabulary.loginRequestMeasureMessages(edge,256,image,new TableVocabulary.Report());byte[] batch=new byte[length];
+        if(TableVocabulary.loginRequestSaveMessages(edge,256,batch,image,new TableVocabulary.Report())!=length||(batch[1]&255)!=255)fail("256 body count");
+        r=new TableVocabulary.Report();
+        if(TableVocabulary.loginRequestLoadMessages(edge,256,batch,v,image,r)!=256||r.malformed||r.refused)fail("256 body load");
+        r=new TableVocabulary.Report();
+        // §3.3: read-side capacity refusal reports the wire M before reading a body.
+        if(TableVocabulary.loginRequestLoadMessages(values,0,new byte[]{2,0},v,image,r)!=1||!r.refused||r.malformed||!"batch_too_large".equals(r.reason))fail("read capacity");
+    }
+`)
+	})
 
 }
 
