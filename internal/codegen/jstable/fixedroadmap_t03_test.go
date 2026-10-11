@@ -16,6 +16,7 @@ package jstable
 // already paid for.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -297,6 +298,70 @@ fixed table T { inner Inner }
 	}
 }
 
+// ---- js/R3 ------------------------------------------------------------------
+
+// t03JsR3 holds R3 to §5.2's one number: "R.floor := 1 + the highest index
+// marked RETIRED in lock.lineage(T), or 0 when none is", emitted beside the
+// lineage, and to LOAD step 6: "if i < R.floor: REFUSE layout_unsupported,
+// reporting h". The arithmetic and the emitted site are read here.
+func t03JsR3(t *testing.T) {
+	for _, tc := range []struct{ retire, want int }{
+		{0, 0}, // none retired: the floor is 0
+		{1, 1}, // entry 0 retired: the floor is 1
+		{2, 2}, // entries 0 and 1 retired: 1 + the HIGHEST retired index
+	} {
+		text, _ := t03JsRetire(t, tc.retire)
+		t03JsHas(t, text, fmt.Sprintf("export const LineageFixedFloor = %d;", tc.want), "R3 1 + the highest retired index")
+		load := t03JsLoad(t, text, "Lineage")
+		t03JsHas(t, load, "if (pick < LineageFixedFloor) {", "R3 below the floor is a comparison of the index")
+		t03JsHas(t, load, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi);", "R3 below the floor is layout_unsupported")
+	}
+}
+
+// ---- js/R32 -----------------------------------------------------------------
+
+// t03JsR32 holds R32 to §5.2's retirement, read off the emitted load: the
+// operator's mark is laid down per entry (`// RETIRED:`), the floor check is
+// placed ONCE, after the hash select and BEFORE the byte comparison or any
+// record, and its whole body is the named refusal — a pure read of the picked
+// index, so a second load of the same file answers the same name. REFUSE is
+// TOTAL: the runtime's reset zeroes every counter.
+func t03JsR32(t *testing.T) {
+	text, entries := t03JsRetire(t, 1)
+	t03JsHas(t, text, "// RETIRED: "+t03JsRetireReason, "R32 the retired entry's mark is laid down")
+	t03JsHas(t, text, fmt.Sprintf("0x%08x, 0x%08x", uint32(entries[0].Wire), uint32(entries[0].Wire>>32)), "R32 the retired entry keeps its hash in the lineage")
+	load := t03JsLoad(t, text, "Lineage")
+	if n := strings.Count(load, "if (pick < LineageFixedFloor) {"); n != 1 {
+		t.Errorf("R32: the floor is tested %d times, want once", n)
+	}
+	at := strings.Index(load, "if (pick < LineageFixedFloor) {")
+	known := strings.Index(load, "const known = LineageFixedKnown[pick];")
+	bytes := strings.Index(load, "layoutBytes !== known.layoutBytes")
+	records := strings.Index(load, "for (let k = 0; k < n; k++)")
+	if at < 0 || known < 0 || bytes < 0 || records < 0 {
+		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	if !(at < known && known < bytes && bytes < records) {
+		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	// ONCE AND IDEMPOTENT: the guarded body reads the picked index and returns
+	// the named refusal; nothing before it moves a counter or writes a byte.
+	line := load[at:]
+	if end := strings.Index(line, "\n"); end >= 0 {
+		line = line[:end]
+	}
+	for _, banned := range []string{"report.unknown", "report.widened", "values[", "copy("} {
+		if strings.Contains(line, banned) {
+			t.Errorf("R32: the floor refusal is not a pure named refusal (%q):\n%s", banned, line)
+		}
+	}
+	t03JsHas(t, line, "TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi)", "R32 the guarded body is the named refusal")
+	for _, zero := range []string{"report.malformed = false;", "report.refused = 0;", "report.unknown = 0;", "report.kindMismatch = 0;", "report.clamped = 0;", "report.widened = 0;", "report.duplicate = 0;", "report.layoutHash = 0n;"} {
+		t03JsHas(t, fixedRuntime, zero, "R32 REFUSE is TOTAL")
+	}
+	t03JsHas(t, fixedRuntime, "report.refused = refusal;", "R32 the refusal names itself")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
@@ -308,6 +373,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{id: "js/R6", check: t03JsR6},
 		{id: "js/R14", check: t03JsR14},
 		{id: "js/R22", check: t03JsR22},
+		{id: "js/R3", check: t03JsR3},
+		{id: "js/R32", check: t03JsR32},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
