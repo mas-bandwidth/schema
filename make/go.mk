@@ -159,6 +159,55 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,r2,tblr2)
 	@touch $@
 
+# THE CARDS UNIT (schema-cards-c01): its own generated Go module plus the two
+# handwritten files that own the generated symbols. cards-generate produces ONLY
+# build/tables-generated-go/cards, cleaning that owned output first so a deleted
+# symbol cannot survive a regeneration. The source go.mod is NOT copied; the
+# handwritten facade and test are copied by name, never a recursive wildcard.
+.PHONY: cards-generate cards-test cards-fuzz-fixture cards-wire-fuzz cards-fuzz
+CARDS_FUZZ_TIME ?= 30s
+cards-generate: bin/schema
+	@rm -rf build/tables-generated-go/cards
+	@mkdir -p build/tables-generated-go/cards
+	./bin/schema generate --lang go --out build/tables-generated-go/cards tables/cards
+	$(call go_table_module,cards,cards)
+	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
+	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
+	@mkdir -p build/tables-generated-go/cards/fuzz
+	@if [ -f tables/cards/fuzz/card-populated.wire ]; then cp tables/cards/fuzz/card-populated.wire build/tables-generated-go/cards/fuzz/card-populated.wire; fi
+	@if [ -f tables/cards/fuzz/card-populated.json ]; then cp tables/cards/fuzz/card-populated.json build/tables-generated-go/cards/fuzz/card-populated.json; fi
+
+cards-test: cards-generate
+	./bin/schema check tables/cards
+	cd build/tables-generated-go/cards && go vet ./... && go test -v -count=1 -timeout 600s ./...
+	go test -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
+
+# The populated fixture is created ONLY under an explicit update flag, into the
+# named source fuzz directory; ordinary tests read the committed evidence and
+# fail when it is missing (docs/SPEC-TABLES.md §16, §7).
+cards-fuzz-fixture: cards-generate
+	cd build/tables-generated-go/cards && CARDS_UPDATE_FIXTURE=1 go test -run '^TestCardFixtureWrite$$' -count=1 -timeout 600s .
+
+# THE CARD WIRE-FUZZ GATE: the existing oracle harness over the Card root only.
+# --vectors '' keeps the default pinned vectors (other units) out of this
+# Card-only manifest. The gate refuses a zero-coverage roster: the harness
+# errors when the leg has a codec for none of the named roots, and the greps
+# below hold the nonzero seed/mutant claim explicitly.
+cards-wire-fuzz: build/conformance-harness build/conformance-go
+	@timeout $(CARDS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-go wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-wire-fuzz.log
+
+cards-fuzz: cards-wire-fuzz
+
+test-go: cards-test cards-wire-fuzz
+
 # one generated unit's module wiring (build wiring, not schema output — the
 # emitter writes only .go files)
 define go_table_module
@@ -250,7 +299,7 @@ generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
-build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
 
@@ -265,7 +314,7 @@ build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conforman
 # is in test/conformance/go/driver-be: a block and a cook are produced in the
 # order of the build that wrote them, so a big-endian reader is CORRECT to
 # refuse this corpus's fixtures and has no neutral verdict to give.
-build/conformance-go-be: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+build/conformance-go-be: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
 	@mkdir -p build
 	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -o ../../../$@ .
 
