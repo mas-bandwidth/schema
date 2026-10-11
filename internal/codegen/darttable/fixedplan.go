@@ -37,6 +37,25 @@ const (
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
 const fixedNoGuard = -1
 
+// fixedMaxGuardChain is the ONLY BOUND THE GUARD CHAIN HONOURS, and it is the
+// layout's own: ir.TableFixedMaxDepth, the 64 nested bodies every runtime holds
+// the wire to (docs/FIXED-FORM-ALGORITHM.md §4.1's guard chain, §5.2's
+// layout_malformed). A chain longer than it is a layout no conforming reader
+// takes, so it is refused rather than carried.
+const fixedMaxGuardChain = ir.TableFixedMaxDepth
+
+// fixedGuardLink is ONE LINK of a guard chain: the tag byte the entry answers
+// to, the ordinal it must hold, and the tag's width in bytes. The links of an
+// entry read OUTERMOST FIRST, so link 0 is the outermost union's tag — the one
+// that decides whether any of the entry is there at all
+// (docs/FIXED-FORM-ALGORITHM.md §4.1: "an arm inside an arm answers to the
+// OUTER tag too").
+type fixedGuardLink struct {
+	guard int64
+	arg   int
+	argw  int
+}
+
 // fixedPlanEntry is one plan entry, in the nine lanes the Dart runtime reads
 // it through.
 //
@@ -56,8 +75,16 @@ type fixedPlanEntry struct {
 	guard int64
 	arg   int
 	argw  int
-	meta  int
-	note  string
+	// chainAt and chainN ARE offset+count INTO THE GUARD CHAIN POOL: the run of
+	// (guard, arg, argw) links, OUTERMOST FIRST, that the entry answers to. An
+	// entry under no union carries an empty run. It is the chain and not a
+	// second pair of lanes because a third nested union has a third condition
+	// the two lanes cannot carry (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6),
+	// and the pool's only bound is the layout's 64.
+	chainAt int
+	chainN  int
+	meta    int
+	note    string
 }
 
 type fixedPlanBuild struct {
@@ -66,25 +93,73 @@ type fixedPlanBuild struct {
 	// beneath it. One outside a union; the union case saves it, sets its own and
 	// restores it, so a nested union's arms carry their OWN tag's width.
 	argw int
+	// guards is THE OPEN GUARD CHAIN, OUTERMOST FIRST: the unions whose arm the
+	// walk is inside. A union appends its own link before it recurses an arm and
+	// pops it after, so a nested union's arm reads the OUTER tag first and its
+	// own second.
+	guards []fixedGuardLink
+	// pool is THE GUARD CHAIN POOL: the links every entry's run indexes into.
+	pool    []fixedGuardLink
+	tooDeep bool
 }
 
 func (p *fixedPlanBuild) push(e fixedPlanEntry) {
 	if e.argw = p.argw; e.argw <= 0 {
 		e.argw = 1
 	}
+	if len(p.guards) > 0 {
+		e.chainAt, e.chainN = p.chainOffset()
+	}
 	p.entries = append(p.entries, e)
+}
+
+// chainOffset lays the open chain into THE GUARD CHAIN POOL and answers its
+// (offset, count), sharing an existing identical run so two entries under the
+// same chain are one run and can still coalesce. A chain past the layout's 64
+// is truncated to it and recorded as too deep.
+func (p *fixedPlanBuild) chainOffset() (int, int) {
+	n := len(p.guards)
+	if n > fixedMaxGuardChain {
+		p.tooDeep = true
+		n = fixedMaxGuardChain
+	}
+	run := p.guards[:n]
+	for i := 0; i+n <= len(p.pool); i++ {
+		match := true
+		for j := 0; j < n; j++ {
+			if p.pool[i+j] != run[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i, n
+		}
+	}
+	at := len(p.pool)
+	p.pool = append(p.pool, run...)
+	return at, n
 }
 
 // fixedIdentityPlan is this type's leaf walk, coalesced — the same coalescer
 // the plan compiler runs, so the two are one array read by one loop.
 func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
+	plan, _ := fixedIdentityPlanWithChain(st)
+	return plan
+}
+
+// fixedIdentityPlanWithChain is fixedIdentityPlan with THE GUARD CHAIN POOL it
+// indexes into: every entry's (chainAt, chainN) names a run of (guard, arg,
+// argw) links, OUTERMOST FIRST, and the only bound on a run is the layout's 64
+// (docs/FIXED-FORM-ALGORITHM.md §4.1).
+func fixedIdentityPlanWithChain(st *ir.Struct) ([]fixedPlanEntry, []fixedGuardLink) {
 	p := &fixedPlanBuild{argw: 1}
 	var at int64
 	for _, f := range st.Fields {
 		fixedPlanField(p, f, at)
 		at += fixedFieldBytes(f)
 	}
-	return fixedCoalesce(p.entries)
+	return fixedCoalesce(p.entries), p.pool
 }
 
 // fixedPlanField walks one field of a table at its offset in the body image.
@@ -158,7 +233,13 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			saved := p.argw
 			p.argw = int(tag)
 			for i, v := range r.Variants {
+				// THE ARM'S OWN GUARD IS THIS UNION'S TAG, and it is APPENDED
+				// to whatever chain is already open, so an arm inside an arm
+				// reads the OUTER tag first and lands only when BOTH hold
+				// (docs/FIXED-FORM-ALGORITHM.md §4.1).
+				p.guards = append(p.guards, fixedGuardLink{guard: src, arg: i + 1, argw: int(tag)})
 				fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+				p.guards = p.guards[:len(p.guards)-1]
 			}
 			p.argw = saved
 			return
@@ -273,7 +354,8 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 		if n := len(out); n > 0 {
 			p := &out[n-1]
 			if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-				p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
+				p.argw == e.argw && p.chainAt == e.chainAt && p.chainN == e.chainN &&
+				p.src+p.size == e.src && p.dst+p.size == e.dst {
 				p.size += e.size
 				continue
 			}
