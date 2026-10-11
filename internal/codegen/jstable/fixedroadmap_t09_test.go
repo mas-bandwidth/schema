@@ -9,16 +9,17 @@ package jstable
 // generated module under the leg's own node, with non-default and boundary
 // values, asserted on the value that comes back.
 //
-// A payload-free-arms row carries a void (payload-free) union arm:
-// ir.TableFixedSupported refuses it by name (ir/fixedform.go:259-260, "a void
-// arm has no storage this walk can name") and the go sibling is likewise unknown
-// (docs/roadmap-evidence/fixed-go.sexp:34), so that row carries an `unknown`
-// verdict and no subtest here. A union-field-arms row carries a NAMED struct arm
-// whose payload holds a bounded string and a bounded array — the shape the go
-// sibling proves green (internal/codegen/gotable/fixedroadmap_t11_test.go) and
-// the one docs/roadmap.sexp:6731 calls "a separate supported shape" — so the
-// union-field-arms subtest below writes and reads text and an array inside an
-// arm's struct payload.
+// The payload-free-arms/js/valid-data task carries a void (payload-free) union
+// arm: ir.TableFixedSupported refuses it by name (ir/fixedform.go:259-260, "a
+// void arm has no storage this walk can name") and the go sibling is likewise
+// unknown (docs/roadmap-evidence/fixed-go.sexp:34), so that task carries an
+// `unknown` verdict and no subtest here. The union-field-arms/js/valid-data task
+// carries a NAMED struct arm whose payload holds a bounded string and a bounded
+// array — the shape the go sibling proves green
+// (internal/codegen/gotable/fixedroadmap_t11_test.go) and the one
+// docs/roadmap.sexp:6731 calls "a separate supported shape" — so the
+// union-field-arms/js/valid-data subtest below writes and reads text and an
+// array inside an arm's struct payload.
 
 import (
 	"testing"
@@ -47,11 +48,11 @@ func TestFixedRoadmapJsT09UnionsOptionals(t *testing.T) {
 		id  string
 		run func(t *testing.T)
 	}{
-		{"union-field-arms", t09UnionFieldArms},
-		{"union-arrays", t09UnionArrays},
-		{"optional-arrays", t09OptionalArrays},
-		{"scalar-defaults", t09ScalarDefaults},
-		{"text-bytes-flags-defaults", t09TextBytesFlagsDefaults},
+		{"union-field-arms/js/valid-data", t09UnionFieldArms},
+		{"union-arrays/js/valid-data", t09UnionArrays},
+		{"optional-arrays/js/valid-data", t09OptionalArrays},
+		{"scalar-defaults/js/valid-data", t09ScalarDefaults},
+		{"text-bytes-flags-defaults/js/valid-data", t09TextBytesFlagsDefaults},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -61,7 +62,7 @@ func TestFixedRoadmapJsT09UnionsOptionals(t *testing.T) {
 	}
 }
 
-// t09UnionFieldArms: union-field-arms [capability] "Union arms holding scalar,
+// t09UnionFieldArms: union-field-arms/js/valid-data [capability] "Union arms holding scalar,
 // text or array fields" (§3.4: an arm's payload is a by-value record at its
 // bound, so a scalar field, a bounded text field and a bounded array each land
 // under their own tag). The text arm writes its full declared width and the
@@ -139,7 +140,7 @@ if (!(back3[0].Body.Type === BodyType.Aa && back3[0].Body.Aa.ACount === 3 &&
 	t09Probe(t, src, "T", probe)
 }
 
-// t09UnionArrays: union-arrays [capability] "Arrays of unions" (§3.4: an array
+// t09UnionArrays: union-arrays/js/valid-data [capability] "Arrays of unions" (§3.4: an array
 // of a union type is the tag and the widest arm per element). A fixed-length
 // array carries every element and a counted array carries up to its bound, so
 // both an unselected arm and each selected arm round trip, with an element at a
@@ -200,7 +201,7 @@ if (!(back[0].History[2].Type === ShapeType.None)) { fail("union-arrays: the cou
 	t09Probe(t, src, "T", probe)
 }
 
-// t09ScalarDefaults: scalar-defaults [capability] "Scalar and enum defaults"
+// t09ScalarDefaults: scalar-defaults/js/valid-data [capability] "Scalar and enum defaults"
 // (§3.4: a `fixed table`'s scalar and enum fields carry their declared default
 // at construction and on every reset). The value is read back at the type's
 // BOUNDARY — int32 min and a float32 well past the mantissa — so a default
@@ -240,7 +241,7 @@ if (!(back[0].G === Grade.First)) { fail("scalar-defaults: enum value did not ro
 	t09Probe(t, src, "T", probe)
 }
 
-// t09TextBytesFlagsDefaults: text-bytes-flags-defaults [capability] "String,
+// t09TextBytesFlagsDefaults: text-bytes-flags-defaults/js/valid-data [capability] "String,
 // byte-buffer and flags defaults" (§3.4: a string/bytes field's declared value
 // rides behind its length and a flags field's declared set rides as its mask).
 // The write is the field's full declared width and the flags set is the mask's
@@ -288,7 +289,7 @@ if (!(back[0].M === (MarksOne | MarksTwo | MarksThree))) { fail("flags-defaults:
 	t09Probe(t, src, "T", probe)
 }
 
-// t09OptionalArrays: optional-arrays [capability] "Optional arrays" (§3.4: an
+// t09OptionalArrays: optional-arrays/js/valid-data [capability] "Optional arrays" (§3.4: an
 // optional array's present byte precedes a count and payload, so both ABSENT and
 // PRESENT-at-boundary must round trip). One record carries no array at all and
 // the other carries the declared maximum of it, with the element at int32's
