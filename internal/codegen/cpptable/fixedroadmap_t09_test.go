@@ -202,6 +202,17 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.fx = ( value.fx < -65536 ) ? -65536 : ( ( value.fx > 65536 ) ? 65536 : value.fx );",
 			},
 		},
+		{
+			// "Unsigned fixed-point fields". ufixed(16, 16) is 32 wire bits in a
+			// uint32 storage with the range 0..1 held to the raw literal 65536.
+			id: "unsigned-fixed-point/cpp/valid-data",
+			want: []string{
+				"uint32_t ufx = 0;",
+				"TableFixedPut32( b + 87, (uint32_t) value.ufx );",
+				"clamped += ( value.ufx > 65536 );",
+				"value.ufx = ( value.ufx > 65536 ) ? 65536 : value.ufx;",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
