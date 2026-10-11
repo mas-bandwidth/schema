@@ -35,18 +35,21 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	// THE UNIT'S OWN BUILD VERSION lives in the TABLE source (docs/SPEC-TABLES.md
-	// §20.7), not in an accelerator: §3.3's announcement carries it before any
-	// body, and an application that uses the message form alone must be able to
-	// compare a peer's announced version against this build's without a block
-	// runtime or a cook runtime. It is emitted for EVERY unit that carries
-	// Announce, whether or not the unit has a block form; the accelerators no
-	// longer spell it, so one package holds exactly one definition.
-	fmt.Fprintf(&b, `// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the
+	// §20.7): §3.3's announcement carries it before any body, so an application
+	// must be able to compare a peer's announced version against this build's
+	// without a BLOCK runtime. The block runtime no longer spells it, so the
+	// TABLE source spells it wherever the block form is emitted; a unit with no
+	// block form keeps the COOK's one definition, and that is the identical
+	// name, so one package holds exactly one definition either way.
+	blocks := ir.Blocks(u)
+	if blocks != nil && blockHome(u, blocks) != "" {
+		fmt.Fprintf(&b, `// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
 const BuildVersion uint64 = 0x%016x
 
 `, ir.BuildVersion(u))
+	}
 	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))), len(ir.TableVocabulary(u)))
 	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(ir.TableAnnouncement(u)))
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")

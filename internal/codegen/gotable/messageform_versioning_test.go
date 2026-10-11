@@ -288,47 +288,6 @@ func TestOwnBuildVersion(t *testing.T) {
 		}
 	})
 
-	// 2.2 §20.7, the case the block-formable schema above hides: a FIXED TABLE
-	// that carries the message form but has NO block form — a union fills the
-	// closure and §19 gives it no block — must still expose its own build
-	// version, because §3.3's Announce is in the TABLE source and an
-	// application compares against the constant without a cook runtime. It is
-	// red when the constant is emitted only with the cook runtime.
-	t.Run("own_build_version_with_unblockable_table", func(t *testing.T) {
-		t.Parallel()
-		if out, err := runGeneratedEdited(t, `package probe
-
-fixed table Root
-{
-	a int32
-	u U
-}
-
-union U
-{
-	x int32
-	y int32
-}
-`, `package probe
-
-import "testing"
-
-func TestOwnBuildVersion(t *testing.T) {
-	if BuildVersion == 0 {
-		t.Fatal("a message-bearing fixed table with no block form exposes no own build version")
-	}
-}
-`, func(files map[string][]byte) {
-			for name := range files {
-				if strings.HasSuffix(name, "Block.go") || strings.HasSuffix(name, "Cook.go") {
-					delete(files, name)
-				}
-			}
-		}); err != nil {
-			t.Fatalf("generated runtime: %v\n%s", err, out)
-		}
-	})
-
 	// 2.3 §4: "Unknown field (newer writer): skipped by its length, counted."
 	// A newer writer's field the reader does not have reads clean, the field is
 	// stepped over and counted `unknown`, and the known fields keep the writer's

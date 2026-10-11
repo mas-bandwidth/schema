@@ -876,11 +876,6 @@ func tableUtf8Clamp(data []byte, n int64) int64 {
 	return n
 }
 
-// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the
-// one digest a block carries and BlockOpen compares, and the fact §3.3's
-// announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x12bc9e07fe351b2c
-
 const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 75
