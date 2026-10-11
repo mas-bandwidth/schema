@@ -449,6 +449,69 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- the MESSAGE surface (docs/SPEC-TABLES.md §3.3) ----------------------
+//
+// `message` is the one surface that reads TWO files (test/conformance/
+// README.md): a message's id table lives on the connection, announced once,
+// so the driver reads the announcement first into one direction's
+// VOCABULARY and the batch resolves against it. The manifest's `connection`
+// line names the announcement and the `message` line names the pair of
+// wires, so the driver joins the two by key and never derives a vocabulary
+// of its own. The verbs are PLURAL: a message case's batch wire holds one
+// body and still drives LoadMessages and SaveMessages with a count of one.
+
+// one generated unit per conformance connection, keyed by the manifest's
+// `connection` unit column. Each home module carries the unit's message
+// runtime (TableVocabulary and AnnounceRead); each table module carries the
+// root's plural verbs and its storage class.
+const messageHomes = {
+  backenddemo: "backend/BackenddemoTable.js",
+  vocabdemo: "vocab/VocabdemoTable.js",
+  vocab9demo: "vocab9/Vocab9demoTable.js",
+  graphdemo: "pointers/GraphdemoTable.js",
+};
+
+const messageTables = {
+  backenddemo: "backend/BackendTable.js",
+  vocabdemo: "vocab/VocabTable.js",
+  vocab9demo: "vocab9/Vocab9Table.js",
+  graphdemo: "pointers/GraphTable.js",
+};
+
+async function surfaceMessage(lines, outDir) {
+  const connections = kind(lines, "connection");
+  for (const f of kind(lines, "message")) {
+    const conn = connections.find((c) => c[1] === f[2]);
+    if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
+    const home = messageHomes[conn[2]];
+    if (home === undefined) { fail("no message runtime for unit " + conn[2]); }
+    const table = messageTables[conn[2]];
+    if (table === undefined) { fail("no message table for unit " + conn[2]); }
+    const runtime = await load(home);
+    const unit = await load(table);
+    const loadMessages = unit[f[3] + "LoadMessages"];
+    const measureMessages = unit[f[3] + "MeasureMessages"];
+    const saveMessages = unit[f[3] + "SaveMessages"];
+    if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
+      fail(f[1] + " has no message verbs for root " + f[3]);
+    }
+    const vocabulary = new runtime.TableVocabulary();
+    const report = new runtime.TableReport();
+    if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), report)) {
+      fail(f[1] + ": the announcement was refused");
+    }
+    const values = Array.from({ length: 256 }, () => new unit[f[3]]());
+    const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[5])), report);
+    if (count < 0) { fail(f[1] + ": the message form did not load"); }
+    const body = values.slice(0, count);
+    const size = measureMessages(body, report);
+    if (size < 0) { fail(f[1] + ": the message form did not measure"); }
+    const buffer = new Uint8Array(size);
+    if (saveMessages(body, buffer, report) !== size) { fail(f[1] + ": the message form did not save"); }
+    writeFileSync(join(outDir, f[1]), buffer);
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -459,10 +522,10 @@ if (args.length < 2) {
 const lines = readManifest(args[0]);
 const surface = args[1];
 if (surface === "list") {
-  // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-  // PREVIOUS form and the corpus is pinned in the id-table form
-  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row.
-  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
+  // the wire surfaces ABSENT are form 1 (the id-table FILE form, schema#516)
+  // and retention; `message` rides form 2, which this backend carries
+  // (docs/SPEC-TABLES.md §3.3).
+  process.stdout.write("message\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
   process.exit(0);
 }
 if (args.length < 3) {
@@ -471,6 +534,7 @@ if (args.length < 3) {
 }
 const outDir = args[2];
 switch (surface) {
+  case "message": await surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
