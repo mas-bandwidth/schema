@@ -62,6 +62,29 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
+	for _, row := range csHeldNotRun {
+		row := row
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			t.Skip("not run: " + row.why)
+		})
+	}
+}
+
+// csHeldNotRun names the manifest `connection`/`message` rows this leg cannot
+// answer, so every row of testdata/conformance/tables/MANIFEST.txt is spoken by
+// this test and none is silently omitted. docs/SPEC-TABLES.md §3.3: the shared
+// declarations a table unit's codec names (its enums, flags and types) are the
+// packet emitter's, and for a unit that also declares a pointer the packet
+// emitter's file names the sibling serialize.cs runtime this checkout does not
+// carry, so the target is named as not run, never faked. `message_graph_tree`'s
+// root `Scene` is a plain `table`, and §3.3 is a fixed table's: the row is
+// answered ABSENT by the form's own declaration, exactly as the Go leg's
+// goldens test answers it.
+var csHeldNotRun = []struct{ name, why string }{
+	{"connection_graph_conn", "graphdemo's shared declarations ride the packet emitter, which names ../serialize.cs"},
+	{"connection_retain_conn", "tblrt2's shared declarations ride the packet emitter, which names ../serialize.cs"},
+	{"message_graph_tree", "§3.3 is a fixed table's; Scene is a plain table"},
 }
 
 const csHeldSchema = `package probe
@@ -620,7 +643,7 @@ func csHeldRowsClass(t *testing.T) string {
 
     public static int Run()
     {
-        Console.WriteLine("row harness: " + `+fmt.Sprintf("%d", len(csHeldConns)+len(csHeldMsgs))+` + " rows");
+        Console.WriteLine("row harness: " + ` + fmt.Sprintf("%d", len(csHeldConns)+len(csHeldMsgs)) + ` + " rows");
 `)
 	for _, conn := range csHeldConns {
 		b.WriteString(csHeldConnMethod(conn))
