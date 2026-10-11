@@ -121,6 +121,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		{"keyed-arrays/c/valid-data", cT10KeyedArrays},
 		{"nested-keyed-arrays/c/valid-data", cT10NestedKeyedArrays},
 		{"union-field-arms/c/valid-data", cT10UnionFieldArms},
+		{"union-arrays/c/valid-data", cT10UnionArrays},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -361,6 +362,56 @@ fixed table Lineage
             if ( back[0].pick.as.alpha.arr[k] != (int32_t) ( 1000 + k ) )
                 { printf( "arr[%d]=%d\n", k, (int) back[0].pick.as.alpha.arr[k] ); return 1; }
         if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
+    }
+`)
+}
+
+// union-arrays/c/valid-data — "Arrays of unions: valid-data write/read
+// acceptance" (§2.6; §3.4 [N]T). §2.6: "An ARRAY OF UNIONS is a union slot per
+// element." Every element of the fixed `[4]Pick` carries its own selected arm
+// and payload, alternated so a leg that wrote one tag for the whole array moves
+// a neighbour.
+func cT10UnionArrays(t *testing.T) {
+	cT10Run(t, `package probe
+type Alpha { m int32 = 0 }
+type Beta  { n int32 = 0 }
+union Pick
+{
+    alpha Alpha
+    beta  Beta
+}
+fixed table Lineage
+{
+    picks [4]Pick
+    seq   int32 = 0
+}
+`, "Lineage", `
+    {
+        int k;
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( k % 2 == 0 ) { v.picks[k].type = PICK_TYPE_ALPHA; v.picks[k].as.alpha.m = (int32_t) ( 0x100 + k ); }
+            else              { v.picks[k].type = PICK_TYPE_BETA;  v.picks[k].as.beta.n  = (int32_t) ( 0x200 + k ); }
+        }
+        v.seq = 2147483647;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( k % 2 == 0 )
+            {
+                if ( back[0].picks[k].type != PICK_TYPE_ALPHA || back[0].picks[k].as.alpha.m != (int32_t) ( 0x100 + k ) )
+                    { printf( "pick %d: type=%d m=%d\n", k, (int) back[0].picks[k].type, (int) back[0].picks[k].as.alpha.m ); return 1; }
+            }
+            else
+            {
+                if ( back[0].picks[k].type != PICK_TYPE_BETA || back[0].picks[k].as.beta.n != (int32_t) ( 0x200 + k ) )
+                    { printf( "pick %d: type=%d n=%d\n", k, (int) back[0].picks[k].type, (int) back[0].picks[k].as.beta.n ); return 1; }
+            }
+        }
     }
 `)
 }
