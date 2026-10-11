@@ -41,6 +41,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 		{"optional-nesting/go/valid-data", t11OptionalNesting},
 		{"optional-arrays/go/valid-data", t11OptionalArrays},
 		{"scalar-defaults/go/valid-data", t11ScalarDefaults},
+		{"text-bytes-flags-defaults/go/valid-data", t11TextBytesFlagsDefaults},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -334,4 +335,44 @@ enum E { A, B }
 fixed table Root { e E = B }
 `))
 	t02GoHas(t, t02GoNorm(src), "value.E = EB", "scalar-defaults: the enum default is restored by Reset")
+}
+
+// ---- go/text-bytes-flags-defaults -------------------------------------------
+
+// t11TextBytesFlagsDefaults holds a string and a byte buffer default to their
+// declared bytes and live lengths, restored by Reset and carried by the wire
+// (docs/SPEC-TABLES.md §3.4). The flags default is read off the emitted reset
+// because a flags type's Go spelling is the packet codec's.
+func t11TextBytesFlagsDefaults(t *testing.T) {
+	t11Run(t, `package probe
+fixed table Root {
+    s string(8) = "hi"
+    b bytes(4) = "ab"
+}
+`, t11RoundTrip+`
+func TestT11TextBytesFlagsDefaults(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	if string(v.S[:v.SLength]) != "hi" || string(v.B[:v.BLength]) != "ab" {
+		t.Fatalf("reset defaults s=%q b=%q", v.S[:v.SLength], v.B[:v.BLength])
+	}
+	got := saveLoad(t, v)
+	if got.SLength != 2 || string(got.S[:got.SLength]) != "hi" || got.BLength != 2 || string(got.B[:got.BLength]) != "ab" {
+		t.Fatalf("defaults did not survive the wire: %+v", got)
+	}
+	v.SLength = 3
+	copy(v.S[:], "xyz")
+	v.BLength = 1
+	v.B[0] = 'z'
+	got = saveLoad(t, v)
+	if got.SLength != 3 || string(got.S[:got.SLength]) != "xyz" || got.BLength != 1 || got.B[0] != 'z' {
+		t.Fatalf("non-default text/bytes read back %+v", got)
+	}
+}
+`)
+	src := t02GoEmit(t, unitFrom(t, `package probe
+flags F { A, B }
+fixed table Root { f F = { A, B } }
+`))
+	t02GoHas(t, t02GoNorm(src), "value.F = 3", "text-bytes-flags-defaults: the flags default is restored by Reset")
 }
