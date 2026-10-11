@@ -419,6 +419,225 @@ func t03GoR15(t *testing.T) {
 	t03GoHas(t, runtime, "uint32(v) > capn", "R15 the text clamp is the writer's span")
 }
 
+// ---- go/E3/other-required-widens --------------------------------------------
+
+// t03GoE3 holds E3 to §5.2's EMIT ladder, in full: "if LADDER(te.kind,
+// me.kind): emit widenf when te is f32 else widen, sign := te.kind is a signed
+// integer or a signed fixed-point". Every required rung is present — 2..5, 6..9,
+// 20..24, 25..29 and 10 -> 11 — the float rung is `widenf`, the sign is the
+// WRITER's kind, and a same-kind widen zero-extends. The non-default and
+// boundary values are written and read by the gate's corpus rows (`int_widen`,
+// `uint_widen`, `float_widen`, `array_elem_widen`, `enum_width` in versionRows).
+func t03GoE3(t *testing.T) {
+	runtime := tableFixedRuntime
+	for _, rung := range []string{
+		"if from >= 6 && from <= 9 && to >= 6 && to <= 9 {",
+		"if from >= 2 && from <= 5 && to >= 2 && to <= 5 {",
+		"if from >= 20 && from <= 24 && to >= 20 && to <= 24 {",
+		"if from >= 25 && from <= 29 && to >= 25 && to <= 29 {",
+		"return from == 10 && to == 11",
+	} {
+		t03GoHas(t, runtime, rung, "E3 the widen ladder")
+	}
+	t03GoHas(t, runtime, "if te.Kind == 10 {", "E3 the float rung is chosen by the writer's kind")
+	t03GoHas(t, runtime, "e.Op = tableFixedWidenF", "E3 the float rung is widenF")
+	t03GoHas(t, runtime, "if tableFixedSignedKind(te.Kind) {", "E3 a ladder widen's sign is the writer's kind")
+	t03GoHas(t, runtime, "return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24)", "E3 the signed ladder, and only it, sign-extends")
+	// The ladder's rungs are the integer and fixed-point families of §1's kind
+	// table, and the float rung is f32 into f64.
+	if ir.TableKindI8 != 2 || ir.TableKindI64 != 5 || ir.TableKindU8 != 6 || ir.TableKindU64 != 9 {
+		t.Errorf("E3: the integer ladder's kinds moved: i8=%d i64=%d u8=%d u64=%d", ir.TableKindI8, ir.TableKindI64, ir.TableKindU8, ir.TableKindU64)
+	}
+	if ir.TableKindFixed8 != 20 || ir.TableKindFixed128 != 24 || ir.TableKindUFixed8 != 25 || ir.TableKindUFixed128 != 29 {
+		t.Errorf("E3: the fixed-point ladder's kinds moved: fixed8=%d fixed128=%d ufixed8=%d ufixed128=%d", ir.TableKindFixed8, ir.TableKindFixed128, ir.TableKindUFixed8, ir.TableKindUFixed128)
+	}
+	if ir.TableKindF32 != 10 || ir.TableKindF64 != 11 {
+		t.Errorf("E3: the float rung's kinds moved: f32=%d f64=%d", ir.TableKindF32, ir.TableKindF64)
+	}
+}
+
+// ---- go/C8 ------------------------------------------------------------------
+
+// t03GoC8 holds C8 to §3.4's constant-size table and §4.6's bounds: a
+// `fixed(I,F)` rides as the raw scaled integer at its storage width, `I + F`,
+// and the KIND encodes that width and the family and NOT `F` — so an `F`-only
+// edit is a definitions-digest change the lock refuses, never a widen; the
+// read-side pass shifts both declared ends by `F` onto the raw scale; and
+// `bits(N)` rides at its declared storage width and is clamped at `N`'s own
+// ceiling, which is not a storage limit.
+func t03GoC8(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+fixed table Lineage
+{
+    a fixed(4, 4) | min = -4, max = 3
+    b fixed(2, 6) | min = -1, max = 0
+    c fixed(8, 8) | min = -128, max = 127
+    d ufixed(4, 4) | min = 0, max = 15
+    e bits(12)
+}
+`)
+	st := t03GoTable(t, u, "Lineage")
+	kind := map[string]int{}
+	for _, f := range st.Fields {
+		kind[f.Name] = ir.TableScalarKind(f)
+	}
+	if kind["a"] != 20 || kind["b"] != 20 {
+		t.Errorf("C8: fixed(4,4) and fixed(2,6) are kinds %d and %d, want the same kind 20 — F does not ride in the kind", kind["a"], kind["b"])
+	}
+	if kind["c"] != 21 {
+		t.Errorf("C8: fixed(8,8) is kind %d, want 21 (a 16-bit storage width)", kind["c"])
+	}
+	if kind["d"] != 25 {
+		t.Errorf("C8: ufixed(4,4) is kind %d, want 25 (the unsigned family)", kind["d"])
+	}
+	if kind["e"] != 7 {
+		t.Errorf("C8: bits(12) is kind %d, want 7 — a bits(N) rides at its storage width's integer kind", kind["e"])
+	}
+	if got := ir.TableFixedStorageBytes(st.Fields[4].Type); got != 4 {
+		t.Errorf("C8: bits(12) storage = %d, want 4", got)
+	}
+	// THE BOUNDS ARE IN VALUE UNITS AND THE STORAGE IS RAW: min = -4, max = 3
+	// shifted by F = 4 are the raw ends -64 and 48 the emitted pass carries, and
+	// bits(12)'s own top 2^12 - 1 = 4095 is a bound the four storage bytes do
+	// not enforce.
+	clamp := funcSource(tableFile(generate(t, `package probe
+
+fixed table Lineage
+{
+    a fixed(4, 4) | min = -4, max = 3
+    b bits(12)
+}
+`)), "func LineageFixedClampBody(")
+	if clamp == "" {
+		t.Fatal("C8: LineageFixedClampBody is not emitted")
+	}
+	t03GoHas(t, clamp, "value.A < -64", "C8 the fixed-point floor shifted by F")
+	t03GoHas(t, clamp, "value.A > 48", "C8 the fixed-point ceiling shifted by F")
+	t03GoHas(t, clamp, "value.B > 4095", "C8 bits(12)'s own ceiling")
+	t03GoHas(t, tableFixedRuntime, "case 20, 25: // fixed8, ufixed8", "C8 the fixed-point family's storage widths")
+	t03GoHas(t, tableFixedRuntime, "case 24, 29:", "C8 the fixed-point ladder's top rung")
+}
+
+// ---- go/R20 -----------------------------------------------------------------
+
+// t03GoR20 holds R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
+// sites: an added field lands the prefill's declared default; a deprecated field
+// is dropped and counted once per plan through the compile census; a narrower
+// integer or float is widened exactly and counts widened; a shorter array or
+// string lands with the reader's slack as the template's zeros; an older enum's
+// ordinals are the reader's, its list a prefix.
+func t03GoR20(t *testing.T) {
+	text, _ := t03GoRetire(t, 0)
+	load := t03GoLoad(t, text, "Lineage")
+	// AN ADDED FIELD: the holes are covered from the defaults image, and the
+	// image is a zeroed Reset so a shorter array or string keeps template zeros.
+	t03GoHas(t, load, "LineageReset(&def)", "R20 the prefill image is the declared defaults")
+	t03GoHas(t, load, "defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))", "R20 the prefill image is emitted")
+	t03GoHas(t, load, "holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))", "R20 the holes are what the winning plan does not write")
+	t03GoHas(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])", "R20 an added field lands the declared default")
+	// A DEPRECATED FIELD, counted ONCE per plan: the census is the lane's, and
+	// an array's element 0 is the only one that censuses.
+	t03GoHas(t, load, "report.Unknown += censusUnknown", "R20 the census lands once, after the loop")
+	t03GoHas(t, tableFixedRuntime, "if !named && census && c.report != nil {", "R20 an unknown field is counted")
+	t03GoHas(t, tableFixedRuntime, "census && i == 0)", "R20 once per FIELD per peer, not per element")
+	t03GoHasNot(t, load, "report.Unknown++", "R20 the census is never per record")
+	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
+	t03GoHas(t, tableFixedRuntime, "report.Widened++", "R20 a widen counts")
+	// A SHORTER ARRAY OR STRING: the plan writes only the writer's live extent
+	// and the slack keeps the image's zeros.
+	t03GoHas(t, tableFixedRuntime, "func tableFixedHoles(", "R20 the reader's slack is the template's zeros")
+	t03GoHas(t, tableFixedRuntime, "v > int32(p.Size)", "R20 a shorter array lands the writer's live extent")
+	t03GoHas(t, tableFixedRuntime, "uint32(v) > capn", "R20 a shorter string lands the writer's live extent")
+	// AN OLDER ENUM: the remap is by NAME and its list is the writer's count, so
+	// a prefix maps position for position.
+	t03GoHas(t, tableFixedRuntime, "case tableFixedOrdinal:", "R20 the ordinal is resolved through the plan's remap")
+	t03GoHas(t, tableFixedRuntime, "n := te.Children", "R20 the remap table is as long as the writer's variant count")
+	t03GoHas(t, tableFixedRuntime, "landed = uint16(k + 1)", "R20 the older enum's ordinals are the reader's")
+}
+
+// ---- go/R21 -----------------------------------------------------------------
+
+// t03GoR21 holds R21 to §4's float rung and §5.2's table: "widenf is the f32 at
+// src as an f64 at dst ... both are exact by construction, NaN payloads
+// included". The hardware f32->f64 conversion QUIETS a signalling NaN and can
+// drop a payload bit, so the emitted runtime assembles every all-ones exponent
+// by hand — the sign carried, f64's all-ones exponent, and the 23-bit mantissa
+// shifted left by 29, which carries the quiet bit as the writer wrote it.
+func t03GoR21(t *testing.T) {
+	runtime := tableFixedRuntime
+	widenF := t03GoBetween(runtime, "case tableFixedWidenF:", "case tableFixedConst:")
+	if widenF == "" {
+		t.Fatal("R21: the runtime has no tableFixedWidenF arm")
+	}
+	t03GoHas(t, widenF, "bits := tableFixedGet32(src[p.Src:])", "R21 the f32 pattern is read raw")
+	t03GoHas(t, widenF, "if bits&0x7f800000 == 0x7f800000 {", "R21 the all-ones exponent is handled on the bits")
+	t03GoHas(t, widenF, "0x7ff0000000000000", "R21 f64's all-ones exponent")
+	t03GoHas(t, widenF, "<<29", "R21 the 23-bit mantissa becomes the 52-bit one")
+	t03GoHas(t, widenF, "math.Float64bits(float64(math.Float32frombits(bits)))", "R21 every other exponent converts exactly")
+	t03GoHasNot(t, widenF, "tableFixedPutF64(dst[p.Dst:], float64(", "R21 the float rung still widens through the hardware conversion")
+}
+
+// ---- go/R29 -----------------------------------------------------------------
+
+// t03GoR29 holds R29 to the 65536 band and to bill §12.5's carried writer
+// bounds. THE BAND: a record body AT 65536 is a fixed root and one byte past it
+// is not (SPEC-TABLES §3.4, "65536 BYTES OF RECORD BODY: THE FORM IS NOT
+// EMITTED, AND THE TABLE IS NAMED"), a u16 top widens into a u32 zero-extended
+// across that ceiling, and a layout entry reaching past the writer's own
+// declared record refuses the plan WHOLE under layout_record_too_large. THE
+// WRITER'S BOUNDS: the count op clamps to the writer's element bound carried by
+// the plan and the text op to the writer's span, so a value forged past what the
+// WRITER could have written clamps and counts while a value the reader merely
+// widened does not.
+func t03GoR29(t *testing.T) {
+	if ir.TableFixedRecordMaxBytes != 65536 {
+		t.Fatalf("R29: the ceiling is %d, want 65536", ir.TableFixedRecordMaxBytes)
+	}
+	at := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65532)\n}\n")
+	past := unitFrom(t, "package probe\n\nfixed table Lineage\n{\n    blob bytes(65533)\n}\n")
+	if got := ir.TableFixedTypeBytes(at.Tables["Lineage"]); got != 65536 {
+		t.Fatalf("R29: the AT fixture body is %d, want 65536", got)
+	}
+	found := false
+	for _, r := range ir.TableFixedFormRoots(at) {
+		if r.Name == "Lineage" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("R29: a body AT 65536 is not a fixed-form root")
+	}
+	for _, r := range ir.TableFixedFormRoots(past) {
+		if r.Name == "Lineage" {
+			t.Error("R29: a body one past 65536 is still a fixed-form root")
+		}
+	}
+	warnings, errs := ir.TableFixedRecordBounds(past, 0)
+	if len(errs) != 0 {
+		t.Errorf("R29: a body past the ceiling is a warning, not a refusal: %v", errs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
+		t.Errorf("R29: the warning does not name the table: %s", joined)
+	}
+	runtime := tableFixedRuntime
+	t03GoHas(t, runtime, "if root.Size == 0 || root.Size > tableFixedRecordMaxBytes {", "R29 the reader holds the peer's layout to the same ceiling")
+	t03GoHas(t, runtime, "if e.Size > tableFixedRecordMaxBytes {", "R29 a single entry past the ceiling")
+	t03GoHas(t, runtime, "c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record) {", "R29 an entry past the writer's declared record")
+	t03GoHas(t, runtime, "v > int32(p.Size)", "R29 the count clamps to the writer's bound")
+	t03GoHas(t, runtime, "uint32(v) > capn", "R29 the text clamps to the writer's span")
+	t03GoHas(t, runtime, "n := theirN", "R29 the count's bound is the writer's")
+	t03GoHas(t, runtime, "if myN < n {", "R29 the count's bound is held to the reader's storage")
+	t03GoHas(t, runtime, "Size: n,", "R29 the count entry carries the writer's bound")
+	// THE BAND EDGE IS ZERO-EXTENDED, NOT SIGN-EXTENDED: a u16 top widened
+	// into a u32 has the WRITER's kind 7, which is unsigned, so no sign bit is
+	// set and the raw 65535 lands 65535 and not -1.
+	t03GoHas(t, runtime, "if tableFixedSignedKind(te.Kind) {", "R29 the widen's sign is the writer's kind")
+	if ir.TableKindSigned(ir.TableKindU16) {
+		t.Error("R29: the u16 kind is signed, so the band edge would sign-extend across the ceiling")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
@@ -434,6 +653,11 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{id: "go/R32", check: t03GoR32},
 		{id: "go/R10", check: t03GoR10},
 		{id: "go/R15", check: t03GoR15},
+		{id: "go/E3/other-required-widens", check: t03GoE3},
+		{id: "go/C8", check: t03GoC8},
+		{id: "go/R20", check: t03GoR20},
+		{id: "go/R21", check: t03GoR21},
+		{id: "go/R29", check: t03GoR29},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
