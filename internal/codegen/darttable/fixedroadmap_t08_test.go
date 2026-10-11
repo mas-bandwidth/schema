@@ -17,12 +17,20 @@ package darttable
 //
 // dart/R27, dart/P3 and the three union capabilities (union-field-arms,
 // payload-free-arms, union-arrays) are NOT asserted here, each for its own
-// named reason: R27 and P3 read the C++ reference's byte oracle
+// named reason. R27 and P3 read the C++ reference's byte oracle
 // (`build/fixedform-corpus/manifest.txt`), which the build writes only from
 // `test/tables/fixedform_dump.cpp` against the `../serialize` sibling runtime
-// that this checkout does not carry; the three union rows are refused by name
-// in the compiler before the fixed form is reached (docs/SPEC-TABLES.md §2.6,
-// §11), so there is no dart surface that writes or reads the construct.
+// that this checkout does not carry. payload-free-arms is refused: a void arm
+// has no storage the shared layout walk can name (ir/fixedform.go
+// `TableFixedSupported` returns false at `v.F == nil`), so no fixed form is
+// emitted for one. union-field-arms and union-arrays are EMITTED but do not
+// COMPILE: the fixed form writes and decodes a scalar field arm and an array
+// of a scalar-armed union through its loop, yet its storage class
+// (`final Value v = Value()`, `List<Shape>`) names a union class no emitter
+// declares — a table-closure union lives in `TableUnions`, which the packet
+// emitter (the one that declares type-armed unions) never walks — so the probe
+// fails `Type 'Value' not found`. That gap, not a named refusal, is what these
+// two union rows wait on; it is named in the verdicts, not decided here.
 
 import (
 	"os"
