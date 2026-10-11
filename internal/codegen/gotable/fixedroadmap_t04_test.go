@@ -16,12 +16,17 @@ package gotable
 // code to RUN lives in a case inside the emitted runtime the plan reaches; this
 // card asserts the runtime's own rule at its site.
 //
-// TWO TASKS IN THIS ROW ARE NAMED, NOT SUBTESTED. go/R19's clean-pair clause is
-// already held by `TestFixedVersioningNewReadsOld`, which loads the reference's
-// corpus and asserts `Unknown/KindMismatch/Clamped/Duplicate == 0` per row; that
-// load needs the byte oracle (`make tables-fixedform-corpus`), so this card
-// names that test instead of adding a source-shape neighbour. go/R16 is reported
-// `unknown`: its last clause — "copy/const/present/ordinal move nothing" — is not
+// TWO TASKS IN THIS ROW ARE REPORTED `unknown`, NOT SUBTESTED.
+// go/R19's clean-pair clause would be held by `TestFixedVersioningNewReadsOld`,
+// which loads the reference's corpus and asserts
+// `Unknown/KindMismatch/Clamped/Duplicate == 0` per row; with
+// `build/fixedform-corpus` absent that test SKIPS at
+// fixedversioning_test.go:811 (a skip is not a run and not a PASS), and the
+// corpus cannot be built here because `make tables-fixedform-corpus` needs the
+// `../serialize` sibling that is not staged. A running replacement needs the
+// sibling `serialize.go` runtime to compile the generated unit, also not
+// staged, so go/R19 is reported `unknown` rather than `done`.
+// go/R16 is reported `unknown`: its last clause — "copy/const/present/ordinal move nothing" — is not
 // held on this leg, which counts `clamped` in the `ordinal` and `const` ops
 // rather than in the bounds pass (§5.4's "counts twice", fix 27, schema#1254),
 // and the numeric clauses need a running load this card cannot build.
@@ -287,14 +292,16 @@ func t04GoE8(t *testing.T) {
 // ---- go/R19 -----------------------------------------------------------------
 
 // go/R19's clause — "a clean NEW-READS-OLD of an appended field, variant, arm,
-// flag or keyed slot moves no counter at all" — is held by
-// `TestFixedVersioningNewReadsOld` (fixedversioning_test.go), which reads each
-// row of docs/FIXED-FORM-VERSIONING-TESTS.md over the reference's corpus and
-// asserts `Unknown/KindMismatch/Clamped/Duplicate == 0` on a clean backward read.
-// No subtest is added here: a source-shape assertion on the copy and present op
-// bodies is §5.4's neighbour row and not this task's clean-pair clause, and the
-// real assertion needs the byte oracle the corpus gate builds. The verdict names
-// that test.
+// flag or keyed slot moves no counter at all" — is NOT proved on this leg. Its
+// only assertion is `TestFixedVersioningNewReadsOld` (fixedversioning_test.go),
+// which reads each row of docs/FIXED-FORM-VERSIONING-TESTS.md over the
+// reference's corpus; with `build/fixedform-corpus` absent that test SKIPS at
+// fixedversioning_test.go:811, and the corpus cannot be built here because
+// `make tables-fixedform-corpus` needs the `../serialize` sibling that is not
+// staged. A source-shape assertion on the copy and present op bodies is §5.4's
+// neighbour row and not this task's clean-pair clause, and a running
+// replacement needs the sibling `serialize.go` runtime to compile the generated
+// unit, also not staged. The verdict is `unknown`, not `done`.
 
 // ---- go/E9 ------------------------------------------------------------------
 
