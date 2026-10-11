@@ -118,6 +118,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		{"enum-values/c/valid-data", cT10EnumValues},
 		{"utf16-values/c/valid-data", cT10UTF16Values},
 		{"byte-buffers/c/valid-data", cT10ByteBuffers},
+		{"keyed-arrays/c/valid-data", cT10KeyedArrays},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -230,6 +231,39 @@ fixed table BytesGrow
         for ( k = 0; k < 16; ++k )
             if ( back[0].blob[k] != (uint8_t) ( 0x80 + k ) )
                 { printf( "byte %d is %02x\n", k, back[0].blob[k] ); return 1; }
+    }
+`)
+}
+
+// keyed-arrays/c/valid-data — "Enum-keyed arrays: valid-data write/read
+// acceptance" (contract §2.4; §3.4 record, [Enum]T). §3.4: "`[Enum]T` — slots
+// * C(T) — every slot is written, in the key enum's declared order, and no key
+// rides". EVERY slot of the `[Tier]Qty` array is live: all four slots carry
+// distinct non-default values, so a leg that elided a slot or read a count
+// moves one.
+func cT10KeyedArrays(t *testing.T) {
+	cT10Run(t, `package probe
+enum Tier { Bronze, Silver, Gold, Platinum }
+type Qty { n uint32 = 0 }
+fixed table Lineage
+{
+    slots [Tier]Qty
+    seq   int32 = 0
+}
+`, "Lineage", `
+    {
+        int k;
+        static const uint32_t want[4] = { 0x11111111u, 0x22222222u, 0x33333333u, 0xFFFFFFFFu };
+        for ( k = 0; k < 4; ++k ) { v.slots[k].n = want[k]; }
+        v.seq = 2147483647;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
+        for ( k = 0; k < 4; ++k )
+            if ( back[0].slots[k].n != want[k] )
+                { printf( "slot %d is %08x, want %08x\n", k, back[0].slots[k].n, want[k] ); return 1; }
     }
 `)
 }
