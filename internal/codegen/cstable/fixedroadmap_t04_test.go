@@ -170,10 +170,25 @@ func t04R21(t *testing.T) {
 		"R21 the NaN payload is carried by the shift, the quiet bit as the writer wrote it")
 	t04Has(t, n, "BitConverter.Int64BitsToDouble",
 		"R21 the widened pattern lands as the f64 value")
+	// The FOLDED flat-array widening (FlatWiden, sign 2 = f32 into f64) is the
+	// SAME rung and owes the SAME bit-exact widening: the one helper is the
+	// scalar's and the folded run's only road to a widened f64, as the C++
+	// reference's one TableWidenF32 is for every call site, arrays included.
+	t04Has(t, n, "case FlatWiden:",
+		"R21 the folded flat-array widen op exists")
+	t04Has(t, n, "double d2 = WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));",
+		"R21 the folded flat-array f32->f64 widen rides the same bit-exact helper")
+	t04Has(t, n, "public static double WidenF32(float f)",
+		"R21 the one float-rung helper both call sites share")
 	// A plain hardware cast is the defect this clause names: an sNaN's quiet
-	// bit would be set by it, which the pattern widening above must not do.
+	// bit would be set by it, which the pattern widening above must not do. Both
+	// call sites — the scalar's `(double)f` and the folded run's cast of the
+	// little-endian read — must be absent.
 	if strings.Contains(n, "double d = (double)f;") {
 		t.Error("R21: widenf goes through the hardware's own conversion, which sets the quiet bit on a signalling NaN")
+	}
+	if strings.Contains(n, "(double)BinaryPrimitives.ReadSingleLittleEndian") {
+		t.Error("R21: the folded flat-array widen goes through the hardware's own conversion, which sets the quiet bit on a signalling NaN")
 	}
 }
 
