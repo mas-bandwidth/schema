@@ -125,6 +125,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, fixed)
 
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the announced
+	// vocabulary a batch of fixed tables rides under. It is emitted for a unit
+	// with fixed-table roots and for no other.
+	maps.Copy(out, generateMessageForm(u, ns))
+
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 	return out, nil
 }
