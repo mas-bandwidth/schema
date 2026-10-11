@@ -40,6 +40,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 		{"optional-scalars/go/valid-data", t11OptionalScalars},
 		{"optional-nesting/go/valid-data", t11OptionalNesting},
 		{"optional-arrays/go/valid-data", t11OptionalArrays},
+		{"scalar-defaults/go/valid-data", t11ScalarDefaults},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -300,4 +301,37 @@ func TestT11OptionalArrays(t *testing.T) {
 	}
 }
 `)
+}
+
+// ---- go/scalar-defaults -----------------------------------------------------
+
+// t11ScalarDefaults holds a scalar default to RootReset restoring it in place:
+// "<Name>Reset restores the declared defaults" (docs/SPEC-TABLES.md §3.4). A
+// reset value carries the declared numbers, and they survive a save/load. The
+// enum default is read off the emitted reset because the enum's spelling is the
+// packet codec's.
+func t11ScalarDefaults(t *testing.T) {
+	t11Run(t, `package probe
+fixed table Root {
+    x int32 = 7
+    y int32 = -3
+}
+`, t11RoundTrip+`
+func TestT11ScalarDefaults(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	if v.X != 7 || v.Y != -3 {
+		t.Fatalf("reset defaults %+v", v)
+	}
+	got := saveLoad(t, v)
+	if got.X != 7 || got.Y != -3 {
+		t.Fatalf("defaults did not survive the wire: %+v", got)
+	}
+}
+`)
+	src := t02GoEmit(t, unitFrom(t, `package probe
+enum E { A, B }
+fixed table Root { e E = B }
+`))
+	t02GoHas(t, t02GoNorm(src), "value.E = EB", "scalar-defaults: the enum default is restored by Reset")
 }
