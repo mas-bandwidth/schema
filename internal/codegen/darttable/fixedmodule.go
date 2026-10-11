@@ -244,7 +244,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
 	prefill := fixedPrefillBytes(st)
-	plan := fixedIdentityPlan(st)
+	plan, split := fixedIdentityPlan(st)
 	lower := lowerFirst(st.Name)
 
 	// exactly the names the surface below spells, and no more: the analyzer
@@ -346,6 +346,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedIdentityCount = %d;\n\n", lower, len(plan))
+	g.pf("/// THE SPLIT: the index the identity plan's GUARDED half starts at — the\n")
+	g.pf("/// number of unguarded entries (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,\n")
+	g.pf("/// §5.9 #42). Every entry below it carries no guard and every entry at or\n")
+	g.pf("/// above it carries one; the run loop tests the guard per entry, which #42\n")
+	g.pf("/// allows, but the plan is still partitioned and states its split.\n")
+	g.pf("const int %sFixedIdentitySplit = %d;\n\n", lower, split)
 
 	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
 	//
