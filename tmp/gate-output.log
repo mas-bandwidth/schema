@@ -1,0 +1,293 @@
+== go vet ./internal/codegen/javatable/
+vet exit 0
+== make tables-fixedform-corpus
+go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.5.0-2131-g3766f18da" -o bin/schema ./cmd/schema
+./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
+./bin/schema generate --lang cpp --out build/tables-generated/block tables/block
+warning: table RenderFrame: a fixed table's record body is 7533108 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/blockhome tables/blockhome
+warning: table PartFrame: a fixed table's record body is 10892 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/messages tables/messages
+warning: table ToolMessage: a fixed table's record body is 4594 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/stream tables/stream
+./bin/schema generate --lang cpp --out build/tables-generated/blobs tables/blobs
+./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut1 test/tables/UT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut2 test/tables/UT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn1 test/tables/FN1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/hb test/tables/HB.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn2 test/tables/FN2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu1 test/tables/FU1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu2 test/tables/FU2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh1 test/tables/FH1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh2 test/tables/FH2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fg1 test/tables/FG1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe1 test/tables/FE1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe2 test/tables/FE2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm1 test/tables/FM1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm2 test/tables/FM2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
+./bin/schema generate --lang cpp --out build/tables-generated/jsonkeys test/tables/JsonKeys.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m1 test/tables/M1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m2 test/tables/M2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a1 test/tables/A1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/g1 test/tables/G1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k1 test/tables/K1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k2 test/tables/K2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a2 test/tables/A2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w1 test/tables/W1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w2 test/tables/W2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r1 test/tables/R1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r2 test/tables/R2.schema
+# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
+# root carrying a signalling NaN and a payload NaN, and the same root one
+# generation on with the float32 fields respelled float64 — the widened rung
+./bin/schema generate --lang cpp --out build/tables-generated/f1 test/tables/F1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/f2 test/tables/F2.schema
+# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
+# where the tool's cook half and the reference's are held to one artifact
+./bin/schema generate --lang cpp --out build/tables-generated/l1 test/tables/L1.schema
+# THE FIXED FORM'S VERSIONING PAIR (docs/SPEC-TABLES.md §3.4): a widened
+# field, a rename under `was`, a field each side does not have, and a whole
+# nested TYPE the older side has no name for
+./bin/schema generate --lang cpp --out build/tables-generated/fx1 test/tables/FX1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fx2 test/tables/FX2.schema
+# ==== BEGIN rowan/cpp-versioning-lists ====
+# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
+# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
+# the SAME table name on both sides (one lineage) and a package each, so
+# both generations compile into one test binary — the FX1/FX2 precedent.
+# The reference's two read columns are test/tables/versioning_lists.cpp.
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_append test/tables/VOLD_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_append test/tables/VNEW_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_deprecate test/tables/VOLD_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_deprecate test/tables/VNEW_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_undeprecate test/tables/VOLD_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_undeprecate test/tables/VNEW_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_append test/tables/VOLD_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_append test/tables/VNEW_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_width test/tables/VOLD_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_width test/tables/VNEW_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_append test/tables/VOLD_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_append test/tables/VNEW_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_arm_payload_widen test/tables/VOLD_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_arm_payload_widen test/tables/VNEW_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_flags_append test/tables/VOLD_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_flags_append test/tables/VNEW_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_keyed_array_enum_append test/tables/VOLD_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_keyed_array_enum_append test/tables/VNEW_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_nested_append test/tables/VOLD_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_nested_append test/tables/VNEW_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
+# ==== END rowan/cpp-versioning-lists ====
+./bin/schema generate --lang cpp --out build/tables-generated/scalars tables/scalars
+./bin/schema generate --lang cpp --out build/tables-generated/maps tables/maps
+./bin/schema generate --lang cpp --out build/tables-generated/lists tables/lists
+./bin/schema generate --lang cpp --out build/tables-generated/arms tables/arms
+./bin/schema generate --lang cpp --out build/tables-generated/scalars2 test/tables/Scalars2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/backend tables/backend
+./bin/schema generate --lang cpp --out build/tables-generated/vocab tables/vocab
+./bin/schema generate --lang cpp --out build/tables-generated/vocab9 tables/vocab9
+./bin/schema generate --lang cpp --out build/tables-generated/bases test/tables/Bases.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt1 test/tables/RT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt2 test/tables/RT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt3 test/tables/RT3.schema
+# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
+# because examples/ pins gate 1 for all nine targets and eight of them
+# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
+./bin/schema generate --lang cpp --out build/tables-generated/wide examples-wide
+# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VMID_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRA_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRB_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_unknown_census.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_unknown_census.schema
+# ---- rowan/cpp-versioning-numbers: END ----
+./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+c++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+	    -Ibuild/tables-generated/vnum \
+	    -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was \
+	    -I../serialize test/tables/fixedform_dump.cpp -o build/schema_test_fixedform_dump
+test/tables/fixedform_dump.cpp:37:10: fatal error: 'serialize.h' file not found
+   37 | #include "serialize.h"
+      |          ^~~~~~~~~~~~~
+1 error generated.
+make: *** [build/schema_test_fixedform_dump] Error 1
+corpus exit 2
+== SCHEMA_REQUIRE_CORPUS=1 go test -p 2 ./internal/codegen/javatable/ ./internal/ci/
+--- FAIL: TestFixedFormRaggedTail (0.00s)
+    fixedform_ragged_tail_test.go:60: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedFormUnder20Bytes (0.00s)
+    fixedform_under_20_bytes_test.go:29: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningCfloatRangeWiden (0.00s)
+    fixedversioning_cfloat_range_widen_test.go:24: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningCfloatResRefine (0.00s)
+    fixedversioning_cfloat_res_refine_test.go:20: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningCountClampEnds (0.00s)
+    fixedversioning_count_clamp_ends_test.go:22: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningForgedOrdinalBothPlans (0.00s)
+    fixedversioning_forged_ordinal_both_plans_test.go:18: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningRefuseWritesNothing (0.00s)
+    fixedversioning_refuse_writes_nothing_test.go:28: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningRows (0.00s)
+    fixedversioning_test.go:709: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningFloor (0.00s)
+    fixedversioning_test.go:966: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningHash (0.00s)
+    fixedversioning_test.go:1036: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningLineageMerge (0.00s)
+    fixedversioning_test.go:1090: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningUnionTagBothPlans (0.00s)
+    fixedversioning_union_tag_both_plans_test.go:55: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningUnionUnselectedArm (0.00s)
+    fixedversioning_union_unselected_arm_row_test.go:26: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningUnknownCensusManyRecords (0.00s)
+    fixedversioning_unknown_census_many_test.go:23: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningUnknownCensus (0.00s)
+    fixedversioning_unknown_census_test.go:25: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningWriterBoundCount (0.00s)
+    fixedversioning_writer_bound_count_test.go:24: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedVersioningWriterBoundCountTwoPeers (0.00s)
+    fixedversioning_writer_bound_count_two_peers_test.go:21: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedRoadmapT01Framing (0.00s)
+    fixedroadmap_t01_test.go:88: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+--- FAIL: TestFixedRoadmapT03Versions (0.00s)
+    --- FAIL: TestFixedRoadmapT03Versions/java/R20 (0.00s)
+        fixedroadmap_t03_test.go:745: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/R15 (0.00s)
+        fixedroadmap_t03_test.go:247: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/E5 (0.00s)
+        fixedroadmap_t03_test.go:887: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/R32 (0.00s)
+        fixedroadmap_t03_test.go:129: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/R21 (0.00s)
+        fixedroadmap_t03_test.go:768: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/R29 (0.00s)
+        --- FAIL: TestFixedRoadmapT03Versions/java/R29/band_edge (0.00s)
+            fixedroadmap_t03_test.go:815: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+        --- FAIL: TestFixedRoadmapT03Versions/java/R29/writer_bounds (0.00s)
+            fixedroadmap_t03_test.go:837: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+    --- FAIL: TestFixedRoadmapT03Versions/java/C8 (0.01s)
+        --- FAIL: TestFixedRoadmapT03Versions/java/C8/fixed_point_F_shift (0.00s)
+            fixedroadmap_t03_test.go:658: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+        --- FAIL: TestFixedRoadmapT03Versions/java/C8/bits_width (0.00s)
+            fixedroadmap_t03_test.go:704: SCHEMA_REQUIRE_CORPUS is set and ../../../build/fixedform-corpus is not there: run `make tables-fixedform-corpus`
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/internal/codegen/javatable	4.011s
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	3.343s
+FAIL
+require-corpus exit 1
+== make tables-java-fixedform tables-java-versioning
+./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+# the POINTERED unit: its cook readers are the reason it is here — the two
+# ACCELERATORS need no codec (§7, §19), so a pointered unit's cooks open.
+./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
+./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
+warning: table RenderFrame: a fixed table's record body is 7533108 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
+warning: table PartFrame: a fixed table's record body is 10892 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
+./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
+./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
+./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
+# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
+# old side and FX2 the new, and every edit between them lands through a
+# plan compiled from the other side's layout.
+./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
+./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
+# TEXT AND AN ENUM UNDER A UNION'S SECOND ARM: the shape the compiled plan
+# had no fixture for, and the one that catches an op borrowing the guard's
+# own byte (test/tables/UT.schema).
+./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). C++ already generates the pair;
+# this stamp did not.
+./bin/schema generate --lang java --out build/tables-generated-java/fu1 test/tables/FU1.schema
+./bin/schema generate --lang java --out build/tables-generated-java/fu2 test/tables/FU2.schema
+# THE WIDE-KIND UNIT (docs/SPEC-TABLES.md §15): its int128, uint128 and
+# fixed-point fields cost it the two ACCELERATORS, so the FIXED FORM is the
+# whole of its generated table surface — and that form spells a 128-bit
+# value `new UInt128(hi, lo)`, so the unit is also where the emitter's
+# Int128/UInt128 support files have to land or the package does not compile.
+# The C, C# and Go legs have generated this unit all along; the Java leg is
+# the one that did not, which is why nothing here said so.
+./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
+# K1/K2 is the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md §3, §4):
+# K1 writes grade=Grade, raw=uint16; K2 reads grade=uint16, raw=Grade.
+# Both fields produce kind_mismatch == 2 in both directions.
+./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
+./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
+javac --release 17 -Xlint:all -Werror -d build/java-fixedform \
+		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java \
+		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
+		build/tables-generated-java/ut/*.java \
+		build/tables-generated-java/fu1/*.java build/tables-generated-java/fu2/*.java \
+		build/tables-generated-java/scalars/*.java \
+		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
+c++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+	    -Ibuild/tables-generated/vnum \
+	    -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was \
+	    -I../serialize test/tables/fixedform_dump.cpp -o build/schema_test_fixedform_dump
+test/tables/fixedform_dump.cpp:37:10: fatal error: 'serialize.h' file not found
+   37 | #include "serialize.h"
+      |          ^~~~~~~~~~~~~
+1 error generated.
+make: *** [build/schema_test_fixedform_dump] Error 1
+java exit 2
