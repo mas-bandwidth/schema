@@ -3,8 +3,12 @@ package elixirtable
 // THE ELIXIR LEG'S VALID-DATA CAPABILITY ROWS FOR THE FIXED FORM
 // (docs/roadmap.sexp node `fixed-tables`, rows float32-values through
 // union-arrays; docs/SPEC-TABLES.md §3.4's fixed form; the audit matrix is
-// the roadmap's own `valid-data` tasks). One subtest per task id, table-driven,
-// t.Parallel() first.
+// the roadmap's own `valid-data` tasks). One subtest per task this card proves,
+// table-driven, t.Parallel() first. `payload-free-arms/elixir/valid-data` is
+// NOT here: a declared payload-free arm is a bare name (`Void()`, `v.F == nil`)
+// and the shared eligibility walk refuses it (ir/fixedform.go:258-260), which
+// the roadmap records as `:implementation :unsupported`; the empty-struct arm
+// this card used to assert was the union-values construct, not a bare name.
 //
 // A [capability] row is satisfied when the leg WRITES a value with non-default
 // and boundary field values through the fixed form's own writer and READS it
@@ -149,7 +153,6 @@ func TestFixedRoadmapElixirT09FloatsUnions(t *testing.T) {
 		{id: "utf16-values/elixir/valid-data", run: t09UTF16},
 		{id: "union-values/elixir/valid-data", run: t09UnionValues},
 		{id: "union-field-arms/elixir/valid-data", run: t09UnionFieldArms},
-		{id: "payload-free-arms/elixir/valid-data", run: t09PayloadFree},
 		{id: "union-arrays/elixir/valid-data", run: t09UnionArrays},
 	}
 	for _, task := range tasks {
@@ -342,35 +345,6 @@ fixed table T { s Shape }
   none = %Probe.Shape{}
   {:ok, [rn], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: none}]))
   check(rn.s.type == 0, "None (tag 0) does not round-trip: #{inspect(rn.s)}")`)
-}
-
-// t09PayloadFree holds payload-free-arms to §3.4: a union arm whose type has no
-// fields occupies zero bytes and is selected by its tag alone, so the
-// write/read pair reproduces it and the reader answers it by tag with no
-// payload read.
-func t09PayloadFree(t *testing.T) {
-	u := unitFrom(t, `package probe
-
-type Empty { }
-type Full { x int32 = 1 }
-
-union Shape
-{
-    nothing Empty
-    some Full
-}
-
-fixed table T { s Shape }
-`)
-	t09Probe(t, u, "T", `  e = %Probe.Shape{type: 1, nothing: %Probe.Empty{}}
-  {:ok, [re], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: e}]))
-  check(re.s.type == 1, "a payload-free arm does not round-trip by tag: #{inspect(re.s)}")
-  f = %Probe.Shape{type: 2, some: %Probe.Full{x: -3}}
-  {:ok, [rf], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: f}]))
-  check(rf.s.type == 2 and rf.s.some.x == -3, "the payload arm does not round-trip: #{inspect(rf.s)}")
-  none = %Probe.Shape{}
-  {:ok, [rn], _} = @@LOAD@@(@@SAVE@@([%Probe.T{s: none}]))
-  check(rn.s.type == 0, "None does not round-trip: #{inspect(rn.s)}")`)
 }
 
 // t09UnionArrays holds union-arrays to §3.4: an array of unions is its three
