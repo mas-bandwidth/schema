@@ -36,6 +36,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"union-values/go/valid-data", t11UnionValues},
+		{"union-arrays/go/valid-data", t11UnionArrays},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -140,6 +141,51 @@ func TestT11UnionValues(t *testing.T) {
 	var report TableReport
 	if n := RootFixedLoad(values, file, make([]TableFixedEntry, 128), &report); n != 1 || report.Clamped != 1 || values[0].Value.Type != UTypeNone {
 		t.Fatalf("out-of-range tag: n=%d clamped=%d type=%v", n, report.Clamped, values[0].Value.Type)
+	}
+}
+`)
+}
+
+// ---- go/union-arrays --------------------------------------------------------
+
+// t11UnionArrays holds an array of unions to the element reset and guard: "a
+// repeated array field must not retain an earlier selected arm when L is bad"
+// (values_test.go TestRepeatedUnionElement), and the live count bounds the
+// elements the read walks (docs/SPEC-TABLES.md §3.4). Zero, one and the bound
+// elements round-trip, and an out-of-range tag in the last live element clamps.
+func t11UnionArrays(t *testing.T) {
+	t11Run(t, `package probe
+union U { n int32 }
+fixed table Root { entries [..3]U }
+`, t11RoundTrip+`
+func TestT11UnionArrays(t *testing.T) {
+	var v Root
+	for _, count := range []int32{0, 1, 3} {
+		RootReset(&v)
+		v.EntriesCount = count
+		for i := int32(0); i < count; i++ {
+			v.Entries[i].Type = UTypeN
+			v.Entries[i].N = -100 - i
+		}
+		got := saveLoad(t, v)
+		if got.EntriesCount != count {
+			t.Fatalf("count %d read back %d", count, got.EntriesCount)
+		}
+		for i := int32(0); i < count; i++ {
+			if got.Entries[i].Type != UTypeN || got.Entries[i].N != -100-i {
+				t.Fatalf("count %d element %d read back %+v", count, i, got.Entries[i])
+			}
+		}
+	}
+	RootReset(&v)
+	v.EntriesCount = 3
+	v.Entries[2].Type = UTypeCount
+	file := make([]byte, RootFixedMeasure(1))
+	RootFixedSave([]Root{v}, file)
+	values := make([]Root, 1)
+	var report TableReport
+	if n := RootFixedLoad(values, file, make([]TableFixedEntry, 128), &report); n != 1 || report.Clamped != 1 || values[0].Entries[2].Type != UTypeNone {
+		t.Fatalf("out-of-range element tag: n=%d clamped=%d type=%v", n, report.Clamped, values[0].Entries[2].Type)
 	}
 }
 `)
