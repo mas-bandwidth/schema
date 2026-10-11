@@ -1,0 +1,2 @@
+(:id "enum-values/cpp/valid-data" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t10_test.go: TestFixedRoadmapCppT10FloatsComposites/enum-values/cpp/valid-data") :tested-revision "57f7d98c8c887a29683f161deb982c4092ee0afa")
+(:id "nested-keyed-arrays/cpp/valid-data" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t10_test.go: TestFixedRoadmapCppT10FloatsComposites/nested-keyed-arrays/cpp/valid-data") :tested-revision "57f7d98c8c887a29683f161deb982c4092ee0afa")
