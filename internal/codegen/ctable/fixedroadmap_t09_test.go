@@ -152,6 +152,19 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_putf64( b + 70, value->f64 );",
 			},
 		},
+		{
+			// "Compressed-float declarations stored as float32". §3.4: a
+			// compressed float rides AS the float32 itself, so the storage is
+			// float, the wire move is putf32, and the declared range
+			// min = -1 / max = 1 is held by the bounds pass.
+			id: "compressed-floats/c/valid-data",
+			want: []string{
+				"float cf;",
+				"table_fixed_putf32( b + 78, value->cf );",
+				"value->cf < -1.0f",
+				"value->cf > 1.0f",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
