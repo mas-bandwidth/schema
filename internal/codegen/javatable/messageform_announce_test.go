@@ -19,6 +19,9 @@ package javatable
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
+	"math/big"
+	"math/bits"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,17 +228,14 @@ const announceMain = `    public static void main(String[] args) {
 
 // announceReadMain drives the AnnounceRead clause: it announces, reads the
 // announcement back into a resolved vocabulary, and asserts the count, the
-// build version, the reference width and every entry id and kind.
+// build version, the reference width and every entry's id, kind and shape —
+// an entry is a triple of id, kind and shape (docs/SPEC-TABLES.md §3.3).
+//
+// The expected facts ride in data arrays and one compact loop, not one
+// assertion per entry, so the driver stays under javac's 64 KiB method limit
+// for the wide vocabularies (`vocab9demo` carries hundreds of entries).
 func announceReadMain(u *ir.Unit, vocab []ir.TableVocabularyEntry) string {
-	var ids, kinds strings.Builder
-	for i, e := range vocab {
-		if i > 0 {
-			ids.WriteString(", ")
-			kinds.WriteString(", ")
-		}
-		fmt.Fprintf(&ids, "0x%016xL", e.Id)
-		fmt.Fprintf(&kinds, "%d", e.Kind)
-	}
+	a := buildShapeArrays(vocab)
 	refBits := ir.TableMessageRefBits(len(vocab))
 	return fmt.Sprintf(`    public static void main(String[] args) {
         final byte[] ann = new byte[TableVocabulary.announceMeasure()];
@@ -250,16 +250,195 @@ func announceReadMain(u *ir.Unit, vocab []ir.TableVocabularyEntry) string {
         if (v.refBits != %d) { fail("refBits " + v.refBits); }
         final long[] wantId = {%s};
         final int[] wantKind = {%s};
+        final int[] wantPacking = {%s};
+        final long[] wantBits = {%s};
+        final long[] wantBaseLo = {%s};
+        final long[] wantBaseHi = {%s};
+        final long[] wantMin = {%s};
+        final long[] wantMax = {%s};
+        final int[] wantQMin = {%s};
+        final int[] wantQMax = {%s};
+        final int[] wantQRes = {%s};
+        final int[] wantQDelta = {%s};
+        final long[] wantSteps = {%s};
+        final int[] wantElemKind = {%s};
+        final int[] wantElemPacking = {%s};
+        final long[] wantElemBits = {%s};
+        final long[] wantElemBaseLo = {%s};
+        final long[] wantElemBaseHi = {%s};
         if (v.count != wantId.length) { fail("entry count " + v.count); }
         for (int i = 0; i < v.count; i++) {
             if (Long.compareUnsigned(v.entries[i].id, wantId[i]) != 0) {
                 fail("id[" + i + "] " + Long.toUnsignedString(v.entries[i].id, 16));
             }
+            final TableVocabulary.Shape s = v.entries[i].shape;
             if (v.entries[i].kind != wantKind[i]) { fail("kind[" + i + "] " + v.entries[i].kind); }
+            if (s.kind != wantKind[i]) { fail("shape.kind[" + i + "]"); }
+            if (s.packing != wantPacking[i]) { fail("shape.packing[" + i + "]"); }
+            if (s.bits != wantBits[i]) { fail("shape.bits[" + i + "]"); }
+            if (s.baseLo != wantBaseLo[i]) { fail("shape.baseLo[" + i + "]"); }
+            if (s.baseHi != wantBaseHi[i]) { fail("shape.baseHi[" + i + "]"); }
+            if (s.min != wantMin[i]) { fail("shape.min[" + i + "]"); }
+            if (s.max != wantMax[i]) { fail("shape.max[" + i + "]"); }
+            if (Float.floatToIntBits(s.qMin) != wantQMin[i]) { fail("shape.qMin[" + i + "]"); }
+            if (Float.floatToIntBits(s.qMax) != wantQMax[i]) { fail("shape.qMax[" + i + "]"); }
+            if (Float.floatToIntBits(s.qRes) != wantQRes[i]) { fail("shape.qRes[" + i + "]"); }
+            if (Float.floatToIntBits(s.qDelta) != wantQDelta[i]) { fail("shape.qDelta[" + i + "]"); }
+            if (s.steps != wantSteps[i]) { fail("shape.steps[" + i + "]"); }
+            if (wantElemKind[i] < 0) {
+                if (v.entries[i].element != null) { fail("element[" + i + "] present"); }
+            } else {
+                final TableVocabulary.Shape el = v.entries[i].element;
+                if (el == null) { fail("element[" + i + "] missing"); }
+                else {
+                    if (el.kind != wantElemKind[i]) { fail("element.kind[" + i + "]"); }
+                    if (el.packing != wantElemPacking[i]) { fail("element.packing[" + i + "]"); }
+                    if (el.bits != wantElemBits[i]) { fail("element.bits[" + i + "]"); }
+                    if (el.baseLo != wantElemBaseLo[i]) { fail("element.baseLo[" + i + "]"); }
+                    if (el.baseHi != wantElemBaseHi[i]) { fail("element.baseHi[" + i + "]"); }
+                }
+            }
         }
         System.out.println("ok");
     }
-`, len(vocab)+1, len(vocab), ir.BuildVersion(u), refBits, ids.String(), kinds.String())
+`, len(vocab)+1, len(vocab), ir.BuildVersion(u), refBits,
+		a.ids, a.kinds, a.packing, a.bits, a.baseLo, a.baseHi, a.min, a.max,
+		a.qMin, a.qMax, a.qRes, a.qDelta, a.steps, a.elemKind, a.elemPacking,
+		a.elemBits, a.elemBaseLo, a.elemBaseHi)
+}
+
+// shapeFacts is one entry's expected shape as the golden announces it
+// (docs/SPEC-TABLES.md §3.3): the width and range facts a reader must derive,
+// which the clause 2.2 driver asserts beside the id and the kind.
+type shapeFacts struct {
+	kind                     int
+	packing                  int
+	bits                     int64
+	baseLo, baseHi           uint64
+	min, max                 int64
+	qMin, qMax, qRes, qDelta uint32
+	steps                    int64
+	elem                     *shapeFacts
+}
+
+// shapeArrays is every expected entry fact as a Java array literal, one array
+// per fact, index-aligned with the vocabulary's entries.
+type shapeArrays struct {
+	ids, kinds                                string
+	packing, bits, baseLo, baseHi             string
+	min, max, qMin, qMax, qRes, qDelta, steps string
+	elemKind, elemPacking                     string
+	elemBits, elemBaseLo, elemBaseHi          string
+}
+
+// shapeBaseLoHi is a ranged base's two 64-bit halves, the wide kinds' raw
+// sixteen-byte base (docs/SPEC-TABLES.md §3.3).
+func shapeBaseLoHi(s ir.TableMessageShape) (lo, hi uint64) {
+	if s.Base == nil {
+		return 0, 0
+	}
+	v := new(big.Int).Set(s.Base)
+	v.And(v, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
+	lo = v.Uint64()
+	hi = new(big.Int).Rsh(new(big.Int).Set(v), 64).Uint64()
+	return lo, hi
+}
+
+// messageShapeFacts derives the facts a reader must derive for one kind and
+// shape, mirroring the emitted shapeRead (docs/SPEC-TABLES.md §3.3's shape
+// table): packing and bits for the numeric kinds, base for a ranged one, the
+// quantized triple's derivation for a compressed f32, and min/max for the
+// length kinds.
+func messageShapeFacts(kind uint8, s ir.TableMessageShape) shapeFacts {
+	f := shapeFacts{kind: int(kind), packing: int(s.Packing)}
+	if (kind >= ir.TableKindI8 && kind <= ir.TableKindF32) ||
+		(kind >= ir.TableKindI128 && kind <= ir.TableKindUFixed128) {
+		switch s.Packing {
+		case ir.TableMessageRaw:
+			f.bits = int64(ir.TableKindWidth(int(kind))) * 8
+		case ir.TableMessageRanged:
+			f.bits = s.Bits
+			f.baseLo, f.baseHi = shapeBaseLoHi(s)
+		case ir.TableMessageQuantized:
+			count, delta, _ := ir.TableMessageQuantization(s)
+			f.qMin = math.Float32bits(s.QMin)
+			f.qMax = math.Float32bits(s.QMax)
+			f.qRes = math.Float32bits(s.QRes)
+			f.qDelta = math.Float32bits(delta)
+			f.steps = int64(count)
+			f.bits = int64(bits.Len32(count))
+		}
+		return f
+	}
+	switch kind {
+	case ir.TableKindString, ir.TableKindWstring:
+		f.max = s.Max
+	case ir.TableKindArray:
+		f.min = s.Min
+		f.max = s.Max
+		f.elem = messageElemFacts(s)
+	case ir.TableKindKeyed:
+		f.max = s.Max
+		f.elem = messageElemFacts(s)
+	}
+	return f
+}
+
+func messageElemFacts(s ir.TableMessageShape) *shapeFacts {
+	if s.Inner == nil {
+		return nil
+	}
+	f := messageShapeFacts(s.Elem, *s.Inner)
+	return &f
+}
+
+// buildShapeArrays spells each expected fact as a Java array literal, so
+// clause 2.2 bites the reader's shapes as well as its ids and kinds
+// (docs/SPEC-TABLES.md §3.3, "AN ENTRY IS A TRIPLE").
+func buildShapeArrays(vocab []ir.TableVocabularyEntry) shapeArrays {
+	var b [18]strings.Builder
+	sep := func(i, col int) {
+		if i > 0 {
+			b[col].WriteString(", ")
+		}
+	}
+	for i, e := range vocab {
+		f := messageShapeFacts(e.Kind, e.Shape)
+		sep(i, 0); fmt.Fprintf(&b[0], "0x%016xL", e.Id)
+		sep(i, 1); fmt.Fprintf(&b[1], "%d", e.Kind)
+		sep(i, 2); fmt.Fprintf(&b[2], "%d", f.packing)
+		sep(i, 3); fmt.Fprintf(&b[3], "%dL", f.bits)
+		sep(i, 4); fmt.Fprintf(&b[4], "0x%016xL", f.baseLo)
+		sep(i, 5); fmt.Fprintf(&b[5], "0x%016xL", f.baseHi)
+		sep(i, 6); fmt.Fprintf(&b[6], "%dL", f.min)
+		sep(i, 7); fmt.Fprintf(&b[7], "%dL", f.max)
+		sep(i, 8); fmt.Fprintf(&b[8], "0x%08x", f.qMin)
+		sep(i, 9); fmt.Fprintf(&b[9], "0x%08x", f.qMax)
+		sep(i, 10); fmt.Fprintf(&b[10], "0x%08x", f.qRes)
+		sep(i, 11); fmt.Fprintf(&b[11], "0x%08x", f.qDelta)
+		sep(i, 12); fmt.Fprintf(&b[12], "%dL", f.steps)
+		if f.elem == nil {
+			sep(i, 13); b[13].WriteString("-1")
+			sep(i, 14); b[14].WriteString("0")
+			sep(i, 15); b[15].WriteString("0L")
+			sep(i, 16); b[16].WriteString("0L")
+			sep(i, 17); b[17].WriteString("0L")
+		} else {
+			sep(i, 13); fmt.Fprintf(&b[13], "%d", f.elem.kind)
+			sep(i, 14); fmt.Fprintf(&b[14], "%d", f.elem.packing)
+			sep(i, 15); fmt.Fprintf(&b[15], "%dL", f.elem.bits)
+			sep(i, 16); fmt.Fprintf(&b[16], "0x%016xL", f.elem.baseLo)
+			sep(i, 17); fmt.Fprintf(&b[17], "0x%016xL", f.elem.baseHi)
+		}
+	}
+	return shapeArrays{
+		ids: b[0].String(), kinds: b[1].String(), packing: b[2].String(),
+		bits: b[3].String(), baseLo: b[4].String(), baseHi: b[5].String(),
+		min: b[6].String(), max: b[7].String(), qMin: b[8].String(),
+		qMax: b[9].String(), qRes: b[10].String(), qDelta: b[11].String(),
+		steps: b[12].String(), elemKind: b[13].String(), elemPacking: b[14].String(),
+		elemBits: b[15].String(), elemBaseLo: b[16].String(), elemBaseHi: b[17].String(),
+	}
 }
 
 // The refusal and strict-check forgeries, built the reference's way: an
