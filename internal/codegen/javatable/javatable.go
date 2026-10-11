@@ -271,6 +271,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the announcement
+	// surface, emitted for a unit with a `fixed table` root.
+	message, err := generateMessageFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, message)
 	return out, nil
 }
 
