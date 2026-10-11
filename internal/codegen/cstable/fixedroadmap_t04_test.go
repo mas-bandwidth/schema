@@ -31,6 +31,8 @@ func TestFixedRoadmapCSharpT04Versions(t *testing.T) {
 		{"cs/R20", t04R20},
 		{"cs/R21", t04R21},
 		{"cs/R29", t04R29},
+		{"cs/E5", t04E5},
+		{"cs/W2", t04W2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
