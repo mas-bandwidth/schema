@@ -104,7 +104,31 @@ func TestMessageFormBatchJava(t *testing.T) {
     }
 `)
 	})
-
+	t.Run("2.3-prefix-damage-and-pad", func(t *testing.T) {
+		t.Parallel()
+		u := loadUnitDir(t, root, "tables/backend")
+		runBatchJava(t, u, `
+    public static void main(String[] args) {
+        LoginRequestFixed.Value one=new LoginRequestFixed.Value();one.playerId=1234;
+        LoginRequestFixed.Value[] values={one,one};byte[] image=new byte[LoginRequestFixed.bodyBytes];
+        int n=TableVocabulary.loginRequestMeasureMessages(values,2,image,new TableVocabulary.Report());byte[] wire=new byte[n];TableVocabulary.loginRequestSaveMessages(values,2,wire,image,new TableVocabulary.Report());
+        TableVocabulary v=new TableVocabulary();v.reset(4096);TableVocabulary.announceRead(v,TableVocabulary.tableAnnouncement,new TableVocabulary.Report());
+        LoginRequestFixed.Value[] back={new LoginRequestFixed.Value(),new LoginRequestFixed.Value()};TableVocabulary.Report r=new TableVocabulary.Report();
+        // §3.3: damage in body k delivers k-1, and the first body stands.
+        int count=TableVocabulary.loginRequestLoadMessages(back,2,java.util.Arrays.copyOf(wire,n-1),v,image,r);
+        if(count!=1||!r.malformed||back[0].playerId!=1234)fail("prefix damage "+count);
+        r=new TableVocabulary.Report();
+        // §3.3: bytes after the pad are malformed, not another batch.
+        count=TableVocabulary.loginRequestLoadMessages(back,2,java.util.Arrays.copyOf(wire,n+1),v,image,r);
+        if(count!=2||!r.malformed)fail("trailing byte");
+        r=new TableVocabulary.Report();TableVocabulary.loginRequestLoadMessages(back,2,new byte[]{4},v,image,r);
+        if(!r.refused||r.malformed||!"newer_form".equals(r.reason))fail("newer form");
+        // §3.3: a file reader refuses the message form before any body read.
+        TableFixed.Report file=new TableFixed.Report();
+        if(LoginRequestFixed.load(back,2,wire,new TableFixed.Entry[0],new short[0],image,file)!=-1||!file.refused||file.malformed||file.reason!=TableFixed.Reason.messageFormAsFile)fail("message as file");
+    }
+`)
+	})
 }
 
 // messageOracleImage decodes the independent form-1 pin with the Go reference
