@@ -16,9 +16,51 @@ package ctable
 // runCGenerated, which needs neither the sibling runtime nor the oracle).
 
 import (
+	"bytes"
+	"encoding/binary"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// cT05OldFile builds a fixed-form FILE in the OLD writer's layout, in Go, from
+// the same IR the emitter lays down — header, layout length, layout, one record
+// (per-record hash then the body) — so a cross-version probe has an old file to
+// read without the C++ reference's byte oracle. `values` is the record body,
+// every field at its bound, in declared order.
+func cT05OldFile(t *testing.T, older string, values []byte) string {
+	t.Helper()
+	u := cUnitOf(t, older)
+	st := cFixedRoot(t, u)
+	entries := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(entries)
+	hash := ir.TableFixedLayoutHash(layout, st)
+	body := ir.TableFixedTypeBytes(st)
+	if int64(len(values)) != body {
+		t.Fatalf("the old record body is %d bytes, the values are %d", body, len(values))
+	}
+	var b bytes.Buffer
+	hdr := make([]byte, 16)
+	hdr[0] = 3 // the fixed form byte
+	binary.LittleEndian.PutUint64(hdr[8:], hash)
+	b.Write(hdr)
+	var ln [4]byte
+	binary.LittleEndian.PutUint32(ln[:], uint32(len(layout)))
+	b.Write(ln[:])
+	b.Write(layout)
+	var rh [8]byte
+	binary.LittleEndian.PutUint64(rh[:], hash)
+	b.Write(rh[:])
+	b.Write(values)
+	p := filepath.Join(t.TempDir(), "old.bin")
+	if err := os.WriteFile(p, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
 
 // t05All concatenates every file Generate() produced for one unit, which is
 // where the fixed runtime and the root's bodies meet.
@@ -46,6 +88,80 @@ func t05WantNot(t *testing.T, body, needle string) {
 
 func TestFixedRoadmapCT05Evolution(t *testing.T) {
 	t.Parallel()
+
+	// c/E6 "Renaming uses the declared identity" (docs/SPEC-TABLES.md §5, the
+	// `was` identity). `b was = "a"` keeps the OLD name's wire hash, so the two
+	// layouts are byte-identical and the NEW reader reads the OLD file on the
+	// identity lane: `b` lands `a`'s value 42, never the default 0 a name-pairing
+	// would leave, and no counter moves.
+	t.Run("c/E6", func(t *testing.T) {
+		t.Parallel()
+		newer := cReadSchema(t, "VNEW_rename_without_was")
+		older := cReadSchema(t, "VOLD_rename_without_was")
+		vals := make([]byte, 8)
+		binary.LittleEndian.PutUint32(vals[0:], 42) // a
+		binary.LittleEndian.PutUint32(vals[4:], 9)  // seq
+		file := cT05OldFile(t, older, vals)
+		out, err := cRunVersionProbe(t, newer, nil, 0, file, `
+    if ( n != 1 || r.refused || r.malformed ) { printf( "rename read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( back[0].b != 42 ) { printf( "the renamed field must read a's value 42 by its declared identity, not %d\n", (int) back[0].b ); return 1; }
+    if ( back[0].seq != 9 ) { printf( "the scalar after the rename must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a rename moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("c/E6: %v\n%s", err, out)
+		}
+	})
+
+	// c/E8 "Append and deprecate under the backward-read contract"
+	// (docs/SPEC-TABLES.md §3.4 "A DEPRECATED FIELD KEEPS ITS SLOT FOREVER"). A
+	// deprecated field is still an entry in the layout and still a slot, so the
+	// NEW reader reads the OLD file's a/b/c exactly — the deprecated b included,
+	// on every plan, no counter — and the append half lands the tail default
+	// (held by c/R19).
+	t.Run("c/E8", func(t *testing.T) {
+		t.Parallel()
+		newer := cReadSchema(t, "VNEW_field_deprecate")
+		older := cReadSchema(t, "VOLD_field_deprecate")
+		vals := make([]byte, 12)
+		binary.LittleEndian.PutUint32(vals[0:], 1)
+		binary.LittleEndian.PutUint32(vals[4:], 2)
+		binary.LittleEndian.PutUint32(vals[8:], 3)
+		file := cT05OldFile(t, older, vals)
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
+    if ( n != 1 || r.refused || r.malformed ) { printf( "deprecate read: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( back[0].a != 1 || back[0].b != 2 || back[0].c != 3 ) { printf( "the deprecated field or a neighbour does not land exactly: a=%d b=%d c=%d\n", (int) back[0].a, (int) back[0].b, (int) back[0].c ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a deprecation moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("c/E8: %v\n%s", err, out)
+		}
+	})
+
+	// c/R19 "a clean NEW-READS-OLD of an appended field ... moves no counter at
+	// all" (docs/FIXED-FORM-ALGORITHM.md §5.4's last row, SPEC-TABLES §3.4). The
+	// old file is built in Go from the same IR the emitter lays down, so the NEW
+	// reader's compiled plan lands x/y/z exactly, the appended w its declared
+	// default 77, and every counter stays zero.
+	t.Run("c/R19", func(t *testing.T) {
+		t.Parallel()
+		newer := cReadSchema(t, "VNEW_field_append")
+		older := cReadSchema(t, "VOLD_field_append")
+		vals := make([]byte, 12)
+		binary.LittleEndian.PutUint32(vals[0:], 10)
+		binary.LittleEndian.PutUint32(vals[4:], 11)
+		binary.LittleEndian.PutUint32(vals[8:], 12)
+		file := cT05OldFile(t, older, vals)
+		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
+    if ( n != 1 || r.refused || r.malformed ) { printf( "clean append: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( back[0].x != 10 || back[0].y != 11 || back[0].z != 12 ) { printf( "the old fields do not land exactly: x=%d y=%d z=%d\n", (int) back[0].x, (int) back[0].y, (int) back[0].z ); return 1; }
+    if ( back[0].w != 77 ) { printf( "the appended field must land its declared default 77, not %d\n", (int) back[0].w ); return 1; }
+    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 ) { printf( "a clean append moves a counter: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
+`, "")
+		if err != nil {
+			t.Fatalf("c/R19: %v\n%s", err, out)
+		}
+	})
 
 	// c/R18 "a clamp that cannot fire is not emitted and nothing moves"
 	// (docs/FIXED-FORM-ALGORITHM.md §5.4, tableClampEnds). A range that fills
