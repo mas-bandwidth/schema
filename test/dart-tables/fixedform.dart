@@ -1877,6 +1877,13 @@ void textLengthClampCase() {
     'C3: and the offset it names is where the live length really is',
   );
 
+  // Save zeroes slack beyond labelLength. These forged longer lengths
+  // need valid UTF-8 in every newly USED byte; content refusal is tested
+  // separately. Keep this fixture about length clamping alone.
+  for (var i = 0; i < cap; i++) {
+    file[body + labelAt + 4 + i] = 0x61 + i;
+  }
+
   // THE LOOP ALONE. Run the identity plan over the forged body and read the
   // length word it LANDS in the reader's image, plus the one counter.
   (int, int) loopRun(int forged) {

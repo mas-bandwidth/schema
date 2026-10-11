@@ -79,6 +79,83 @@ func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Ma
 // had nothing to do with. A bound a port can hold for itself is a bound the
 // ports can disagree about, so the copy is gone.
 
+// fixedDartSupported extends the fixed-form field closure for this leg's
+// declared union arms. SPEC-TABLES §2.6 makes an arm an ordinary field line;
+// §3.4 gives every fixed arm its constant storage width. This Dart emitter
+// handles bounded arrays and text arms with the same field writers/readers as
+// top-level fields, while retaining the common closure's other refusals.
+func fixedDartSupported(st *ir.Struct, depth int) bool {
+	if depth > ir.TableFixedMaxDepth {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
+			return false
+		}
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if !fixedDartSupported(r, depth+1) {
+				return false
+			}
+		case *ir.Union:
+			if !fixedDartUnionSupported(r, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// fixedDartUnionSupported admits bounded, non-optional field arms, including
+// text and arrays (SPEC-TABLES §2.6, §3.4); the common IR check still governs
+// every other target's supported closure.
+func fixedDartUnionSupported(u *ir.Union, depth int) bool {
+	if depth > ir.TableFixedMaxDepth {
+		return false
+	}
+	for _, v := range u.Variants {
+		if v.F == nil {
+			continue // §3.4: a payload-free arm contributes its tag and no storage.
+		}
+		a := v.F
+		if a.Type.Pointer || a.IsMap() || a.IsList() || a.KeyEnum != "" || a.Type.Optional {
+			return false
+		}
+		if a.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := a.Type.Ref.(type) {
+		case *ir.Struct:
+			if !fixedDartSupported(r, depth+1) {
+				return false
+			}
+		case *ir.Union:
+			if !fixedDartUnionSupported(r, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// FixedTableClosureSupported identifies explicitly fixed units whose complete
+// closure this emitter carries (§2.6, §3.4). The compiler can admit their union
+// fields without admitting the same constructs in variable-table codecs.
+func FixedTableClosureSupported(u *ir.Unit) bool {
+	if len(u.Tables) == 0 {
+		return false
+	}
+	for _, st := range u.Tables {
+		if !st.FixedDeclared || fixedRefusal(st) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // fixedRefusal answers why a table cannot carry the fixed form in Dart, or ""
 // when it can. NAMED, NEVER SILENT is the property: a table this backend will
 // not emit the form for gets a line in the generated library saying which
@@ -93,8 +170,8 @@ func fixedRefusal(st *ir.Struct) string {
 		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
 			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
 	}
-	if !ir.TableFixedSupported(st, 0) {
-		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or a union arm holding text, an array or an optional (docs/SPEC-TABLES.md §3.4)"
+	if !fixedDartSupported(st, 0) {
+		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or an optional union arm (docs/SPEC-TABLES.md §3.4)"
 	}
 	if n := fixedOptionalInPacketType(st, 0); n != "" {
 		// §3.4's ONE departure from §2.3: on this form `?T` and a plain `T`
@@ -339,7 +416,13 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
 				fixedDst{dst: at, aux: at})
 			for _, v := range r.Variants {
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
+				if v.F == nil {
+					w.push(fixedLayoutEntry{id: ir.TableWireId(v.WireName()), kind: ir.TableKindNoPayload, note: v.Name}, fixedDst{})
+					continue
+				}
+				// Arm storage starts at the payload in the union value class; at locates
+				// the union in its parent record and does not prefix arm destinations.
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:

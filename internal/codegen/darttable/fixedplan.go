@@ -76,8 +76,12 @@ func (p *fixedPlanBuild) push(e fixedPlanEntry) {
 }
 
 // fixedIdentityPlan is this type's leaf walk, coalesced — the same coalescer
-// the plan compiler runs, so the two are one array read by one loop.
-func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
+// the plan compiler runs, so the two are one array read by one loop. THE PLAN
+// IS PARTITIONED (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.1,
+// §4.4, §5.9 #42): every unguarded entry first, then every guarded one, and
+// the split is the index the second half starts at — the number of UNGUARDED
+// entries, not of guarded ones.
+func fixedIdentityPlan(st *ir.Struct) ([]fixedPlanEntry, int) {
 	p := &fixedPlanBuild{argw: 1}
 	var at int64
 	for _, f := range st.Fields {
@@ -158,7 +162,18 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			saved := p.argw
 			p.argw = int(tag)
 			for i, v := range r.Variants {
-				fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+				if v.F == nil {
+					continue // §3.4: the tag is copied; this arm has no payload to move.
+				}
+				if v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
+					if _, ok := v.F.Type.Ref.(*ir.Struct); ok {
+						// Nested record arms keep the established storage walk,
+						// whose child offsets follow the union's wire address.
+						fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+						continue
+					}
+				}
+				fixedPlanSub(p, v.F, src+tag, src, i+1)
 			}
 			p.argw = saved
 			return
@@ -266,21 +281,36 @@ func fixedFlatType(st *ir.Struct) bool {
 // fixedCoalesce is THE ONLY OPTIMIZATION A PLAN COMPILER PERFORMS: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It runs here on the identity plan and in the Dart runtime on
-// any other, so the two are the same array read by the same loop.
-func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
+// any other, so the two are the same array read by the same loop. THE PLAN IS
+// PARTITIONED (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.1,
+// §4.4, §5.9 #42): the walk runs TWICE — unguarded entries first, guarded ones
+// second — and coalescing runs inside each half, never across the split, because
+// a copy that merged a guarded entry into an unguarded run would land the arm's
+// bytes unconditionally. The returned split is the number of UNGUARDED entries,
+// the index the second half starts at.
+func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 	out := make([]fixedPlanEntry, 0, len(in))
-	for _, e := range in {
-		if n := len(out); n > 0 {
-			p := &out[n-1]
-			if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-				p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
-				p.size += e.size
+	split := 0
+	for pass := range 2 {
+		for _, e := range in {
+			if (e.guard != fixedNoGuard) != (pass == 1) {
 				continue
 			}
+			if n := len(out); n > split {
+				p := &out[n-1]
+				if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
+					p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
+					p.size += e.size
+					continue
+				}
+			}
+			out = append(out, e)
 		}
-		out = append(out, e)
+		if pass == 0 {
+			split = len(out)
+		}
 	}
-	return out
+	return out, split
 }
 
 // fixedFill is one prefill range: the bytes a plan does not land. Packed as
