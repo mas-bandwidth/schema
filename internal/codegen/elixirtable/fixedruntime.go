@@ -441,23 +441,26 @@ const fixedRuntimeBody = `  @moduledoc """
 
   @doc """
   A ` + "`" + `string(N)` + "`" + `'s used bytes: well-formed UTF-8 with no zero among them, or
-  the field's declared default and ` + "`" + `malformed` + "`" + `. An ABSENT optional does not
-  run the rule — the payload is unspecified and nobody wrote it (§3.4).
+  a REFUSAL BY NAME. An ABSENT optional does not run the rule — the payload is
+  unspecified and nobody wrote it (§3.4). ILL-FORMED TEXT IN THE USED UNITS
+  refuses the read by name rather than landing the default (§4.5 fix 11, the
+  ruling this page gives where §3.4 disagrees): the used units alone are held,
+  never the slack, and the refusal is ` + "`" + `text_ill_formed` + "`" + `.
   """
-  def text(used, default, m), do: text(used, default, m, true)
+  def text(used, _default, m), do: text(used, _default, m, true)
 
-  def text(used, default, m, present) do
-    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}
+  def text(used, _default, m, present) do
+    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
   @doc """
-  A ` + "`" + `wstring(N)` + "`" + `'s used units: paired UTF-16 with no zero unit, or the
-  field's declared default and ` + "`" + `malformed` + "`" + `. The same present-flag rule.
+  A ` + "`" + `wstring(N)` + "`" + `'s used units: paired UTF-16 with no zero unit, or a
+  REFUSAL BY NAME (` + "`" + `text_ill_formed` + "`" + `), on the same present-flag rule.
   """
-  def wtext(used, default, m), do: wtext(used, default, m, true)
+  def wtext(used, _default, m), do: wtext(used, _default, m, true)
 
-  def wtext(used, default, m, present) do
-    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}
+  def wtext(used, _default, m, present) do
+    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
   # ---------------------------------------------------------------------------
@@ -1650,19 +1653,11 @@ const fixedRuntimeBody = `  @moduledoc """
         if text_ok?(flavour, binary_part(take, 0, v * unit)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else
-          # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is DAMAGE and not
-          # data, and the verdict is the one every form reaches: THE FIELD READS
-          # ITS DECLARED DEFAULT, one damage flag fires, and the rest of the
-          # record stands. SPEC.md §4.7 refuses the whole read on the packet
-          # wire because a packet has no position after a field that did not
-          # decode; a FIXED RECORD IS POSITIONAL, so the damage is one field's.
-          #
-          # LANDING THE DEFAULT COSTS NOTHING HERE. A field with no write in the
-          # plan's output is a GAP, and the assembler fills every gap from the
-          # PREFILL — which is this type's declared defaults, the string's
-          # length in front of its bytes. So the answer is the absence of an
-          # answer, which is the same mechanism that answers "absent field".
-          step(rest, body, writes, %{report | malformed: true})
+          # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is a REFUSAL BY
+          # NAME (§4.5 fix 11, the ruling this page gives where §3.4 disagrees):
+          # the read refuses ` + "`" + `text_ill_formed` + "`" + ` and writes nothing, refusing the
+          # whole read as the packet reader does rather than landing a default.
+          throw({:refuse, :text_ill_formed})
         end
 
       _ ->

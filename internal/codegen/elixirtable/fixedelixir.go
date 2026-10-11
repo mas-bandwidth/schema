@@ -799,8 +799,8 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 
 // readText is a string(N) or wstring(N): the length is clamped to this
 // reader's bound, the used units are held to the CONTENT rule, and a payload
-// that is not the text its kind says it is reads the declared default with
-// `malformed` beside the count. bytes(N) does not come here.
+// that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
+// §4.5 fix 11). bytes(N) does not come here.
 func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, present node) {
 	bound := f.Type.Size
 	bytes := unit * bound
@@ -1683,6 +1683,12 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs\n")
 	g.pf("    # first and owns the ragged tail, so a `rest` that is not a whole number\n")
 	g.pf("    # of records passes this and the split reports `malformed`.\n")
+	g.pf("    # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME\n")
+	g.pf("    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all\n")
+	g.pf("    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform\n")
+	g.pf("    # refusal is caught, with no destination byte landed and every counter\n")
+	g.pf("    # left at zero.\n")
+	g.pf("    try do\n")
 	g.pf("    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
 	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
 	g.pf("      {values, report} =\n")
@@ -1698,6 +1704,9 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    else\n")
 	g.pf("      {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
 	g.pf("      {:error, why} -> {:error, why, report}\n")
+	g.pf("    end\n")
+	g.pf("    catch\n")
+	g.pf("      :throw, {:refuse, why} -> {:error, why, report}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
