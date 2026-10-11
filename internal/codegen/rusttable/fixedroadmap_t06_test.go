@@ -397,9 +397,10 @@ fixed table T
 	// CONJOINS a nested arm's own link onto the inherited OUTER chain, outermost
 	// first (docs/FIXED-FORM-ALGORITHM.md §4.1's follow-on; docs/SPEC-TABLES.md
 	// §3.4). The conjoin call's own arguments ARE the arm's link: the INNER tag
-	// at ITS own offset (`their_at`), the arm's ordinal at full width (`j as u64
-	// + 1`), and the tag's own width (`their_tag as u8`), appended after the
-	// inherited links — and the entry below references the result by offset+count.
+	// at ITS own offset (`their_at`), the arm's ordinal at full width
+	// (`j as u64 + 1`), and the tag's own width (`their_tag as u8`), appended
+	// after the inherited links — and the entry below references the result by
+	// offset+count.
 	t06Has(t, runtime, "their_at, j as u64 + 1, their_tag as u8)",
 		"R31 the emitted plan's own link is the INNER tag at its offset, ordinal and width")
 }
