@@ -339,10 +339,12 @@ fixed table T
         vals[0].hi = (byte) 240;`, []string{"lo", "hi"})
 }
 
-// utf16-values verifies SPEC §3.4's kind 33 leaf: the fixed form lays wide text
-// out as UTF-16 code units with a used length beside them. A boundary value —
-// the surrogate pair U+1F600, which kind 33 requires PAIRED — round-trips
-// exactly through the writer and the reader.
+// utf16-values is recorded `unknown`: this exercises SPEC §3.4's kind 33 leaf
+// directly through javatable.Generate, laying wide text out as UTF-16 code
+// units with a used length beside them and round-tripping the PAIRED surrogate
+// pair U+1F600. The Java target refuses a wstring(N) field in a table closure
+// (compiler/widetext.go:49, java absent from tableWideTextTargets), so the
+// emitter branch below is unreachable in a target the gate runs.
 func t08UTF16(t *testing.T) {
 	t08RoundTrip(t, "utf16", `package probe
 
@@ -355,13 +357,16 @@ fixed table T
         vals[0].sLength = 2;`, []string{"s", "sLength"})
 }
 
-// union-field-arms is recorded `unknown`: scalar arms are laid out, but a direct
-// text or array arm is refused by ir.TableFixedSupported, and the task's own
-// title is "scalar, text or array fields". The scalar clause is proved below;
-// the text/array clause is not, so the card's verdict is `unknown`.
+// union-field-arms is recorded `unknown`: the title's scalar, text and array
+// clauses are all unreachable in the Java target, which refuses any union a
+// table closure holds (compiler/builtin.go:94, java registered without table
+// arms). The scalar round trip below exercises the internal emitter directly;
+// the direct text and array arms are refused by ir.TableFixedSupported and by
+// the same target refusal, so no clause is proved in a target a gate runs.
 func t08UnionFieldArms(t *testing.T) {
-	// The scalar clause: a union whose arms are scalars writes and reads its
-	// selected arm with non-default values.
+	// The internal-emitter branch for scalars: it writes and reads the selected
+	// arm with non-default values through javatable.Generate, but the Java
+	// target refuses the same schema, so this is not a gated target capability.
 	t08RoundTrip(t, "union_field_arms", `package probe
 
 union Cell
@@ -424,8 +429,12 @@ fixed table T
 `)
 }
 
-// union-arrays verifies SPEC §3.4's array of a union: every element carries its
-// own tag and arm, and non-default selected arms round-trip element by element.
+// union-arrays is recorded `unknown`: this exercises SPEC §3.4's array of a
+// union directly through javatable.Generate, every element carrying its own tag
+// and arm and non-default selected arms round-tripping element by element. The
+// Java target refuses any union a table closure holds (compiler/builtin.go:94,
+// java registered with arms=false and unionArrays=false), so the emitter branch
+// below is unreachable in a target the gate runs.
 func t08UnionArrays(t *testing.T) {
 	t08RoundTrip(t, "union_arrays", `package probe
 
