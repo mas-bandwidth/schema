@@ -38,6 +38,8 @@ func TestFixedRoadmapJsT06Bounds(t *testing.T) {
 		{"js/C12", t06JsC12},
 		{"js/C13", t06JsC13},
 		{"js/R17", t06JsR17},
+		{"js/C1", t06JsC1},
+		{"js/C2", t06JsC2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -245,4 +247,39 @@ fixed table T
 	if strings.Contains(body, "report.") {
 		t.Error("R17: the bool or present load moves a counter; a hostile byte counts nothing")
 	}
+}
+
+// ---- js/C1 "count clamp v<0" ------------------------------------------------
+
+// t06JsC1 holds C1's hostile half: a count word below zero clamps to zero and
+// counts. docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-VERSIONING-TESTS.md
+// "the count clamp across bounds (C1/C2's cross-version half; the hostile half
+// stays)". The count op reads a 32-bit word and holds it to the declared bound.
+func t06JsC1(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+fixed table T
+{
+    vals [..4]int32
+}
+`, "T")
+	t02Has(t, t02Norm(body), "if (n < 0) { n = 0; report.clamped++; }",
+		"C1 a count below zero clamps to zero and counts")
+}
+
+// ---- js/C2 "count clamp v>Max" ----------------------------------------------
+
+// t06JsC2 holds C2's hostile half: a count word above the declared maximum
+// clamps to the maximum and counts. docs/SPEC-TABLES.md §3.4: a counted array's
+// bound is the declared maximum and a count past it is the writer's fault.
+func t06JsC2(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+fixed table T
+{
+    vals [..4]int32
+}
+`, "T")
+	t02Has(t, t02Norm(body), "else if (n > 4) { n = 4; report.clamped++; }",
+		"C2 a count above the max clamps to the max and counts")
 }
