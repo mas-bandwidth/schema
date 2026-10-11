@@ -175,6 +175,13 @@ abstract final class TableFixedRefusal {
   static const int layoutNewer = 15;
   static const int layoutUnsupported = 16;
 
+  /// ILL-FORMED TEXT IN THE USED UNITS REFUSES THE WHOLE READ BY NAME. The
+  /// content rules hold the USED units and never the slack, and a violation is
+  /// a refusal and not the reference's 'malformed' (docs/FIXED-FORM-ALGORITHM.md
+  /// §4.5 fix 11, §5.8 row 8, the ruling where that page and SPEC-TABLES §3.4
+  /// disagree). Both text kinds and the compiled plan's text op answer it.
+  static const int textIllFormed = 17; // ill-formed text in the USED units
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -212,6 +219,8 @@ abstract final class TableFixedRefusal {
         return 'layout_newer';
       case layoutUnsupported:
         return 'layout_unsupported';
+      case textIllFormed:
+        return 'text_ill_formed';
       default:
         return '???';
     }
@@ -958,7 +967,14 @@ int tableFixedTagAt(Uint8List source, int at, int argw) {
 /// entry costs it the measurement the one-reader ruling rests on; the fastest
 /// move Dart has for the same job is Uint8List.setRange, which is the typed
 /// list's own bulk copy and not a per-byte loop, so that is what this is.
-void tableFixedRun(
+///
+/// THE RUN ANSWERS THE REFUSAL IT FOUND, or TableFixedRefusal.none. A text
+/// entry whose USED units are not the text its kind says REFUSES THE READ BY
+/// NAME (§4.5 fix 11): the length still clamps and counts, but the content
+/// check runs on the units it kept and a violation returns text_ill_formed
+/// before the length or a unit byte is written, so REFUSE moves no counter and
+/// lands nothing.
+int tableFixedRun(
   Int32List plan,
   int entryCount,
   Uint8List source,
@@ -1004,11 +1020,27 @@ void tableFixedRun(
             : 1;
         final cap = size ~/ unit;
         var used = sourceView.getInt32(s, Endian.little);
+        var clampFired = false;
         if (used < 0) {
           used = 0;
-          report.clamped++;
+          clampFired = true;
         } else if (used > cap) {
           used = cap;
+          clampFired = true;
+        }
+        // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
+        // violation REFUSES BY NAME (§4.5 fix 11): the length above clamps and
+        // counts, but THE CHECK RUNS FIRST, over the units it kept and never
+        // over the slack, so a refusal moves no counter and writes no byte.
+        if (tableFixedTextIllFormed(
+          plan[b + TableFixedLane.meta],
+          used,
+          source,
+          s + 4,
+        )) {
+          return TableFixedRefusal.textIllFormed;
+        }
+        if (clampFired) {
           report.clamped++;
         }
         imageView.setInt32(d, used, Endian.little);
@@ -1103,6 +1135,95 @@ void tableFixedRun(
         break;
     }
   }
+  return TableFixedRefusal.none;
+}
+
+/// tableFixedTextIllFormed reports whether a text payload's USED units are the
+/// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
+/// well-formed UTF-8 with no zero byte for string(N), paired non-zero UTF-16
+/// code units for wstring(N). bytes(N) carries no content rule at all, and
+/// the SLACK past the used units is unspecified and never a refusal. used is
+/// the clamped length in the flavour's own units; at is the first unit byte.
+bool tableFixedTextIllFormed(
+  int meta,
+  int used,
+  Uint8List source,
+  int at,
+) {
+  if (meta == TableFixedOp.textBytes) {
+    return false;
+  }
+  if (meta == TableFixedOp.textWide) {
+    // UTF-16 CODE UNITS, two bytes each little-endian: a lone high surrogate,
+    // a lone low surrogate, and a zero unit are each ill-formed.
+    int unitAt(int i) => source[at + i * 2] | (source[at + i * 2 + 1] << 8);
+    for (var i = 0; i < used; i++) {
+      final u = unitAt(i);
+      if (u == 0) {
+        return true;
+      }
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        if (i + 1 >= used) {
+          return true;
+        }
+        final lo = unitAt(i + 1);
+        if (lo < 0xDC00 || lo > 0xDFFF) {
+          return true;
+        }
+        i++;
+      } else if (u >= 0xDC00 && u <= 0xDFFF) {
+        return true;
+      }
+    }
+    return false;
+  }
+  // UTF-8 over the used BYTES: the shortest form of each sequence, no
+  // continuation byte out of place, no zero byte anywhere, and no code point
+  // a UTF-8 scalar cannot be — an overlong form, a surrogate encoded in UTF-8,
+  // or a point past U+10FFFF is each ill-formed (docs/SPEC-TABLES.md §3.4's
+  // ill-formed set). The scalar ranges mirror the packet reader's
+  // (internal/codegen/dart/utf8.go).
+  bool cont(int k) => (source[at + k] & 0xC0) == 0x80;
+  var i = 0;
+  while (i < used) {
+    final c = source[at + i];
+    if (c == 0) {
+      return true;
+    } else if (c < 0x80) {
+      i++;
+    } else if ((c & 0xE0) == 0xC0) {
+      if (c < 0xC2 || i + 1 >= used || !cont(i + 1)) {
+        return true;
+      }
+      i += 2;
+    } else if ((c & 0xF0) == 0xE0) {
+      if (i + 2 >= used || !cont(i + 1) || !cont(i + 2)) {
+        return true;
+      }
+      final point = ((c & 0x0F) << 12) |
+          ((source[at + i + 1] & 0x3F) << 6) |
+          (source[at + i + 2] & 0x3F);
+      if (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF)) {
+        return true;
+      }
+      i += 3;
+    } else if ((c & 0xF8) == 0xF0) {
+      if (i + 3 >= used || !cont(i + 1) || !cont(i + 2) || !cont(i + 3)) {
+        return true;
+      }
+      final point = ((c & 0x07) << 18) |
+          ((source[at + i + 1] & 0x3F) << 12) |
+          ((source[at + i + 2] & 0x3F) << 6) |
+          (source[at + i + 3] & 0x3F);
+      if (point < 0x10000 || point > 0x10FFFF) {
+        return true;
+      }
+      i += 4;
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// THE PREFILL ITSELF: the declared defaults, into the ranges named and
