@@ -108,11 +108,15 @@ fixed table BoundsT
 // float RIDES AS THE FLOAT (docs/SPEC-TABLES.md §3.4, §3's table: "a compressed
 // float rides as the float and never as a quantized index"), so the writer
 // stores the IEEE-754 bit pattern and never a quantized index; min/max are
-// DEFINITIONS the read-side bounds pass holds on the value; and the step is a
-// definition in the digest under `'Q'` (§5.2's digest row). "finer widens, coarser
-// refuses by name, dropping the triple widens" are §5.1's WIDENS rules and live
-// in the LOCK, not this emitter: internal/lockfile/cfloatrange_test.go and
-// internal/lockfile/lockrows_test.go hold them by name.
+// DEFINITIONS the read-side bounds pass holds on the value and the resolution
+// is arithmetic on nothing, so it appears in no emitted body; the step is a
+// definition in the definitions digest under `'Q'` and FINER WIDENS — two
+// byte-identical layouts whose step differs must move the digest
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, ir/fixedform.go:686), which is what lets
+// a COARSER step refuse by the hash; and FP-CONTRACT IS OFF on this leg, so the
+// emitted module carries no fused multiply-add. "coarser refuses by name" and
+// "dropping the triple widens" are §5.1's lock WIDENS rules, held on this leg
+// by internal/lockfile/cfloatrange_test.go and named as R30's evidence.
 func t06R30(t *testing.T) {
 	text := t06Fixed(t, `package probe
 
@@ -136,15 +140,43 @@ fixed table CF
 	}
 	t06Has(t, clamp, "value.q < -1.0_f32", "R30 the range's min is a definition the read holds")
 	t06Has(t, clamp, "value.q > 1.0_f32", "R30 the range's max is a definition the read holds")
-	u := unitFrom(t, `package probe
+	// THE RESOLUTION IS A DEFINITION: the read stores the float and clamps it,
+	// and never quantizes through the step, so the step is in no emitted body.
+	for _, body := range []string{write, clamp} {
+		if strings.Contains(body, "0.01") {
+			t.Errorf("R30: the resolution is a definition and not arithmetic, but the emitted body carries it:\n%s", body)
+		}
+	}
+	// THE STEP RIDES IN THE DIGEST UNDER 'Q', AND FINER WIDENS.
+	coarse := unitFrom(t, `package probe
+
+fixed table CF
+{
+    q float32 = 0.0 | min = -1.0, max = 1.0, resolution = 0.1
+}
+`)
+	fine := unitFrom(t, `package probe
 
 fixed table CF
 {
     q float32 = 0.0 | min = -1.0, max = 1.0, resolution = 0.01
 }
 `)
-	if !bytes.Contains(ir.TableFixedDefinitionsDigest(u.Tables["CF"]), []byte{'Q'}) {
+	dCoarse := ir.TableFixedDefinitionsDigest(coarse.Tables["CF"])
+	dFine := ir.TableFixedDefinitionsDigest(fine.Tables["CF"])
+	if !bytes.Contains(dCoarse, []byte{'Q'}) {
 		t.Error("R30: the resolution is not in the definitions digest under 'Q' (§5.2)")
+	}
+	if bytes.Equal(dCoarse, dFine) {
+		t.Error("R30: a finer step must move the digest (a coarser step then refuses by the hash), but 0.1 and 0.01 hash the same")
+	}
+	// FP-CONTRACT IS OFF ON EVERY LEG: the emitted fixed module and its runtime
+	// carry no fused multiply-add, so the float32 read is the IEEE value the
+	// definition names.
+	for _, banned := range []string{"fma(", "mul_add", "fused_mul"} {
+		if strings.Contains(text, banned) {
+			t.Errorf("R30: fp-contract is off on every leg, but the emitted fixed module carries %q", banned)
+		}
 	}
 }
 
