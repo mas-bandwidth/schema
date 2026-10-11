@@ -82,6 +82,18 @@ fn spill(dir: &str, name: &str, data: &[u8]) {
     }
 }
 
+// spill_absent says this backend cannot answer THIS CASE — a feature it lacks,
+// not a test it failed. The harness counts it and the matrix prints it beside
+// what the leg did answer (test/conformance/README.md).
+fn spill_absent(dir: &str, name: &str) {
+    let path = Path::new(dir).join(format!("{name}.absent"));
+    let mut file = match fs::File::create(&path) {
+        Ok(f) => f,
+        Err(e) => fail(&format!("cannot write {}: {e}", path.display())),
+    };
+    let _ = file.write_all(&[]);
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -761,6 +773,40 @@ fn surface_cook(manifest: &Manifest, out: &str) {
     }
 }
 
+// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: a batch of bitpacked
+// bodies under one vocabulary announced once on the connection. `message` is the
+// ONE surface that reads TWO files (test/conformance/README.md): the connection's
+// announcement carries the vocabulary, the driver reads that first into one
+// direction's vocabulary, and the batch resolves against it. The manifest's
+// `connection` line names the announcement and the `message` line names the pair
+// of wires, so the driver joins the two by key and never derives a vocabulary of
+// its own. The verbs are PLURAL because the form's primitive is a batch of
+// bodies, so a batch of one still drives LoadMessages and SaveMessages.
+//
+// THE FORM IS A FIXED TABLE'S (§3.3), and this port does not carry the message
+// codec yet: the emitted table codec is the fixed form (form 3, §3.4), and the
+// bitpacked message codec is the follow-on (PORTING.md M20). Until it lands the
+// surface names itself and answers every row ABSENT — a missing FEATURE and not
+// a failing test — which is the same absence the eight ports already print one
+// grain up (test/conformance/README.md).
+fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message") {
+        // message <name> <connection> <root> <file-form wire> <message-form wire>
+        let mut unit = "";
+        let mut announcement = "";
+        for c in manifest.of_kind("connection") {
+            // connection <name> <unit> <build version> <announcement file>
+            if c[1] == f[2] {
+                unit = &c[2];
+                announcement = &c[4];
+                break;
+            }
+        }
+        let _ = (unit, announcement);
+        spill_absent(out, &f[1]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -778,8 +824,10 @@ fn main() {
         println!(
             // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
             // PREVIOUS form and the corpus is pinned in the id-table form
-            // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
-            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            // (docs/SPEC-TABLES.md §3). schema#518 is the port's row. `message`
+            // (form 2, §3.3) is named here and answers every row ABSENT until the
+            // message codec lands.
+            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage"
         );
         return;
     }
@@ -796,6 +844,7 @@ fn main() {
         "cook-forgery" => surface_cook_forgery(&manifest, out),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
+        "message" => surface_message(&manifest, out),
         _ => exit(2),
     }
 }
