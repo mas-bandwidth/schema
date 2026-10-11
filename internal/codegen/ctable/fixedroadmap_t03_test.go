@@ -152,6 +152,14 @@ func TestFixedRoadmapT03Plans(t *testing.T) {
 	}
 }
 
+// TestFixedRoadmapCT03Plans is the name this card's DONE-WHEN runs
+// (`-run TestFixedRoadmapCT03Plans`) and TestFixedRoadmapT03Plans is the name
+// its verdicts use; the two are one table, so a gate under either name runs
+// every subtest exactly once.
+func TestFixedRoadmapCT03Plans(t *testing.T) {
+	TestFixedRoadmapT03Plans(t)
+}
+
 // t03R4: R4 "the hash is fnv1a64 over the layout bytes then DIGEST(T), the
 // digest computed at the hash site from the schema; a runtime never derives a
 // hash from layout bytes it holds". §5.2 THE HASH: "The digest is computed AT
