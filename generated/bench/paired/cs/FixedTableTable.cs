@@ -1208,7 +1208,7 @@ namespace Bench
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = FixedTableFixedPlan;
-            long record_bytes = known.RecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -1268,12 +1268,7 @@ namespace Bench
                 }
                 if (values[k] == null) { values[k] = new FixedTable(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
-                if (run_why != null)
-                {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
+                TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 FixedTableFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -1305,8 +1300,7 @@ namespace Bench
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes, ref widenScratch);
-            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+            TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 

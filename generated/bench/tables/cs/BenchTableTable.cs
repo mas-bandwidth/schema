@@ -410,29 +410,26 @@ namespace Benchtable
     // (upgrade the client). Those are the operator's two distinct answers.
 
     // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-    // on, the layout bytes verbatim, the byte length riding BESIDE the pointer, and
-    // the RECORD SIZE taken from the lock and never from the file.
+    // on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
+    // never from the file.
     //
-    // §5.9 #19 names the four members in this order — hash, layout, layout_bytes,
-    // record_bytes — the byte length beside the pointer rather than inside it, the
-    // way §4.1 names the plan entry's lanes; tools/fixedtwin holds the C and C++
-    // pair to the same text, and §5.2 makes the names the contract. A C# array
-    // carries its own length, so LayoutBytes is the length of Layout rather than a
-    // second fact, but the member rides so the four names and their order are the
-    // page's on every leg.
+    // §5.9 #19 names four members — hash, layout, layout_bytes, record_bytes —
+    // because tools/fixedtwin holds the C and C++ pair to one text and the byte
+    // length there rides BESIDE the pointer. A C# array carries its own length, so
+    // the fourth member would be a second spelling of Layout.Length; there is no
+    // twin gate on this leg to hold it to the pair's text. Three members, the same
+    // ORDER, and the divergence is named rather than silent.
     public readonly struct TableFixedKnownLayout
     {
         public readonly ulong Hash;
         public readonly byte[] Layout;
-        public readonly int LayoutBytes;
-        public readonly long RecordBytes;
+        public readonly long Record;
 
         public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
         {
             Hash = hash;
             Layout = layout;
-            LayoutBytes = layout.Length;
-            RecordBytes = record;
+            Record = record;
         }
     }
 
@@ -6048,7 +6045,7 @@ namespace Benchtable
                 // width. It is written in full before it is read: every byte of
                 // runs * dw is stored by this case, so nothing from the previous
                 // record survives into this one.
-                public static string Run<T>(
+                public static void Run<T>(
                     ReadOnlySpan<TableFixedEntry> plan,
                     ReadOnlySpan<TableFixedSlot<T>> slots,
                     ReadOnlySpan<byte> src,
@@ -6182,18 +6179,8 @@ namespace Benchtable
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0) { v = 0; if (report != null) report.Clamped++; }
                                 else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
-                                ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
-                                // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
-                                // ELSE, and a violation REFUSES BY NAME, the verdict the
-                                // packet reader gives (docs/FIXED-FORM-ALGORITHM.md §4.5,
-                                // §5.4 fix 11, §5.8 row 8): the length above CLAMPS and
-                                // counts; the bytes it kept are checked now, over v units
-                                // and never over the span.
-                                if (TextIllFormed(p.Meta, (uint)v, textBytes))
-                                {
-                                    return "text_ill_formed";
-                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
+                                ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 if (p.Meta == TextWide)
                                 {
                                     slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
@@ -6298,65 +6285,6 @@ namespace Benchtable
                             default: break;
                         }
                     }
-                    return null;
-                }
-
-                // TextIllFormed reports whether a text payload's USED units are the text
-                // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-                // with no zero byte for string, paired non-zero UTF-16 code units for
-                // wstring. bytes(N) carries no text rule at all, and slack past the used
-                // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
-                // The used argument is the clamped length in the flavour's own units.
-                public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
-                {
-                    switch (meta)
-                    {
-                        case TextUtf8:
-                        {
-                            uint i = 0;
-                            while (i < used)
-                            {
-                                byte lead = p[(int)i];
-                                uint continuations;
-                                uint code_point;
-                                if (lead == 0) { return true; }
-                                if (lead < 0x80) { i++; continue; }
-                                else if ((lead & 0xE0) == 0xC0) { continuations = 1; code_point = (uint)(lead & 0x1F); }
-                                else if ((lead & 0xF0) == 0xE0) { continuations = 2; code_point = (uint)(lead & 0x0F); }
-                                else if ((lead & 0xF8) == 0xF0) { continuations = 3; code_point = (uint)(lead & 0x07); }
-                                else { return true; }
-                                if (i + continuations >= used) { return true; }
-                                for (uint k = 1; k <= continuations; k++)
-                                {
-                                    if ((p[(int)(i + k)] & 0xC0) != 0x80) { return true; }
-                                    code_point = (code_point << 6) | (uint)(p[(int)(i + k)] & 0x3F);
-                                }
-                                if (continuations == 1 && code_point < 0x80) { return true; }
-                                if (continuations == 2 && (code_point < 0x800 || (code_point >= 0xD800 && code_point <= 0xDFFF))) { return true; }
-                                if (continuations == 3 && (code_point < 0x10000 || code_point > 0x10FFFF)) { return true; }
-                                i += 1 + continuations;
-                            }
-                            break;
-                        }
-                        case TextWide:
-                        {
-                            for (uint i = 0; i < used; i++)
-                            {
-                                uint u = (uint)(p[(int)i * 2] | (p[(int)i * 2 + 1] << 8));
-                                if (u == 0) { return true; }
-                                if (u >= 0xD800 && u <= 0xDBFF)
-                                {
-                                    if (i + 1 >= used) { return true; }
-                                    uint lo = (uint)(p[(int)(i + 1) * 2] | (p[(int)(i + 1) * 2 + 1] << 8));
-                                    if (lo < 0xDC00 || lo > 0xDFFF) { return true; }
-                                    i++;
-                                }
-                                else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }
-                            }
-                            break;
-                        }
-                    }
-                    return false;
                 }
             }
         // TableReset(TableEvent) restores None and every arm in place, reusing buffers.
@@ -8314,7 +8242,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableEntityFixedPlan;
-            long record_bytes = known.RecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -8374,12 +8302,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableEntity(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableEntityFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
-                if (run_why != null)
-                {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
+                TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 TableEntityFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -8411,8 +8334,7 @@ namespace Benchtable
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, TableEntityFixedSlots, src, dst, report, planBytes, ref widenScratch);
-            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+            TableFixedWire.Run(plan, TableEntityFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -8594,7 +8516,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableStatFixedPlan;
-            long record_bytes = known.RecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -8654,12 +8576,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableStat(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableStatFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
-                if (run_why != null)
-                {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
+                TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 TableStatFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -8691,8 +8608,7 @@ namespace Benchtable
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, TableStatFixedSlots, src, dst, report, planBytes, ref widenScratch);
-            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+            TableFixedWire.Run(plan, TableStatFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -9712,7 +9628,7 @@ namespace Benchtable
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableMixedFixedPlan;
-            long record_bytes = known.RecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -9772,12 +9688,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableMixed(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableMixedFixedSlots, values[k]);
-                string run_why = TableFixedWire.Run(entries, TableMixedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
-                if (run_why != null)
-                {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
+                TableFixedWire.Run(entries, TableMixedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 TableMixedFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -9809,8 +9720,7 @@ namespace Benchtable
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            string run_why = TableFixedWire.Run(plan, TableMixedFixedSlots, src, dst, report, planBytes, ref widenScratch);
-            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+            TableFixedWire.Run(plan, TableMixedFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 
