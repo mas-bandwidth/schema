@@ -8,22 +8,10 @@ import (
 // Message batches use one caller-owned region. Every body's directory comes
 // first, then its records, then its root, matching the C++ message layout.
 func (g *tableGen) emitRegionMessage(st *ir.Struct) {
-	if st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
-		return
-	}
-	n, typ := st.Name, g.storageName(st.Name)
-	bytes, str := ir.PointerReachableBlobs(st)
-	mask := 0
-	if bytes {
-		mask |= 1
-	}
-	if str {
-		mask |= 2
-	}
-	g.pf("func %sMeasureMessages(values []*%s,report *TableReport,context ...TableWriteContext)int64 {arena,allocator:=tableWriteOptions(context);if len(values)<1{return -1};if len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values{if !tableMessageRegionWrite(&w,unsafe.Pointer(value),%sTableType(),arena,allocator){return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n)
-	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport,context ...TableWriteContext)int64 {arena,allocator:=tableWriteOptions(context);if len(values)<1{return -1};if len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<2{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values{if !tableMessageRegionWrite(&w,unsafe.Pointer(value),%sTableType(),arena,allocator){return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n)
-	g.pf("func %sLoadMessagesMeasure(vocabulary *TableVocabulary,data []byte)int64 {return tableMessageRegionMeasure(vocabulary,data,%sTableType(),%d)}\n", n, n, mask)
-	g.pf("func %sLoadMessages(values []*%s,region []byte,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool){if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};if len(region)==0||uintptr(unsafe.Pointer(&region[0]))%%uintptr(tableRegionAlign)!=0{r.Report.Malformed=true;return 0,false};clear(region);used:=int64(0);for i:=int64(0);i<count;i++ {p,ok:=tableMessageRegionInto(&r,%sTableType(),%d,region,&used);values[i]=(*%s)(p);if !ok{return i,false}};return count,tableMessageBatchClose(&r)}\n", n, typ, n, mask, typ)
+	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
+	// "fixed table T may ride here, a plain table T may not".
+	// A plain table root carries no message verbs, and fixed table roots use the
+	// non-region batch message surface emitted by emitMessageWrite and emitMessageRead.
 }
 
 func tableMessageRegionRuntime(u *ir.Unit) string {
