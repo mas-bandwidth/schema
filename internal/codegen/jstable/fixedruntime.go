@@ -134,6 +134,11 @@ export const TableFixedRefusal = Object.freeze({
   // layout this build served and has retired — upgrade the client.
   LayoutNewer: 15,
   LayoutUnsupported: 16,
+  // THE ONE CONTENT REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11): a text
+  // field whose USED units are ill-formed REFUSES BY NAME rather than landing a
+  // default, the verdict the packet reader gives — this form has no length to
+  // continue past. It is not one of §4's six events: nothing was decoded.
+  TextIllFormed: 17,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -156,6 +161,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
     case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
+    case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     default: return "???";
   }
 }
@@ -314,6 +320,53 @@ function TableFixedTagAt(src, at, argw) {
   return v;
 }
 
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §3.4; docs/
+// FIXED-FORM-ALGORITHM.md §4.5 fix 11): the USED units alone are held — never
+// the slack — and ill-formed text REFUSES BY NAME rather than landing a
+// default. flavour TableFixedTextUtf8 checks well-formed UTF-8 over a byte
+// length; TableFixedTextWide checks paired UTF-16 code units with no zero unit,
+// an ODD length being damage. The view is the caller's, made once per read.
+export function TableFixedTextOk(flavour, view, at, len) {
+  if (flavour === TableFixedTextWide) {
+    if ((len & 1) !== 0) { return false; }
+    for (let i = 0; i < len; i += 2) {
+      const u = view.getUint16(at + i, true);
+      if (u === 0) { return false; }             // a zero unit is damage
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        if (i + 2 >= len) { return false; }       // an unpaired high surrogate
+        const lo = view.getUint16(at + i + 2, true);
+        if (lo < 0xDC00 || lo > 0xDFFF) { return false; }
+        i += 2;
+      } else if (u >= 0xDC00 && u <= 0xDFFF) {
+        return false;                             // a lone low surrogate
+      }
+    }
+    return true;
+  }
+  for (let i = 0; i < len;) {
+    const b0 = view.getUint8(at + i);
+    if (b0 === 0) { return false; }               // a zero byte is damage
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xE0) === 0xC0) { need = 1; cp = b0 & 0x1F; }
+    else if ((b0 & 0xF0) === 0xE0) { need = 2; cp = b0 & 0x0F; }
+    else if ((b0 & 0xF8) === 0xF0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }                        // a lone or overlong lead
+    if (i + 1 + need > len) { return false; }     // truncated
+    for (let k = 1; k <= need; k++) {
+      const b = view.getUint8(at + i + k);
+      if ((b & 0xC0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    // No overlong spelling, no UTF-8-encoded surrogate and nothing past the
+    // Unicode ceiling U+10FFFF: the packet reader refuses these too.
+    const min = (need === 1) ? 0x80 : (need === 2) ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -382,6 +435,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         let v = TableFixedGetU32(src, s) | 0;
         if (v < 0) { v = 0; report.clamped++; }
         else if (v > cap) { v = cap; report.clamped++; }
+        // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
+        // 11): UTF-8 validity over v bytes, never over N; wide code units over
+        // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
+        if (!TableFixedTextOk(unit === 2 ? TableFixedTextWide : TableFixedTextUtf8, srcView, s + 4, v * unit)) {
+          report.refused = TableFixedRefusal.TextIllFormed;
+          return;
+        }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         const aux = e[b + TableFixedLaneAux];
