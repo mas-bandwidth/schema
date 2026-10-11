@@ -6,3 +6,8 @@
 (:id "c/R8" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R8") :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d")
 (:id "c/R9" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R9") :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d")
 (:id "c/R13" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/c/R13") :tested-revision "8fe240ba9b472783687507644493ec2daa68bf0d")
+(:id "optional-scalars/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t11_test.go: TestFixedRoadmapCT11Optionals/optional-scalars/c/valid-data") :tested-revision "03224d650387e2228146ed21d44de20980eab28c")
+(:id "optional-nesting/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t11_test.go: TestFixedRoadmapCT11Optionals/optional-nesting/c/valid-data") :tested-revision "03224d650387e2228146ed21d44de20980eab28c")
+(:id "optional-arrays/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t11_test.go: TestFixedRoadmapCT11Optionals/optional-arrays/c/valid-data") :tested-revision "03224d650387e2228146ed21d44de20980eab28c")
+(:id "scalar-defaults/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t11_test.go: TestFixedRoadmapCT11Optionals/scalar-defaults/c/valid-data") :tested-revision "03224d650387e2228146ed21d44de20980eab28c")
+(:id "text-bytes-flags-defaults/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t11_test.go: TestFixedRoadmapCT11Optionals/text-bytes-flags-defaults/c/valid-data") :tested-revision "03224d650387e2228146ed21d44de20980eab28c")
