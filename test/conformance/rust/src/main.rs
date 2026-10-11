@@ -763,6 +763,120 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// the MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2
+// ---------------------------------------------------------------------------
+//
+// A batch of bitpacked bodies under ONE announced vocabulary. A message's id
+// table is somewhere else: the CONNECTION's announcement carries it, so this
+// surface reads TWO files (test/conformance/README.md) — the announcement into
+// one direction's vocabulary with `announce_read`, then the batch against it —
+// and the manifest's `connection` line joins the two by key. The verbs are
+// PLURAL because the form's primitive is a batch, so a message of one body
+// still drives `load_messages` and `save_messages` with a count of one.
+
+// One root's round trip through a vocabulary: announce, load the batch, measure
+// and save it back. The generated crate owns every name; the driver owns none.
+macro_rules! message_root {
+    ($krate:ident, $root:literal, $storage:ty, $load:path, $measure:path, $save:path) => {{
+        if root == $root {
+            let mut vocabulary = <$krate::TableVocabulary>::default();
+            let mut report = <$krate::TableReport>::default();
+            if !$krate::announce_read(&mut vocabulary, announcement, &mut report) {
+                return None;
+            }
+            let mut values = vec![<$storage>::default(); 256];
+            let count = $load(&mut values, &vocabulary, wire, &mut report);
+            if count < 1 || count > 256 {
+                return None;
+            }
+            let values = &values[..count as usize];
+            let mut ignored = <$krate::TableReport>::default();
+            let n = $measure(values, &mut ignored);
+            if n < 0 {
+                return None;
+            }
+            let mut out = vec![0u8; n as usize];
+            if $save(values, &mut out, &mut ignored) != n {
+                return None;
+            }
+            return Some(out);
+        }
+    }};
+}
+
+fn message_save(unit: &str, root: &str, announcement: &[u8], wire: &[u8]) -> Option<Vec<u8>> {
+    match unit {
+        "backenddemo" => {
+            message_root!(backenddemo, "LoginRequest", backenddemo::LoginRequest,
+                backenddemo::login_request_load_messages,
+                backenddemo::login_request_measure_messages,
+                backenddemo::login_request_save_messages);
+            message_root!(backenddemo, "MatchResult", backenddemo::MatchResult,
+                backenddemo::match_result_load_messages,
+                backenddemo::match_result_measure_messages,
+                backenddemo::match_result_save_messages);
+            message_root!(backenddemo, "StorePurchase", backenddemo::StorePurchase,
+                backenddemo::store_purchase_load_messages,
+                backenddemo::store_purchase_measure_messages,
+                backenddemo::store_purchase_save_messages);
+            message_root!(backenddemo, "Envelope", backenddemo::Envelope,
+                backenddemo::envelope_load_messages,
+                backenddemo::envelope_measure_messages,
+                backenddemo::envelope_save_messages);
+        }
+        "vocabdemo" => {
+            message_root!(vocabdemo, "Wide00", vocabdemo::Wide00,
+                vocabdemo::wide00_load_messages,
+                vocabdemo::wide00_measure_messages,
+                vocabdemo::wide00_save_messages);
+            message_root!(vocabdemo, "Wide09", vocabdemo::Wide09,
+                vocabdemo::wide09_load_messages,
+                vocabdemo::wide09_measure_messages,
+                vocabdemo::wide09_save_messages);
+        }
+        "vocab9demo" => {
+            message_root!(vocab9demo, "Wide00", vocab9demo::Wide00,
+                vocab9demo::wide00_load_messages,
+                vocab9demo::wide00_measure_messages,
+                vocab9demo::wide00_save_messages);
+            message_root!(vocab9demo, "Wide19", vocab9demo::Wide19,
+                vocab9demo::wide19_load_messages,
+                vocab9demo::wide19_measure_messages,
+                vocab9demo::wide19_save_messages);
+        }
+        "graphdemo" => {
+            message_root!(graphdemo, "Scene", graphdemo::Scene,
+                graphdemo::scene_load_messages,
+                graphdemo::scene_measure_messages,
+                graphdemo::scene_save_messages);
+        }
+        _ => {}
+    }
+    None
+}
+
+fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message") {
+        // message <name> <connection> <root> <file-wire> <message-wire>
+        let mut unit = "";
+        let mut announcement_path = "";
+        for c in manifest.of_kind("connection") {
+            if c[1] == f[2] {
+                unit = &c[2];
+                announcement_path = &c[4];
+                break;
+            }
+        }
+        let announcement = slurp(announcement_path);
+        let wire = slurp(&f[5]);
+        match message_save(unit, &f[3], &announcement, &wire) {
+            Some(bytes) => spill(out, &f[1], &bytes),
+            None => fail(&format!("{}: message load/save", f[1])),
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
@@ -779,7 +893,7 @@ fn main() {
             // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
             // PREVIOUS form and the corpus is pinned in the id-table form
             // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
-            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage"
         );
         return;
     }
@@ -794,6 +908,7 @@ fn main() {
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
         "cook-forgery" => surface_cook_forgery(&manifest, out),
+        "message" => surface_message(&manifest, out),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
         _ => exit(2),
