@@ -95,6 +95,41 @@ func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	return out
 }
 
+// fixedCeilingRefusal answers the line this leg owes a table it DECLARED
+// `fixed` but cannot emit the form for, because the record body is past
+// §3.4's 65536-byte ceiling, or "" when the table is under it or was not
+// declared here. NAMED, NEVER SILENT (docs/FIXED-FORM-ALGORITHM.md §5.9 #8,
+// docs/SPEC-TABLES.md §3.4): past the ceiling the form is NOT EMITTED, the
+// table keeps form 1 and its CLASS, and the header SAYS SO BY NAME — the same
+// sentence the JS leg carries in its own module (jstable/fixedjs.go's
+// fixedRefusal). It is the FORM's refusal and never the unit's: a large
+// declared fixed table still compiles (compiler/fixedrecordsize_test.go).
+func fixedCeilingRefusal(st *ir.Struct) string {
+	if st == nil || !st.IsTable || st.IsMapEntry() || !st.FixedDeclared {
+		return ""
+	}
+	body := ir.TableFixedTypeBytes(st)
+	if body <= ir.TableFixedRecordMaxBytes {
+		return ""
+	}
+	return fmt.Sprintf("table %s has NO FIXED FORM in C++: its record body is %d bytes, past §3.4's %d-byte fixed-form ceiling, so no conforming reader decodes a record that size — it keeps form 1 and the `fixed` keyword still buys it the CLASS (docs/SPEC-TABLES.md §3.4)",
+		st.Name, body, ir.TableFixedRecordMaxBytes)
+}
+
+// fixedCeilingRefusalsHere is every table THIS FILE declared `fixed` whose
+// record body is past §3.4's ceiling, in declaration order, so the header can
+// name each one it does not emit the form for (docs/FIXED-FORM-ALGORITHM.md
+// §5.9 #8).
+func (g *tableGen) fixedCeilingRefusalsHere() []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range g.file.Tables {
+		if fixedCeilingRefusal(st) != "" {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
 // THE DECLARING FILE OWNS A TYPE'S FIXED-FORM MATERIAL, which is what
 // unitFixedOrder is for — the same rule the C backend states at length. A unit
 // is MANY FILES (SPEC §3.2) and this form's walk is the ROOT'S CLOSURE, so a
@@ -157,7 +192,8 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 			own = append(own, st)
 		}
 	}
-	if len(roots) == 0 && len(own) == 0 {
+	refused := g.fixedCeilingRefusalsHere()
+	if len(roots) == 0 && len(own) == 0 && len(refused) == 0 {
 		return
 	}
 	g.pf("// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n")
@@ -167,6 +203,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	g.pf("// The writer is the constant bytes memcpy'd and then stores; the reader is\n")
 	g.pf("// ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
 	g.pf("// the writer's own layout for anybody else. There is no second reader.\n\n")
+	for _, st := range refused {
+		g.pf("// %s.\n", fixedCeilingRefusal(st))
+		g.pf("// Its form-1 surface is unaffected; nothing about form 1 moves (docs/SPEC-TABLES.md §3.4).\n\n")
+	}
 	g.emitFixedLayoutAsserts(own, all, here)
 	for _, st := range own {
 		g.emitFixedWriteBody(st)
