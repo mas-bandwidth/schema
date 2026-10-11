@@ -18,3 +18,7 @@
 (:id "cs/R5" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/R5") :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0")
 (:id "cs/W11" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/W11") :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0")
 (:id "cs/W12" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t02_test.go: TestFixedRoadmapT02Plans/cs/W12") :tested-revision "3108cc90f6b3cb13bf6609a500f0b681da1b03d0")
+(:id "optional-scalars/cs/valid-data" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t10_test.go: TestFixedRoadmapCSharpT10Optionals/optional-scalars/cs/valid-data") :tested-revision "ef6a21b3a")
+(:id "optional-arrays/cs/valid-data" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t10_test.go: TestFixedRoadmapCSharpT10Optionals/optional-arrays/cs/valid-data") :tested-revision "ef6a21b3a")
+(:id "scalar-defaults/cs/valid-data" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t10_test.go: TestFixedRoadmapCSharpT10Optionals/scalar-defaults/cs/valid-data") :tested-revision "ef6a21b3a")
+(:id "text-bytes-flags-defaults/cs/valid-data" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t10_test.go: TestFixedRoadmapCSharpT10Optionals/text-bytes-flags-defaults/cs/valid-data") :tested-revision "ef6a21b3a")
