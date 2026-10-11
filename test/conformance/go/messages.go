@@ -2,10 +2,9 @@ package main
 
 import (
 	"backenddemo"
-	"blobdemo"
 	"fmt"
-	"graphdemo"
 	"os"
+	"path/filepath"
 	"vocab9demo"
 	"vocabdemo"
 )
@@ -75,6 +74,12 @@ func findMessageCodec(unit, root string) *messageCodec {
 	}
 	return nil
 }
+
+// spillAbsentReason writes the absent marker with the reason it carries, so the
+// matrix prints not just that the case is missing but why.
+func spillAbsentReason(dir, name, reason string) error {
+	return os.WriteFile(filepath.Join(dir, name+".absent"), []byte(reason), 0o644)
+}
 func surfaceMessage(lines []line, out string) error {
 	for _, f := range lines {
 		if f[0] != "message" {
@@ -89,7 +94,10 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		codec := findMessageCodec(unit, f[3])
 		if codec == nil {
-			if err := spillAbsent(out, f[1]); err != nil {
+			// A message row whose root is a plain `table` carries no message
+			// verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+			// the form), so the driver answers ABSENT and names the reason.
+			if err := spillAbsentReason(out, f[1], "plain table: §3.3"); err != nil {
 				return err
 			}
 			continue
@@ -114,20 +122,6 @@ func surfaceMessage(lines []line, out string) error {
 }
 
 var messageCodecs = []messageCodec{
-	regionMessageRow("blobdemo", "Catalog", func() *blobdemo.TableVocabulary {
-		v := new(blobdemo.TableVocabulary)
-		v.Init(make([]blobdemo.TableMessageEntry, blobdemo.TableMessageEntriesHere))
-		return v
-	}, blobdemo.AnnounceMeasure, blobdemo.Announce, blobdemo.AnnounceRead, blobdemo.CatalogLoadMessagesMeasure, blobdemo.CatalogLoadMessages, blobdemo.CatalogMeasureMessages, blobdemo.CatalogSaveMessages, func(r *blobdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
-	}),
-	regionMessageRow("graphdemo", "Scene", func() *graphdemo.TableVocabulary {
-		v := new(graphdemo.TableVocabulary)
-		v.Init(make([]graphdemo.TableMessageEntry, graphdemo.TableMessageEntriesHere))
-		return v
-	}, graphdemo.AnnounceMeasure, graphdemo.Announce, graphdemo.AnnounceRead, graphdemo.SceneLoadMessagesMeasure, graphdemo.SceneLoadMessages, graphdemo.SceneMeasureMessages, graphdemo.SceneSaveMessages, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
-	}),
 	messageRow("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))
