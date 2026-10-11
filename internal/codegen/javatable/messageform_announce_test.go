@@ -90,7 +90,7 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	src, ok := files[messageAnnouncementClass+".java"]
+	_, ok := files[messageAnnouncementClass+".java"]
 	if !ok {
 		t.Fatalf("%s: no %s.java emitted", u.Package, messageAnnouncementClass)
 	}
@@ -103,15 +103,24 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(srcDir, messageAnnouncementClass+".java"), src, 0o644); err != nil {
-		t.Fatal(err)
+	sources := []string{}
+	for name, src := range files {
+		if !strings.HasSuffix(name, ".java") {
+			continue
+		}
+		path := filepath.Join(srcDir, name)
+		if err := os.WriteFile(path, src, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
 	}
 	driver := "package " + u.Package + ";\n\n" + driverPrologue + "\n" + main + "}\n"
 	if err := os.WriteFile(filepath.Join(srcDir, "Driver.java"), []byte(driver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
-		filepath.Join(srcDir, messageAnnouncementClass+".java"), filepath.Join(srcDir, "Driver.java"))
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
+	args = append(args, filepath.Join(srcDir, "Driver.java"))
+	cmd := exec.Command(javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}

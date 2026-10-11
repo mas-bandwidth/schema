@@ -6,7 +6,7 @@
 // `announceRead` — and the resolved-vocabulary storage `AnnounceRead` fills
 // ("THE RESOLVED VOCABULARY'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY",
 // §3.3). The batch surface (`measureMessages`, `saveMessages`,
-// `loadMessages`) is a later card.
+// `loadMessages`) uses that storage and is emitted as root-prefixed helpers on TableVocabulary.
 //
 // THE FORM IS A FIXED TABLE'S (§3.3), so this surface is emitted for a unit
 // with a `fixed table` root and for no other: a message has to step through a
@@ -40,8 +40,9 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 		return map[string][]byte{}, nil
 	}
 	body := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(ir.TableAnnouncement(u)), 1)
+	body = strings.Replace(body, "public final class TableVocabulary {", "public final class TableVocabulary {"+messageBatchSurface(u), 1)
 	return map[string][]byte{
-		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", body),
+		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", strings.Replace(body, "public final class TableVocabulary {", "public final class TableVocabulary {"+tableMessageBatchRuntime, 1)),
 	}, nil
 }
 
@@ -68,8 +69,8 @@ const tableMessageSurface = `
 // The announcement surface of the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
 // form byte 2. ` + "`Announce`" + ` and ` + "`announceMeasure`" + ` are the unit's
 // compile-time constant and its length; ` + "`announceRead`" + ` parses a peer's
-// announcement into the caller's resolved vocabulary. The batch surface is a
-// later card.
+// announcement into the caller's resolved vocabulary. The plural batch surface
+// is emitted as root-prefixed helpers on TableVocabulary.
 public final class TableVocabulary {
     public TableVocabulary() {}
 
@@ -118,6 +119,11 @@ public final class TableVocabulary {
         public boolean refused;
         public String reason;
         public int unknown;
+        public int count;
+        long bit;
+        byte[] buffer;
+        boolean error;
+        public final TableFixed.Report fixed = new TableFixed.Report();
     }
 
     // The caller's storage, declared by capacity and filled once. The
