@@ -127,6 +127,17 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"TableFixedPut64( b + 23, (uint64_t) value.u64 );",
 			},
 		},
+		{
+			// "Signed 128-bit integers". A ranged int128 is 128 bits of storage;
+			// the boundary min = -1000 / max = 1000 is the clamp literal.
+			id: "signed-128/cpp/valid-data",
+			want: []string{
+				"alignas( 16 ) serialize::int128_t i128 = 0;",
+				"TableFixedPut128( b + 31, value.i128 );",
+				"value.i128 = ( value.i128 < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709550616ull ) ) )",
+				"value.i128 > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 1000ull ) )",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
