@@ -122,6 +122,57 @@ fixed table T
 }
 `
 
+// ---- shared readers ---------------------------------------------------------
+
+// t04GoEmitLineage is [GenerateLineage]'s Go module for `newSrc` handed
+// `oldSrc` as its locked lineage entry — the emitted side of a versioned read,
+// read as source and never compiled.
+func t04GoEmitLineage(t *testing.T, oldSrc, newSrc string) string {
+	t.Helper()
+	older := unitFrom(t, oldSrc)
+	own := unitFrom(t, newSrc)
+	lineage := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(older) {
+		e, ok := FixedLineageOf(older, st.Name)
+		if !ok {
+			t.Fatalf("no lineage entry for %s", st.Name)
+		}
+		lineage[st.Name] = append(lineage[st.Name], e)
+	}
+	files, err := GenerateLineage(own, lineage)
+	if err != nil {
+		t.Fatalf("GenerateLineage: %v", err)
+	}
+	return tableFile(files)
+}
+
+// t04GoRecordLoop is the emitted load's record loop, `for k := int64(0); k < n;
+// k++ {` through its matching `}`, found by brace depth. A counter the emitter
+// moved inside the loop lands in THIS text and reds by name, so the assertion
+// is the PLACEMENT §5.4 fixes, not a count one moved line cannot show.
+func t04GoRecordLoop(t *testing.T, src string) string {
+	t.Helper()
+	const head = "for k := int64(0); k < n; k++ {"
+	i := strings.Index(src, head)
+	if i < 0 {
+		t.Fatalf("the emitted load has no record loop %q", head)
+	}
+	depth := 0
+	for j := i + len(head) - 1; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[i : j+1]
+			}
+		}
+	}
+	t.Fatalf("the emitted record loop is not closed")
+	return ""
+}
+
 // ---- go/E5 ------------------------------------------------------------------
 
 // t04GoE5 holds E5 to §3.4's ONE kind the fixed LAYOUT adds to §3's closed set:
@@ -277,12 +328,29 @@ func t04GoE8(t *testing.T) {
 
 // ---- go/R19 -----------------------------------------------------------------
 
-// t04GoR19 holds R19 to the ops a clean NEW-READS-OLD uses: an appended field,
-// variant, arm, flag or keyed slot lands through the copy and present ops (and
-// the const hole prefill), and §5.4's counters are moved by none of them, so a
-// clean old file moves no counter at all. The tag op is the one read-loop op
-// that may count an unknown arm, and it is not reached by a clean pair.
+// t04GoR19 holds R19 to §5.4's last row: "a clean NEW-READS-OLD of an appended
+// field, variant, arm, flag or keyed slot | none | every counter stays at zero:
+// an append the reader knows is not an event" (docs/FIXED-FORM-ALGORITHM.md
+// §5.4:962). The emitted load of a clean append raises nothing inside its
+// record loop, and the COMPILE census "lands ONCE, after step 11's loop, on a
+// read that returns" (§5.4:929-931) — so the ops such a pair reaches count
+// nothing. The exact all-zero counters are asserted by
+// internal/codegen/gotable/fixedversioning_test.go:TestFixedVersioningNewReadsOld,
+// the test the evidence names, which the corpus build gates.
 func t04GoR19(t *testing.T) {
+	load := funcSource(t04GoEmitLineage(t, t04AppendOld, t04AppendNew), "func TFixedLoad(")
+	if load == "" {
+		t.Fatal("R19: TFixedLoad is not emitted for a clean append")
+	}
+	// The clause is that NOTHING moves on the read, so the record loop — the
+	// only place a per-record count could land — must carry no counter at all.
+	if body := t04GoRecordLoop(t, load); strings.Contains(body, "report.") {
+		t.Errorf("R19: the record loop moves a counter on a clean append; an append the reader knows is not an event:\n%s", body)
+	}
+	if n := strings.Count(t02GoNorm(load), "report.Unknown += censusUnknown"); n != 1 {
+		t.Errorf("R19: the clean append's read adds the COMPILE census %d times, want once, after the record loop", n)
+	}
+
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if run == "" {
 		t.Fatal("R19: tableFixedRun is not emitted")
@@ -290,7 +358,7 @@ func t04GoR19(t *testing.T) {
 	for _, op := range []string{"case tableFixedCopy:", "case tableFixedBool:"} {
 		body := t02GoBlock(t, run, op, "case tableFixed")
 		if strings.Contains(body, "report.") {
-			t.Errorf("R19: %s moves a counter; the copy and present ops land an appended value and count nothing", op)
+			t.Errorf("R19: %s moves a counter; the copy and present ops land an appended value and count nothing (§5.4:961)", op)
 		}
 	}
 }
@@ -318,37 +386,89 @@ func t04GoE9(t *testing.T) {
 
 // ---- go/R16 -----------------------------------------------------------------
 
-// t04GoR16 holds R16 to §5.4's exact counters. Unknown and KindMismatch are the
-// COMPILE census (once per peer, never per record) and the load adds the census
-// once; Widened moves once per entry per record (the two widen cases and no
-// others); Clamped moves once per entry for the count and text ops and in the
-// bounds pass for the ordinal remapped to None on BOTH plans; the copy and
-// present ops move nothing.
+// t04GoR16 holds R16 to §5.4's counters, clause by clause:
+//   - unknown is "once per writer field no reader field names, once per peer
+//     and never per record" (§5.4:956): the COMPILE census raises
+//     `c.report.Unknown++` once per field (`census && i == 0`), and the load
+//     adds it ONCE, after step 11's loop (§5.4:929-931).
+//   - widened is "once per entry per record — ... a widened run is never
+//     folded, so a fixture asserts that EXACT count" (§5.4:958): the `widen`
+//     and `widenf` ops each count once, and `tableFixedRuns` folds only copy
+//     and bool, so a run of widened entries is never collapsed to one.
+//   - clamped is "once per entry per record, when the length or count was out
+//     of range" (§5.4:959): `count` and `text` each carry the low and high
+//     ends, and the two ends are mutually exclusive.
+//   - the bounds pass counts "a FORGED ordinal remapped to None ... on the
+//     COMPILED plan exactly as on the identity one" (§5.4:960): the compiled
+//     `ordinal` op and the identity plan's bounds pass each land the one
+//     Clamped.
+//   - copy and present "land its value and move nothing" (§5.4:961).
+//
+// The exact numeric values are asserted by the tests the evidence names:
+// fixedversioning_unknown_census_many_test.go:TestFixedVersioningUnknownCensusManyRecords
+// (three records, Unknown == 1), the writer-bound count pair and the widen /
+// count clamp rows.
 func t04GoR16(t *testing.T) {
-	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
+	runtime := tableFixedRuntime
+	run := funcSource(runtime, "func tableFixedRun(")
 	if run == "" {
 		t.Fatal("R16: tableFixedRun is not emitted")
 	}
-	if n := strings.Count(run, "report.Widened++"); n != 2 {
-		t.Errorf("R16: the read loop widens at %d sites, want the one widen op and the one float widen — once per entry per record", n)
-	}
+	// unknown once per FIELD per peer at COMPILE (never per record, never once
+	// per element).
+	t02GoHas(t, runtime, "c.report.Unknown++", "R16 the unknown census is raised at COMPILE")
+	t02GoHas(t, runtime, "census && i == 0", "R16 the census is once per FIELD per peer, not once per element")
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
-		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
+		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer (§5.4:957)", n)
 	}
-	for _, op := range []string{"case tableFixedCount:", "case tableFixedText:"} {
-		if !strings.Contains(t02GoBlock(t, run, op, "case tableFixed"), "report.Clamped++") {
-			t.Errorf("R16: %s does not clamp exactly once per entry", op)
+
+	load := funcSource(t04GoEmitLineage(t, t04AppendOld, t04AppendNew), "func TFixedLoad(")
+	if load == "" {
+		t.Fatal("R16: TFixedLoad is not emitted")
+	}
+	if n := strings.Count(t02GoNorm(load), "report.Unknown += censusUnknown"); n != 1 {
+		t.Errorf("R16: the load adds the census %d times, want once per peer", n)
+	}
+	if strings.Contains(t04GoRecordLoop(t, load), "report.") {
+		t.Error("R16: the record loop moves a counter; §5.4 lands the COMPILE census once per peer and never per record")
+	}
+
+	// widened once per entry per record, and a widened run is never folded.
+	for _, op := range []string{"case tableFixedWiden:", "case tableFixedWidenF:"} {
+		if n := strings.Count(t02GoBlock(t, run, op, "case tableFixed"), "report.Widened++"); n != 1 {
+			t.Errorf("R16: %s counts widened %d times, want once per entry (§5.4:958)", op, n)
 		}
 	}
+	t02GoHas(t, runtime, "func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }",
+		"R16 a widened run is never folded into one entry")
+
+	// clamped once per entry per record for count and text: each op's low and
+	// high ends are mutually exclusive.
+	count := t02GoBlock(t, run, "case tableFixedCount:", "case tableFixed")
+	if n := strings.Count(count, "report.Clamped++"); n != 2 {
+		t.Errorf("R16: the count op has %d clamp sites, want the low and high ends (§5.4:959)", n)
+	}
+	t02GoHas(t, t02GoNorm(count), "} else if v > int32(p.Size) {", "R16 the count's ends are mutually exclusive")
+	text := t02GoBlock(t, run, "case tableFixedText:", "case tableFixed")
+	if n := strings.Count(text, "report.Clamped++"); n != 2 {
+		t.Errorf("R16: the text op has %d clamp sites, want the low and high ends (§5.4:959)", n)
+	}
+	t02GoHas(t, t02GoNorm(text), "} else if uint32(v) > capn {", "R16 the text's ends are mutually exclusive")
+
+	// the bounds pass's forged ordinal on both plans (§5.4:960): the compiled
+	// ordinal op counts it, and the identity plan's bounds pass remaps it.
 	if !strings.Contains(t02GoBlock(t, run, "case tableFixedOrdinal:", "case tableFixedWiden:"), "report.Clamped++") {
-		t.Error("R16: a forged ordinal past the writer's set does not land None and count clamped on the compiled plan")
+		t.Error("R16: a forged ordinal past the writer's set does not land None and count clamped on the compiled plan (§5.4:960)")
 	}
 	if i := strings.Index(run, "case tableFixedConst:"); i < 0 || !strings.Contains(run[i:], "report.Clamped++") {
-		t.Error("R16: the identity plan's bounds pass does not count the same forged ordinal; the two plans must count the same one")
+		t.Error("R16: the identity plan's bounds pass does not count the same forged ordinal; the two plans must count the same one (§5.4:960)")
 	}
-	census := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
-	if n := strings.Count(census, "report.Unknown += censusUnknown"); n != 1 {
-		t.Errorf("R16: the load adds the unknown census %d times, want exactly once per peer", n)
+
+	// copy and the present byte move nothing (§5.4:961).
+	for _, op := range []string{"case tableFixedCopy:", "case tableFixedBool:"} {
+		if strings.Contains(t02GoBlock(t, run, op, "case tableFixed"), "report.") {
+			t.Errorf("R16: %s moves a counter; it lands its value and moves nothing (§5.4:961)", op)
+		}
 	}
 }
 
