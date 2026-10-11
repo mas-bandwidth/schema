@@ -1244,8 +1244,29 @@ const tableFixedWireSource = `
                     }
                     case WidenF:
                     {
+                        // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling),
+                        // so the widening is BY THE PATTERN and never through the
+                        // hardware's own conversion: the conversion between the two
+                        // widths SETS THE QUIET BIT on a signalling NaN and drops a
+                        // payload the narrower cell would have kept, and widenf owes
+                        // the bit-exact widening (ALG §4.2: "NaN payloads included").
+                        // Sign, exponent and payload carried; every finite value is
+                        // exact through the conversion, so only the all-ones exponent
+                        // NaN and infinity share needs the pattern spelled out.
                         float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                        double d = (double)f;
+                        uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
+                        double d;
+                        if ((fbits & 0x7F800000u) == 0x7F800000u)
+                        {
+                            ulong w = ((ulong)(fbits & 0x80000000u) << 32)
+                                | 0x7FF0000000000000UL
+                                | ((ulong)(fbits & 0x7FFFFFu) << 29);
+                            d = BitConverter.Int64BitsToDouble(unchecked((long)w));
+                        }
+                        else
+                        {
+                            d = (double)f;
+                        }
                         slots[(int)p.Dst].SetDouble?.Invoke(dst, d);
                         if (report != null) { report.Widened++; }
                         break;
