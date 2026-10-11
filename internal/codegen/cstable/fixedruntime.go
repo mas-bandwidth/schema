@@ -1293,24 +1293,25 @@ const tableFixedWireSource = `
                     uint i = 0;
                     while (i < used)
                     {
-                        byte c = p[(int)i];
-                        if (c < 0x80) { i++; }
-                        else if ((c & 0xE0) == 0xC0)
-                        {
-                            if (c < 0xC2 || i + 1 >= used || (p[(int)i + 1] & 0xC0) != 0x80) { return true; }
-                            i += 2;
-                        }
-                        else if ((c & 0xF0) == 0xE0)
-                        {
-                            if (i + 2 >= used || (p[(int)i + 1] & 0xC0) != 0x80 || (p[(int)i + 2] & 0xC0) != 0x80) { return true; }
-                            i += 3;
-                        }
-                        else if ((c & 0xF8) == 0xF0)
-                        {
-                            if (i + 3 >= used || (p[(int)i + 1] & 0xC0) != 0x80 || (p[(int)i + 2] & 0xC0) != 0x80 || (p[(int)i + 3] & 0xC0) != 0x80) { return true; }
-                            i += 4;
-                        }
+                        byte lead = p[(int)i];
+                        uint continuations;
+                        uint code_point;
+                        if (lead == 0) { return true; }
+                        if (lead < 0x80) { i++; continue; }
+                        else if ((lead & 0xE0) == 0xC0) { continuations = 1; code_point = (uint)(lead & 0x1F); }
+                        else if ((lead & 0xF0) == 0xE0) { continuations = 2; code_point = (uint)(lead & 0x0F); }
+                        else if ((lead & 0xF8) == 0xF0) { continuations = 3; code_point = (uint)(lead & 0x07); }
                         else { return true; }
+                        if (i + continuations >= used) { return true; }
+                        for (uint k = 1; k <= continuations; k++)
+                        {
+                            if ((p[(int)(i + k)] & 0xC0) != 0x80) { return true; }
+                            code_point = (code_point << 6) | (uint)(p[(int)(i + k)] & 0x3F);
+                        }
+                        if (continuations == 1 && code_point < 0x80) { return true; }
+                        if (continuations == 2 && (code_point < 0x800 || (code_point >= 0xD800 && code_point <= 0xDFFF))) { return true; }
+                        if (continuations == 3 && (code_point < 0x10000 || code_point > 0x10FFFF)) { return true; }
+                        i += 1 + continuations;
                     }
                     break;
                 }

@@ -166,6 +166,51 @@ func t05Load(t *testing.T) string {
 	return src
 }
 
+// t05TextUtf8Arm is the `case TextUtf8:` arm of TextIllFormed, from the case
+// to its break, so an assertion reads the narrow content rule and only that.
+func t05TextUtf8Arm(t *testing.T) string {
+	t.Helper()
+	src := tableFixedWireSource
+	i := strings.Index(src, "case TextUtf8:")
+	if i < 0 {
+		t.Fatal("t05: the runtime carries no `case TextUtf8:`")
+	}
+	rest := src[i+len("case TextUtf8:"):]
+	if j := strings.Index(rest, "break;"); j >= 0 {
+		rest = rest[:j]
+	}
+	return rest
+}
+
+// t05Utf8Rejections holds the reference validity rule the narrow content check
+// must carry (testdata/golden/tables/pointers/PartsTable.h §TableUtf8Valid):
+// the validator reconstructs the code point and refuses a NUL lead, a bare
+// continuation or reserved lead, a truncated sequence, an overlong 2/3/4-byte
+// encoding, a UTF-16 surrogate, and a code point past U+10FFFF. Each clause is
+// asserted at the emitted site, so a planted edit that drops a rule turns the
+// holding subtest red by name.
+func t05Utf8Rejections(t *testing.T, arm string) {
+	t.Helper()
+	t05Has(t, arm, "if (lead == 0) { return true; }",
+		"a NUL byte refuses (TableUtf8Valid: lead == 0)")
+	t05Has(t, arm, "else { return true; }",
+		"a bare continuation or reserved lead refuses (TableUtf8Valid: else)")
+	t05Has(t, arm, "if (i + continuations >= used) { return true; }",
+		"a truncated sequence refuses (TableUtf8Valid: i + continuations >= length)")
+	t05Has(t, arm, "code_point = (code_point << 6) | (uint)(p[(int)(i + k)] & 0x3F);",
+		"the code point is reconstructed before the bounds (TableUtf8Valid)")
+	t05Has(t, arm, "if (continuations == 1 && code_point < 0x80) { return true; }",
+		"an overlong 2-byte encoding refuses (TableUtf8Valid: continuations == 1 && code_point < 0x80)")
+	t05Has(t, arm, "continuations == 2 && (code_point < 0x800",
+		"an overlong 3-byte encoding refuses (TableUtf8Valid: continuations == 2 && code_point < 0x800)")
+	t05Has(t, arm, "code_point >= 0xD800 && code_point <= 0xDFFF",
+		"a UTF-8-encoded UTF-16 surrogate refuses (TableUtf8Valid: 0xD800..0xDFFF)")
+	t05Has(t, arm, "continuations == 3 && (code_point < 0x10000",
+		"an overlong 4-byte encoding refuses (TableUtf8Valid: continuations == 3 && code_point < 0x10000)")
+	t05Has(t, arm, "code_point > 0x10FFFF",
+		"a code point past U+10FFFF and reserved leads F5..F7 refuse (TableUtf8Valid: code_point > 0x10FFFF)")
+}
+
 // ---- cs/E6 ------------------------------------------------------------------
 
 // t05CsE6 holds E6 to §5's declared identity: a field renamed under `was` keeps
@@ -367,6 +412,7 @@ func t05CsC4(t *testing.T) {
 		"a content violation refuses BY NAME text_ill_formed (§4.5, §5.8 row 8)")
 	t05Has(t, t05Load(t), `report.Reason = run_why;`,
 		"the load refuses by the name the run reported (§5.8 row 8)")
+	t05Utf8Rejections(t, t05TextUtf8Arm(t))
 }
 
 // ---- cs/C5 ------------------------------------------------------------------
@@ -403,4 +449,5 @@ func t05CsR24(t *testing.T) {
 	// The copy is the whole span, and nothing validates past the used length.
 	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; slack is unspecified on read (§4.5, SPEC-TABLES §3.4)")
 	t05Has(t, t05Load(t), `report.Reason = run_why;`, "the refusal is by name, the load's own path (§5.8 row 8)")
+	t05Utf8Rejections(t, t05TextUtf8Arm(t))
 }
