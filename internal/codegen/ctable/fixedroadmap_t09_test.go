@@ -102,6 +102,18 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_put64( b + 22, (uint64_t) value->u64 );",
 			},
 		},
+		{
+			// "Signed 128-bit integers". §3.4: int128 is serialize.h's two-lane
+			// storage, written whole by the 128-bit move, and the boundary
+			// min = -1000 / max = 1000 is the two's-complement cmp literal.
+			id: "signed-128/c/valid-data",
+			want: []string{
+				"SCHEMA_C_ALIGN16 serialize_int128_t i128;",
+				"table_fixed_put128_i( b + 30, value->i128 );",
+				"table_fixed_cmp128_i( value->i128, 18446744073709551615ull, 18446744073709550616ull ) < 0",
+				"table_fixed_cmp128_i( value->i128, 0ull, 1000ull ) > 0",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
