@@ -25,6 +25,15 @@ table CardID
     s string(64)
 }
 
+// KeyValue is one header key this card does not map to a declared field, in
+// arrival order (docs/SPEC-TABLES.md §2). The value is optional so a bare key
+// with no value is preserved exactly, not given an empty one.
+table KeyValue
+{
+    key   string(32)
+    value *string
+}
+
 table Card
 {
     id               string(64)
@@ -50,4 +59,5 @@ table Card
     head             string(40)
     branch           string(128)
     body             *string
+    extra            []KeyValue
 }

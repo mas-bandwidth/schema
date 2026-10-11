@@ -174,7 +174,50 @@ func checkCard(root *Card, arena *TableArena) error {
 	if err := checkIDList(&root.Needs, "needs", arena); err != nil {
 		return err
 	}
+	if err := checkExtraList(&root.Extra, arena); err != nil {
+		return err
+	}
 	return nil
+}
+
+// checkExtraList enforces the extras rules before publishing: the declared key
+// bound and grammar, the absence of CR/LF in a single-line value, no extra
+// duplicating a mapped header key and the shared entry ceiling
+// (the HEADER MAPPING paragraph; docs/SPEC-TABLES.md §2.9).
+func checkExtraList(list *TableList[KeyValueRow], arena *TableArena) error {
+	if list.Count < 0 || int64(list.Count) > MaxListEntries {
+		return fmt.Errorf("cards: extra has %d entries, past the %d-entry ceiling (docs/SPEC-TABLES.md §2.9)", list.Count, MaxListEntries)
+	}
+	var elemErr error
+	visit := func(e *KeyValueRow) bool {
+		key := fixedString(e.Key[:], e.KeyLength)
+		if !validKeyGrammar(key) || len(key) > 32 {
+			elemErr = fmt.Errorf("cards: extra key %q is not a bounded declared key", key)
+			return false
+		}
+		if mappedHeaderKeys[key] {
+			elemErr = fmt.Errorf("cards: extra key %q duplicates a mapped header key", key)
+			return false
+		}
+		if e.Value != 0 {
+			v := stringData(&e.Value, arena)
+			if !utf8.Valid(v) || bytes.IndexByte(v, 0) >= 0 {
+				elemErr = fmt.Errorf("cards: extra %q value is not well-formed UTF-8 without NUL", key)
+				return false
+			}
+			if bytes.IndexByte(v, '\n') >= 0 || bytes.IndexByte(v, '\r') >= 0 {
+				elemErr = fmt.Errorf("cards: extra %q value carries CR or LF in a single-line header value", key)
+				return false
+			}
+		}
+		return true
+	}
+	if arena == nil {
+		CardExtraEach(list, visit)
+	} else {
+		CardExtraEach(list, visit, arena)
+	}
+	return elemErr
 }
 
 func stringData(slot *int64, arena *TableArena) []byte {
