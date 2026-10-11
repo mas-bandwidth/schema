@@ -63,6 +63,13 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			if rowErr == nil {
 				t.Fatalf("connection_%s built without the sibling runtime; its announcement check must run", conn.key)
 			}
+			// The row is named as not run only when the build's own
+			// diagnostics say the sibling `../serialize.cs` runtime is what is
+			// missing; any other compiler error is a generated-code or
+			// compiler regression this leg must show, never hide (§3.3).
+			if !csHeldMissingRuntime(rowOut) {
+				t.Fatalf("connection_%s failed to build for a reason other than the sibling ../serialize.cs runtime:\n%s", conn.key, rowOut)
+			}
 			t.Skipf("not run: the packet emitter names the sibling ../serialize.cs runtime this checkout does not carry:\n%s", csHeldFirstErrors(rowOut))
 		})
 	}
@@ -231,6 +238,45 @@ func csHeldRuntimeAttempt(t *testing.T, conn csHeldConn) (string, error) {
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	out, err := compile.CombinedOutput()
 	return string(out), err
+}
+
+// csHeldRuntimeTypes are the names the sibling `../serialize.cs` runtime
+// provides and the PACKET emitter's generated unit references: the `Serialize`
+// namespace and its stream and batch ref structs. A build that fails only
+// because this checkout does not stage that sibling reports each of these as an
+// unresolved name (error CS0246, docs/SPEC-TABLES.md §3.3's wire functions call
+// the packet runtime); any other diagnostic is a generated-code or compiler
+// regression.
+var csHeldRuntimeTypes = []string{"Serialize", "ReadStream", "WriteStream", "ReadBatch", "WriteBatch"}
+
+// csHeldMissingRuntime reports whether an attempt's compiler diagnostics
+// identify the sibling `../serialize.cs` runtime as what is missing: at least
+// one error, and every error a CS0246 whose unresolved name is one of
+// csHeldRuntimeTypes. A diagnosis with any other error, or no error at all, is
+// not the missing runtime and must fail the row instead of being named not run
+// (docs/SPEC-TABLES.md §3.3).
+func csHeldMissingRuntime(out string) bool {
+	sawError := false
+	for line := range strings.SplitSeq(out, "\n") {
+		if !strings.Contains(line, "error CS") {
+			continue
+		}
+		sawError = true
+		if !strings.Contains(line, "error CS0246:") {
+			return false
+		}
+		found := false
+		for _, name := range csHeldRuntimeTypes {
+			if strings.Contains(line, "'"+name+"'") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return sawError
 }
 
 // csHeldFirstErrors keeps the first compiler error lines of an attempt's
