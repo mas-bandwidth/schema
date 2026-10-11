@@ -287,6 +287,16 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
 		return false
 	}
+	// AND THE RECORD CEILING, the same 65536 TableFixedFormRoots applies
+	// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2): a body past
+	// it is one no conforming reader decodes, so emitting a form-3 writer here
+	// would produce bytes nobody can read. This leg does not build its roots
+	// from ir.TableFixedFormRoots, so the bound is named here too, or a bounded
+	// `blob bytes(70000)` — one leaf, inside the leaf cap — rides form 3 out of
+	// this leg alone. ir.TableFixedRecordBounds names the table; it keeps form 1.
+	if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+		return false
+	}
 	// AND THE WALK'S DEPTH BOUND, asked where the answer lives
 	// (ir.TableFixedWithinDepth). This leg does not build its roots from
 	// ir.TableFixedFormRoots, so the bound has to be named here or it is not
