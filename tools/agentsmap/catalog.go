@@ -119,6 +119,7 @@ var catalog = []Entry{
 	e("tables/blobs", "byte-buffer corpus", "make check", "bin/schema check tables/blobs"),
 	e("tables/block", "block-form corpus", "make check", "bin/schema check tables/block"),
 	e("tables/blockhome", "block-home corpus", "make check", "bin/schema check tables/blockhome"),
+	e("tables/cards", "work-card corpus", "make cards-test", "make cards-test"),
 	e("tables/examples", "table examples corpus", "make check", "bin/schema check tables/examples"),
 	e("tables/lists", "unbounded-array corpus", "make check", "bin/schema check tables/lists"),
 	e("tables/maps", "map corpus", "make check", "bin/schema check tables/maps"),
