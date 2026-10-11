@@ -9,14 +9,14 @@ package jstable
 // generated module under the leg's own node, with non-default and boundary
 // values, asserted on the value that comes back.
 //
-// A payload-free-arms row carries a void (payload-free) union arm:
-// ir.TableFixedSupported refuses it by name (ir/fixedform.go:259-260, "a void
-// arm has no storage this walk can name") and the go sibling is likewise unknown
-// (docs/roadmap-evidence/fixed-go.sexp:34), so that row carries an `unknown`
-// verdict and no subtest here. A union-field-arms row carries a NAMED struct arm
-// whose payload holds a bounded string and a bounded array — the shape the go
-// sibling proves green (internal/codegen/gotable/fixedroadmap_t11_test.go) and
-// the one docs/roadmap.sexp:6731 calls "a separate supported shape" — so the
+// A payload-free-arms row carries a void (payload-free) union arm: it is a value
+// of the tag enum with no storage in the overlay and no bytes to land (§3.4,
+// kind 32), and the layout names it with a zero-size TableKindNoPayload entry
+// (ir/fixedform.go's tableFixedWalkElement), so the closure test now admits it
+// and the subtest below writes and reads one. A union-field-arms row carries a
+// NAMED struct arm whose payload holds a bounded string and a bounded array —
+// the shape the go sibling proves green (internal/codegen/gotable/fixedroadmap_t11_test.go)
+// and the one docs/roadmap.sexp:6731 calls "a separate supported shape" — so the
 // union-field-arms subtest below writes and reads text and an array inside an
 // arm's struct payload.
 
@@ -48,6 +48,7 @@ func TestFixedRoadmapJsT09UnionsOptionals(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"union-field-arms/js/valid-data", t09UnionFieldArms},
+		{"payload-free-arms/js/valid-data", t09PayloadFreeArms},
 		{"union-arrays/js/valid-data", t09UnionArrays},
 		{"optional-arrays/js/valid-data", t09OptionalArrays},
 		{"scalar-defaults/js/valid-data", t09ScalarDefaults},
@@ -134,6 +135,70 @@ if (!(n3 === 1 && !report3.malformed)) { fail("union-field-arms: load array " + 
 if (!(back3[0].Body.Type === BodyType.Aa && back3[0].Body.Aa.ACount === 3 &&
       back3[0].Body.Aa.A[0] === -2147483648 && back3[0].Body.Aa.A[2] === 2147483647)) {
   fail("union-field-arms: the array arm did not round trip");
+}
+`
+	t09Probe(t, src, "T", probe)
+}
+
+// t09PayloadFreeArms: payload-free-arms [capability] "Payload-free union arms"
+// (§3.4 and docs/FIXED-FORM-ALGORITHM.md §2 kind 32: a payload-free arm's layout
+// entry is the tag ordinals and nothing lands). The subtest writes and reads TWO
+// payload-free arms — one BEFORE and one AFTER a payload arm, so the arm list's
+// order is exercised — and proves a named payload-free arm is DISTINCT from the
+// union's None: a default-constructed record reads back None, and each named arm
+// reads back as itself.
+func t09PayloadFreeArms(t *testing.T) {
+	const src = `package probe
+
+type Circle { radius float32 }
+
+union Body
+{
+    ping
+    circle Circle
+    pong
+}
+
+fixed table T { body Body }
+`
+	const probe = `
+const { BodyType } = await import("./Probe.js");
+
+const none = new T(); InitT(none);
+if (!(none.Body.Type === BodyType.None)) { fail("payload-free-arms: a default union is not None"); }
+const noneBuf = new Uint8Array(TMeasure(1));
+if (TSave([none], 1, noneBuf) !== noneBuf.length) { fail("payload-free-arms: save none"); }
+const noneBack = [new T()]; InitT(noneBack[0]);
+const noneReport = new TableFixedReport();
+const noneN = TLoad(noneBack, 1, noneBuf, noneBuf.length, TNewPlan(4096, 4096), noneReport);
+if (!(noneN === 1 && !noneReport.malformed)) { fail("payload-free-arms: load none " + reason(noneReport)); }
+if (!(noneBack[0].Body.Type === BodyType.None)) { fail("payload-free-arms: None did not round trip"); }
+
+function roundtrip(arm, setup) {
+  const v = new T(); InitT(v);
+  v.Body.Type = arm;
+  if (setup) { setup(v); }
+  const buf = new Uint8Array(TMeasure(1));
+  if (TSave([v], 1, buf) !== buf.length) { fail("payload-free-arms: save " + arm); }
+  const back = [new T()]; InitT(back[0]);
+  const report = new TableFixedReport();
+  const n = TLoad(back, 1, buf, buf.length, TNewPlan(4096, 4096), report);
+  if (!(n === 1 && !report.malformed)) { fail("payload-free-arms: load " + arm + " " + reason(report)); }
+  return back[0];
+}
+
+const pingBack = roundtrip(BodyType.Ping, null);
+if (!(pingBack.Body.Type === BodyType.Ping)) { fail("payload-free-arms: the arm before the payload arm did not round trip"); }
+
+const circleBack = roundtrip(BodyType.Circle, (v) => { v.Body.Circle.Radius = -3.4028234663852886e38; });
+if (!(circleBack.Body.Type === BodyType.Circle && circleBack.Body.Circle.Radius === -3.4028234663852886e38)) {
+  fail("payload-free-arms: the payload arm did not round trip");
+}
+
+const pongBack = roundtrip(BodyType.Pong, null);
+if (!(pongBack.Body.Type === BodyType.Pong)) { fail("payload-free-arms: the arm after the payload arm did not round trip"); }
+if (BodyType.Ping === BodyType.Pong || BodyType.Ping === BodyType.None || BodyType.Pong === BodyType.None) {
+  fail("payload-free-arms: a named payload-free arm collides with None or its sibling");
 }
 `
 	t09Probe(t, src, "T", probe)
