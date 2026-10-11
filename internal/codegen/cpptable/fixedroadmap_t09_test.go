@@ -190,6 +190,18 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.cf = ( value.cf < -1.0f ) ? -1.0f : ( ( value.cf > 1.0f ) ? 1.0f : value.cf );",
 			},
 		},
+		{
+			// "Signed fixed-point fields". fixed(16, 16) is 32 wire bits in an
+			// int32 storage and its declared range -1..1 scales to the raw
+			// clamp literals -65536..65536.
+			id: "signed-fixed-point/cpp/valid-data",
+			want: []string{
+				"int32_t fx = 0;",
+				"TableFixedPut32( b + 83, (uint32_t) value.fx );",
+				"clamped += (int) ( value.fx < -65536 ) | (int) ( value.fx > 65536 );",
+				"value.fx = ( value.fx < -65536 ) ? -65536 : ( ( value.fx > 65536 ) ? 65536 : value.fx );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
