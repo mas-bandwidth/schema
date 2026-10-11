@@ -1,0 +1,46 @@
+// Card.schema — the CARD corpus for schema-cards-c01. A card is a typed
+// declaration with one opaque body: bounded strings and scalars beside a
+// pointed-at blob (docs/SPEC-TABLES.md §2.5) and variable lists of two tiny
+// tables (docs/SPEC-TABLES.md §2.9). The enum order is a wire fact once
+// shipped: flash,pro,heavy,frontier and normal,high,critical,blocker and
+// waiting,ready,working,review,merging,landed are append-only.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+enum Priority { normal, high, critical, blocker }
+
+enum Column { waiting, ready, working, review, merging, landed }
+
+// a path element and a needs element are their own tables so a list carries
+// table frames rather than a bare []string the compiler refuses (§2.9).
+table PathText { s string(192) }
+
+table CardID { s string(64) }
+
+table Card
+{
+    id               string(64)
+    sha              string(40)
+    tier             Tier
+    repo             string(96)
+    _base            string(96)
+    kind             string(24)
+    priority         Priority
+    stream           string(32)
+    paths            []PathText
+    _new             []PathText
+    shared           []PathText
+    needs            []CardID
+    test             string(192)
+    done_when        *string
+    deadline_minutes int32       | min = 0, max = 100000
+    source           *string
+    epoch            int32
+    column           Column
+    holder           string(32)
+    attempt          int32
+    head             string(40)
+    branch           string(128)
+    body             *string
+}
