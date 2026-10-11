@@ -38,6 +38,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 		{"union-values/go/valid-data", t11UnionValues},
 		{"union-arrays/go/valid-data", t11UnionArrays},
 		{"optional-scalars/go/valid-data", t11OptionalScalars},
+		{"optional-nesting/go/valid-data", t11OptionalNesting},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -234,4 +235,31 @@ fixed table Root { e ?E }
 	t02GoHas(t, n, "tableFixedPut8(b[0:], p)", "optional-scalars: the present byte is written first")
 	t02GoHas(t, n, "if value.EPresent { tableFixedPut8(b[1:], uint8(value.E)) }", "optional-scalars: the enum payload follows only when present")
 	t02GoHas(t, n, "Op: tableFixedBool} // e present", "optional-scalars: the present byte reads back into a Go bool")
+}
+
+// ---- go/optional-nesting ----------------------------------------------------
+
+// t11OptionalNesting holds an optional nested value to the flag and the nested
+// body: present runs the nested type's own write body and absent writes the
+// template's zeros (docs/FIXED-FORM-ALGORITHM.md §3.1). Present and absent both
+// round-trip, and an absent optional does not disturb a sibling field.
+func t11OptionalNesting(t *testing.T) {
+	t11Run(t, `package probe
+fixed table P { x int32 }
+fixed table Root { p ?P }
+`, t11RoundTrip+`
+func TestT11OptionalNesting(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	v.PPresent = true
+	v.P.X = -2147483648
+	if got := saveLoad(t, v); !got.PPresent || got.P.X != -2147483648 {
+		t.Fatalf("present nested read back %+v", got)
+	}
+	RootReset(&v)
+	if got := saveLoad(t, v); got.PPresent || got.P.X != 0 {
+		t.Fatalf("absent nested read back %+v", got)
+	}
+}
+`)
 }
