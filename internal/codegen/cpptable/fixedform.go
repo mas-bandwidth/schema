@@ -236,6 +236,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -387,7 +390,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
-				g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.%s", expr, v.Name), indent+8)
+				g.emitFixedWriteArm(v, off+tag, buf, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
@@ -416,6 +419,62 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		}
 		g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
+}
+
+// emitFixedWriteArm is one union arm's fixed-form store, the twin of
+// [emitFixedWritePayload] with the arm's storage spellings: an arm's value and
+// companion live inside the arm's own unnamed struct — `value` beside
+// `value_length` or `value_count` (§2.6) — and the writer reads those, not the
+// sibling-field spellings. A payload-free arm has no storage (§2.6), so it
+// writes nothing under the tag. "A union writes the tag and the taken arm only"
+// (docs/FIXED-FORM-ALGORITHM.md §3.1).
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val string, indent int) {
+	if v.Void() {
+		return // a payload-free arm: the tag alone is its whole storage (§2.6)
+	}
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Type.Kind == ir.TWString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 2)
+	case f.Type.Kind == ir.TBytes:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedWriteArmLoop(v, off, strconv.FormatInt(f.ArrayBound, 10), buf, armValue(val, v), indent)
+	case f.Array == ir.ArrayCounted:
+		g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
+		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, off, armCount(val, v))
+		g.emitFixedWriteArmLoop(v, off+ir.TableFixedCountBytes, armCount(val, v), buf, armValue(val, v), indent)
+	default:
+		g.emitFixedWriteElement(f, off, buf, armValue(val, v), indent)
+	}
+}
+
+// emitFixedWriteTextArm is a text or bytes arm's store: the used LENGTH, then
+// that many UNITS onto the template's zeros — the same [emitFixedWriteText]
+// store with the arm's companion spellings. The slack behind the used length is
+// the prefill's zero (§3.4).
+func (g *tableGen) emitFixedWriteTextArm(v ir.UnionVariant, base int64, buf, val, ind string, unit int64) {
+	f := v.F
+	g.fixedWriteBound(armCount(val, v), f.Type.Size, "length", ind)
+	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, base, armCount(val, v))
+	scale := ""
+	if unit != 1 {
+		scale = fmt.Sprintf("%d * ", unit)
+	}
+	g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, base+4, armValue(val, v), scale, armCount(val, v))
+}
+
+// emitFixedWriteArmLoop is an array arm's element loop: `count` elements from
+// the arm's value member onto the wire, one element store each.
+func (g *tableGen) emitFixedWriteArmLoop(v ir.UnionVariant, base int64, count string, buf, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elem := ir.TableFixedElementBytes(v.F)
+	g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s; ++i )\n%s{\n", ind, count, ind)
+	g.emitFixedWriteElement(v.F, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+4)
+	g.pf("%s}\n", ind)
 }
 
 // ---- the root's surface ----------------------------------------------------
@@ -744,6 +803,9 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 			g.pf("static_assert( sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n", f.Type.Name, size, f.Type.Name)
 			g.pf("static_assert( %s == 0, \"%s: the tag leads the union storage\" );\n", offOf(f.Type.Name, "type"), f.Type.Name)
 			for _, v := range un.Variants {
+				if v.Void() {
+					continue // a payload-free arm has no member to offset (§2.6)
+				}
 				g.pf("static_assert( %s == %d, \"%s.%s: every arm is overlaid here\" );\n", offOf(f.Type.Name, v.Name), arms, f.Type.Name, v.Name)
 			}
 		}

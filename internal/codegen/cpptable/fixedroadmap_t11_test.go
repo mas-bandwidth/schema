@@ -8,12 +8,6 @@ package cpptable
 // (go test ./internal/codegen/cpptable/). The proof is a probe: the schema is
 // generated into C++ (the leg's own fixed-form header), compiled with the C++
 // reference and run against a write/read round-trip.
-//
-// A row the shared fixed-form gate (ir/fixedform.go, TableFixedSupported)
-// refuses is named here with its reason and skipped BY NAME, never green and
-// never red — a green folds an unrun row into a pass, a red blames the row for
-// the gate. Both refused rows are refused OUTSIDE this card's PATHS
-// (internal/codegen/cpptable/*), so their verdicts are :unknown, not done.
 
 import (
 	"fmt"
@@ -67,25 +61,97 @@ func TestFixedRoadmapCppT11UnionsOptionals(t *testing.T) {
 		check  string
 	}{
 		// union-field-arms/cpp/valid-data — "Union arms holding scalar, text or
-		// array fields" (docs/roadmap.sexp:6666). Its :remaining is "Implement
-		// direct text/byte-buffer/array arm layout and emitters ... Text inside
-		// a type arm is a different supported shape." A DIRECT text, bytes or
-		// array arm payload is refused by the shared gate, so the task's own
-		// clause cannot be asserted here; a struct arm carrying text (the
-		// different supported shape) would assert a neighbour, not this task.
+		// array fields" (docs/roadmap.sexp:6666), contract "§2.6; §3.4 constant
+		// arm storage". The page sentences: "an arm's type is any type a field's
+		// is" (docs/SPEC-TABLES.md §2.6) and "a UNION | tag width + max(C(arm)) |
+		// the tag THEN the widest arm" (docs/FIXED-FORM-ALGORITHM.md:189). Four
+		// records take one arm each — the scalar arm at the int32 low end, a
+		// text arm, a full byte buffer and a counted array at the int32 ends —
+		// and read every one back whole.
 		{
-			id:   "union-field-arms/cpp/valid-data",
-			skip: "a direct text/byte-buffer/array union arm is refused by the shared fixed-form gate (ir/fixedform.go TableFixedSupported rejects an arm payload of TString/TWString/TBytes or an array); direct arm layout is an ir change outside this card's PATHS, and text inside a type arm is the different supported shape the task's :remaining names",
+			id: "union-field-arms/cpp/valid-data",
+			schema: `package t11ufa
+union Pick
+{
+    num int32
+    label string(8)
+    blob bytes(4)
+    cells [..3]int32
+}
+fixed table Root
+{
+    pick Pick
+    tail int32
+}
+`,
+			pkg:   "t11ufa",
+			root:  "Root",
+			count: 4,
+			setup: `    value[0].tail = 1;
+    value[0].pick.type = PickType::Num;
+    value[0].pick.num = -2147483647 - 1;   // the int32 low end
+    value[1].tail = 2;
+    value[1].pick.type = PickType::Label;
+    strcpy( value[1].pick.label.value, "hello" );
+    value[1].pick.label.value_length = 5;
+    value[2].tail = 3;
+    value[2].pick.type = PickType::Blob;
+    value[2].pick.blob.value[0] = 0; value[2].pick.blob.value[1] = 1;
+    value[2].pick.blob.value[2] = 2; value[2].pick.blob.value[3] = 3;
+    value[2].pick.blob.value_length = 4;
+    value[3].tail = 4;
+    value[3].pick.type = PickType::Cells;
+    value[3].pick.cells.value_count = 3;
+    value[3].pick.cells.value[0] = -2147483647 - 1;
+    value[3].pick.cells.value[1] = 0;
+    value[3].pick.cells.value[2] = 2147483647;`,
+			check: `    if ( back[0].tail != 1 || back[0].pick.type != PickType::Num || back[0].pick.num != -2147483647 - 1 )
+        { printf( "num: t=%d n=%d\n", (int) back[0].pick.type, back[0].pick.num ); return 1; }
+    if ( back[1].tail != 2 || back[1].pick.type != PickType::Label ||
+         back[1].pick.label.value_length != 5 || strcmp( back[1].pick.label.value, "hello" ) != 0 )
+        { printf( "label: t=%d\n", (int) back[1].pick.type ); return 1; }
+    if ( back[2].tail != 3 || back[2].pick.type != PickType::Blob || back[2].pick.blob.value_length != 4 ||
+         back[2].pick.blob.value[0] != 0 || back[2].pick.blob.value[1] != 1 || back[2].pick.blob.value[2] != 2 || back[2].pick.blob.value[3] != 3 )
+        { printf( "blob: t=%d\n", (int) back[2].pick.type ); return 1; }
+    if ( back[3].tail != 4 || back[3].pick.type != PickType::Cells || back[3].pick.cells.value_count != 3 ||
+         back[3].pick.cells.value[0] != -2147483647 - 1 || back[3].pick.cells.value[1] != 0 || back[3].pick.cells.value[2] != 2147483647 )
+        { printf( "cells: t=%d\n", (int) back[3].pick.type ); return 1; }`,
 		},
 
 		// payload-free-arms/cpp/valid-data — "Payload-free union arms"
-		// (docs/roadmap.sexp:6762). A void arm (v.F == nil) is refused by the
-		// shared gate (ir/fixedform.go TableFixedSupported, the line "a void arm
-		// has no storage this walk can name"); tag-only arm layout is an ir
-		// change outside this card's PATHS.
+		// (docs/roadmap.sexp:6762), contract "§2.6; ALGORITHM §1 kind32". The
+		// page sentences: "a payload-free arm is no member at all: it is a value
+		// of the tag enum, with no storage in the overlay" (docs/SPEC-TABLES.md
+		// §2.6) and a union "writes the tag and the taken arm only"
+		// (docs/FIXED-FORM-ALGORITHM.md §3.1). Record 0 takes the tag-only arm,
+		// record 1 the scalar arm at the int32 high end, and the tag of each
+		// lands whole.
 		{
-			id:   "payload-free-arms/cpp/valid-data",
-			skip: "a payload-free (void) union arm is refused by the shared fixed-form gate (ir/fixedform.go TableFixedSupported returns false when v.F == nil); tag-only arm layout is an ir change outside this card's PATHS",
+			id: "payload-free-arms/cpp/valid-data",
+			schema: `package t11pfa
+union Pick
+{
+    num int32
+    ping
+}
+fixed table Root
+{
+    pick Pick
+    tail int32
+}
+`,
+			pkg:   "t11pfa",
+			root:  "Root",
+			count: 2,
+			setup: `    value[0].tail = 5;
+    value[0].pick.type = PickType::Ping;   // a payload-free arm: the tag is the whole of it
+    value[1].tail = 6;
+    value[1].pick.type = PickType::Num;
+    value[1].pick.num = 2147483647;        // the int32 high end`,
+			check: `    if ( back[0].tail != 5 || back[0].pick.type != PickType::Ping )
+        { printf( "ping: t=%d\n", (int) back[0].pick.type ); return 1; }
+    if ( back[1].tail != 6 || back[1].pick.type != PickType::Num || back[1].pick.num != 2147483647 )
+        { printf( "num: t=%d n=%d\n", (int) back[1].pick.type, back[1].pick.num ); return 1; }`,
 		},
 
 		// union-arrays/cpp/valid-data — "Arrays of unions" (docs/roadmap.sexp:6849),
