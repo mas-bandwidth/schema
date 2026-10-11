@@ -134,11 +134,11 @@ int main(void)
 `,
 		},
 		{
-			id: "signed-128/c/valid-data",
+			id:   "signed-128/c/valid-data",
 			skip: "the 128-bit storage is serialize.h's lo/hi pair and the header includes serialize.h only for a unit that holds it; serialize.h ships in the sibling serialize.c checkout, which is absent here, so a compiled signed-128 probe cannot be built",
 		},
 		{
-			id: "unsigned-128/c/valid-data",
+			id:   "unsigned-128/c/valid-data",
 			skip: "the 128-bit storage is serialize.h's lo/hi pair and the header includes serialize.h only for a unit that holds it; serialize.h ships in the sibling serialize.c checkout, which is absent here, so a compiled unsigned-128 probe cannot be built",
 		},
 		{
