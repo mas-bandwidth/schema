@@ -18,6 +18,7 @@ package jstable
 // reports ten done verdicts over tests that never executed.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,6 +35,9 @@ func TestFixedRoadmapJsT06Bounds(t *testing.T) {
 		{"js/C9", t06JsC9},
 		{"js/C10", t06JsC10},
 		{"js/R31", t06JsR31},
+		{"js/C12", t06JsC12},
+		{"js/C13", t06JsC13},
+		{"js/R17", t06JsR17},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -180,4 +184,65 @@ func t06JsR31(t *testing.T) {
 		"R31 the remap table's length word is its slot zero, the extent a raw ordinal is held to")
 	t02Has(t, rt, "plan.remap[at] = n;",
 		"R31 the remap table is laid as long as the writer's variant count, never capped at 255")
+}
+
+// ---- js/C12 "bool byte != 0" ------------------------------------------------
+
+// t06JsC12 holds C12 to the bool load in the emitted projection: the wire says
+// nonzero is true (docs/SPEC-TABLES.md §3), and the load normalises
+// byte != 0 to the language's own true rather than copying, because a JS boolean
+// is not the wire's own byte.
+func t06JsC12(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+fixed table T
+{
+    b bool
+}
+`, "T")
+	t02Has(t, t02Norm(body), "value.B = view.getUint8(at) !== 0;",
+		"C12 a bool byte is normalised byte != 0 -> true, never copied")
+}
+
+// ---- js/C13 "present flag byte != 0" ----------------------------------------
+
+// t06JsC13 holds C13 to the present byte: an optional field's present flag reads
+// as `byte != 0`, the same nonzero-is-true rule a bool reads under.
+// docs/SPEC-TABLES.md §3.4, §3.
+func t06JsC13(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+fixed table T
+{
+    v ?int32
+}
+`, "T")
+	t02Has(t, t02Norm(body), "value.VPresent = view.getUint8(at) !== 0;",
+		"C13 the present flag reads byte != 0, so a nonzero byte normalises to present")
+}
+
+// ---- js/R17 "normalises and counts nothing" ---------------------------------
+
+// t06JsR17 holds R17: a bool or present byte that is not 0/1 normalises and
+// counts nothing. docs/FIXED-FORM-ALGORITHM.md §5.4: "A `bool` or a present
+// byte that is not `0` or `1` is normalised to the language's own true and
+// counts nothing". A table of only a bool and an optional has no clamp at all,
+// so the whole projection moves no counter.
+func t06JsR17(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+fixed table T
+{
+    b bool
+    v ?int32
+}
+`, "T")
+	n := t02Norm(body)
+	t02Has(t, n, "value.B = view.getUint8(at) !== 0;",
+		"R17 a bool byte is normalised byte != 0")
+	t02Has(t, n, "value.VPresent = view.getUint8(at + 1) !== 0;",
+		"R17 a present byte is normalised byte != 0")
+	if strings.Contains(body, "report.") {
+		t.Error("R17: the bool or present load moves a counter; a hostile byte counts nothing")
+	}
 }
