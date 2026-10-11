@@ -57,7 +57,7 @@ func dartTableAnnouncementConstant(u *ir.Unit) string {
 	}
 	out.WriteString("]);\n")
 	fmt.Fprintf(&out, "const int tableAnnouncementLength = %d;\n", len(b))
-	fmt.Fprintf(&out, "/// The unit's own build version, emitted beside the announcement.\nconst int tableBuildVersion = %d;\n\n", ir.BuildVersion(u))
+	fmt.Fprintf(&out, "/// The unit's own build version, emitted beside the announcement.\nconst int tableBuildVersion = %d;\n\n", int64(ir.BuildVersion(u)))
 	return out.String()
 }
 
@@ -90,6 +90,11 @@ class TableVocabulary {
 
   /// "STRICT MODE IS OPT-IN, and the default is unchanged." (§3.3).
   bool strict = false;
+
+  /// THE RESERVED IDS the announcement's trailer names (§3.3). They are
+  /// members so nothing lands at library scope, the leg's own rule.
+  static const int buildVersionWireId = -2; // 0xFFFFFFFFFFFFFFFE as signed
+  static const int vocabularyWireId = -3; // 0xFFFFFFFFFFFFFFFD as signed
 
   TableVocabulary({
     required this.entries,
@@ -144,10 +149,7 @@ int Announce(Uint8List buffer) {
   return tableAnnouncementLength;
 }
 
-/// THE RESERVED IDS the announcement's trailer names, and the two bounds a
-/// hostile shape is held to (docs/SPEC-TABLES.md §3.3).
-const int _tableBuildVersionWireId = -2; // 0xFFFFFFFFFFFFFFFE as signed
-const int _tableMessageVocabularyWireId = -3; // 0xFFFFFFFFFFFFFFFD as signed
+/// THE RESERVED IDS the announcement's trailer names live on TableVocabulary.
 
 /// Reads one announcement into 'vocabulary'. "NO RE-ANNOUNCEMENT, EVER."
 /// (§3.3): a vocabulary that already announced, or whose first announcement
@@ -217,15 +219,26 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     final id = ids[ref - 1];
     final kind = bytes[at];
     at += 1;
-    if (id == _tableBuildVersionWireId) {
+    if (id == TableVocabulary.buildVersionWireId) {
       if (kind != 9 || at + 8 > bodyEnd) {
         break;
       }
       vocabulary.buildVersion = view.getUint64(at, Endian.little);
       at += 8;
       versions++;
-    } else if (id == _tableMessageVocabularyWireId) {
-      if (kind != 14 || at >= bodyEnd) {
+    } else if (id == TableVocabulary.vocabularyWireId) {
+      if (kind != 14) {
+        break;
+      }
+      // THE FIELD IS LENGTH-PREFIXED (§3): its body is a LEB length, then the
+      // element kind, then the vocabulary's own LEB length, then the entries.
+      final fieldLength = tableMessageLeb(bytes, at, bodyEnd);
+      if (fieldLength.$1 < 0) {
+        break;
+      }
+      at = fieldLength.$2;
+      final fieldEnd = at + fieldLength.$1;
+      if (fieldEnd > bodyEnd) {
         break;
       }
       final elementKind = bytes[at];
@@ -233,8 +246,14 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       if (elementKind != 6) {
         break;
       }
-      final length = _leb(bytes, at);
+      final length = tableMessageLeb(bytes, at, fieldEnd);
+      if (length.$1 < 0) {
+        break;
+      }
       at = length.$2;
+      if (at + length.$1 != fieldEnd) {
+        break;
+      }
       if (length.$1 > vocabulary.maxBytes) {
         return report.Refuse('vocabulary_too_large');
       }
@@ -265,24 +284,120 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     if (seen >= vocabulary.maxEntries) {
       return report.Refuse('vocabulary_too_large');
     }
-    if (vAt + 9 > vEnd) {
+    final next = tableMessageEntryEnd(bytes, vAt, vEnd);
+    if (next < 0) {
       report.Damage();
       return false;
     }
     final id = view.getUint64(vAt, Endian.little);
     final kind = bytes[vAt + 8];
-    vAt += 9;
+    vAt = next;
     vocabulary.entries[seen] = TableMessageEntry(id, kind);
     seen++;
   }
   vocabulary.count = seen;
-  vocabulary.refBits = seen == 0 ? 1 : _bits(seen);
+  vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
   vocabulary.announced = true;
   return true;
 }
 
-/// bits_required(0, n): the width of a reference into an n-entry vocabulary.
-int _bits(int n) {
+/// Steps over ONE entry: a u64 id, a kind byte, and the SHAPE the kind gives it
+/// (docs/SPEC-TABLES.md §3.3). Answers the offset past the entry, or -1 where
+/// the bytes run out or a kind is outside the closed set. This is the mirror of
+/// ir.DecodeShape, so an entry's shape is stepped over by its kind and never
+/// mistaken for the next entry.
+int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
+  if (at + 9 > end) {
+    return -1;
+  }
+  final kind = bytes[at + 8];
+  if (!tableMessageKnownKind(kind)) {
+    return -1;
+  }
+  var p = tableMessageShapeEnd(bytes, at + 9, end, kind);
+  if (p < 0) {
+    return -1;
+  }
+  if (kind == 14 || kind == 16) {
+    if (p >= end) {
+      return -1;
+    }
+    final elem = bytes[p];
+    p += 1;
+    if (!tableMessageKnownKind(elem) || elem == 12 || elem == 33) {
+      return -1;
+    }
+    p = tableMessageShapeEnd(bytes, p, end, elem);
+    if (p < 0) {
+      return -1;
+    }
+    if (elem == 14 || elem == 16) {
+      if (p >= end) {
+        return -1;
+      }
+      final inner = bytes[p];
+      p += 1;
+      if (!tableMessageKnownKind(inner) || inner == 12 || inner == 33) {
+        return -1;
+      }
+    }
+  }
+  return p;
+}
+
+/// Steps over one SHAPE, the width facts the kind names (docs/SPEC-TABLES.md
+/// §3.3), mirroring ir.DecodeShape's lengths: a packing byte, then its width
+/// and base, or a length, or an array's two counts. -1 where the bytes run out.
+int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
+  if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
+    if (at >= end) {
+      return -1;
+    }
+    final packing = bytes[at];
+    at += 1;
+    if (packing == 0) {
+      return at;
+    }
+    if (packing == 1 && kind != 10) {
+      final n = tableMessageLeb(bytes, at, end);
+      if (n.$1 < 0) {
+        return -1;
+      }
+      at = n.$2;
+      if (kind >= 18) {
+        return at + 16 <= end ? at + 16 : -1;
+      }
+      final base = tableMessageLeb(bytes, at, end);
+      return base.$1 < 0 ? -1 : base.$2;
+    }
+    if (packing == 2 && kind == 10) {
+      return at + 12 <= end ? at + 12 : -1;
+    }
+    return -1;
+  }
+  if (kind == 12 || kind == 33) {
+    final n = tableMessageLeb(bytes, at, end);
+    return n.$1 < 0 ? -1 : n.$2;
+  }
+  if (kind == 14 || kind == 16) {
+    if (kind == 14) {
+      final lo = tableMessageLeb(bytes, at, end);
+      if (lo.$1 < 0) {
+        return -1;
+      }
+      at = lo.$2;
+    }
+    final hi = tableMessageLeb(bytes, at, end);
+    return hi.$1 < 0 ? -1 : hi.$2;
+  }
+  return at;
+}
+
+/// tableMessageKnownKind reports whether a kind is one of the closed set.
+bool tableMessageKnownKind(int kind) => kind <= 33;
+
+/// tableMessageBits is the width of a reference into an n-entry vocabulary.
+int tableMessageBits(int n) {
   var count = 0;
   while (n != 0) {
     count++;
@@ -291,19 +406,20 @@ int _bits(int n) {
   return count == 0 ? 1 : count;
 }
 
-/// LEB128, the canonical length every length of a file takes (§3).
-(int, int) _leb(Uint8List bytes, int at) {
+/// LEB128, the canonical length every length of a file takes (§3). Answers the
+/// value and the offset past it, or -1 where the bytes run out.
+(int, int) tableMessageLeb(Uint8List bytes, int at, int end) {
   var value = 0;
   var shift = 0;
-  while (at < bytes.length) {
+  while (at < end && shift < 64) {
     final b = bytes[at];
     at++;
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
-      break;
+      return (value, at);
     }
     shift += 7;
   }
-  return (value, at);
+  return (-1, at);
 }
 `
