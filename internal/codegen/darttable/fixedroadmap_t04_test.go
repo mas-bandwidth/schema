@@ -174,7 +174,6 @@ func t04HexBytes(t *testing.T, text, marker string) []byte {
 	return out
 }
 
-
 // ---- dart/R3 -----------------------------------------------------------------
 
 // t04R3 holds dart/R3 to §5.2's one number: "R.floor := 1 + the highest index
@@ -215,7 +214,6 @@ func t04R3(t *testing.T) {
 		t.Error("R3: a floor of 0 must still emit the one comparison, whose pick is never below it")
 	}
 }
-
 
 // ---- dart/R32 ----------------------------------------------------------------
 
@@ -271,7 +269,6 @@ func t04R32(t *testing.T) {
 	}
 }
 
-
 // ---- dart/R10 -----------------------------------------------------------------
 
 // t04R10 holds dart/R10 to §5.6 and §5.3 step 7: "the hash is looked up, the
@@ -302,7 +299,6 @@ func t04R10(t *testing.T) {
 	// side and for any later reader, but no load path calls it.
 	t04Has(t, fixedRuntime, "static int hashOf(Uint8List bytes, int at, int length) {", "R10 the hash function")
 }
-
 
 // ---- dart/R15 -----------------------------------------------------------------
 
@@ -354,7 +350,6 @@ func t04R15(t *testing.T) {
 	t04Has(t, decode, "if (value.x > 200) {", "R15 the range clamp is the READER's own declared end")
 }
 
-
 // ---- dart/E3 ------------------------------------------------------------------
 
 // t04E3 holds dart/E3 to §5.2's EMIT ladder, in full: "if LADDER(te.kind,
@@ -379,7 +374,6 @@ func t04E3(t *testing.T) {
 	t04Has(t, fixedRuntime, "(mySize & 0xff) | (signedKind(theirKind) ? 0x100 : 0)", "E3 a ladder widen's sign is the writer's kind")
 	t04Has(t, fixedRuntime, "static bool signedKind(int kind) =>", "E3 the sign helper is emitted")
 }
-
 
 // ---- dart/C8 ------------------------------------------------------------------
 
@@ -440,7 +434,6 @@ fixed table Lineage
 	t04Has(t, fixedRuntime, "case 29:", "C8 the unsigned fixed-point ladder's top rung")
 }
 
-
 // ---- dart/R20 -----------------------------------------------------------------
 
 // t04R20 holds dart/R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
@@ -483,7 +476,6 @@ func t04R20(t *testing.T) {
 	t04Has(t, fixedRuntime, "landed = remap[remapAt + raw];", "R20 the older enum's ordinals are the reader's")
 }
 
-
 // ---- dart/R21 -----------------------------------------------------------------
 
 // t04R21 holds dart/R21 to §4's float rung and §5.2's table: "widenf is the f32
@@ -512,7 +504,6 @@ func t04R21(t *testing.T) {
 		t.Error("R21: the widenFloat op widens through the hardware conversion alone")
 	}
 }
-
 
 // ---- dart/R29 -----------------------------------------------------------------
 
@@ -565,7 +556,6 @@ func t04R29(t *testing.T) {
 	t04Has(t, fixedRuntime, "final elems = theirN < myN ? theirN : myN;", "R29 the walk is the smaller of the two bounds")
 }
 
-
 // ---- dart/E5 ------------------------------------------------------------------
 
 // t04E5 holds dart/E5 to SPEC-TABLES §3.4's kind 35: "ON THIS FORM THEY ARE
@@ -590,7 +580,6 @@ func t04E5(t *testing.T) {
 	t04Has(t, fixedRuntime, "if (myKind == 35 && theirKind != 35) {", "E5 T into ?T is its own emit")
 	t04Has(t, fixedRuntime, "image[d] = 1;", "E5 the present companion lands a constant 1")
 }
-
 
 // ---- dart/W2 ------------------------------------------------------------------
 
@@ -626,8 +615,6 @@ func t04W2(t *testing.T) {
 		t.Errorf("W2: the absent-optional guard appears %d times, want once", strings.Count(write, "if (value.linkPresent) {"))
 	}
 }
-
-
 
 // ---- the card's test --------------------------------------------------------
 
