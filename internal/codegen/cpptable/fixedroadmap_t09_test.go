@@ -112,6 +112,21 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"TableFixedPut64( b + 8, (uint64_t) value.i64 );",
 			},
 		},
+		{
+			// "Unsigned integers: 8, 16, 32 and 64 bits". The unsigned storage
+			// takes the byte verbatim over its whole domain, high bit included.
+			id: "unsigned-integers/cpp/valid-data",
+			want: []string{
+				"uint8_t u8 = 0;",
+				"uint16_t u16 = 0;",
+				"uint32_t u32 = 0;",
+				"uint64_t u64 = 0;",
+				"TableFixedPut8( b + 16, (uint8_t) value.u8 );",
+				"TableFixedPut16( b + 17, (uint16_t) value.u16 );",
+				"TableFixedPut32( b + 19, (uint32_t) value.u32 );",
+				"TableFixedPut64( b + 23, (uint64_t) value.u64 );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
