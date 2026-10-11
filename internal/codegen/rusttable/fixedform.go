@@ -911,7 +911,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// whole body to a single move.\n")
 	g.pf("pub const %s_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {\n", up)
 	g.pf("    src: 0,\n    dst: 0,\n    size: %s_FIXED_BODY_BYTES as u32,\n    aux: 0,\n", up)
-	g.pf("    guard: TABLE_FIXED_NO_GUARD,\n    op: TableFixedOp::Copy,\n    arg: 0,\n    argw: 1,\n    dstsize: 0,\n    sign: 0,\n}];\n\n")
+	g.pf("    guard: TABLE_FIXED_NO_GUARD,\n    op: TableFixedOp::Copy,\n    arg: 0,\n    argw: 1,\n    guard2: TABLE_FIXED_NO_GUARD,\n    arg2: 0,\n    argw2: 1,\n    dstsize: 0,\n    sign: 0,\n}];\n\n")
 
 	// THE LINEAGE, LAID DOWN AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5.2,
 	// COMPILE(lock, T)): the lock's entries OLDEST FIRST, this build's own
