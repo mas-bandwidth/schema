@@ -1,0 +1,2 @@
+unit cards tables/cards
+instance card-populated cards Card tables/cards/fuzz/card-populated.wire
