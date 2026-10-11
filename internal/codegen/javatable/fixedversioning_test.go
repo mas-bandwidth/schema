@@ -55,9 +55,13 @@ import (
 // docs/FIXED-FORM-VERSIONING-TESTS.md, with the counters §5.4 and §5.9 #10 say
 // it owes. An APPEND row owes every counter at zero; a WIDTH row owes `widened`
 // nonzero and every other counter zero. No clean row asserts `clamped` at all.
+// `widened` is the EXACT number a widen row owes where the page states one: a
+// folded element run is ONE and a widened run is never folded, so the fixture
+// asserts `min(their_n, my_n)` — §5.9 #33, which a bare `widened > 0` cannot.
 type versioningRow struct {
-	name  string
-	widen bool
+	name    string
+	widen   bool
+	widened int
 }
 
 var versioningRows = []versioningRow{
@@ -75,7 +79,7 @@ var versioningRows = []versioningRow{
 	{name: "rename_without_was"},
 	// the NUMBER rows (§5.7)
 	{name: "array_bounded_grow"},
-	{name: "array_elem_widen", widen: true},
+	{name: "array_elem_widen", widen: true, widened: 4},
 	{name: "array_fixed_grow"},
 	{name: "bits_grow", widen: true},
 	{name: "bytes_grow"},
@@ -909,10 +913,34 @@ func assertFresh(t *testing.T, r probeRun) {
 	}
 }
 
+// widenedError is the §5.4/§5.9 #33 verdict for the widened counter alone: an
+// APPEND row owes zero, a WIDTH row owes nonzero, and a width row that declares
+// an exact figure owes EXACTLY that — a widened run is never folded, so each
+// element is its own widen entry and a folded read would report fewer and fail.
+func widenedError(row versioningRow, r probeRun) string {
+	if !row.widen {
+		if r.widened != 0 {
+			return fmt.Sprintf("widened=%d, want 0: an append the reader knows is not an event (§5.4)", r.widened)
+		}
+		return ""
+	}
+	if row.widened != 0 {
+		if r.widened != row.widened {
+			return fmt.Sprintf("widened=%d, want EXACTLY %d: a widened run is never folded, so each element is its own widen entry (§5.9 #33)", r.widened, row.widened)
+		}
+		return ""
+	}
+	if r.widened == 0 {
+		return "widened=0, want nonzero: a width row widens once per entry per record (§5.4)"
+	}
+	return ""
+}
+
 // assertCounters is §5.4 multiplied out by §5.9 #10: an APPEND row owes every
 // counter at zero, a WIDTH row owes `widened` nonzero and the rest at zero, and
 // no clean row asserts `clamped` at all. The census is structurally zero on a
-// lawful lineage (§5.9 #30).
+// lawful lineage (§5.9 #30). A widen row that declares an exact `widened` is
+// held to that figure, not merely nonzero (§5.9 #33).
 func assertCounters(t *testing.T, column string, row versioningRow, r probeRun) {
 	t.Helper()
 	if r.unknown != 0 {
@@ -924,11 +952,8 @@ func assertCounters(t *testing.T, column string, row versioningRow, r probeRun) 
 	if r.clamped != 0 {
 		t.Errorf("%s %s: clamped=%d, want 0: no clean row asserts a clamp (§5.4)", column, row.name, r.clamped)
 	}
-	if row.widen && r.widened == 0 {
-		t.Errorf("%s %s: widened=0, want nonzero: a width row widens once per entry per record (§5.4)", column, row.name)
-	}
-	if !row.widen && r.widened != 0 {
-		t.Errorf("%s %s: widened=%d, want 0: an append the reader knows is not an event (§5.4)", column, row.name, r.widened)
+	if msg := widenedError(row, r); msg != "" {
+		t.Errorf("%s %s: %s", column, row.name, msg)
 	}
 }
 
