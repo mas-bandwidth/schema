@@ -189,18 +189,40 @@ func (g *fixedGen) module(roots, closure []*ir.Struct) []byte {
 	return []byte(b.String())
 }
 
-// unionsIn is every union the closure reaches that this file declares.
+// unionsIn is every union the closure reaches that this file declares. A union
+// arm that is ITSELF A UNION is descended into too, so a nested union's own
+// helper is emitted beside the caller whose dispatch names it
+// (docs/FIXED-FORM-ALGORITHM.md §4.1 "an arm inside an arm answers to the OUTER
+// tag").
 func (g *fixedGen) unionsIn(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
+	var addUnion func(u *ir.Union)
+	addUnion = func(u *ir.Union) {
+		if !g.mine(u.Name) {
+			return
+		}
+		if seen[u.Name] {
+			return
+		}
+		seen[u.Name] = true
+		out = append(out, u)
+		for _, v := range u.Variants {
+			if v.F == nil {
+				continue
+			}
+			if inner, ok := v.F.Type.Ref.(*ir.Union); ok {
+				addUnion(inner)
+			}
+		}
+	}
 	for _, st := range closure {
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if u, ok := f.Type.Ref.(*ir.Union); ok && !seen[u.Name] && g.mine(u.Name) {
-				seen[u.Name] = true
-				out = append(out, u)
+			if u, ok := f.Type.Ref.(*ir.Union); ok {
+				addUnion(u)
 			}
 		}
 	}

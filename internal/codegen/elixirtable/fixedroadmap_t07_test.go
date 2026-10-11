@@ -293,6 +293,14 @@ fixed table Root
 	if !strings.Contains(body, "{v, c, m} = inner_fixed_decode(arm, c, m)") {
 		t.Error("W16: the nested union arm is not read through its own union projection")
 	}
+	// THE CALLEE MUST EXIST, not only the call site: an arm that is itself a
+	// union is a call to THAT union's own helper, so the nested union's writer,
+	// its projection and its own arm structs must all be emitted beside the
+	// call (§4.1 "an arm inside an arm answers to the OUTER tag").
+	t07Has(t, body, "def inner_fixed_write_into(value, acc) do", "W16 the nested union's own writer is emitted")
+	t07Has(t, body, "def inner_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m", "W16 the nested union's own projection is emitted")
+	t07Has(t, body, "def a_fixed_write_into(value, acc) do", "W16 the inner arm `a`'s writer is emitted")
+	t07Has(t, body, "def b_fixed_write_into(value, acc) do", "W16 the inner arm `b`'s writer is emitted")
 }
 
 // ---- elixir/R28 -------------------------------------------------------------
