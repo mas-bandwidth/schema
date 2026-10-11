@@ -86,6 +86,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// consumer can be handed is not something they opt into.
 	if fixed {
 		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
+		// THE MESSAGE FORM (§3.3) is a fixed table's, so its announcement rides
+		// with the fixed form: a unit with a fixed root carries the constant.
+		out[AnnounceModule+".rs"] = announceModule(u)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
