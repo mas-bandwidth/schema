@@ -168,6 +168,15 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.bitsv = ( value.bitsv > 4095ull ) ? 4095ull : value.bitsv;",
 			},
 		},
+		{
+			// "64-bit floating-point fields". A float64 is double storage written
+			// by TableFixedPutF64, the full 64-bit wire word.
+			id: "float64-values/cpp/valid-data",
+			want: []string{
+				"double f64 = 0.0;",
+				"TableFixedPutF64( b + 71, value.f64 );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
