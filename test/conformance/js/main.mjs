@@ -449,6 +449,44 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- the MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
+//
+// `message` IS THE ONE SURFACE THAT READS TWO FILES: a message's id table is
+// the CONNECTION's announcement, so the driver reads that first into the
+// connection's VOCABULARY, then LoadMessages the message-form batch against it
+// and SaveMessages the re-saved bytes. The manifest's `connection` line names
+// the announcement and the `message` line names the pair of wires, so the
+// driver joins the two by key and never derives a vocabulary of its own
+// (test/conformance/README.md).
+//
+// The codec is the generated tree's, keyed by unit and root, and the verbs are
+// PLURAL because the form's primitive is a BATCH of bodies. A root this leg has
+// no message codec for answers `<case>.absent`, the surface-level absence one
+// grain up: the port's own absence, not a failing test (README.md).
+
+function spillAbsent(outDir, name) {
+  writeFileSync(join(outDir, name + ".absent"), "");
+}
+
+// "unit:root" -> (announcement, wire) => Uint8Array, the round trip's bytes.
+const messageCodecs = Object.create(null);
+
+function surfaceMessage(lines, outDir) {
+  for (const f of kind(lines, "message")) {
+    let unit = null, path = null;
+    for (const c of kind(lines, "connection")) {
+      if (c[1] === f[2]) { unit = c[2]; path = c[4]; break; }
+    }
+    const codec = messageCodecs[unit + ":" + f[3]];
+    if (codec === undefined) { spillAbsent(outDir, f[1]); continue; }
+    const announcement = new Uint8Array(readFileSync(path));
+    const wire = new Uint8Array(readFileSync(f[5]));
+    const answer = codec(announcement, wire);
+    if (answer === null) { fail(f[1] + ": message load/save failed"); }
+    writeFileSync(join(outDir, f[1]), answer);
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -459,10 +497,12 @@ if (args.length < 2) {
 const lines = readManifest(args[0]);
 const surface = args[1];
 if (surface === "list") {
-  // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-  // PREVIOUS form and the corpus is pinned in the id-table form
-  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row.
-  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
+  // THE WIRE SURFACES ARE ABSENT: this port writes the wire's PREVIOUS form
+  // (form 1) nowhere, and the corpus is pinned in the id-table form
+  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row. `message`, the
+  // form-2 batch surface (§3.3), rides here: the driver lists it and answers
+  // each message row it has a codec for, and `<case>.absent` otherwise.
+  process.stdout.write("message\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
   process.exit(0);
 }
 if (args.length < 3) {
@@ -471,6 +511,7 @@ if (args.length < 3) {
 }
 const outDir = args[2];
 switch (surface) {
+  case "message": surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
