@@ -7,7 +7,10 @@ package gotable
 // card proves, table-driven, t.Parallel() first. Every assertion reads the plan
 // THIS leg's emitter lays down — the GENERATED TFixedLeaves source — and not the
 // canonical ir.TableFixedBuildPlan, so a planted break in the emitter turns it
-// red.
+// red. W16 goes further: it also RUNS the emitted plan through the leg's own
+// generated TFixedSave/TFixedLoad (t09Run), so the two-lane conjunction the
+// runtime's read loop holds is exercised and a dropped Guard2 check turns it red,
+// which a source-text assertion alone cannot do.
 
 import (
 	"strings"
@@ -86,23 +89,27 @@ fixed table T
 // ---- go/W16 and go/R28 ------------------------------------------------------
 
 // t08Nested is an arm inside an arm: Outer's arm p holds Inner, so every entry
-// inside Inner's arm answers to the OUTER tag as well as its own.
+// inside Inner's arm answers to the OUTER tag as well as its own. Inner is also
+// a table field of T on its own, so this leg's table emitter lays down Inner's
+// and Outer's own type declarations — the generated fixed unit compiles without
+// the message-form emitter (the one that reads through the sibling
+// serialize.go runtime), which is what lets the conjunction be RUN here.
 const t08Nested = `package probe
 
-type Cell { n int32 }
 union Inner
 {
-    x Cell
-    y Cell
+    x int32
+    y int32
 }
 union Outer
 {
     p Inner
-    q Cell
+    q int32
 }
 fixed table T
 {
     pick Outer
+    other Inner
 }
 `
 
@@ -128,4 +135,72 @@ func t08GoW16(t *testing.T) {
 	if !strings.Contains(src, "if out[q].Guard == tableFixedNoGuard") {
 		t.Error("W16: the emitted walk overwrites the first guard lane instead of answering the outer tag on a second")
 	}
+	// AND THE CONJUNCTION IS EXERCISED, not merely laid down: the emitted
+	// plan's two lanes are RUN — the leg builds, WRITES and READS a nested
+	// union (an outer arm holding an inner union) through its own generated
+	// TFixedSave/TFixedLoad. This is the clause the source text cannot prove:
+	// §4.1's "the entry runs when BOTH tags hold their ordinal"
+	// (docs/FIXED-FORM-ALGORITHM.md:246-251). t09Run is this package's existing
+	// fixed-form harness: it generates the table unit and runs it in a
+	// throwaway module (it shells out, so it runs where the gate promises).
+	t09Run(t, t08Nested, t08NestedProbe)
 }
+
+// t08NestedProbe builds, writes and reads the nested fixture end-to-end and
+// bites the second lane: (a) when both the outer tag and the inner tag hold,
+// the inner arm lands; (b) when only the inner tag holds — the outer tag names
+// a different arm — the inner arm's bytes must NOT land beneath an outer arm
+// that never rode, which is the bug §4.1 describes. A plan whose reader drops
+// the Guard2 check lands the bytes in (b) and this test goes red.
+const t08NestedProbe = `package probe
+
+import "testing"
+
+func TestOuterTagConjunction(t *testing.T) {
+	// (a) BOTH TAGS HOLD: the outer tag says p and the inner tag says x, so the
+	// x arm's entry runs and its bytes land (§4.1).
+	v := T{}
+	TReset(&v)
+	v.Pick.Type = OuterTypeP
+	v.Pick.P.Type = InnerTypeX
+	v.Pick.P.X = 0x2a
+	buf := make([]byte, TFixedMeasure(1))
+	if n := TFixedSave([]T{v}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d want %d", n, len(buf))
+	}
+	plan := make([]TableFixedEntry, 256)
+	var r TableReport
+	both := make([]T, 1)
+	if n := TFixedLoad(both, buf, plan, &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("load %d report %+v", n, r)
+	}
+	if both[0].Pick.Type != OuterTypeP || both[0].Pick.P.Type != InnerTypeX || both[0].Pick.P.X != 0x2a {
+		t.Fatalf("both tags held but the inner arm did not land: %+v", both[0].Pick)
+	}
+
+	// (b) ONLY THE INNER TAG HOLDS: the record's outer tag says q while its
+	// inner tag byte still says x. The x entry must not run, so no inner-arm
+	// bytes land beneath outer arm p, which never rode (§4.1).
+	body := buf[len(buf)-TFixedRecordBytes:]
+	for i := range body[8:] {
+		body[8+i] = 0
+	}
+	body[8+0] = byte(OuterTypeQ)
+	body[8+1] = byte(InnerTypeX)
+	body[8+2] = 0xde
+	body[8+3] = 0xad
+	body[8+4] = 0xbe
+	body[8+5] = 0xef
+	only := make([]T, 1)
+	r = TableReport{}
+	if n := TFixedLoad(only, buf, plan, &r); n != 1 {
+		t.Fatalf("load %d report %+v", n, r)
+	}
+	if only[0].Pick.P.X != 0 {
+		t.Fatalf("the inner tag alone landed an inner arm's bytes beneath an outer arm that never rode: %+v", only[0].Pick)
+	}
+	if only[0].Pick.Type != OuterTypeQ || only[0].Pick.Q == 0 {
+		t.Fatalf("the outer q arm did not land: %+v", only[0].Pick)
+	}
+}
+`
