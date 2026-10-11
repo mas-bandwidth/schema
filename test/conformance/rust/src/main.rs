@@ -761,6 +761,23 @@ fn surface_cook(manifest: &Manifest, out: &str) {
     }
 }
 
+// The MESSAGE FORM is a batch of bitpacked bodies under one announced
+// vocabulary (docs/SPEC-TABLES.md §3.3). A row is
+// `message <name> <connection> <root> <file-form wire> <message-form wire>`,
+// and the CONNECTION line it names carries the announcement the vocabulary is
+// read from. The Rust leg carries no message codec yet, so every row is
+// answered ABSENT and no vocabulary is derived.
+fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message") {
+        let _connection = manifest
+            .of_kind("connection")
+            .find(|c| c[1] == f[2])
+            .unwrap_or_else(|| fail(&format!("no connection named {}", f[2])));
+        let _ = &f[3];
+        spill(out, &format!("{}.absent", f[1]), b"");
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -779,7 +796,10 @@ fn main() {
             // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
             // PREVIOUS form and the corpus is pinned in the id-table form
             // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
-            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            //
+            // `message` is DECLARED and answers every row ABSENT: the message
+            // codec is not ported, so no body is read and no body is written.
+            "message\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }
@@ -789,6 +809,7 @@ fn main() {
     }
     let out = args[3].as_str();
     match surface {
+        "message" => surface_message(&manifest, out),
         "cook" => surface_cook(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
