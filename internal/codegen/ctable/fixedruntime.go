@@ -522,9 +522,32 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         }
         case kTableFixedWidenF:
         {
+            /* f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
+               BITS (docs/FIXED-FORM-ALGORITHM.md §4, §5.2's table). The
+               hardware cast QUIETS a signalling NaN and can drop a payload
+               bit, so every all-ones exponent is assembled by hand: the sign
+               is carried, the exponent becomes f64's all-ones, and the 23-bit
+               mantissa shifts left by 29 to become the 52-bit one, which
+               carries the quiet bit as the writer wrote it. Every other
+               exponent converts exactly, so the hardware path is the value
+               and nothing else. */
+            uint32_t bits = 0;
+            uint64_t wide = 0;
             float f = 0.0f;
-            memcpy( &f, src + p->src, 4 );
-            const double wide = (double) f;
+            double d = 0.0;
+            memcpy( &bits, src + p->src, 4 );
+            if ( ( bits & 0x7f800000u ) == 0x7f800000u && ( bits & 0x007fffffu ) != 0 )
+            {
+                wide = ( (uint64_t) ( bits >> 31 ) << 63 )
+                     | 0x7ff0000000000000ull
+                     | ( (uint64_t) ( bits & 0x007fffffu ) << 29 );
+            }
+            else
+            {
+                memcpy( &f, &bits, 4 );
+                d = (double) f;
+                memcpy( &wide, &d, 8 );
+            }
             memcpy( dst + p->dst, &wide, 8 );
             (*widened)++;
             break;
