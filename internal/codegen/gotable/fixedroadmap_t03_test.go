@@ -21,6 +21,7 @@ package gotable
 // clause in the emitted emitter or runtime.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -284,6 +285,69 @@ fixed table T { inner Inner }
 	}
 }
 
+// ---- go/R3 ------------------------------------------------------------------
+
+// t03GoR3 holds R3 to §5.2's one number: "R.floor := 1 + the highest index
+// marked RETIRED in lock.lineage(T), or 0 when none is", emitted beside the
+// lineage, and to LOAD step 6: "if i < R.floor: REFUSE layout_unsupported,
+// reporting h". The runtime half is TestFixedVersioningFloor/floor_below on the
+// corpus; the arithmetic and the emitted site are read here.
+func t03GoR3(t *testing.T) {
+	for _, tc := range []struct{ retire, want int }{
+		{0, 0}, // none retired: the floor is 0
+		{1, 1}, // entry 0 retired: the floor is 1
+		{2, 2}, // entries 0 and 1 retired: 1 + the HIGHEST retired index
+	} {
+		text, _ := t03GoRetire(t, tc.retire)
+		t03GoHas(t, text, fmt.Sprintf("const LineageFixedFloor = %d", tc.want), "R3 1 + the highest retired index")
+		load := t03GoLoad(t, text, "Lineage")
+		t03GoHas(t, load, "if pick < LineageFixedFloor {", "R3 below the floor is a comparison of the index")
+		t03GoHas(t, load, `return tableFixedRefuseHash(report, "layout_unsupported", hash)`, "R3 below the floor is layout_unsupported")
+	}
+}
+
+// ---- go/R32 -----------------------------------------------------------------
+
+// t03GoR32 holds R32 to §5.2's retirement, read off the emitted load: the
+// operator's mark is laid down per entry (`// RETIRED:`), the floor check is
+// placed ONCE, after the hash select and BEFORE the byte comparison or any
+// record, and its whole body is the named refusal — a pure read of the picked
+// index, so a second load of the same file answers the same name. REFUSE is
+// TOTAL: the runtime's refuse zeroes every counter.
+func t03GoR32(t *testing.T) {
+	text, entries := t03GoRetire(t, 1)
+	t03GoHas(t, text, "// RETIRED: "+t03GoRetireReason, "R32 the retired entry's mark is laid down")
+	t03GoHas(t, text, fmt.Sprintf("0x%016x", entries[0].Wire), "R32 the retired entry keeps its hash in the lineage")
+	load := t03GoLoad(t, text, "Lineage")
+	if n := strings.Count(load, "if pick < LineageFixedFloor {"); n != 1 {
+		t.Errorf("R32: the floor is tested %d times, want once", n)
+	}
+	at := strings.Index(load, "if pick < LineageFixedFloor {")
+	known := strings.Index(load, "known := &LineageFixedKnown[pick]")
+	bytes := strings.Index(load, "layout[i] != known.Layout[i]")
+	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	if at < 0 || known < 0 || bytes < 0 || records < 0 {
+		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	if !(at < known && known < bytes && bytes < records) {
+		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d, %d)", at, known, bytes, records)
+	}
+	// ONCE AND IDEMPOTENT: the guarded body reads the picked index and returns
+	// the named refusal; nothing before it moves a counter or writes a byte.
+	body := load[at:]
+	if end := strings.Index(body, "\n\t}"); end >= 0 {
+		body = body[:end]
+	}
+	for _, banned := range []string{"report.Unknown", "report.Widened", "values[", "copy("} {
+		if strings.Contains(body, banned) {
+			t.Errorf("R32: the floor refusal is not a pure named refusal (%q):\n%s", banned, body)
+		}
+	}
+	for _, zero := range []string{"*report = TableReport{}", "report.Verdict = TableOpenRefused", "report.Reason = reason"} {
+		t03GoHas(t, tableFixedRuntime, zero, "R32 REFUSE is TOTAL")
+	}
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
@@ -295,6 +359,8 @@ func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
 		{id: "go/R6", check: t03GoR6},
 		{id: "go/R14", check: t03GoR14},
 		{id: "go/R22", check: t03GoR22},
+		{id: "go/R3", check: t03GoR3},
+		{id: "go/R32", check: t03GoR32},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
