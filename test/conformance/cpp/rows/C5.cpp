@@ -13,7 +13,9 @@
 // own FixedSave, with a lone surrogate forged at a position PAST the used
 // length v=2. The read succeeds because the content check only walks the
 // first two code units. The control forges the same surrogate INSIDE the
-// used range — the read then sets malformed and refuses the field.
+// used range — the read then REFUSES BY NAME (text_ill_formed), the verdict
+// the packet reader gives (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11), with
+// nothing decoded past it and no counter moved.
 
 #include <cstdio>
 #include <cstdint>
@@ -98,8 +100,8 @@ static void wide_units_case()
 
     // CONTROL — FORGE THE SURROGATE INSIDE THE USED RANGE: the label carries
     // a lone surrogate at position 1 (still v=2). The content check walks
-    // it, finds invalid UTF-16, and sets malformed. The field is refused and
-    // the record stands.
+    // it, finds invalid UTF-16, and REFUSES BY NAME text_ill_formed. The
+    // whole read refuses: nothing decoded past it and no counter moves.
     label_text[2] = 0x00; label_text[3] = 0xD8; // surrogate at code-unit position 1, LE
     {
         wide::Stamp back;
@@ -108,16 +110,11 @@ static void wide_units_case()
         std::vector<wide::TableFixedEntry> plan( 1024 );
         const int64_t n = wide::StampFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && r.malformed,
+        check( n == -1 && r.refused && !r.malformed && r.reason == wide::text_ill_formed,
                "wide units inside: a surrogate INSIDE the used length v=2 IS "
-               "content the walk checks — the read sets malformed (C5 control)" );
-        check( back.label_length == 0,
-               "wide units inside: the damaged field reads its declared default — "
-               "used length is zero" );
-        check( back.label[0] == 0,
-               "wide units inside: the damaged field's text storage is zeroed" );
-        check( back.seq == 0xC0FFEEu,
-               "wide units inside: the neighbour field still stands through the damage" );
+               "content the walk checks — the read refuses BY NAME text_ill_formed (C5 control)" );
+        check( r.clamped == 0 && r.widened == 0,
+               "wide units inside: a refusal moves no counter (REFUSE is total)" );
     }
 }
 

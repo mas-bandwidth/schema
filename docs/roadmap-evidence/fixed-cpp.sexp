@@ -71,3 +71,7 @@
 (:id "signed-fixed-point/cpp/valid-data" :state :unknown :note "the valid-data write/read needs the sibling ../serialize runtime, which is not staged in this checkout: the generated header names serialize.h's 128-bit storage type, so the probe cannot compile and the row is named as not run, never faked")
 (:id "unsigned-fixed-point/cpp/valid-data" :state :unknown :note "the valid-data write/read needs the sibling ../serialize runtime, which is not staged in this checkout: the generated header names serialize.h's 128-bit storage type, so the probe cannot compile and the row is named as not run, never faked")
 (:id "bool-values/cpp/valid-data" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t09_test.go: TestFixedRoadmapCppT09IntegersFloats/bool-values/cpp/valid-data") :tested-revision "49d439eb67cb9790e4f666020f96ff5c5c52d483")
+(:id "cpp/C3" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C3") :tested-revision "8806f9cf7")
+(:id "cpp/C4" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C4") :tested-revision "8806f9cf7")
+(:id "cpp/C5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C5") :tested-revision "8806f9cf7")
+(:id "cpp/R24" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/R24") :tested-revision "8806f9cf7")
