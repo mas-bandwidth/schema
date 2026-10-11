@@ -1025,7 +1025,7 @@ const tableFixedWireSource = `
         // width. It is written in full before it is read: every byte of
         // runs * dw is stored by this case, so nothing from the previous
         // record survives into this one.
-        public static void Run<T>(
+        public static string Run<T>(
             ReadOnlySpan<TableFixedEntry> plan,
             ReadOnlySpan<TableFixedSlot<T>> slots,
             ReadOnlySpan<byte> src,
@@ -1159,8 +1159,18 @@ const tableFixedWireSource = `
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0) { v = 0; if (report != null) report.Clamped++; }
                         else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
-                        slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                         ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
+                        // ELSE, and a violation REFUSES BY NAME, the verdict the
+                        // packet reader gives (docs/FIXED-FORM-ALGORITHM.md §4.5,
+                        // §5.4 fix 11, §5.8 row 8): the length above CLAMPS and
+                        // counts; the bytes it kept are checked now, over v units
+                        // and never over the span.
+                        if (TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                         if (p.Meta == TextWide)
                         {
                             slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
@@ -1265,6 +1275,63 @@ const tableFixedWireSource = `
                     default: break;
                 }
             }
+            return null;
+        }
+
+        // TextIllFormed reports whether a text payload's USED units are the text
+        // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+        // with no zero byte for string, paired non-zero UTF-16 code units for
+        // wstring. bytes(N) carries no text rule at all, and slack past the used
+        // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
+        // The used argument is the clamped length in the flavour's own units.
+        public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
+        {
+            switch (meta)
+            {
+                case TextUtf8:
+                {
+                    uint i = 0;
+                    while (i < used)
+                    {
+                        byte c = p[(int)i];
+                        if (c < 0x80) { i++; }
+                        else if ((c & 0xE0) == 0xC0)
+                        {
+                            if (c < 0xC2 || i + 1 >= used || (p[(int)i + 1] & 0xC0) != 0x80) { return true; }
+                            i += 2;
+                        }
+                        else if ((c & 0xF0) == 0xE0)
+                        {
+                            if (i + 2 >= used || (p[(int)i + 1] & 0xC0) != 0x80 || (p[(int)i + 2] & 0xC0) != 0x80) { return true; }
+                            i += 3;
+                        }
+                        else if ((c & 0xF8) == 0xF0)
+                        {
+                            if (i + 3 >= used || (p[(int)i + 1] & 0xC0) != 0x80 || (p[(int)i + 2] & 0xC0) != 0x80 || (p[(int)i + 3] & 0xC0) != 0x80) { return true; }
+                            i += 4;
+                        }
+                        else { return true; }
+                    }
+                    break;
+                }
+                case TextWide:
+                {
+                    for (uint i = 0; i < used; i++)
+                    {
+                        uint u = (uint)(p[(int)i * 2] | (p[(int)i * 2 + 1] << 8));
+                        if (u >= 0xD800 && u <= 0xDBFF)
+                        {
+                            if (i + 1 >= used) { return true; }
+                            uint lo = (uint)(p[(int)(i + 1) * 2] | (p[(int)(i + 1) * 2 + 1] << 8));
+                            if (lo < 0xDC00 || lo > 0xDFFF) { return true; }
+                            i++;
+                        }
+                        else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }
+                    }
+                    break;
+                }
+            }
+            return false;
         }
     }
 `
