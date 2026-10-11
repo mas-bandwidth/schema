@@ -1,0 +1,8 @@
+(:id "cpp/E5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t04_test.go: TestFixedRoadmapCppT04VersionsEvolution/cpp/E5") :tested-revision "c4fe84dd3fc6bfefe0dad27fee44631e6d5769fa")
+(:id "cpp/W2" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t04_test.go: TestFixedRoadmapCppT04VersionsEvolution/cpp/W2") :tested-revision "c4fe84dd3fc6bfefe0dad27fee44631e6d5769fa")
+(:id "cpp/E6" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t04_test.go: TestFixedRoadmapCppT04VersionsEvolution/cpp/E6") :tested-revision "c4fe84dd3fc6bfefe0dad27fee44631e6d5769fa")
+(:id "cpp/E8" :state :unknown :note "append and deprecate under the backward-read contract: no direct assertion was written and the corpus NEW-READS-OLD probe needs build/fixedform-corpus, which this run's 25-minute wall did not allow building")
+(:id "cpp/R19" :state :unknown :note "a clean NEW-READS-OLD of an appended field moves no counter at all: the assertion exists in TestFixedVersioningNewReadsOld but that suite SKIPS without build/fixedform-corpus, and the wall did not allow building it")
+(:id "cpp/E9" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t04_test.go: TestFixedRoadmapCppT04VersionsEvolution/cpp/E9") :tested-revision "c4fe84dd3fc6bfefe0dad27fee44631e6d5769fa")
+(:id "cpp/R16" :state :unknown :note "the counters exactly: partly held by TestFixedVersioningForgedOrdinalBothPlans and the census tests, all corpus-gated and not run here; the widened and text-clamp clauses remain unproved")
+(:id "cpp/R18" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t04_test.go: TestFixedRoadmapCppT04VersionsEvolution/cpp/R18") :tested-revision "c4fe84dd3fc6bfefe0dad27fee44631e6d5769fa")
