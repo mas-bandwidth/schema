@@ -262,6 +262,26 @@ const tableFixedWireSource = `
             return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
         }
 
+        // THE FLOAT RUNG'S ONE WIDENING (ALG §4.2): the f32's bits as the f64's
+        // bits, exact by construction, NaN payloads included. The hardware's own
+        // conversion between the widths SETS THE QUIET BIT on a signalling NaN,
+        // so the all-ones-exponent pattern is spelled by the sign, exponent and
+        // payload shifts; only the finite case rides the conversion. EVERY call
+        // site — the scalar widenf and the folded flat-array widen alike — comes
+        // through here, as the C++ reference's one TableWidenF32 does.
+        public static double WidenF32(float f)
+        {
+            uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
+            if ((fbits & 0x7F800000u) == 0x7F800000u)
+            {
+                ulong w = ((ulong)(fbits & 0x80000000u) << 32)
+                    | 0x7FF0000000000000UL
+                    | ((ulong)(fbits & 0x7FFFFFu) << 29);
+                return BitConverter.Int64BitsToDouble(unchecked((long)w));
+            }
+            return (double)f;
+        }
+
         public static ulong HashOf(ReadOnlySpan<byte> layout)
         {
             ulong h = 0xcbf29ce484222325ul;
@@ -1109,7 +1129,7 @@ const tableFixedWireSource = `
                             int at = (int)p.Src + e * sw;
                             if (p.Sign == 2)
                             {
-                                double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
+                                double d2 = WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
                                 BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                 continue;
                             }
@@ -1250,24 +1270,11 @@ const tableFixedWireSource = `
                         // widths SETS THE QUIET BIT on a signalling NaN and drops a
                         // payload the narrower cell would have kept, and widenf owes
                         // the bit-exact widening (ALG §4.2: "NaN payloads included").
-                        // Sign, exponent and payload carried; every finite value is
-                        // exact through the conversion, so only the all-ones exponent
-                        // NaN and infinity share needs the pattern spelled out.
+                        // The one helper carries sign, exponent and payload; every
+                        // finite value is exact through the conversion, so only the
+                        // all-ones exponent NaN and infinity share needs the pattern.
                         float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                        uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
-                        double d;
-                        if ((fbits & 0x7F800000u) == 0x7F800000u)
-                        {
-                            ulong w = ((ulong)(fbits & 0x80000000u) << 32)
-                                | 0x7FF0000000000000UL
-                                | ((ulong)(fbits & 0x7FFFFFu) << 29);
-                            d = BitConverter.Int64BitsToDouble(unchecked((long)w));
-                        }
-                        else
-                        {
-                            d = (double)f;
-                        }
-                        slots[(int)p.Dst].SetDouble?.Invoke(dst, d);
+                        slots[(int)p.Dst].SetDouble?.Invoke(dst, WidenF32(f));
                         if (report != null) { report.Widened++; }
                         break;
                     }
