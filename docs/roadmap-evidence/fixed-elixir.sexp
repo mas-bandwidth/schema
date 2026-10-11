@@ -22,3 +22,8 @@
 (:id "elixir/R6" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R6") :tested-revision "54af9336")
 (:id "elixir/R14" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R14") :tested-revision "54af9336")
 (:id "elixir/R22" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t03_test.go: TestFixedRoadmapT03Plans/elixir/R22") :tested-revision "54af9336")
+(:id "elixir/C14" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t07_test.go: TestFixedRoadmapElixirT07Writes/elixir/C14") :tested-revision "839dc14ac5264cf0aeb747f4cc11609e0b3f9e89")
+(:id "elixir/W4" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t07_test.go: TestFixedRoadmapElixirT07Writes/elixir/W4") :tested-revision "839dc14ac5264cf0aeb747f4cc11609e0b3f9e89")
+(:id "elixir/W9" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t07_test.go: TestFixedRoadmapElixirT07Writes/elixir/W9") :tested-revision "839dc14ac5264cf0aeb747f4cc11609e0b3f9e89")
+(:id "elixir/W1" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t07_test.go: TestFixedRoadmapElixirT07Writes/elixir/W1") :tested-revision "839dc14ac5264cf0aeb747f4cc11609e0b3f9e89")
+(:id "elixir/W5" :state :done :evidence ("internal/codegen/elixirtable/fixedroadmap_t07_test.go: TestFixedRoadmapElixirT07Writes/elixir/W5") :tested-revision "839dc14ac5264cf0aeb747f4cc11609e0b3f9e89")
