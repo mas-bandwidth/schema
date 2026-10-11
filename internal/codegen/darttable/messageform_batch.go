@@ -76,7 +76,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	}
 	lower := lowerFirst(st.Name)
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
-		"tableMessageBatchOpen", "tableMessageBatchClose",
+		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
 		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name, "init"+capitalize(st.Name))
 	g.pf("// ---- %s, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----\n", st.Name)
 	g.pf("/// MeasureMessages sizes the buffer for a batch of %s bodies, or -1 with\n", st.Name)
@@ -85,7 +85,6 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
 	g.pf("  final w = TableBitWriter(Uint8List(0))..measuring = true;\n")
-	g.pf("  w.put(2, 8);\n  w.put(values.length - 1, 8);\n")
 	g.pf("  for (final value in values) {\n")
 	g.pf("    if (!%sSaveMessageBody(w, value)) return -1;\n", lower)
 	g.pf("  }\n  w.align();\n")
