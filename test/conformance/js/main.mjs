@@ -449,6 +449,99 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- the MESSAGE surface (docs/SPEC-TABLES.md §3.3) ----------------------
+//
+// `message` is the one surface that reads TWO files (test/conformance/
+// README.md): the CONNECTION's announcement carries a message's id table, the
+// driver reads that first into one direction's VOCABULARY, and the batch
+// resolves against it. The manifest's `connection` line names the
+// announcement and the `message` line names the pair of wires, so the driver
+// joins the two by key and derives no vocabulary of its own. The verbs are
+// PLURAL, because the form's primitive is a BATCH of bodies of one root and a
+// single message is the batch of one.
+//
+// THE ROW LIST IS THE MANIFEST'S. Each row names a connection's unit and the
+// root its batch carries; the manifest's `message` lines are the corpus's
+// claim, this table is the leg's, and TestMessageFormConformanceJavaScript
+// (internal/codegen/jstable) holds the two to one set. The home module
+// carries the unit's `TableVocabulary` and `AnnounceRead`; the table module
+// carries the root's `LoadMessages`, `MeasureMessages` and `SaveMessages`
+// verbs (docs/SPEC-TABLES.md §3.3). A row whose unit this backend cannot
+// generate, or whose root is a plain `table` the form refuses by name, is
+// answered `<case>.absent` beside where the answer would go.
+const messageRows = [
+  ["backenddemo", "LoginRequest", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
+  ["backenddemo", "MatchResult", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
+  ["backenddemo", "StorePurchase", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
+  ["vocabdemo", "Wide09", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
+  ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
+  ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
+  ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
+  ["graphdemo", "Scene", "pointers/GraphdemoTable.js", "pointers/GraphTable.js"],
+];
+
+function messageRow(unit, root) {
+  for (const r of messageRows) {
+    if (r[0] === unit && r[1] === root) { return r; }
+  }
+  return null;
+}
+
+// A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO,
+// `<case>.absent`, and the matrix counts it (test/conformance/README.md, "Exit
+// codes"). The JavaScript table backend emits the form-2 verbs for its FIXED
+// roots only, so a message row whose unit cannot be generated for this backend
+// (docs/SPEC-TABLES.md §11) or whose root is a plain `table` the form refuses
+// by name (§3.3) is such a case; the surface itself is answered, so the matrix
+// counts the rows rather than the feature.
+function messageAbsent(outDir, name, reason) {
+  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+}
+
+async function surfaceMessage(lines, outDir) {
+  const connections = kind(lines, "connection");
+  for (const f of kind(lines, "message")) {
+    // message <name> <connection> <root> <file-form wire> <message-form wire>
+    const conn = connections.find((c) => c[1] === f[2]);
+    if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
+    const row = messageRow(conn[2], f[3]);
+    if (row === null) { messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3"); continue; }
+    let runtime, unit;
+    try {
+      runtime = await load(row[2]);
+      unit = await load(row[3]);
+    } catch (e) {
+      messageAbsent(outDir, f[1], "no generated unit: docs/SPEC-TABLES.md §11");
+      continue;
+    }
+    const loadMessages = unit[f[3] + "LoadMessages"];
+    const measureMessages = unit[f[3] + "MeasureMessages"];
+    const saveMessages = unit[f[3] + "SaveMessages"];
+    if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
+      messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      continue;
+    }
+    // AnnounceRead the connection's announcement into one direction's
+    // vocabulary, LoadMessages the batch against it, MeasureMessages the
+    // bodies it filled, SaveMessages them back into one buffer, the bytes.
+    const vocabulary = new runtime.TableVocabulary();
+    vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+    const report = {};
+    if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), report)) {
+      fail(f[1] + ": the announcement was refused: " + conn[4]);
+    }
+    const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new runtime[f[3]]());
+    const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[5])), report);
+    if (count < 1) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+    const body = values.slice(0, count);
+    const size = measureMessages(body, report);
+    if (size < 0) { fail(f[1] + ": message measure " + JSON.stringify(report)); }
+    const buffer = new Uint8Array(size);
+    if (saveMessages(body, buffer, report) !== size) { fail(f[1] + ": message save " + JSON.stringify(report)); }
+    writeFileSync(join(outDir, f[1]), buffer);
+  }
+}
+
 // ---- main
 
 const args = process.argv.slice(2);
@@ -459,10 +552,13 @@ if (args.length < 2) {
 const lines = readManifest(args[0]);
 const surface = args[1];
 if (surface === "list") {
-  // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-  // PREVIOUS form and the corpus is pinned in the id-table form
-  // (docs/SPEC-TABLES.md §3). schema#516 is the port's row.
-  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
+  // the form-1 WIRE surface is ABSENT: this port writes the wire's PREVIOUS
+  // form and the corpus is pinned in the id-table form (docs/SPEC-TABLES.md
+  // §3). schema#516 is the port's row. `message` IS listed and answers a row
+  // at a time — form 2 is this backend's (§3.3), and a row it cannot reach is
+  // `<case>.absent`, which the matrix counts rather than reading as a feature
+  // the leg lacks.
+  process.stdout.write("cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
   process.exit(0);
 }
 if (args.length < 3) {
@@ -471,6 +567,7 @@ if (args.length < 3) {
 }
 const outDir = args[2];
 switch (surface) {
+  case "message": await surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
