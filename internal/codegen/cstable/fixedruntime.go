@@ -178,6 +178,7 @@ public sealed class TableFixedLineagePlan
 {
     public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
     public int Count;
+    public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
     public int Unknown;
     public int KindMismatch;
     public string Why;
@@ -541,9 +542,14 @@ const tableFixedWireSource = `
             public bool Overflow;
             public TableReport Report;
             public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
+            public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
 
             public void Push(in TableFixedEntry e)
             {
+                // THE WALK RUNS TWICE and each pass keeps its own half, which is
+                // how the plan comes out partitioned without a second array to
+                // partition it in (§5.9 #42).
+                if ((e.Guard != NoGuard) != WantGuarded) { return; }
                 TableFixedEntry stamped = e;
                 if (stamped.Guard != NoGuard)
                 {
@@ -804,6 +810,14 @@ const tableFixedWireSource = `
                 }
                 case 30: // Enum
                 {
+                    // THE HALF TEST PRECEDES THE ALLOCATION (docs/FIXED-FORM-ALGORITHM.md
+                    // §5.9 #42): a kind that allocates before it pushes must
+                    // test its half first, or the discarded pass spends the pool
+                    // and a plan that fits comes back plan_too_large. The remap
+                    // table is laid in the pool BEFORE the Push that would
+                    // reject the other half, so the enum tests its half here and
+                    // the discarded pass never calls LayTable.
+                    if ((guard != NoGuard) != c.WantGuarded) { break; }
                     // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
                     // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
                     // ordinal takes the remap table.
@@ -870,8 +884,10 @@ const tableFixedWireSource = `
             ReadOnlySpan<byte> my_layout,
             ReadOnlySpan<TableFixedDst> dst,
             Span<TableFixedEntry> plan,
-            TableReport report)
+            TableReport report,
+            out int split)
         {
+            split = 0;
             if (plan.IsEmpty) { return -1; }
             if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return -1; }
             Compiler c = new Compiler
@@ -879,11 +895,42 @@ const tableFixedWireSource = `
                 Plan = plan,
                 Capacity = plan.Length,
                 Report = report,
-                ArgW = 1
+                ArgW = 1,
+                WantGuarded = false
             };
+            // PASS 1: UNGUARDED entries only, counting the census. PASS 2:
+            // guarded entries only, COUNTING NOTHING (§5.9 #42) — the unknown
+            // census is the first pass's, and counting it twice would lie.
+            MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+            int plain = c.Count;
+            c.WantGuarded = true;
+            c.Report = null;
             MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
             if (c.Overflow) { return -1; }
-            return c.Count;
+            // COALESCE inside each half, never across the split (§5.9 #42). The
+            // destination is a slot index, so a merge demands the SAME slot and
+            // a contiguous source — the span-setter run that is already one
+            // Flat or Text entry — and adjacent scalar copies never merge.
+            int out_ = 0;
+            int splitOut = 0;
+            for (int i = 0; i < c.Count; ++i)
+            {
+                if (i == plain) { splitOut = out_; }
+                if (out_ > splitOut && c.Plan[out_ - 1].Op == c.Plan[i].Op &&
+                    c.Plan[i].Op == Copy &&
+                    c.Plan[out_ - 1].Guard == c.Plan[i].Guard && c.Plan[out_ - 1].Arg == c.Plan[i].Arg &&
+                    c.Plan[out_ - 1].ArgW == c.Plan[i].ArgW && c.Plan[out_ - 1].Meta == c.Plan[i].Meta &&
+                    c.Plan[out_ - 1].Src + c.Plan[out_ - 1].Size == c.Plan[i].Src &&
+                    c.Plan[out_ - 1].Dst == c.Plan[i].Dst)
+                {
+                    c.Plan[out_ - 1].Size += c.Plan[i].Size;
+                    continue;
+                }
+                c.Plan[out_++] = c.Plan[i];
+            }
+            if (plain == c.Count) { splitOut = out_; }
+            split = splitOut;
+            return out_;
         }
 
         // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
@@ -962,7 +1009,7 @@ const tableFixedWireSource = `
                 {
                     TableFixedEntry[] buffer = new TableFixedEntry[room];
                     TableReport census = new TableReport();
-                    int made = Compile(parsed, my_layout, dst, buffer, census);
+                    int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
                     if (made < 0)
                     {
                         if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
@@ -970,6 +1017,7 @@ const tableFixedWireSource = `
                     }
                     lane.Entries = buffer;
                     lane.Count = made;
+                    lane.Split = split;
                     lane.Unknown = census.Unknown;
                     lane.KindMismatch = census.KindMismatch;
                     break;
