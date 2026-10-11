@@ -95,6 +95,17 @@ pub struct TableFixedEntry {
     /// build names. The tag is compared at the width its own layout entry
     /// declares (§3.4).
     pub argw: u8,
+    /// GUARD2 / ARG2 / ARGW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    /// ANSWERS TO, CONJOINED with `guard`/`arg`/`argw`: the entry runs only
+    /// when BOTH tags hold their ordinal (docs/FIXED-FORM-ALGORITHM.md §4.1,
+    /// §5.8 row 6). Stamping the outer tag over the inner one fired every inner
+    /// arm the moment the outer one rode, and the inner tag alone landed an
+    /// inner arm beneath an outer arm that never rode. `arg2` is FULL
+    /// WIDTH like `arg`, never a byte lane. TABLE_FIXED_NO_GUARD means there is
+    /// no second condition, which is every entry that is not nested.
+    pub guard2: u32,
+    pub arg2: u64,
+    pub argw2: u8,
     pub dstsize: u8,
     /// a WIDEN's source is two's complement, so it sign-extends
     pub sign: u8,
@@ -111,6 +122,9 @@ impl Default for TableFixedEntry {
             op: TableFixedOp::Copy,
             arg: 0,
             argw: 1,
+            guard2: TABLE_FIXED_NO_GUARD,
+            arg2: 0,
+            argw2: 1,
             dstsize: 0,
             sign: 0,
         }
@@ -405,6 +419,23 @@ fn signed_kind(kind: u8) -> bool {
 // block: a plan offset past the record is framing damage, and it is reported
 // as such rather than trusted.
 
+/// ONE guard lane holds: the tag at `guard`, READ AT ITS OWN WIDTH `argw` and
+/// compared whole against `arg`. `None` means the lane read past the record,
+/// which is framing damage; TABLE_FIXED_NO_GUARD means the lane is absent and
+/// holds trivially. Two lanes lie on an entry whose arm nests inside an arm and
+/// they are a CONJUNCTION (docs/FIXED-FORM-ALGORITHM.md §4.1).
+fn table_fixed_guard(src: &[u8], guard: u32, arg: u64, argw: u8) -> Option<bool> {
+    if guard == TABLE_FIXED_NO_GUARD {
+        return Some(true);
+    }
+    let w = if argw == 0 { 1usize } else { argw as usize };
+    let g = guard as usize;
+    match src.get(g..g + w) {
+        Some(tag) => Some(table_fixed_tag(tag) == arg),
+        None => None,
+    }
+}
+
 /// Runs one plan over one record body, landing it in `image`.
 pub fn table_fixed_run(
     plan: &[TableFixedEntry],
@@ -414,21 +445,22 @@ pub fn table_fixed_run(
     report: &mut TableFixedReport,
 ) {
     for p in plan {
-        if p.guard != TABLE_FIXED_NO_GUARD {
-            // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag
-            // whose low byte happens to be 1 is not arm 1: it is an ordinal
-            // this build has no arm for, and reading only the first byte let
-            // 0x0101 run arm 1's entries over a stranger's record.
-            let g = p.guard as usize;
-            let w = p.argw as usize;
-            match src.get(g..g + w) {
-                Some(tag) if table_fixed_tag(tag) == p.arg => {}
-                Some(_) => continue,
-                None => {
-                    report.malformed = true;
-                    return;
-                }
+        // THE TAGS ARE COMPARED AT THEIR OWN WIDTHS AND CONJOINED. A two- or
+        // four-byte tag whose low byte happens to be 1 is not arm 1: it is an
+        // ordinal this build has no arm for, and reading only the first byte
+        // let 0x0101 run arm 1's entries over a stranger's record. An entry
+        // under an arm that nests inside an arm carries BOTH tags and runs
+        // only when BOTH hold (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6).
+        match (
+            table_fixed_guard(src, p.guard, p.arg, p.argw),
+            table_fixed_guard(src, p.guard2, p.arg2, p.argw2),
+        ) {
+            (Some(true), Some(true)) => {}
+            (None, _) | (_, None) => {
+                report.malformed = true;
+                return;
             }
+            _ => continue,
         }
         let s = p.src as usize;
         let d = p.dst as usize;
@@ -583,7 +615,11 @@ pub fn table_fixed_run(
                 // below is behind the compile-time refusal — and src.get is
                 // the bounds-safe read, so a short record is a malformed
                 // verdict and never a panic.
-                if p.aux == 0 && p.dstsize != 0 && p.guard == TABLE_FIXED_NO_GUARD {
+                if p.aux == 0
+                    && p.dstsize != 0
+                    && p.guard == TABLE_FIXED_NO_GUARD
+                    && p.guard2 == TABLE_FIXED_NO_GUARD
+                {
                     match src.get(s..s + n) {
                         None => {
                             report.malformed = true;
@@ -617,6 +653,11 @@ pub fn table_fixed_holes(
     cover.fill(0);
     for p in plan {
         if p.guard != TABLE_FIXED_NO_GUARD {
+            continue;
+        }
+        // AN ARM INSIDE AN ARM IS CONDITIONAL ON ITS OUTER TAG TOO, so an entry
+        // whose second lane is set is just as much a hole as one whose first is.
+        if p.guard2 != TABLE_FIXED_NO_GUARD {
             continue;
         }
         let (off, n) = match p.op {
@@ -1024,6 +1065,15 @@ impl Compiler<'_> {
                 end = g;
             }
         }
+        if e.guard2 != TABLE_FIXED_NO_GUARD {
+            // THE SECOND (OUTER) LANE'S TAG IS READ TOO, so its reach counts
+            // exactly as the first lane's does.
+            let w = if e.argw2 == 0 { 1u64 } else { e.argw2 as u64 };
+            let g = e.guard2 as u64 + w;
+            if g > end {
+                end = g;
+            }
+        }
         if self.record != 0 && end > self.record as u64 {
             self.too_large = true;
             return;
@@ -1095,7 +1145,10 @@ pub fn table_fixed_compile(
         // declared size, taken from the layout this plan is compiled against.
         record: theirs.entry(0).size,
     };
-    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, 0, true, report);
+    match_children(
+        &mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, TABLE_FIXED_NO_GUARD, 0, 1, 0, true,
+        report,
+    );
     // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
     // name: the report carries layout_record_too_large and no plan runs.
     if c.too_large {
@@ -1116,6 +1169,9 @@ pub fn table_fixed_compile(
             && c.plan[out - 1].guard == c.plan[i].guard
             && c.plan[out - 1].arg == c.plan[i].arg
             && c.plan[out - 1].argw == c.plan[i].argw
+            && c.plan[out - 1].guard2 == c.plan[i].guard2
+            && c.plan[out - 1].arg2 == c.plan[i].arg2
+            && c.plan[out - 1].argw2 == c.plan[i].argw2
             && c.plan[out - 1].src + c.plan[out - 1].size == c.plan[i].src
             && c.plan[out - 1].dst + c.plan[out - 1].size == c.plan[i].dst
         {
@@ -1147,6 +1203,9 @@ fn match_children(
     guard: u32,
     arg: u64,
     argw: u8,
+    guard2: u32,
+    arg2: u64,
+    argw2: u8,
     depth: u32,
     census: bool,
     report: &mut TableFixedReport,
@@ -1167,7 +1226,7 @@ fn match_children(
             let tc = theirs.entry(their_child);
             if tc.id == mc.id {
                 compile_entry(
-                    c, theirs, their_child, their_off, mine, my_child, my_off, counted, guard, arg, argw,
+                    c, theirs, their_child, their_off, mine, my_child, my_off, counted, guard, arg, argw, guard2, arg2, argw2,
                     depth + 1, census, report,
                 );
                 break;
@@ -1212,6 +1271,9 @@ fn compile_entry(
     guard: u32,
     arg: u64,
     argw: u8,
+    guard2: u32,
+    arg2: u64,
+    argw2: u8,
     depth: u32,
     census: bool,
     report: &mut TableFixedReport,
@@ -1242,11 +1304,14 @@ fn compile_entry(
             guard,
             arg,
             argw,
+            guard2,
+            arg2,
+            argw2,
             op: TableFixedOp::Const,
             ..TableFixedEntry::default()
         });
         compile_entry(
-            c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, guard, arg, argw, depth + 1,
+            c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, guard, arg, argw, guard2, arg2, argw2, depth + 1,
             census, report,
         );
         return;
@@ -1261,6 +1326,9 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: if te.kind == 10 {
                     TableFixedOp::WidenF
                 } else {
@@ -1285,16 +1353,19 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: TableFixedOp::Copy,
                 ..TableFixedEntry::default()
             });
             compile_entry(
-                c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, guard, arg, argw,
+                c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, guard, arg, argw, guard2, arg2, argw2,
                 depth + 1, census, report,
             );
         }
         13 => match_children(
-            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, argw, depth + 1, census, report,
+            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, argw, guard2, arg2, argw2, depth + 1, census, report,
         ),
         14 => {
             // an array: the count, then min( their bound, my bound ) elements
@@ -1321,6 +1392,9 @@ fn compile_entry(
                     guard,
                     arg,
                     argw,
+                    guard2,
+                    arg2,
+                    argw2,
                     op: TableFixedOp::Count,
                     ..TableFixedEntry::default()
                 });
@@ -1339,6 +1413,9 @@ fn compile_entry(
                     guard,
                     arg,
                     argw,
+                    guard2,
+                    arg2,
+                    argw2,
                     depth + 1,
                     census && i == 0,
                     report,
@@ -1373,6 +1450,9 @@ fn compile_entry(
                         guard,
                         arg,
                         argw,
+                        guard2,
+                        arg2,
+                        argw2,
                         depth + 1,
                         census && k == 0,
                         report,
@@ -1383,8 +1463,10 @@ fn compile_entry(
         }
         15 => {
             // a union: MY tag written under THEIR tag's guard, then each arm
-            // matched by id. Nothing in this port declares one yet (the Row
-            // follow-on), and a stranger's union still lands correctly here.
+            // matched by id. AN ARM INSIDE AN ARM IS A LIVE CASE — the emitter
+            // recurses unions through arms (fixedform.go) — so this arm's tag
+            // rides lane one and the inherited OUTER tag moves to lane two,
+            // conjoined (docs/FIXED-FORM-ALGORITHM.md §4.1, §5.8 row 6).
             let their_tag = theirs.tag_bytes(ti);
             let my_tag = mine.tag_bytes(mi);
             // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, at the OUTER
@@ -1407,6 +1489,9 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: TableFixedOp::Const,
                 dstsize: if te.children >= 1 && te.children <= 255 {
                     te.children as u8
@@ -1415,6 +1500,19 @@ fn compile_entry(
                 },
                 ..TableFixedEntry::default()
             });
+            // THE UNION'S OWN TAG RIDES LANE ONE AND THE INHERITED OUTER TAG
+            // MOVES TO LANE TWO, CONJOINED (docs/FIXED-FORM-ALGORITHM.md §4.1,
+            // §5.8 row 6): an arm inside an arm answers to BOTH tags, and the
+            // run loop holds both. A THIRD tag has no lane to ride and the plan
+            // refuses WHOLE rather than drop one — the guard chain is the
+            // follow-on.
+            if guard2 != TABLE_FIXED_NO_GUARD {
+                c.overflow = true;
+                return;
+            }
+            let outer_guard = guard;
+            let outer_arg = arg;
+            let outer_argw = argw;
             let mut my_arm = mi + 1;
             for k in 0..me.children as usize {
                 let ma = mine.entry(my_arm);
@@ -1430,6 +1528,9 @@ fn compile_entry(
                             guard: their_at,
                             arg: j as u64 + 1,
                             argw: their_tag as u8,
+                            guard2: outer_guard,
+                            arg2: outer_arg,
+                            argw2: outer_argw,
                             op: TableFixedOp::Const,
                             ..TableFixedEntry::default()
                         });
@@ -1445,6 +1546,9 @@ fn compile_entry(
                             their_at,
                             j as u64 + 1,
                             their_tag as u8,
+                            outer_guard,
+                            outer_arg,
+                            outer_argw,
                             depth + 1,
                             census,
                             report,
@@ -1470,6 +1574,9 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: TableFixedOp::Widen,
                 dstsize: me.size as u8,
                 ..TableFixedEntry::default()
@@ -1509,6 +1616,9 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: TableFixedOp::Ordinal,
                 dstsize: me.size as u8,
                 ..TableFixedEntry::default()
@@ -1533,6 +1643,9 @@ fn compile_entry(
                 guard,
                 arg,
                 argw,
+                guard2,
+                arg2,
+                argw2,
                 op: TableFixedOp::Text,
                 ..TableFixedEntry::default()
             });
@@ -1546,6 +1659,9 @@ fn compile_entry(
                     guard,
                     arg,
                     argw,
+                    guard2,
+                    arg2,
+                    argw2,
                     op: TableFixedOp::Copy,
                     ..TableFixedEntry::default()
                 });
@@ -1558,6 +1674,9 @@ fn compile_entry(
                     guard,
                     arg,
                     argw,
+                    guard2,
+                    arg2,
+                    argw2,
                     op: TableFixedOp::Widen,
                     // A SAME-KIND WIDEN ZERO-EXTENDS (§5.2: ladder widen, sign
                     // by the WRITER's kind; same-kind widen and enum widen,
