@@ -119,6 +119,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		{"utf16-values/c/valid-data", cT10UTF16Values},
 		{"byte-buffers/c/valid-data", cT10ByteBuffers},
 		{"keyed-arrays/c/valid-data", cT10KeyedArrays},
+		{"nested-keyed-arrays/c/valid-data", cT10NestedKeyedArrays},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -264,6 +265,41 @@ fixed table Lineage
         for ( k = 0; k < 4; ++k )
             if ( back[0].slots[k].n != want[k] )
                 { printf( "slot %d is %08x, want %08x\n", k, back[0].slots[k].n, want[k] ); return 1; }
+    }
+`)
+}
+
+// nested-keyed-arrays/c/valid-data — "Nested enum-keyed arrays: valid-data
+// write/read acceptance" (ALGORITHM §7 keyed corpus). A keyed array whose
+// element holds a keyed array: both levels are fully populated with distinct
+// values, so a leg that flattened a level moves an inner slot. Each level obeys
+// §3.4's "[Enum]T — every slot is written, in the key enum's declared order".
+func cT10NestedKeyedArrays(t *testing.T) {
+	cT10Run(t, `package probe
+enum Tier { Bronze, Silver, Gold }
+enum Suit { Hearts, Spades }
+type Row { cards [Suit]uint32 }
+fixed table Lineage
+{
+    rows [Tier]Row
+    seq  int32 = 0
+}
+`, "Lineage", `
+    {
+        int i, j;
+        for ( i = 0; i < 3; ++i )
+            for ( j = 0; j < 2; ++j )
+                v.rows[i].cards[j] = (uint32_t) ( 0x100u * ( i + 1 ) + j );
+        v.seq = 2147483647;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].seq != 2147483647 ) { printf( "seq=%d\n", (int) back[0].seq ); return 1; }
+        for ( i = 0; i < 3; ++i )
+            for ( j = 0; j < 2; ++j )
+                if ( back[0].rows[i].cards[j] != (uint32_t) ( 0x100u * ( i + 1 ) + j ) )
+                    { printf( "row %d card %d is %08x\n", i, j, back[0].rows[i].cards[j] ); return 1; }
     }
 `)
 }
