@@ -6,22 +6,32 @@ package cstable
 // text-bytes-flags-defaults, the four capability rows no other test of this leg
 // asserts. The law is docs/SPEC-TABLES.md §3.4's message form and fixed form and
 // docs/FIXED-FORM-ALGORITHM.md §3 (the prefill) and §4.6 (the bounds pass). One
-// subtest per task id, and the assertion under each is the clause the task's own
-// title states, read off the C# this leg emits and the ir walk it renders.
+// subtest per task id.
 //
-// A clause already held by an existing test of this leg is named by that test in
-// the card's verdicts and is not repeated here; this file carries the direct
-// assertion of every clause that had none. The capability row's WRITE and READ
-// are both asserted at the emitter boundary: the generated write body serialises
-// the construct with non-default and boundary values, and the generated read —
-// TFixedSlots, the closures the load runs on the record body — lands the same
-// values back. The runtime execution a capability row can also ask for
-// (`make tables-cs-leg`, and the generated-probe harness of TestFixedVersioning)
-// needs a dotnet SDK and the sibling `../serialize.cs`; neither is here, so this
-// card names those targets not run rather than fakes them.
+// A capability row is WRITE and READ in a RUNNING TARGET. Each subtest first
+// holds the emitted source to the construct (the storage, the write body and the
+// read slots), then reads its probe's verdict out of one dotnet build and run. A
+// probe writes the construct with NON-DEFAULT and BOUNDARY values, asserts the
+// record bytes, and asserts the same values land through a fixed save/load
+// roundtrip — so a broken emitter is red by name, not by substring.
+//
+// The generated <Base>Table.cs files carry no serialize dependency (make/cs.mk's
+// tables-cs-standalone gate), so the harness compiles the unit's own files with
+// the SDK's Roslyn compiler (`dotnet exec csc.dll`) and runs the assembly with
+// `dotnet exec` — no sibling serialize.cs, no csproj, no NuGet. One assembly,
+// one build, one run: every probe is generated into its own namespace (the
+// package is suffixed, so four fixtures that all declare `table T` coexist).
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 )
 
 const (
@@ -79,6 +89,8 @@ fixed table T
 
 func TestFixedRoadmapCSharpT10Optionals(t *testing.T) {
 	t.Parallel()
+	t10Discover(t)
+	out, err := t10Run(t)
 	tests := []struct {
 		id  string
 		run func(t *testing.T)
@@ -92,6 +104,7 @@ func TestFixedRoadmapCSharpT10Optionals(t *testing.T) {
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
+			t10Assert(t, out, err, tc.id)
 		})
 	}
 }
@@ -116,6 +129,394 @@ func t10ReadSlots(t *testing.T, src string) string {
 	t.Helper()
 	return t02Norm(t02Block(t, src, "TFixedSlots = new TableFixedSlot<T>[] {", "};"))
 }
+
+// ---- the one dotnet build and run -------------------------------------------
+
+type t10Probe struct {
+	id   string // the task id, what ROW <id> prints
+	src  string // the fixture's schema source
+	body string // the C# assertions, over the generated namespace
+}
+
+func t10Probes() []t10Probe {
+	return []t10Probe{
+		{id: "optional-scalars/cs/valid-data", src: t10OptionalScalars, body: t10OptionalScalarsBody},
+		{id: "optional-arrays/cs/valid-data", src: t10OptionalArrays, body: t10OptionalArraysBody},
+		{id: "scalar-defaults/cs/valid-data", src: t10ScalarDefaults, body: t10ScalarDefaultsBody},
+		{id: "text-bytes-flags-defaults/cs/valid-data", src: t10TextBytesFlagsDefaults, body: t10TextBytesFlagsDefaultsBody},
+	}
+}
+
+// t10Discover locates dotnet, the SDK's Roslyn compiler and the .NET ref pack,
+// or skips the whole test when the toolchain is not here. It is the host-free
+// twin of `dotnet run`: the CLI's build/run commands run a first-time-use
+// configurer that a sandboxed host refuses, so the harness calls the compiler
+// and the host directly.
+var (
+	t10dotnet, t10csc, t10refDir, t10refVersion string
+)
+
+func t10Discover(t *testing.T) {
+	t.Helper()
+	t10dotnet = os.Getenv("DOTNET")
+	if t10dotnet == "" {
+		t10dotnet = "dotnet"
+	}
+	resolved, err := exec.LookPath(t10dotnet)
+	if err != nil {
+		t.Skipf("no dotnet on PATH (set DOTNET): %v", err)
+	}
+	real, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		real = resolved
+	}
+	root := filepath.Dir(real)
+	cscs, _ := filepath.Glob(filepath.Join(root, "sdk", "*", "Roslyn", "bincore", "csc.dll"))
+	if len(cscs) == 0 {
+		t.Skipf("no Roslyn csc.dll under %s", root)
+	}
+	t10csc = cscs[0]
+	refs, _ := filepath.Glob(filepath.Join(root, "packs", "Microsoft.NETCore.App.Ref", "*", "ref", "net10.0"))
+	if len(refs) == 0 {
+		t.Skipf("no .NET ref pack under %s", root)
+	}
+	t10refDir = refs[0]
+	t10refVersion = filepath.Base(filepath.Dir(filepath.Dir(refs[0])))
+}
+
+var (
+	t10Once sync.Once
+	t10Out  []byte
+	t10Err  error
+)
+
+func t10Run(t *testing.T) ([]byte, error) {
+	t.Helper()
+	t10Once.Do(func() { t10Out, t10Err = t10BuildAndRun(t) })
+	return t10Out, t10Err
+}
+
+func t10BuildAndRun(t *testing.T) ([]byte, error) {
+	t.Helper()
+	dir := t.TempDir()
+	var calls []string
+	for i, p := range t10Probes() {
+		u := unitFrom(t, csVersionSuffix(p.src, fmt.Sprintf("t10_%d", i)))
+		pk, err := csharp.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tb, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gen := filepath.Join(dir, "gen", fmt.Sprintf("u%03d", i))
+		if err := os.MkdirAll(gen, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range pk {
+			if err := os.WriteFile(filepath.Join(gen, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for name, data := range tb {
+			if err := os.WriteFile(filepath.Join(gen, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ns := capitalize(u.Package)
+		probeClass := fmt.Sprintf("Probe%03d", i)
+		body := strings.NewReplacer("@NS@", ns, "@NAME@", fmt.Sprintf("%q", p.id)).Replace(p.body)
+		src := fmt.Sprintf(`// generated by internal/codegen/cstable's t10 harness: one probe per task id
+using System;
+using System.Buffers.Binary;
+
+namespace %s
+{
+    static class %s
+    {
+        public static int Run()
+        {
+            int bad = 0;
+%s
+            if (bad == 0) { Console.WriteLine("ROW " + %s + ": ok"); }
+            return bad;
+        }
+    }
+}
+`, ns, probeClass, body, fmt.Sprintf("%q", p.id))
+		if err := os.WriteFile(filepath.Join(dir, probeClass+".cs"), []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		calls = append(calls, fmt.Sprintf("            bad += %s.%s.Run();", ns, probeClass))
+	}
+	main := fmt.Sprintf(`using System;
+
+static class ProbeLog
+{
+    public static int Fail(string row, string what)
+    {
+        Console.WriteLine("ROW " + row + ": FAILED " + what);
+        return 1;
+    }
+}
+
+static class ProbeMain
+{
+    static int Main()
+    {
+        int bad = 0;
+        try
+        {
+%s
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("ROW harness: FAILED " + e.ToString());
+            return 1;
+        }
+        Console.WriteLine(bad == 0 ? "cs t10 optionals: every row green" : "cs t10 optionals: " + bad + " FAILED");
+        return bad == 0 ? 0 : 1;
+    }
+}
+`, strings.Join(calls, "\n"))
+	if err := os.WriteFile(filepath.Join(dir, "ProbeMain.cs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	topFiles, _ := filepath.Glob(filepath.Join(dir, "*.cs"))
+	genFiles, _ := filepath.Glob(filepath.Join(dir, "gen", "*", "*.cs"))
+	refs, _ := filepath.Glob(filepath.Join(t10refDir, "*.dll"))
+	args := []string{t10csc, "-nologo", "-langversion:latest", "-unsafe", "-out:" + filepath.Join(dir, "app.dll")}
+	for _, r := range refs {
+		args = append(args, "-r:"+r)
+	}
+	args = append(args, topFiles...)
+	args = append(args, genFiles...)
+	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return out, err
+	}
+
+	rtc := fmt.Sprintf(`{
+  "runtimeOptions": {
+    "tfm": "net10.0",
+    "framework": { "name": "Microsoft.NETCore.App", "version": %q }
+  }
+}
+`, t10refVersion)
+	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run.Dir = dir
+	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	return run.CombinedOutput()
+}
+
+// t10Assert reads ONE probe's verdict out of the single run's output. A probe
+// that did not print at all DID NOT RUN — the assembly did not build, or the
+// name moved — and that is a failure and never a pass.
+func t10Assert(t *testing.T, out []byte, runErr error, id string) {
+	t.Helper()
+	text := string(out)
+	if strings.Contains(text, "ROW "+id+": ok") {
+		return
+	}
+	var lines []string
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.Contains(line, id) {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		t.Fatalf("%s DID NOT RUN: the probe assembly did not build, or the name moved\n%s",
+			id, t10Tail(text, runErr))
+	}
+	t.Fatalf("%s:\n%s", id, strings.Join(lines, "\n"))
+}
+
+func t10Tail(text string, runErr error) string {
+	const cap = 4000
+	if len(text) > cap {
+		text = text[len(text)-cap:]
+	}
+	if runErr != nil {
+		return text + "\n" + runErr.Error()
+	}
+	return text
+}
+
+// ---- the probe bodies, one per task -----------------------------------------
+
+// t10OptionalScalarsBody: optional-scalars [capability] "Optional scalar and
+// enum fields" (§3.4 record, ?T; ALGORITHM §3). A `?T` is a PRESENT BYTE and
+// then the payload, and the payload rides only when the byte is set.
+const t10OptionalScalarsBody = `
+            var v = new @NS@.T();
+            v.Num = 42; v.NumPresent = true;
+            v.Mark = @NS@.Grade.Gold; v.MarkPresent = true;
+            v.Tail = 99;
+
+            byte[] body = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(body, v);
+            if (body[0] != 1) { bad += ProbeLog.Fail(@NAME@, "the scalar's present byte is not written: " + body[0]); }
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(1)) != 42) { bad += ProbeLog.Fail(@NAME@, "the scalar's payload did not ride: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(1))); }
+            if (body[5] != 1) { bad += ProbeLog.Fail(@NAME@, "the enum's present byte is not written: " + body[5]); }
+            if (body[6] != 2) { bad += ProbeLog.Fail(@NAME@, "the enum's ordinal did not ride: " + body[6]); }
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(7)) != 99) { bad += ProbeLog.Fail(@NAME@, "the tail moved: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(7))); }
+
+            byte[] buf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            long n = @NS@.Schema.TFixedSave(v, buf);
+            var r = new @NS@.T();
+            var rep = new @NS@.TableReport();
+            var plan = new @NS@.TableFixedEntry[8192];
+            long m = @NS@.Schema.TFixedLoad(r, buf, plan, rep);
+            if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
+            if (!r.NumPresent || r.Num != 42) { bad += ProbeLog.Fail(@NAME@, "the scalar did not land: " + r.NumPresent + "/" + r.Num); }
+            if (!r.MarkPresent || r.Mark != @NS@.Grade.Gold) { bad += ProbeLog.Fail(@NAME@, "the enum did not land: " + r.MarkPresent + "/" + r.Mark); }
+            if (r.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "the tail did not land: " + r.Tail); }
+
+            var a = new @NS@.T();
+            a.Tail = 99;
+            byte[] ab = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(ab, a);
+            if (ab[0] != 0 || ab[5] != 0) { bad += ProbeLog.Fail(@NAME@, "an absent optional writes a present byte: " + ab[0] + "/" + ab[5]); }
+            byte[] abuf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            @NS@.Schema.TFixedSave(a, abuf);
+            var ar = new @NS@.T();
+            long am = @NS@.Schema.TFixedLoad(ar, abuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (am != 1 || ar.NumPresent || ar.MarkPresent) { bad += ProbeLog.Fail(@NAME@, "an absent optional read back present"); }
+            if (ar.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "the absent roundtrip moved the tail: " + ar.Tail); }
+`
+
+// t10OptionalArraysBody: optional-arrays [capability] "Optional arrays" (§3.4
+// optional wrapper; ALGORITHM §3). `?[..N]T` is a PRESENT BYTE, then a count,
+// then the elements, and the count and the elements ride only when the byte is
+// set.
+const t10OptionalArraysBody = `
+            var v = new @NS@.T();
+            v.OptionalPresent = true;
+            v.OptionalCount = 2;
+            v.Optional[0] = @NS@.Cell.A;
+            v.Optional[1] = @NS@.Cell.C;
+            v.Tail = 99;
+
+            byte[] body = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(body, v);
+            if (body[0] != 1) { bad += ProbeLog.Fail(@NAME@, "the wrapper's present byte is not written: " + body[0]); }
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(1)) != 2) { bad += ProbeLog.Fail(@NAME@, "the count did not ride: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(1))); }
+            if (body[5] != 1 || body[6] != 3) { bad += ProbeLog.Fail(@NAME@, "the elements did not ride: " + body[5] + "/" + body[6]); }
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(7)) != 99) { bad += ProbeLog.Fail(@NAME@, "the tail moved: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(7))); }
+
+            byte[] buf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            long n = @NS@.Schema.TFixedSave(v, buf);
+            var r = new @NS@.T();
+            long m = @NS@.Schema.TFixedLoad(r, buf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
+            if (!r.OptionalPresent || r.OptionalCount != 2 || r.Optional[0] != @NS@.Cell.A || r.Optional[1] != @NS@.Cell.C) { bad += ProbeLog.Fail(@NAME@, "the elements did not land: " + r.OptionalCount + "/" + r.Optional[0] + "/" + r.Optional[1]); }
+            if (r.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "the tail did not land: " + r.Tail); }
+
+            var a = new @NS@.T();
+            a.Tail = 99;
+            byte[] ab = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(ab, a);
+            if (ab[0] != 0) { bad += ProbeLog.Fail(@NAME@, "an absent wrapper writes a present byte: " + ab[0]); }
+            byte[] abuf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            @NS@.Schema.TFixedSave(a, abuf);
+            var ar = new @NS@.T();
+            long am = @NS@.Schema.TFixedLoad(ar, abuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (am != 1 || ar.OptionalPresent) { bad += ProbeLog.Fail(@NAME@, "an absent wrapper read back present"); }
+
+            var e = new @NS@.T();
+            e.OptionalPresent = true;
+            e.OptionalCount = 0;
+            e.Tail = 99;
+            byte[] eb = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(eb, e);
+            if (eb[0] != 1 || BinaryPrimitives.ReadInt32LittleEndian(eb.AsSpan(1)) != 0) { bad += ProbeLog.Fail(@NAME@, "a present-empty wrapper did not write its zero count"); }
+            byte[] ebuf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            @NS@.Schema.TFixedSave(e, ebuf);
+            var er = new @NS@.T();
+            long em = @NS@.Schema.TFixedLoad(er, ebuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (em != 1 || !er.OptionalPresent || er.OptionalCount != 0) { bad += ProbeLog.Fail(@NAME@, "a present-empty wrapper did not roundtrip its zero count"); }
+`
+
+// t10ScalarDefaultsBody: scalar-defaults [capability] "Scalar and enum defaults"
+// (§3.4 template; ALGORITHM §3). A declared default is the value the storage is
+// born with, what TableReset lays down, and what the write body writes when no
+// other value is set.
+const t10ScalarDefaultsBody = `
+            var v = new @NS@.T();
+            byte[] body = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(body, v);
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(0)) != 42) { bad += ProbeLog.Fail(@NAME@, "the scalar default did not ride: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(0))); }
+            if (body[4] != 2) { bad += ProbeLog.Fail(@NAME@, "the enum default did not ride: " + body[4]); }
+
+            byte[] buf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            long n = @NS@.Schema.TFixedSave(v, buf);
+            var r = new @NS@.T();
+            long m = @NS@.Schema.TFixedLoad(r, buf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
+            if (r.X != 42 || r.G != @NS@.Grade.Gold) { bad += ProbeLog.Fail(@NAME@, "the defaults did not land: " + r.X + "/" + r.G); }
+
+            var o = new @NS@.T();
+            o.X = 7;
+            o.G = @NS@.Grade.Bronze;
+            byte[] ob = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(ob, o);
+            if (BinaryPrimitives.ReadInt32LittleEndian(ob.AsSpan(0)) != 7) { bad += ProbeLog.Fail(@NAME@, "a non-default scalar did not override the default: " + BinaryPrimitives.ReadInt32LittleEndian(ob.AsSpan(0))); }
+            if (ob[4] != 1) { bad += ProbeLog.Fail(@NAME@, "a non-default enum did not override the default: " + ob[4]); }
+            byte[] obuf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            @NS@.Schema.TFixedSave(o, obuf);
+            var or = new @NS@.T();
+            long om = @NS@.Schema.TFixedLoad(or, obuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (om != 1 || or.X != 7 || or.G != @NS@.Grade.Bronze) { bad += ProbeLog.Fail(@NAME@, "a non-default override did not land: " + or.X + "/" + or.G); }
+`
+
+// t10TextBytesFlagsDefaultsBody: text-bytes-flags-defaults [capability] "String,
+// byte-buffer and flags defaults" (ALGORITHM §3 prefill). A string(N) default is
+// its bytes with the matching length, a bytes(N) default is its bytes with the
+// matching length, and a flags default is its bitset.
+const t10TextBytesFlagsDefaultsBody = `
+            var v = new @NS@.T();
+            byte[] body = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(body, v);
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(0)) != 8) { bad += ProbeLog.Fail(@NAME@, "the string default length did not ride: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(0))); }
+            if (body[4] != 0x75 || body[11] != 0x64) { bad += ProbeLog.Fail(@NAME@, "the string default bytes did not ride"); }
+            if (BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(12)) != 2) { bad += ProbeLog.Fail(@NAME@, "the byte-buffer default length did not ride: " + BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(12))); }
+            if (body[16] != 0x61 || body[17] != 0x62) { bad += ProbeLog.Fail(@NAME@, "the byte-buffer default bytes did not ride"); }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(20)) != 3) { bad += ProbeLog.Fail(@NAME@, "the flags default bitset did not ride: " + BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(20))); }
+
+            byte[] buf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            long n = @NS@.Schema.TFixedSave(v, buf);
+            var r = new @NS@.T();
+            long m = @NS@.Schema.TFixedLoad(r, buf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
+            if (r.NameLength != 8 || r.Name[0] != 0x75 || r.Name[7] != 0x64) { bad += ProbeLog.Fail(@NAME@, "the string default did not land"); }
+            if (r.TagLength != 2 || r.Tag[0] != 0x61 || r.Tag[1] != 0x62) { bad += ProbeLog.Fail(@NAME@, "the byte-buffer default did not land"); }
+            if (r.Caps != 3) { bad += ProbeLog.Fail(@NAME@, "the flags default did not land: " + r.Caps); }
+
+            var o = new @NS@.T();
+            o.Name[0] = 0x78;
+            o.NameLength = 1;
+            o.Tag[0] = 0x7a;
+            o.Tag[1] = 0x79;
+            o.TagLength = 2;
+            o.Caps = @NS@.Schema.CapsJump;
+            byte[] ob = new byte[@NS@.Schema.TFixedBodyBytes];
+            @NS@.Schema.TFixedWriteBody(ob, o);
+            if (BinaryPrimitives.ReadInt32LittleEndian(ob.AsSpan(0)) != 1 || ob[4] != 0x78) { bad += ProbeLog.Fail(@NAME@, "a shortened string did not override the default"); }
+            if (ob[16] != 0x7a || ob[17] != 0x79) { bad += ProbeLog.Fail(@NAME@, "the byte-buffer override did not ride"); }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(ob.AsSpan(20)) != 1) { bad += ProbeLog.Fail(@NAME@, "the flags override did not ride: " + BinaryPrimitives.ReadUInt64LittleEndian(ob.AsSpan(20))); }
+            byte[] obuf = new byte[@NS@.Schema.TFixedMeasure(1)];
+            @NS@.Schema.TFixedSave(o, obuf);
+            var or = new @NS@.T();
+            long om = @NS@.Schema.TFixedLoad(or, obuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (om != 1 || or.NameLength != 1 || or.Name[0] != 0x78 || or.TagLength != 2 || or.Tag[0] != 0x7a || or.Tag[1] != 0x79 || or.Caps != 1) { bad += ProbeLog.Fail(@NAME@, "the overrides did not land"); }
+`
 
 // t10OptionalScalarsRow: optional-scalars [capability] "Optional scalar and enum
 // fields: valid-data write/read acceptance" (§3.4 record, ?T; ALGORITHM §3).
