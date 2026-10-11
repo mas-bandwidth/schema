@@ -178,15 +178,33 @@ fixed table T { slots [Tier]Row }
 }
 
 // t09UnionFieldArms: union-field-arms [capability] "Union arms holding scalar,
-// text or array fields" (SPEC-TABLES §2.6, §3.4 constant arm storage). An arm's
-// payload is a by-value record at its bound; the shared fixed-form gate admits
-// an arm whose payload is a NAMED type and refuses a direct text or array arm
-// (ir/fixedform.go:263-264), so each arm here carries a named payload holding
-// one scalar, one bounded text and one fixed array, and the record stores the
-// whole arm behind its tag. The three plan entries below are the fixed form's
-// constant arm storage, one per arm, not the packet-form union metadata.
+// text or array fields" (SPEC-TABLES §2.6, §3.4 constant arm storage). The
+// shared fixed-form gate admits a DIRECT SCALAR arm — it refuses only a direct
+// pointer/map/list/array/text/optional payload (ir/fixedform.go:263-264) — so
+// the first fixture declares two direct scalar arms and their values ride at
+// their own bounds behind the tag. The gate refuses a direct text or direct
+// array arm payload, and the roadmap calls text nested inside a named type arm
+// a different supported case (docs/roadmap.sexp:6685); that nested shape is the
+// second fixture. The direct text and direct array arm clauses the title names
+// are NOT proved by this subtest.
 func t09UnionFieldArms(t *testing.T) {
-	src := generateCS(t, `package probe
+	scalar := generateCS(t, `package probe
+
+union Body {
+    sa int32
+    sb int32
+}
+
+fixed table T { body Body }
+`)
+	t02Has(t, t02Norm(scalar), "public const long TFixedBodyBytes = 5;",
+		"union-field-arms: the body is the tag plus the broadest direct scalar arm")
+	t02Has(t, t02Norm(scalar), "new TableFixedEntry(1u, 1u, 4u, 0u, 0u, TableFixedWire.Copy, 1, 0, 0, 0, 1),",
+		"union-field-arms: the direct scalar arm sa int32 is stored at its bound")
+	t02Has(t, t02Norm(scalar), "new TableFixedEntry(1u, 2u, 4u, 0u, 0u, TableFixedWire.Copy, 2, 0, 0, 0, 1),",
+		"union-field-arms: the direct scalar arm sb int32 is stored at its bound")
+
+	nested := generateCS(t, `package probe
 
 type ScalarArm { n int32 }
 
@@ -202,14 +220,14 @@ union Body {
 
 fixed table T { body Body }
 `)
-	t02Has(t, t02Norm(src), "public const long TFixedBodyBytes = 21;",
+	t02Has(t, t02Norm(nested), "public const long TFixedBodyBytes = 21;",
 		"union-field-arms: the body is the tag plus the widest arm's bound bytes")
-	t02Has(t, t02Norm(src), "new TableFixedEntry(1u, 1u, 4u, 0u, 0u, TableFixedWire.Copy, 1, 0, 0, 0, 1),",
-		"union-field-arms: the scalar arm's payload is stored at its bound")
-	t02Has(t, t02Norm(src), "new TableFixedEntry(1u, 2u, 16u, 3u, 0u, TableFixedWire.Text, 2, 0, 0, 2, 1),",
-		"union-field-arms: the text arm's payload is stored as bounded text")
-	t02Has(t, t02Norm(src), "new TableFixedEntry(1u, 4u, 16u, 0u, 0u, TableFixedWire.Flat, 3, 0, 0, 0, 1),",
-		"union-field-arms: the array arm's payload is stored as a fixed run")
+	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 1u, 4u, 0u, 0u, TableFixedWire.Copy, 1, 0, 0, 0, 1),",
+		"union-field-arms: a scalar nested in a type arm is stored at its bound")
+	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 2u, 16u, 3u, 0u, TableFixedWire.Text, 2, 0, 0, 2, 1),",
+		"union-field-arms: text nested in a type arm is stored as bounded text")
+	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 4u, 16u, 0u, 0u, TableFixedWire.Flat, 3, 0, 0, 0, 1),",
+		"union-field-arms: an array nested in a type arm is stored as a fixed run")
 }
 
 // t09UnionArrays: union-arrays [capability] "Arrays of unions" (SPEC-TABLES
