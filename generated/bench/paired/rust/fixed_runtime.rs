@@ -182,6 +182,15 @@ pub enum TableFixedReason {
     LayoutRecordTooLarge,
     /// 7. NOTHING NESTED PAST THE READER'S WALK BOUND
     LayoutTooDeep,
+    /// ILL-FORMED TEXT IN THE USED UNITS (docs/FIXED-FORM-ALGORITHM.md §4.5,
+    /// fix 11; §5.8 row 8). A string(N)'s used bytes are well-formed UTF-8
+    /// with no zero among them and a wstring(N)'s used units are paired
+    /// UTF-16 with no zero unit (docs/SPEC-TABLES.md §3.4); a payload that is
+    /// not the text its kind says it is is DAMAGE and not data, and the verdict
+    /// is the packet reader's — a REFUSAL BY NAME, this form having no L to
+    /// continue past. The reference zeroes the field and sets malformed
+    /// instead, which §5.8 row 8 names as the thing this page overrules.
+    TextIllFormed,
 }
 
 impl TableFixedReason {
@@ -205,6 +214,7 @@ impl TableFixedReason {
             Self::LayoutTreeUnclosed => "layout_tree_unclosed",
             Self::LayoutRecordTooLarge => "layout_record_too_large",
             Self::LayoutTooDeep => "layout_too_deep",
+            Self::TextIllFormed => "text_ill_formed",
         }
     }
 }
@@ -527,8 +537,24 @@ pub fn table_fixed_run(
                     report.malformed = true;
                     return;
                 }
-                let f = f32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
-                image[d..d + 8].copy_from_slice(&f64::from(f).to_le_bytes());
+                // f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
+                // BITS. The hardware conversion QUIETS a signalling NaN and can
+                // drop a payload bit, so the widened double is assembled by hand
+                // for every all-ones exponent: the sign is carried, the exponent
+                // becomes f64's all-ones, and the 23-bit mantissa shifts left by
+                // 29 to become the 52-bit one, which carries the quiet bit as
+                // the writer wrote it (§4, docs/PORTING.md's FU ruling). Every
+                // other exponent converts exactly, so the hardware path is the
+                // value and nothing else.
+                let bits = u32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
+                let wide: u64 = if bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0 {
+                    (u64::from(bits >> 31) << 63)
+                        | 0x7ff0_0000_0000_0000
+                        | (u64::from(bits & 0x007f_ffff) << 29)
+                } else {
+                    f64::from(f32::from_bits(bits)).to_bits()
+                };
+                image[d..d + 8].copy_from_slice(&wide.to_le_bytes());
                 report.widened += 1;
             }
             TableFixedOp::Const => {

@@ -1219,11 +1219,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            let mut clamped = 0i32;\n")
 		g.pf("            let mut damaged = 0i32;\n")
 		g.pf("            %s(&mut values[k], &mut clamped, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,\n")
+		g.pf("            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form\n")
+		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
+		g.pf("            // is taken before any counter is added.\n")
+		g.pf("            if damaged != 0 {\n                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
 		g.pf("            report.clamped += clamped as u32;\n")
-		g.pf("            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on\n")
-		g.pf("            // the one FLAG and not on a counter: the field read its declared\n")
-		g.pf("            // default and the rest of the record stands.\n")
-		g.pf("            if damaged != 0 {\n                report.malformed = true;\n            }\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n")
@@ -1480,11 +1481,12 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 // form's terms — over the USED LENGTH and over nothing else, because the slack
 // carries no meaning and reading it would be the cost this form exists to avoid.
 //
-// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and the verdict is the one
-// every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
-// `malformed` is raised, and the rest of the record stands. The packet wire
-// refuses the whole read; here the record is positional, so the damage is one
-// field's and the reader does not lose the others to it.
+// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and the verdict is a
+// REFUSAL BY NAME (§4.5 fix 11; §5.8 row 8): the field's own bytes are cleared
+// to their declared default here so nothing downstream reads the damage, and
+// the `damaged` flag the caller's load turns into `text_ill_formed` is raised.
+// The reference zeroes the field and sets `malformed` where this page says the
+// name is owed; the packet wire refuses the whole read, and so does this form.
 func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
 	used := fmt.Sprintf("value.%s_length.clamp(0, %d) as usize", f.Name, f.Type.Size)
 	call := fmt.Sprintf("table_utf8_valid(&value.%s[..%s])", f.Name, used)
