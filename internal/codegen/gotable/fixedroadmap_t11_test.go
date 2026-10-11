@@ -39,6 +39,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 		{"union-arrays/go/valid-data", t11UnionArrays},
 		{"optional-scalars/go/valid-data", t11OptionalScalars},
 		{"optional-nesting/go/valid-data", t11OptionalNesting},
+		{"optional-arrays/go/valid-data", t11OptionalArrays},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -259,6 +260,43 @@ func TestT11OptionalNesting(t *testing.T) {
 	RootReset(&v)
 	if got := saveLoad(t, v); got.PPresent || got.P.X != 0 {
 		t.Fatalf("absent nested read back %+v", got)
+	}
+}
+`)
+}
+
+// ---- go/optional-arrays -----------------------------------------------------
+
+// t11OptionalArrays holds an optional counted array to the flag, the count and
+// the live elements: an absent optional's payload is the template's zeros, and
+// a present one carries its count then its elements (docs/SPEC-TABLES.md §3.4).
+// Absent, empty-present and full-present round-trip.
+func t11OptionalArrays(t *testing.T) {
+	t11Run(t, `package probe
+fixed table Root { v ?[..3]int32 }
+`, t11RoundTrip+`
+func TestT11OptionalArrays(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	if got := saveLoad(t, v); got.VPresent || got.VCount != 0 {
+		t.Fatalf("absent optional array read back %+v", got)
+	}
+	for _, count := range []int32{0, 3} {
+		RootReset(&v)
+		v.VPresent = true
+		v.VCount = count
+		for i := int32(0); i < count; i++ {
+			v.V[i] = 7 + i
+		}
+		got := saveLoad(t, v)
+		if !got.VPresent || got.VCount != count {
+			t.Fatalf("count %d read back %+v", count, got)
+		}
+		for i := int32(0); i < count; i++ {
+			if got.V[i] != 7+i {
+				t.Fatalf("count %d element %d = %d", count, i, got.V[i])
+			}
+		}
 	}
 }
 `)
