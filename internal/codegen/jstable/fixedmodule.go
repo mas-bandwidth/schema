@@ -152,6 +152,15 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitDecodeBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
+		// THE MESSAGE FORM'S BODY VERBS RIDE THE WHOLE CLOSURE, not just the
+		// roots (docs/SPEC-TABLES.md §3.3): a root's body may hold a `type` by
+		// value, whose own body verbs ride beside it. Only the batch verbs are a
+		// root's, emitted in its own module below.
+		if len(jsFixedUnitRoots(g.unit)) > 0 {
+			for _, st := range closure {
+				g.emitMessageBody(st)
+			}
+		}
 	}
 	for _, st := range tables {
 		if reason := fixedRefusal(st); reason != "" {
@@ -162,7 +171,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 	}
 	for _, st := range roots {
 		g.emitRoot(st)
-		g.emitMessageRoot(st)
+		g.emitMessageBatch(st)
 	}
 }
 

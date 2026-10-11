@@ -107,6 +107,53 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 			t.Fatalf("compressed float: %v\n%s", err, out)
 		}
 	})
+
+	t.Run("keyed_array", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		u := loadSchemaString(t, "keyed_array.schema", `package keyedtest
+
+enum Team { Red, Blue, Green }
+
+fixed table KeyedTeam
+{
+    slots [Team]uint8
+}
+`)
+		st := findTable(t, u, "KeyedTeam")
+		probe := messageKeyedArrayProbe(u, st)
+		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+			"ann.bin": ir.TableAnnouncement(u),
+		}, probe)
+		if err != nil {
+			t.Fatalf("keyed array: %v\n%s", err, out)
+		}
+	})
+
+	t.Run("by_value_type", func(t *testing.T) {
+		t.Parallel()
+		node := jsNode(t)
+		u := loadSchemaString(t, "by_value_type.schema", `package keyedtest2
+
+type ScoreBoard
+{
+    points int32
+}
+
+fixed table KeyedScore
+{
+    scores ScoreBoard
+}
+`)
+		st := findTable(t, u, "KeyedScore")
+		probe := messageByValueTypeProbe(u, st)
+		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
+			"ann.bin": ir.TableAnnouncement(u),
+		}, probe)
+		if err != nil {
+			t.Fatalf("by-value type: %v\n%s", err, out)
+		}
+	})
 }
 
 // ---- the manifest, read here rather than copied: a new row is a new subtest
@@ -217,6 +264,18 @@ func loadUnitPaths(t *testing.T, paths []string) *ir.Unit {
 		t.Fatalf("check %v: %v", paths, cerrs[0])
 	}
 	return u
+}
+
+// loadSchemaString builds a unit from a schema written straight into a temp
+// file, for a clause that needs a construct the manifest's message rows do not
+// carry (an enum-keyed array, a by-value `type`).
+func loadSchemaString(t *testing.T, name, content string) *ir.Unit {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return loadUnit(t, path)
 }
 
 // ---- the three probes
@@ -382,6 +441,72 @@ if (Math.abs(storage[0].AimX - 0.5) > 0.02) { fail("AimX " + storage[0].AimX); }
 if (Math.abs(storage[0].AimY + 0.25) > 0.02) { fail("AimY " + storage[0].AimY); }
 if (Math.abs(storage[0].AimZ - 0.75) > 0.02) { fail("AimZ " + storage[0].AimZ); }
 if (Math.abs(storage[0].Ping - 37.5) > 0.02) { fail("Ping " + storage[0].Ping); }
+`, st.Name))
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+// messageKeyedArrayProbe is the clause the manifest's message rows do not
+// reach: an enum-keyed array, over a minimal fixed root. It asserts the page's
+// rule that "the body carries `(variant id, element)` pairs" (docs/SPEC-TABLES.md
+// §3.2): the writer writes the number of present slots as the count and a key
+// reference before each present element, so a save then load reproduces the
+// value and the bytes.
+func messageKeyedArrayProbe(u *ir.Unit, st *ir.Struct) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, ""))
+	b.WriteString(fmt.Sprintf(`
+// "`+"`N`"+` is the number of SLOTS PRESENT, not the array's extent"
+// (docs/SPEC-TABLES.md §3.2): the two set slots ride under their variant's
+// name, the default slot does not, and save/load round-trips byte for byte.
+const value = new %[1]s();
+value.Slots[0] = 7;
+value.Slots[2] = 9;
+const buf = new Uint8Array(65536);
+const saveReport = {};
+const n = %[1]sSaveMessages([value], buf, saveReport);
+if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(saveReport)); }
+const storage = Array.from({ length: 256 }, () => new %[1]s());
+const loadReport = {};
+const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+  fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
+}
+if (storage[0].Slots[0] !== 7 || storage[0].Slots[1] !== 0 || storage[0].Slots[2] !== 9) {
+  fail("keyed slots: " + JSON.stringify(Array.from(storage[0].Slots)));
+}
+const buf2 = new Uint8Array(65536);
+const n2 = %[1]sSaveMessages([storage[0]], buf2, {});
+if (n2 !== n || !bytesEq(buf.subarray(0, n), buf2.subarray(0, n2))) {
+  fail("keyed round trip bytes differ");
+}
+`, st.Name))
+	b.WriteString(probeTail())
+	return b.String()
+}
+
+// messageByValueTypeProbe is the clause the manifest's message rows do not
+// reach: a fixed root holding a `type` by value. It asserts the page's rule
+// that a fixed table's BY-VALUE CLOSURE reaches "a `type` held by value"
+// (docs/SPEC-TABLES.md §2.2, §3.3): the nested type's body verbs ride beside
+// the root's own, so a save then load reproduces the value inside it.
+func messageByValueTypeProbe(u *ir.Unit, st *ir.Struct) string {
+	var b strings.Builder
+	b.WriteString(messageProbeHeader(u, st, ""))
+	b.WriteString(fmt.Sprintf(`
+const value = new %[1]s();
+value.Scores.Points = 42;
+const buf = new Uint8Array(65536);
+const saveReport = {};
+const n = %[1]sSaveMessages([value], buf, saveReport);
+if (n < 0 || saveReport.Verdict !== 0) { fail("SaveMessages: " + JSON.stringify(saveReport)); }
+const storage = Array.from({ length: 256 }, () => new %[1]s());
+const loadReport = {};
+const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
+if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
+  fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
+}
+if (storage[0].Scores.Points !== 42) { fail("by-value type: " + storage[0].Scores.Points); }
 `, st.Name))
 	b.WriteString(probeTail())
 	return b.String()
