@@ -177,6 +177,43 @@ int main(void)
 }
 `,
 		},
+		{
+			id: "float32-values/c/valid-data",
+			schema: `package probe
+fixed table Float32Value
+{
+    v float32
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <float.h>
+` + t09Check + `
+int main(void)
+{
+    Float32Value value[3], loaded[3];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[0].v = 1.5f;
+    value[1].v = FLT_MAX;
+    value[2].v = -FLT_MAX;
+    need = float32_value_fixed_measure(3);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(float32_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = float32_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    CHECK(n == 3);
+    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(loaded[0].v == 1.5f && loaded[1].v == FLT_MAX && loaded[2].v == -FLT_MAX);
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
