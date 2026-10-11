@@ -157,6 +157,17 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.rng = ( value.rng < 0 ) ? 0 : ( ( value.rng > 100 ) ? 100 : value.rng );",
 			},
 		},
+		{
+			// "bits(N) fields". bits(12) rides in a uint32 storage and its width
+			// bound 2^12 - 1 = 4095 is the clamp literal.
+			id: "bits-values/cpp/valid-data",
+			want: []string{
+				"uint32_t bitsv = 0;",
+				"TableFixedPut32( b + 67, (uint32_t) value.bitsv );",
+				"clamped += ( value.bitsv > 4095ull );",
+				"value.bitsv = ( value.bitsv > 4095ull ) ? 4095ull : value.bitsv;",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
