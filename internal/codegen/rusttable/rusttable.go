@@ -87,6 +87,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if fixed {
 		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 	}
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: a fixed
+	// table's wire and nobody else's, so it rides beside the fixed form with
+	// the same no-feature-gate rule.
+	if fixed {
+		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u)
+	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
 	for _, f := range u.Files {
@@ -102,6 +108,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 		if body := g.fixedModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
+		}
+		if body := g.messageModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_message.rs"] = body
 		}
 	}
 
