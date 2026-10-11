@@ -87,6 +87,21 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_put64( b + 7, (uint64_t) value->i64 );",
 			},
 		},
+		{
+			// "Unsigned integers: 8, 16, 32 and 64 bits". The unsigned storage
+			// takes the byte verbatim over its whole domain, high bit included.
+			id: "unsigned-integers/c/valid-data",
+			want: []string{
+				"uint8_t u8;",
+				"uint16_t u16;",
+				"uint32_t u32;",
+				"uint64_t u64;",
+				"table_fixed_put8( b + 15, (uint8_t) value->u8 );",
+				"table_fixed_put16( b + 16, (uint16_t) value->u16 );",
+				"table_fixed_put32( b + 18, (uint32_t) value->u32 );",
+				"table_fixed_put64( b + 22, (uint64_t) value->u64 );",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
