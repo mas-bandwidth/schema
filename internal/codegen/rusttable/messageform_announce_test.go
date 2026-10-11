@@ -115,6 +115,7 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"malformed_missing_version",
 			"malformed_missing_vocabulary",
 			"malformed_noncanonical",
+			"malformed_trailing_byte",
 			"unknown_scalar",
 			"unknown_array",
 			"unknown_table",
@@ -340,6 +341,12 @@ func announceProbe(u *announceUnit) string {
 	nonCanonical := forgedNonCanonicalLength()
 	fmt.Fprintf(&b, "const NONCANONICAL: [u8; %d] = [%s];\n\n", len(nonCanonical), rustBytes(nonCanonical))
 
+	// 2.3: "Any byte between the root's terminator and the table's first entry
+	// is `malformed`" (docs/SPEC-TABLES.md:3681-3683): one stray byte inserted
+	// between the terminator and the id table, a byte no field claims.
+	trailing := forgedTrailingByte(u.announcement)
+	fmt.Fprintf(&b, "const TRAILING: [u8; %d] = [%s];\n\n", len(trailing), rustBytes(trailing))
+
 	b.WriteString("fn main() {\n")
 	// 2.1: the constant and its length.
 	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
@@ -385,6 +392,12 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &NONCANONICAL, &mut report);\n")
 	b.WriteString("        say(\"malformed_noncanonical\", !ok && report.malformed && !report.refused, \"a non-canonical ten-byte LEB is not malformed\");\n    }\n")
+	// 2.3: a byte between the terminator and the id table is malformed, never a
+	// refusal.
+	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
+	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
+	b.WriteString("        let ok = announce_read(&mut vocab, &TRAILING, &mut report);\n")
+	b.WriteString("        say(\"malformed_trailing_byte\", !ok && report.malformed && !report.refused, \"a byte between the terminator and the id table is not malformed\");\n    }\n")
 	// 2.3: an unknown field is skipped and counted, the two strict checks kept:
 	// the read still fills the vocabulary the page names, the build version kept.
 	for _, c := range []struct{ id, cnst, why string }{
@@ -458,4 +471,19 @@ func forgedNonCanonicalLength() []byte {
 	out = binary.LittleEndian.AppendUint64(out, 0xffff_ffff_ffff_fffe)            // slot 1: the build version id
 	out = binary.LittleEndian.AppendUint64(out, 0xffff_ffff_ffff_fffd)            // slot 2: the vocabulary id
 	return binary.LittleEndian.AppendUint64(out, 2)                               // the entry count
+}
+
+// forgedTrailingByte inserts one stray byte between the root's terminator and
+// the id table, a byte no field claims. "Any byte between the root's terminator
+// and the table's first entry is `malformed`, because no field claims it and
+// the two ends of the file have met" (docs/SPEC-TABLES.md:3681-3683). The id
+// table and its count are untouched, so the reader still locates them from the
+// end; the byte lands in the body's tail, after the terminator.
+func forgedTrailingByte(announcement []byte) []byte {
+	count := binary.LittleEndian.Uint64(announcement[len(announcement)-8:])
+	end := len(announcement) - 8 - int(count)*8
+	out := append([]byte{}, announcement[:end]...)
+	out = append(out, 0xff)
+	out = append(out, announcement[end:]...)
+	return out
 }

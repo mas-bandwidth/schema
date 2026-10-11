@@ -308,6 +308,14 @@ fn announce_read_once(
         }
         if reference == 0 {
             terminated = true;
+            // "Any byte between the root's terminator and the table's first
+            // entry is malformed, because no field claims it and the two ends
+            // of the file have met" (§3). The terminator ends the body, so the
+            // cursor must be at the body's end.
+            if at != body.len() {
+                report.malformed = true;
+                return false;
+            }
             break;
         }
         if reference > trailer_count || at >= body.len() {
