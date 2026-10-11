@@ -368,14 +368,20 @@ fixed table T
 //
 // cpp/R15: ALGORITHM §5.6 and FIXED-FORM-VERSIONING-TESTS.md "retired by name"
 // — the four forward-read clamps are retired; each is layout_newer now. An
-// unknown hash refuses layout_newer before any record.
+// unknown hash refuses layout_newer before any record. THE COUNT CLAMP ACROSS
+// BOUNDS is the clause the first half proves: the SAME forged count past the
+// reader's bound is clamped on the reader's OWN hash (the hostile, known-layout
+// half §5.6 keeps) and lands layout_newer under an UNKNOWN hash (the retiree),
+// with no counter moved and nothing decoded. The range clamp across versions is
+// the same refusal: the load's only bounds pass runs over storage after a plan,
+// and no newer file reaches it.
 func t03R15(t *testing.T) {
 	u := t03Unit(t, `package probe
 
 fixed table T
 {
-    x int32
-    y int32
+    vals [..8]int32
+    pick int32 = 0 | min = 0, max = 100
 }
 `)
 	hdr := t03Header(t, u)
@@ -389,6 +395,80 @@ fixed table T
 		t.Error("R15: the load remaps an unknown variant to None")
 	}
 	t03Has(t, hdr, "report->unknown++;", "R15 the deprecated field's census is the remaining drop count")
+
+	// THE LIVE PROOF OF "EACH IS layout_newer NOW": save a lawful file, forge
+	// its count word to 12 — past the reader's own bound of 8 — and read it
+	// twice. Under the reader's own hash the count clamps to 8 and counts once
+	// (the hostile half stays); under an unknown header hash the SAME forged
+	// count lands layout_newer, no counter moves and the poisoned destination
+	// keeps every byte.
+	out := t03RunCapability(t, u, `#include <stdio.h>
+#include <string.h>
+#include "ProbeTable.h"
+using namespace probe;
+int main()
+{
+    T v; TReset( v );
+    v.vals_count = 8;
+    for ( int i = 0; i < 8; ++i ) { v.vals[ i ] = 100 + i; }
+    v.pick = 50;
+
+    static uint8_t base[ 4096 ];
+    const int64_t written = TFixedSave( &v, 1, base, (int64_t) sizeof( base ) );
+    if ( written <= 0 ) { printf( "save failed\n" ); return 1; }
+
+    const int64_t layout = (int64_t) TableFixedGet32( base + kTableFixedHeaderBytes );
+    const int64_t body = kTableFixedHeaderBytes + 4 + layout + 8;
+    /* THE COUNT'S WIRE OFFSET IS THE PLAN'S src, not the struct's offset: the
+       storage member sits after the array while the wire writes the count
+       first, and the emitted plan is the one place that maps the two. */
+    int64_t count_src = -1;
+    for ( int i = 0; i < TFixedPlanCount; ++i )
+        if ( TFixedPlan[ i ].op == kTableFixedCount ) { count_src = (int64_t) TFixedPlan[ i ].src; }
+    if ( count_src < 0 ) { printf( "no count op in the plan\n" ); return 1; }
+    const int64_t count_at = body + count_src;
+
+    static TableFixedEntry plan[ 512 ];
+    T back[ 1 ];
+    TableReport r;
+    int64_t n;
+
+    /* THE HOSTILE, KNOWN-LAYOUT HALF STAYS (§5.6: "every hostile check on a
+       KNOWN layout's records stays"): the count forged past the reader's bound
+       is clamped to it and counted once. */
+    static uint8_t hostile[ 4096 ];
+    memcpy( hostile, base, (size_t) written );
+    TableFixedPut32( hostile + count_at, 12u );
+    memset( back, 0, sizeof( back ) );
+    TReset( back[ 0 ] );
+    memset( &r, 0, sizeof( r ) );
+    n = TFixedLoad( back, 1, hostile, written, plan, 512, NULL, &r );
+    printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
+
+    /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
+       hash — a newer writer's file — lands layout_newer before any record. No
+       counter moves and the poisoned destination keeps every byte. */
+    static uint8_t newer[ 4096 ];
+    memcpy( newer, base, (size_t) written );
+    TableFixedPut32( newer + count_at, 12u );
+    TableFixedPut64( newer + kTableFixedHashAt, 0x0123456789ABCDEFull );
+    memset( back, 0x5A, sizeof( back ) );
+    memset( &r, 0, sizeof( r ) );
+    n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
+    printf( "newer n=%lld refused=%d newer=%d widened=%d clamped=%d poisoned=%d\n",
+            (long long) n, (int) r.refused, (int) ( r.reason == layout_newer ),
+            r.widened, r.clamped, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
+    return 0;
+}
+`)
+	for _, want := range []string{
+		"hostile n=1 count=8 clamped=1",
+		"newer n=-1 refused=1 newer=1 widened=0 clamped=0 poisoned=1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("R15: the probe output %q does not carry %q", strings.TrimSpace(out), want)
+		}
+	}
 }
 
 // ---- cpp/E3/other-required-widens (capability) -----------------------------
@@ -546,22 +626,113 @@ fixed table T
 
 // ---- cpp/R29 ---------------------------------------------------------------
 //
-// cpp/R29: the band case — the widening across the 65536 ceiling, and the
-// bounds pass clamping to the writer's bounds. The uint widen is zero-extended
-// across the u16 top, and the known-range pass clamps to the WRITER's bounds.
+// cpp/R29 [owed]: ALGORITHM §5.7's `uint_widen` row and §4.6's bounds pass —
+// "the band case: the widening across the 65536 ceiling, and the bounds pass
+// clamping to the writer's bounds". The band edge is the u16 top 65535, the
+// value just below 2^16 = 65536: widened into a u32 it is ZERO-extended to
+// 65535, never sign-extended to 0xFFFFFFFF, and `widened` fires once with
+// `clamped` at zero because 65535 is inside the writer's own uint16 set. The
+// bounds pass clamps a forged value to the WRITER's declared bound and never
+// the reader's wider own (bill §12.5): the same 150 is 100 on the writer's
+// 0..100 with one clamp and rides whole at 150 on the reader's 0..200.
+//
+// THE PROBE RUNS THE EMITTED RUNTIME, not a grep of it. The widen plan is the
+// one LOAD builds for a lineage entry — copy, an UNSIGNED widen, copy — run
+// through the leg's own TableFixedRun; the bounds pass is the leg's own
+// TableFixedClampKnownRanges, the same function the emitted BandFixedLoad calls
+// with the WRITER's ranges. The negative control is the reader's wider range,
+// so a pass that clamped to the reader's bound would be seen.
 func t03R29(t *testing.T) {
 	u := t03Unit(t, `package probe
 
 fixed table Band
 {
-    x uint16
+    x uint16 = 0 | min = 0, max = 100
     y uint32
 }
 `)
 	hdr := t03Header(t, u)
-	t03Has(t, hdr, "const uint64_t top = 1ull << ( bits - 1 );", "R29 a widened unsigned is zero-extended")
-	t03Has(t, hdr, "if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }", "R29 the sign extension is the sign rung's, not the unsigned's")
-	t03Has(t, hdr, "TableFixedClampKnownRanges( BandFixedKnownRanges[lineage_at],", "R29 the bounds pass clamps to the writer's known ranges")
+	// BAND CARRIES A BOUND, so its reader emits the bounds pass the clause
+	// names; without a bounded field nothing here could clamp.
+	t03Has(t, hdr, "BandFixedClamp", "R29 the fixture's own bounds pass is emitted")
+
+	out := t03RunCapability(t, u, `#include <stdio.h>
+#include <string.h>
+#include "ProbeTable.h"
+using namespace probe;
+int main()
+{
+    /* THE BAND EDGE (§5.7 uint_widen): an OLD writer's body — lead u32, the
+       u16 v = 0xFFFF, trail u32 — read through a plan whose v entry is an
+       UNSIGNED widen into the reader's u32. 0xFFFF is the u16 top, the value
+       just below the 2^16 = 65536 ceiling. */
+    uint8_t body[ 10 ];
+    const uint32_t lead = 0xAAAAAAAAu, trail = 0xBBBBBBBBu;
+    const uint16_t band = 0xFFFFu;
+    memcpy( body + 0, &lead, 4 );
+    memcpy( body + 4, &band, 2 );
+    memcpy( body + 6, &trail, 4 );
+
+    TableFixedEntry plan[ 3 ];
+    memset( plan, 0, sizeof( plan ) );
+    plan[ 0 ].src = 0; plan[ 0 ].dst = 0; plan[ 0 ].size = 4; plan[ 0 ].op = kTableFixedCopy;
+    plan[ 1 ].src = 4; plan[ 1 ].dst = 4; plan[ 1 ].size = 2; plan[ 1 ].dstsize = 4; plan[ 1 ].op = kTableFixedWiden; plan[ 1 ].sign = 0;
+    plan[ 2 ].src = 6; plan[ 2 ].dst = 8; plan[ 2 ].size = 4; plan[ 2 ].op = kTableFixedCopy;
+
+    uint8_t image[ 16 ];
+    memset( image, 0, sizeof( image ) );
+    TableReport r;
+    memset( &r, 0, sizeof( r ) );
+    /* guarded == count: every entry here is an unguarded one, the first half
+       of a plan, so the loop applies them without a tag test. */
+    TableFixedRun( plan, 3, 3, body, image, &r );
+
+    uint32_t out_v;
+    memcpy( &out_v, image + 4, 4 );
+
+    /* THE WRITER'S BOUNDS (§4.6, bill §12.5): the pass LOAD calls carries the
+       WRITER's declared 0..100; a forged 150 past it clamps and counts once.
+       The reader's wider 0..200 is the negative control: it must leave 150. */
+    uint8_t writer[ 4 ], reader[ 4 ];
+    const uint32_t forged = 150u;
+    memcpy( writer, &forged, 4 );
+    memcpy( reader, &forged, 4 );
+    TableFixedKnownRange wb;
+    memset( &wb, 0, sizeof( wb ) );
+    wb.dst = 0; wb.width = 4; wb.sgn = 0; wb.lo = 0; wb.hi = 100;
+    TableFixedKnownRange rb;
+    memset( &rb, 0, sizeof( rb ) );
+    rb.dst = 0; rb.width = 4; rb.sgn = 0; rb.lo = 0; rb.hi = 200;
+    TableReport rw, rr;
+    memset( &rw, 0, sizeof( rw ) );
+    memset( &rr, 0, sizeof( rr ) );
+    TableFixedClampKnownRanges( &wb, 1, writer, &rw );
+    TableFixedClampKnownRanges( &rb, 1, reader, &rr );
+    uint32_t held_w, held_r;
+    memcpy( &held_w, writer, 4 );
+    memcpy( &held_r, reader, 4 );
+
+    printf( "v=%u; widened=%d; widen_clamped=%d; writer=%u; writer_clamped=%d; reader=%u; reader_clamped=%d\n",
+            out_v, r.widened, r.clamped, held_w, rw.clamped, held_r, rr.clamped );
+    return 0;
+}
+`)
+	// THE LANDED VALUE AND THE TWO COUNTERS: 65535 zero-extended across the
+	// band edge, one widened, nothing clamped; then the writer's bound and its
+	// one clamp, against the reader's wider range landing 150 whole.
+	for _, want := range []string{
+		"v=65535",
+		"widened=1",
+		"widen_clamped=0",
+		"writer=100",
+		"writer_clamped=1",
+		"reader=150",
+		"reader_clamped=0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("R29: the probe output %q does not carry %q", strings.TrimSpace(out), want)
+		}
+	}
 }
 
 // ---- the card's test -------------------------------------------------------
