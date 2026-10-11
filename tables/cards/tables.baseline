@@ -1,0 +1,57 @@
+schema-tables-baseline 7
+package cards
+
+table Card
+    field id id=0x08b72e07b55c3ac0 kind=12 size=64
+    field sha id=0x8245ae195ceaa4ed kind=12 size=40
+    field tier id=0x1e6f84ef2eb65989 kind=7 enum=Tier
+    field repo id=0x4cac581fbfac663d kind=12 size=96
+    field base_ref id=0xd46f4a3ebed65022 kind=12 size=96
+    field kind id=0xef9c96d721673243 kind=12 size=24
+    field priority id=0xf5b6ea8c35ac1e89 kind=7 enum=Priority
+    field stream id=0x4f6a36d8e8907985 kind=12 size=32
+    field paths id=0x3f1193a7be5f3a7f kind=14 elem=13 type=PathText array=unbounded
+    field new_paths id=0x0ee64cb5feb91e3e kind=14 elem=13 type=PathText array=unbounded
+    field shared id=0x080a026ee7d87df4 kind=14 elem=13 type=PathText array=unbounded
+    field needs id=0x4dde811e86af67ba kind=14 elem=13 type=CardID array=unbounded
+    field test id=0xf9e6e6ef197c2b25 kind=12 size=192
+    field done_when id=0xdc677b66a5b57712 kind=17 type=string
+    field deadline_minutes id=0x502361da63c704cb kind=4 min=0 max=100000
+    field source id=0x76dbdc228f782db8 kind=17 type=string
+    field epoch id=0xfc9697d1196e6ba6 kind=4
+    field column id=0x5f531287628bf287 kind=7 enum=Column
+    field holder id=0x630853b55c723d4f kind=12 size=32
+    field attempt id=0x63e618bd2b303dee kind=4
+    field head id=0x0a8f12cc5f9a0c03 kind=12 size=40
+    field branch id=0x919ec0f651278ba5 kind=12 size=128
+    field body id=0xcd4de79bc6c93295 kind=17 type=string
+
+table CardID
+    field s id=0xaf63ee4c86020b22 kind=12 size=64
+
+table PathText
+    field s id=0xaf63ee4c86020b22 kind=12 size=192
+
+enum Column
+    variant waiting id=0xeac9afef1a00b5e8
+    variant ready id=0x8935baf305f374b4
+    variant working id=0x08879e024cb91288
+    variant review id=0x0e9718950b3dd3a1
+    variant merging id=0x1bdb1ee8587d58f0
+    variant landed id=0xdd3bf9933387198d
+
+enum Priority
+    variant normal id=0x61053f0e3ebbd272
+    variant high id=0x7360eecc9b38343d
+    variant critical id=0x387748cc2ad39108
+    variant blocker id=0x7efc07594f610c95
+
+enum Tier
+    variant flash id=0x17cbb4a98618cd49
+    variant pro id=0x77fd571956a1f7f8
+    variant heavy id=0x8af96746729a08c0
+    variant frontier id=0x8e4c34802cf1fa00
+
+## history
+### 2026-10-11 (UTC) — first baseline
+- baseline created over 3 tables — data written BEFORE this point is not covered by it

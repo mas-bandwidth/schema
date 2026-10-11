@@ -1,0 +1,42 @@
+// Card.schema — the CARD corpus (docs/SPEC-TABLES.md §2, §2.9). A card carries
+// typed scalar fields and one opaque body string, plus the plan's path lists.
+// The element tables exist because this compiler refuses a direct []string
+// array; the table-element spelling is the existing list-of-table form.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+enum Priority { normal, high, critical, blocker }
+
+enum Column { waiting, ready, working, review, merging, landed }
+
+table PathText { s string(192) }
+
+table CardID { s string(64) }
+
+table Card
+{
+    id               string(64)
+    sha              string(40)
+    tier             Tier
+    repo             string(96)
+    base_ref         string(96)
+    kind             string(24)
+    priority         Priority
+    stream           string(32)
+    paths            []PathText
+    new_paths        []PathText
+    shared           []PathText
+    needs            []CardID
+    test             string(192)
+    done_when        *string
+    deadline_minutes int32       | min = 0, max = 100000
+    source           *string
+    epoch            int32
+    column           Column
+    holder           string(32)
+    attempt          int32
+    head             string(40)
+    branch           string(128)
+    body             *string
+}
