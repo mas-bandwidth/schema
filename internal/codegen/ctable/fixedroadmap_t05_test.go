@@ -263,9 +263,9 @@ int main(void)
 		newer := cReadSchema(t, "VNEW_int_widen")
 		older := cReadSchema(t, "VOLD_int_widen")
 		vals := make([]byte, 10)
-		binary.LittleEndian.PutUint32(vals[0:], 1)  // lead
+		binary.LittleEndian.PutUint32(vals[0:], 1)      // lead
 		binary.LittleEndian.PutUint16(vals[4:], 0xffff) // v = -1 as int16
-		binary.LittleEndian.PutUint32(vals[6:], 2)  // trail
+		binary.LittleEndian.PutUint32(vals[6:], 2)      // trail
 		file := cT05OldFile(t, older, vals)
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0, file, `
     if ( n != 1 || r.refused || r.malformed ) { printf( "int_widen: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
@@ -283,8 +283,8 @@ int main(void)
 		cvals := make([]byte, 40)
 		binary.LittleEndian.PutUint32(cvals[0:], 1) // lead
 		for i := 0; i < 4; i++ {
-			binary.LittleEndian.PutUint32(cvals[4+i*8:], uint32(10+i))   // Item.a
-			binary.LittleEndian.PutUint32(cvals[8+i*8:], uint32(100+i))  // Item.drop
+			binary.LittleEndian.PutUint32(cvals[4+i*8:], uint32(10+i))  // Item.a
+			binary.LittleEndian.PutUint32(cvals[8+i*8:], uint32(100+i)) // Item.drop
 		}
 		binary.LittleEndian.PutUint32(cvals[36:], 2) // trail
 		cfile := cT05OldFile(t, cold, cvals)
