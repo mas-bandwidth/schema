@@ -108,7 +108,7 @@ func (g *blockGen) hf(format string, args ...any) { fmt.Fprintf(&g.handles, form
 func (g *blockGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
-		g.rf("%s", blockRuntime(ir.BuildVersion(g.unit)))
+		g.rf("%s", blockRuntime())
 		g.rf("%s", blockBuildRuntime)
 		// EVERY blittable record of the unit, here and nowhere else. Not the
 		// file that DECLARES the type: a record a block form reaches is often
@@ -200,13 +200,8 @@ func (g *blockGen) assemble() ([]byte, error) {
 
 // ---- the shared runtime ----
 
-func blockRuntime(buildVersion uint64) string {
-	return fmt.Sprintf(`// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the one
-// digest a block carries and BlockOpen compares. It moves when anything a
-// reader points at moves.
-const BuildVersion uint64 = 0x%016x
-
-// TableBlockMagic identifies a schema block and carries the byte-order check
+func blockRuntime() string {
+	return fmt.Sprintf(`// TableBlockMagic identifies a schema block and carries the byte-order check
 // with it (docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE
 // order; a consumer that reads back the byte-swapped value has found a foreign
 // byte order, and one that reads back anything else has not found a block at
@@ -320,7 +315,7 @@ type TableBlockInfo struct {
 	Fields       []TableBlockFieldInfo
 }
 
-`, buildVersion, ir.BlockMagic)
+`, ir.BlockMagic)
 }
 
 // ---- the blittable records ----
