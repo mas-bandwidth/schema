@@ -366,6 +366,46 @@ int main(void)
 }
 `,
 		},
+		{
+			id: "flags-values/c/valid-data",
+			schema: `package probe
+flags Caps { Jump, Crouch, Fly }
+
+fixed table FlagsValue
+{
+    caps Caps
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+` + t09Check + `
+int main(void)
+{
+    FlagsValue value[3], loaded[3];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[0].caps = CAPS_JUMP | CAPS_FLY;              /* two named bits */
+    value[1].caps = CAPS_JUMP | CAPS_CROUCH | CAPS_FLY; /* the full mask */
+    value[2].caps = 0;                                  /* the empty set */
+    need = flags_value_fixed_measure(3);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(flags_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = flags_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    CHECK(n == 3);
+    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(loaded[0].caps == (CAPS_JUMP | CAPS_FLY));
+    CHECK(loaded[1].caps == (CAPS_JUMP | CAPS_CROUCH | CAPS_FLY));
+    CHECK(loaded[2].caps == 0);
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
