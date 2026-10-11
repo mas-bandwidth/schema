@@ -50,3 +50,7 @@
 (:id "cpp/R20" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t03_test.go: TestFixedRoadmapCppT03PlansVersions/cpp/R20") :tested-revision "3e2096cc2")
 (:id "cpp/R21" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t03_test.go: TestFixedRoadmapCppT03PlansVersions/cpp/R21") :tested-revision "3e2096cc2")
 (:id "cpp/R29" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t03_test.go: TestFixedRoadmapCppT03PlansVersions/cpp/R29") :tested-revision "3e2096cc2")
+(:id "cpp/C3" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C3") :tested-revision "b6b83c5f760c7e09ba802d25a84dfa221a5e1c14")
+(:id "cpp/C4" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C4") :tested-revision "b6b83c5f760c7e09ba802d25a84dfa221a5e1c14")
+(:id "cpp/C5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C5") :tested-revision "b6b83c5f760c7e09ba802d25a84dfa221a5e1c14")
+(:id "cpp/R24" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/R24") :tested-revision "b6b83c5f760c7e09ba802d25a84dfa221a5e1c14")
