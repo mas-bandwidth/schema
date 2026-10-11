@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+// scriptEnv returns environ without the startup files a non-interactive bash
+// sources before the -c script: BASH_ENV, or ENV for a POSIX shell. A bench
+// whose BASH_ENV reads an unset variable under the selector's `set -u` writes
+// that diagnostic to stderr, and CombinedOutput would capture it into the
+// selection. The workflow runs where neither name is set.
+func scriptEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		if strings.HasPrefix(kv, "BASH_ENV=") || strings.HasPrefix(kv, "ENV=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 // Exercise the workflow's actual selector: a green plan that selects no
 // harness must not silently skip a changed C++ fixed-table regression test.
 func TestFastPlanSelectsTableFixtures(t *testing.T) {
@@ -39,7 +55,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
-			cmd.Env = append(os.Environ(), "files="+tc.files)
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			got, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("selector: %v: %s", err, got)
