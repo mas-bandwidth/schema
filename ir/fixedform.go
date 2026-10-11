@@ -31,6 +31,7 @@ import (
 	"math/big"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // TableKindOptional is the ONE kind §3.4's LAYOUT adds to §3's closed set: the
@@ -880,6 +881,17 @@ const (
 	TableFixedOpBool  = 8
 )
 
+// TableFixedGuardLink is one link of a guard chain: the byte offset of the tag
+// this condition reads, the ordinal it must hold, and the width it is compared
+// at. A chain is a CONJUNCTION — every link must hold for the entry to run —
+// and it is laid down OUTERMOST FIRST, so the first link is the outermost
+// union's tag and the last is the innermost one (§4.1, §5.8 row 6).
+type TableFixedGuardLink struct {
+	Guard int64
+	Arg   int
+	ArgW  int
+}
+
 // TableFixedLeaf is one entry of a plan: byte offsets into the record's body and
 // into the reader's own storage, and the op that moves between them.
 type TableFixedLeaf struct {
@@ -909,7 +921,17 @@ type TableFixedLeaf struct {
 	// collision course, the flavour overwriting the tag or the tag the flavour
 	// depending on which was stamped last.
 	Meta int
-	Note string // a comment on the emitted array; never a wire byte
+	// GuardCount / GuardIndex ARE THE GUARD CHAIN (§5.8 row 6): offset+count
+	// into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound
+	// the layout's 64 ([TableFixedMaxDepth]). GuardCount is 0 for an unguarded
+	// entry; Guard/Arg/ArgW and Guard2/Arg2/ArgW2 above stay the innermost and
+	// second-innermost lanes for the two-lane consumers, and a chain past two
+	// rides the pool whole. GuardLinks is the same chain as a slice, the walk's
+	// own record; the pool ([TableFixedGuardPool]) dedupes it by content.
+	GuardCount int
+	GuardIndex int
+	GuardLinks []TableFixedGuardLink
+	Note       string // a comment on the emitted array; never a wire byte
 }
 
 // tableFixedLeaves writes one type's leaves at a base the caller gives — the C twin
@@ -1007,27 +1029,17 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, n
 				// wrote: an arm nested inside an arm answers to the OUTER tag,
 				// which is the one that decides whether any of it is there at
 				// all — and its OWN arm selection survives that stamp, because
-				// the two tags are CONJOINED on the second lane rather than the
-				// outer one replacing the inner (§4.1, §5.8 row 6).
+				// the tags are CONJOINED as a CHAIN of links rather than the
+				// outer one replacing the inner (§4.1, §5.8 row 6). The walk
+				// recurses inner unions first, so links accumulate INNERMOST
+				// FIRST here; [tableFixedStampGuards] reverses them OUTERMOST
+				// FIRST and lays the two inline lanes down from them. A chain
+				// past two is not an error: it rides the pool whole, and the
+				// only bound is the layout's 64 ([TableFixedMaxDepth]).
 				at := len(*out)
 				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
 				for q := at; q < len(*out); q++ {
-					if (*out)[q].Guard == TableFixedNoGuard {
-						(*out)[q].Guard = src
-						(*out)[q].Arg = i + 1
-						(*out)[q].ArgW = int(tag)
-						continue
-					}
-					// A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
-					// cannot carry it (the guard chain is the follow-on, §5.8
-					// row 6); this walk is the build's own type, so it is a
-					// compiler error and not a wire event.
-					if (*out)[q].Guard2 != TableFixedNoGuard {
-						panic("fixed form: three nested union tags on one entry; the guard chain is owed (§5.8 row 6)")
-					}
-					(*out)[q].Guard2 = src
-					(*out)[q].Arg2 = i + 1
-					(*out)[q].ArgW2 = int(tag)
+					(*out)[q].GuardLinks = append((*out)[q].GuardLinks, TableFixedGuardLink{Guard: src, Arg: i + 1, ArgW: int(tag)})
 				}
 			}
 			return
@@ -1076,7 +1088,8 @@ func tableFixedContainsBoolField(f *Field, seen map[string]bool) bool {
 // adjacent COPY entries whose source and destination both advance together are
 // one entry. Neighbours are never merged across the split.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
-	return tableFixedBuildPlan(u, st, false)
+	plan, guarded, _ = tableFixedBuildPlan(u, st, false)
+	return plan, guarded
 }
 
 // TableFixedBuildPlanNormalised is TableFixedBuildPlan with a bool field and a
@@ -1086,13 +1099,95 @@ func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded in
 // positions; only the op on the two bool bytes differs. The C++ reference is
 // the consumer today (fix 2); a copy into a C++ bool is the UB it clears.
 func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
+	plan, guarded, _ = tableFixedBuildPlan(u, st, true)
+	return plan, guarded
+}
+
+// TableFixedBuildPlanNormalisedWithPool is [TableFixedBuildPlanNormalised] with
+// the guard pool it laid down beside it: the entries' guard chains, OUTERMOST
+// FIRST, deduped by content. The C leg emits the pool as static data and each
+// entry's GuardIndex/GuardCount point into it (§5.8 row 6).
+func TableFixedBuildPlanNormalisedWithPool(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
 	return tableFixedBuildPlan(u, st, true)
 }
 
-func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool bool) (plan []TableFixedLeaf, guarded int) {
+func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool bool) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
 	var raw []TableFixedLeaf
 	tableFixedLeaves(u, st, 0, 0, normaliseBool, &raw)
-	return tableFixedCoalesce(raw)
+	tableFixedStampGuards(raw)
+	pool = tableFixedGuardPool(raw)
+	plan, guarded = tableFixedCoalesce(raw)
+	return plan, guarded, pool
+}
+
+// tableFixedStampGuards reverses every entry's guard links OUTERMOST FIRST and
+// lays the two inline lanes down from them: Guard/Arg/ArgW is the INNERMOST
+// link and Guard2/Arg2/ArgW2 the next one in (the OUTER tag an arm inside an
+// arm also answers to). The links were accumulated INNERMOST FIRST by the walk
+// ([tableFixedElementLeavesAt]), because the inner union recurses before the
+// outer one stamps.
+func tableFixedStampGuards(raw []TableFixedLeaf) {
+	for i := range raw {
+		links := raw[i].GuardLinks
+		n := len(links)
+		if n >= 1 {
+			innermost := links[0]
+			raw[i].Guard = innermost.Guard
+			raw[i].Arg = innermost.Arg
+			raw[i].ArgW = innermost.ArgW
+		}
+		if n >= 2 {
+			next := links[1]
+			raw[i].Guard2 = next.Guard
+			raw[i].Arg2 = next.Arg
+			raw[i].ArgW2 = next.ArgW
+		}
+		for a, b := 0, n-1; a < b; a, b = a+1, b-1 {
+			links[a], links[b] = links[b], links[a]
+		}
+		raw[i].GuardLinks = links
+	}
+}
+
+// tableFixedGuardPool lays every entry's guard chain into one pool, OUTERMOST
+// FIRST, deduped by content, and stamps each entry's GuardIndex (its offset
+// into the pool) and GuardCount (the number of links it answers to). Two
+// entries under the same chain share one slice, so the coalescer may compare
+// GuardIndex and GuardCount alone. The only bound on a chain's length is the
+// layout's depth, 64 ([TableFixedMaxDepth]).
+func tableFixedGuardPool(raw []TableFixedLeaf) []TableFixedGuardLink {
+	var pool []TableFixedGuardLink
+	index := map[string]int{}
+	for i := range raw {
+		links := raw[i].GuardLinks
+		if len(links) == 0 {
+			continue
+		}
+		key := tableFixedGuardKey(links)
+		if j, ok := index[key]; ok {
+			raw[i].GuardIndex = j
+			raw[i].GuardCount = len(links)
+			continue
+		}
+		index[key] = len(pool)
+		raw[i].GuardIndex = len(pool)
+		raw[i].GuardCount = len(links)
+		pool = append(pool, links...)
+	}
+	return pool
+}
+
+func tableFixedGuardKey(links []TableFixedGuardLink) string {
+	var b strings.Builder
+	for _, l := range links {
+		b.WriteString(strconv.FormatInt(l.Guard, 10))
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(l.Arg))
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(l.ArgW))
+		b.WriteByte(';')
+	}
+	return b.String()
 }
 
 func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded int) {
@@ -1106,6 +1201,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 				if last.Op == e.Op && tableFixedRuns(e.Op) &&
 					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
 					last.Guard2 == e.Guard2 && last.Arg2 == e.Arg2 && last.ArgW2 == e.ArgW2 &&
+					last.GuardIndex == e.GuardIndex && last.GuardCount == e.GuardCount &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
