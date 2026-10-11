@@ -115,6 +115,28 @@ func t08Emit(t *testing.T, u *ir.Unit) string {
 	return b.String()
 }
 
+// t08EntryStruct is the emitted `struct TableFixedEntry` body and nothing else:
+// its declarations ARE the plan entry `struct Op` of docs/FIXED-FORM-ALGORITHM.md
+// §4.1 (the plan), so a clause about a lane this entry carries reads this slice.
+// Reading the whole runtime would let a neighbouring declaration (TableFixedDst's
+// meta, TableFixedCompiler's argw) satisfy the spelling, which is exactly the
+// regression "arg and meta ARE TWO LANES" (line 253) and the guard's own width
+// (line 244) exist to catch.
+func t08EntryStruct(t *testing.T) string {
+	t.Helper()
+	const open = "struct TableFixedEntry"
+	i := strings.Index(tableFixedRuntime, open)
+	if i < 0 {
+		t.Fatalf("the emitted runtime carries no %q", open)
+	}
+	rest := tableFixedRuntime[i:]
+	j := strings.Index(rest, "};")
+	if j < 0 {
+		t.Fatalf("the emitted %q struct is not closed", open)
+	}
+	return rest[:j]
+}
+
 func TestFixedRoadmapCppT08WritesConformance(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -168,15 +190,19 @@ func t08W7(t *testing.T) {
 	}
 
 	// The runtime lanes the plan is laid into are the two facts kept apart.
+	// §4.1: "arg and meta ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must
+	// never share one". The lanes are read off the ENTRY struct, not the whole
+	// runtime, where TableFixedDst repeats `uint8_t meta = 0;`.
+	entry := t08EntryStruct(t)
 	for _, want := range []string{
 		"uint64_t arg = 0;",
 		"uint8_t meta = 0;",
 	} {
-		if !strings.Contains(tableFixedRuntime, want) {
+		if !strings.Contains(entry, want) {
 			t.Errorf("W7: the emitted entry does not carry the lane %q", want)
 		}
 	}
-	if i, j := strings.Index(tableFixedRuntime, "uint64_t arg = 0;"), strings.Index(tableFixedRuntime, "uint8_t meta = 0;"); i < 0 || j < 0 || j < i {
+	if i, j := strings.Index(entry, "uint64_t arg = 0;"), strings.Index(entry, "uint8_t meta = 0;"); i < 0 || j < 0 || j < i {
 		t.Error("W7: meta does not stand after arg on the entry")
 	}
 }
@@ -241,10 +267,14 @@ func t08R28(t *testing.T) {
 		}
 	}
 	// The plan entry's aggregate names the guard lanes in the emitted order.
-	if !strings.Contains(tableFixedRuntime, "uint32_t guard = kTableFixedNoGuard;") {
+	// §4.1: `argw` is the guard's WIDTH and "the compare is made at it, never on
+	// a prefix"; the width is read off the ENTRY struct, not the whole runtime,
+	// where TableFixedCompiler repeats `uint8_t argw = 1;`.
+	entry := t08EntryStruct(t)
+	if !strings.Contains(entry, "uint32_t guard = kTableFixedNoGuard;") {
 		t.Error("R28: the entry carries no guard offset lane")
 	}
-	if !strings.Contains(tableFixedRuntime, "uint8_t argw = 1;") {
+	if !strings.Contains(entry, "uint8_t argw = 1;") {
 		t.Error("R28: the entry carries no guard width lane")
 	}
 	// The tag is compared at its own width, not its low byte.
