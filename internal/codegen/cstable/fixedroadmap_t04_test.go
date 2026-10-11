@@ -31,6 +31,8 @@ func TestFixedRoadmapCSharpT04Versions(t *testing.T) {
 		{"cs/R20", t04R20},
 		{"cs/R21", t04R21},
 		{"cs/R29", t04R29},
+		{"cs/E5", t04E5},
+		{"cs/W2", t04W2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -209,3 +211,53 @@ func t04R29(t *testing.T) {
 		"R29 the count lands the writer's bound and counts exactly once")
 }
 
+// t04E5: E5 [verify] "?T vs plain nesting". The versioning harness's
+// optional_add row (T into ?T: present == 1, the value exact) is the
+// behavioural holder; this subtest reads the runtime's own compile step — the
+// optional wrapper is a kind of its own (35) and a plain T met by a ?T pushes
+// the present byte as a CONSTANT 1 beside the payload (bill §12.8).
+func t04E5(t *testing.T) {
+	n := t04Runtime(t)
+	t04Has(t, n, "case 35: // Optional wrapper",
+		"E5 the optional wrapper is a kind of its own")
+	t04Has(t, n, "if (me.Kind == 35 && te.Kind != 35)",
+		"E5 a plain T met by a ?T is one byte apart")
+	t04Has(t, n, "c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));",
+		"E5 T into ?T lands the present byte as a constant 1 beside the payload")
+	if got := fixedKindOptional; got != 35 {
+		t.Errorf("E5: fixedKindOptional = %d, want 35", got)
+	}
+}
+
+// t04W2: W2 [verify] "absent optional skips store". SPEC-TABLES §3.4: an absent
+// optional's payload is the template's zeros. The end-to-end holder is
+// TestFixedWriteAbsentOptionalGuarded; this subtest reads the emitted writer's
+// branch directly — the store is skipped behind a false flag, and the flag byte
+// is written either way.
+func t04W2(t *testing.T) {
+	fixed := generateCS(t, `package probe
+
+fixed table Leaf
+{
+    n int32
+}
+
+fixed table T
+{
+    link ?Leaf
+}
+`)
+	n := t04Norm(fixed)
+	t04Has(t, n, "b[0] = (byte)(value.LinkPresent ? 1 : 0);",
+		"W2 the present flag byte is written either way")
+	t04Has(t, n, "if (value.LinkPresent) {",
+		"W2 the payload's store is behind the present branch")
+	i := strings.Index(n, "if (value.LinkPresent) {")
+	if i < 0 {
+		t.Fatal("W2: the writer has no present branch")
+	}
+	rest := n[i:]
+	if !strings.Contains(rest, "LeafFixed") && !strings.Contains(rest, "TableFixed") {
+		t.Errorf("W2: the taken branch does not store the payload: %s", rest)
+	}
+}
