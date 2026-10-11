@@ -12,8 +12,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"unsafe"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // MaxBodyBytes is the customer ceiling on one card's opaque body. The schema
