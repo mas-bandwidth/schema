@@ -316,7 +316,7 @@ func t07W8(t *testing.T) {
 // entry inside arm 2 carries its guard ordinal in Arg and its flavour in Meta.
 func t07W7(t *testing.T) {
 	src := t07Src(t, t07ArmText)
-	t07Has(t, src, "public byte Arg; // Arm ordinal compared by Guard, at ArgW bytes",
+	t07Has(t, src, "public ulong Arg; // Arm ordinal compared by Guard, at ArgW bytes",
 		"W7 the guard's ordinal has its own lane")
 	t07Has(t, src, "public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)",
 		"W7 the op's own argument has its own lane, separate from the guard's ordinal")
