@@ -813,6 +813,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// refusal has written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
 	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
+	// AND THE TEXT CONTENT, BEFORE THE PREFILL: §5.8's REFUSE "is total: no
+	// counter moves, nothing is decoded, and not one destination byte is
+	// written — the prefill included", so the record's text is checked ahead of
+	// the copy that lands it (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11).
+	g.pf("\t\tif why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != \"\" {\n")
+	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
+	g.pf("\t\t}\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
@@ -821,7 +828,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE RUN SEES ONE RECORD (§5.2). Handed `at[8:]` it saw every byte to the
 	// END OF THE FILE, so an entry past the writer's record read the NEXT
 	// record's bytes instead of being caught.
-	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)\n")
+	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != \"\" {\n")
+	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
+	g.pf("\t\t}\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4).\n")
