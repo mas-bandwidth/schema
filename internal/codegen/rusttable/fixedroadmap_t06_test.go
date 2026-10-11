@@ -326,7 +326,7 @@ func t06R31(t *testing.T) {
 	// `arg2` is this leg's surface. The outer union's scatter calls the inner
 	// union's scatter on its own arm — a live arm-inside-an-arm, not a type the
 	// emitter refuses.
-	nested := t06Fixed(t, `package probe
+	nestedSrc := `package probe
 
 type LeafA { x int32 = 0 }
 type LeafB { y int32 = 0 }
@@ -350,10 +350,70 @@ fixed table T
     node Outer
     seq  int32 = 0
 }
-`)
+`
+	nested := t06Fixed(t, nestedSrc)
 	outer := t06Fn(nested, "outer_fixed_scatter")
 	if !strings.Contains(outer, "leaf_fixed_scatter(") {
 		t.Errorf("R31: the outer union's scatter does not call the inner union's scatter, so the emitted surface has no nested union to guard:\n%s", outer)
+	}
+	// AND THE CONCRETE PLAN FOR THIS LAYOUT, not the runtime template that can
+	// compile one: the shared walk, ir.TableFixedBuildPlan — "one type's
+	// identity plan, exactly as every backend must lay it down" — must carry
+	// THIS nested layout's SECOND guard lanes, at the concrete offsets and
+	// widths the layout settles. A template that mentions `guard2` proves
+	// nothing about `x`, `y` and `z`; these six lanes do. The arm row `x` sits
+	// inside Outer's arm `inner`, so its FIRST lane is the INNER tag (`node.inner
+	// tag`) at its own offset and width, and its SECOND lane is the OUTER tag
+	// (`node tag`) at its own — conjoined, never one over the other (§4.1, §5.8
+	// row 6). `z` is Outer's other arm and carries no second condition at all.
+	u := unitFrom(t, nestedSrc)
+	root, ok := u.Tables["T"]
+	if !ok {
+		t.Fatal("R31: the nested fixed table T is not in the unit")
+	}
+	plan, _ := ir.TableFixedBuildPlan(u, root)
+	leafOf := func(note string) (ir.TableFixedLeaf, bool) {
+		for _, e := range plan {
+			if e.Note == note {
+				return e, true
+			}
+		}
+		return ir.TableFixedLeaf{}, false
+	}
+	outerTag, ok := leafOf("node tag")
+	if !ok {
+		t.Fatalf("R31: the outer union's tag has no plan entry:\n%+v", plan)
+	}
+	innerTag, ok := leafOf("node.inner tag")
+	if !ok {
+		t.Fatalf("R31: the inner union's tag has no plan entry:\n%+v", plan)
+	}
+	x, ok := leafOf("x")
+	if !ok {
+		t.Fatalf("R31: the nested layout's arm row `x` has no plan entry:\n%+v", plan)
+	}
+	y, ok := leafOf("y")
+	if !ok {
+		t.Fatalf("R31: the nested layout's sibling arm row `y` has no plan entry:\n%+v", plan)
+	}
+	z, ok := leafOf("z")
+	if !ok {
+		t.Fatalf("R31: the outer layout's second arm row `z` has no plan entry:\n%+v", plan)
+	}
+	if x.Guard != innerTag.Src || x.Arg != 1 || x.ArgW != int(innerTag.Size) {
+		t.Errorf("R31: the nested arm `x`'s inner lanes are guard=%d arg=%d argw=%d, want the inner tag at its own offset %d read at width %d with ordinal 1",
+			x.Guard, x.Arg, x.ArgW, innerTag.Src, innerTag.Size)
+	}
+	if x.Guard2 != outerTag.Src || x.Arg2 != 1 || x.ArgW2 != int(outerTag.Size) {
+		t.Errorf("R31: the nested arm `x`'s OUTER lanes are guard2=%d arg2=%d argw2=%d, want the outer tag at its own offset %d read at width %d with ordinal 1",
+			x.Guard2, x.Arg2, x.ArgW2, outerTag.Src, outerTag.Size)
+	}
+	if y.Guard != innerTag.Src || y.Arg != 2 || y.ArgW != int(innerTag.Size) ||
+		y.Guard2 != outerTag.Src || y.Arg2 != 1 || y.ArgW2 != int(outerTag.Size) {
+		t.Errorf("R31: the sibling arm `y` is not its own ordinal CONJOINED to the same outer tag: %+v", y)
+	}
+	if z.Guard != outerTag.Src || z.Arg != 2 || z.Guard2 != ir.TableFixedNoGuard {
+		t.Errorf("R31: the outer arm `z` carries a second condition it does not have: %+v", z)
 	}
 }
 
