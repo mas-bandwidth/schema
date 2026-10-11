@@ -1178,7 +1178,11 @@ bool tableFixedTextIllFormed(
     return false;
   }
   // UTF-8 over the used BYTES: the shortest form of each sequence, no
-  // continuation byte out of place, and no zero byte anywhere.
+  // continuation byte out of place, no zero byte anywhere, and no code point
+  // a UTF-8 scalar cannot be — an overlong form, a surrogate encoded in UTF-8,
+  // or a point past U+10FFFF is each ill-formed (docs/SPEC-TABLES.md §3.4's
+  // ill-formed set). The scalar ranges mirror the packet reader's
+  // (internal/codegen/dart/utf8.go).
   bool cont(int k) => (source[at + k] & 0xC0) == 0x80;
   var i = 0;
   while (i < used) {
@@ -1196,9 +1200,22 @@ bool tableFixedTextIllFormed(
       if (i + 2 >= used || !cont(i + 1) || !cont(i + 2)) {
         return true;
       }
+      final point = ((c & 0x0F) << 12) |
+          ((source[at + i + 1] & 0x3F) << 6) |
+          (source[at + i + 2] & 0x3F);
+      if (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF)) {
+        return true;
+      }
       i += 3;
     } else if ((c & 0xF8) == 0xF0) {
       if (i + 3 >= used || !cont(i + 1) || !cont(i + 2) || !cont(i + 3)) {
+        return true;
+      }
+      final point = ((c & 0x07) << 18) |
+          ((source[at + i + 1] & 0x3F) << 12) |
+          ((source[at + i + 2] & 0x3F) << 6) |
+          (source[at + i + 3] & 0x3F);
+      if (point < 0x10000 || point > 0x10FFFF) {
         return true;
       }
       i += 4;

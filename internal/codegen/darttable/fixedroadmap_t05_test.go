@@ -520,6 +520,24 @@ func t05R24(t *testing.T) {
 	t05Has(t, runtime, "(c & 0xE0) == 0xC0", "R24 the UTF-8 continuation rule is checked")
 	t05Has(t, runtime, "if (lo < 0xDC00 || lo > 0xDFFF) {", "R24 an unpaired surrogate is ill-formed")
 	t05Has(t, runtime, "if (u == 0) {\n        return true;", "R24 a zero code unit is ill-formed")
+	// THE SCALAR RANGE THE CONTENT RULE DECODES, mirroring the packet reader's
+	// (internal/codegen/dart/utf8.go): an overlong form, a surrogate encoded in
+	// UTF-8, or a code point past U+10FFFF is each ill-formed
+	// (docs/SPEC-TABLES.md §3.4's ill-formed set).
+	t05Has(t, runtime, "point < 0x800", "R24 an overlong three-byte form is ill-formed")
+	t05Has(t, runtime, "point >= 0xD800 && point <= 0xDFFF", "R24 a surrogate encoded in UTF-8 is ill-formed")
+	t05Has(t, runtime, "point < 0x10000", "R24 an overlong four-byte form is ill-formed")
+	t05Has(t, runtime, "point > 0x10FFFF", "R24 a code point past U+10FFFF is ill-formed")
+	// THE BYTE FIXTURES: the scalar-range rule REFUSES the named ill-formed set
+	// and accepts the shortest forms, fed through t05Utf8IllFormed — the same
+	// UTF-8 branch the emitted runtime carries. A planted break in the emitted
+	// scalar checks is red by the four lines above, and a break in this port is
+	// red here.
+	for _, tc := range t05Utf8IllFormedCases() {
+		if got := t05Utf8IllFormed(tc.raw); got != tc.want {
+			t.Errorf("R24: %s: tableFixedTextIllFormed = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 	// (2) THE LENGTH IS COUNTED IN BYTES WITH THE CLAMP IN UNITS: `cap` is the
 	// entry's byte size over the flavour's unit, and the wide plan spends two
 	// bytes a unit.
@@ -540,6 +558,82 @@ fixed table T
 	if len(widePlan) != 1 || widePlan[0].size != 16 {
 		t.Errorf("R24: a wstring(8) plan entry spends %d bytes, want 16 — the clamp is in units over a two-byte unit", widePlan[0].size)
 	}
+}
+
+// t05Utf8Case is one byte fixture through the UTF-8 content rule.
+type t05Utf8Case struct {
+	name string
+	raw  []byte
+	want bool // true when ill-formed, so the read refuses by name
+}
+
+// t05Utf8IllFormedCases is the byte fixture set: the named ill-formed set —
+// "a truncated UTF-8 sequence, an overlong encoding, a lone continuation byte,
+// a surrogate encoded in UTF-8" (docs/SPEC-TABLES.md §3.4) — each refuses, and
+// the shortest forms each pass.
+func t05Utf8IllFormedCases() []t05Utf8Case {
+	return []t05Utf8Case{
+		{name: "zero byte", raw: []byte{0x00}, want: true},
+		{name: "lone continuation", raw: []byte{0x80}, want: true},
+		{name: "truncated two-byte", raw: []byte{0xC3}, want: true},
+		{name: "truncated three-byte", raw: []byte{0xE2, 0x82}, want: true},
+		{name: "truncated four-byte", raw: []byte{0xF0, 0x9F, 0x92}, want: true},
+		{name: "two-byte overlong", raw: []byte{0xC0, 0x80}, want: true},
+		{name: "three-byte overlong", raw: []byte{0xE0, 0x80, 0x80}, want: true},
+		{name: "four-byte overlong", raw: []byte{0xF0, 0x80, 0x80, 0x80}, want: true},
+		{name: "utf-8-encoded surrogate", raw: []byte{0xED, 0xA0, 0x80}, want: true},
+		{name: "past U+10FFFF", raw: []byte{0xF4, 0x90, 0x80, 0x80}, want: true},
+		{name: "ascii", raw: []byte("ok"), want: false},
+		{name: "two-byte", raw: []byte{0xC3, 0xA9}, want: false},
+		{name: "three-byte", raw: []byte{0xE2, 0x82, 0xAC}, want: false},
+		{name: "four-byte", raw: []byte{0xF0, 0x9F, 0x92, 0xA9}, want: false},
+	}
+}
+
+// t05Utf8IllFormed is a Go port of the emitted Dart tableFixedTextIllFormed's
+// UTF-8 branch, byte for byte in its checks, carrying the same scalar ranges
+// internal/codegen/dart/utf8.go carries. It reports whether the used bytes are
+// ill-formed UTF-8: a zero byte, a truncated sequence, a lone continuation, an
+// overlong form, a surrogate encoded in UTF-8, or a code point past U+10FFFF
+// (docs/SPEC-TABLES.md §3.4's ill-formed set, docs/FIXED-FORM-ALGORITHM.md
+// §4.5 fix 11's "UTF-8 validity over v bytes").
+func t05Utf8IllFormed(b []byte) bool {
+	cont := func(k int) bool { return b[k]&0xC0 == 0x80 }
+	i := 0
+	for i < len(b) {
+		c := b[i]
+		if c == 0 {
+			return true
+		} else if c < 0x80 {
+			i++
+		} else if (c & 0xE0) == 0xC0 {
+			if c < 0xC2 || i+1 >= len(b) || !cont(i+1) {
+				return true
+			}
+			i += 2
+		} else if (c & 0xF0) == 0xE0 {
+			if i+2 >= len(b) || !cont(i+1) || !cont(i+2) {
+				return true
+			}
+			point := int(c&0x0F)<<12 | int(b[i+1]&0x3F)<<6 | int(b[i+2]&0x3F)
+			if point < 0x800 || (point >= 0xD800 && point <= 0xDFFF) {
+				return true
+			}
+			i += 3
+		} else if (c & 0xF8) == 0xF0 {
+			if i+3 >= len(b) || !cont(i+1) || !cont(i+2) || !cont(i+3) {
+				return true
+			}
+			point := int(c&0x07)<<18 | int(b[i+1]&0x3F)<<12 | int(b[i+2]&0x3F)<<6 | int(b[i+3]&0x3F)
+			if point < 0x10000 || point > 0x10FFFF {
+				return true
+			}
+			i += 4
+		} else {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- the card's test --------------------------------------------------------
