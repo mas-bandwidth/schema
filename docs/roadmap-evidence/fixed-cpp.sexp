@@ -38,3 +38,7 @@
 (:id "cpp/R9/remaining-boundaries" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/R9/remaining-boundaries") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")
 (:id "cpp/R12" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/R12") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")
 (:id "cpp/R13" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/R13") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")
+(:id "cpp/C3" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C3") :tested-revision "caf1c526e58568733a3111287a520642cf658739")
+(:id "cpp/C4" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C4") :tested-revision "caf1c526e58568733a3111287a520642cf658739")
+(:id "cpp/C5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C5") :tested-revision "caf1c526e58568733a3111287a520642cf658739")
+(:id "cpp/R24" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/R24") :tested-revision "caf1c526e58568733a3111287a520642cf658739")
