@@ -362,6 +362,77 @@ func t03JsR32(t *testing.T) {
 	t03JsHas(t, fixedRuntime, "report.refused = refusal;", "R32 the refusal names itself")
 }
 
+// ---- js/R10 -----------------------------------------------------------------
+
+// t03JsR10 holds R10 to §5.6 and §5.3 step 7: "the hash is looked up, the floor
+// is checked, and the layout is COMPARED — the seven rules do not fire at run
+// time". The emitted load parses no layout, walks no stranger's bytes, and never
+// recomputes the header's hash: the header's eight bytes are taken as given and
+// matched on.
+func t03JsR10(t *testing.T) {
+	text, _ := t03JsRetire(t, 0)
+	load := t03JsLoad(t, text, "Lineage")
+	t03JsHas(t, load, "layoutBytes !== known.layoutBytes", "R10 the layout is a byte comparison")
+	t03JsHas(t, load, "report.refused = TableFixedRefusal.LayoutMalformed;", "R10 a lie about a known version is layout_malformed")
+	t03JsHas(t, load, "const hashLo = ((bytes[TableFixedHashAt]", "R10 the header's hash is taken as given")
+	t03JsHasNot(t, load, "TableFixedParseLayout(", "R10 the load walks a stranger's layout")
+	t03JsHasNot(t, load, "TableFixedCompile(", "R10 the load compiles on the load path")
+	t03JsHasNot(t, load, "TableFixedHashOf(", "R10 the load recomputes the header's hash")
+	t03JsHasNot(t, load, "0xcbf29ce4", "R10 the load holds no FNV site")
+	t03JsHasNot(t, load, "0x100000001b3", "R10 the load holds no FNV multiplier")
+	// THE HASH IS STILL A WIRE IDENTITY: the walk survives for the build's own
+	// plans, reached once at module load and never on a load path.
+	t03JsHas(t, fixedRuntime, "export function TableFixedParseLayout(", "R10 the layout walk survives for the build-time plans")
+}
+
+// ---- js/R15 -----------------------------------------------------------------
+
+// t03JsR15 holds R15 to §5.6's retirement list and §5.3 step 5: the four
+// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// lineage does not hold is refused BEFORE any record and before any plan
+// selection, on the file's hash; the count and text clamps that REMAIN are the
+// writer's bounds carried by the plan (bill §12.5), which only a backward read
+// over a locked entry can reach; and the unknown-field count lands from the
+// COMPILE census after a returning read, never per record.
+func t03JsR15(t *testing.T) {
+	// The four clauses' rows, so a row quietly dropped from the corpus suite is
+	// red by name: field_append (drop-and-count of an unknown field),
+	// array_bounded_grow (count clamp), range_widen (range clamp),
+	// enum_append (remap of an unknown variant to None).
+	for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+		found := false
+		for _, r := range jsVersionRows {
+			if r.row == row {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("R15: %s is not in TestJSFixedVersioningNewReadsOld's rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+		}
+	}
+	text, _ := t03JsRetire(t, 0)
+	load := t03JsLoad(t, text, "Lineage")
+	miss := strings.Index(load, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi);")
+	records := strings.Index(load, "for (let k = 0; k < n; k++)")
+	if miss < 0 || records < 0 {
+		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
+	}
+	if miss > records {
+		t.Error("R15: an unknown hash is not refused before the first record")
+	}
+	if strings.Contains(load, "report.unknown++") {
+		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
+	}
+	t03JsHas(t, load, "report.unknown += censusUnknown;", "R15 unknown is the compile census, once per plan")
+	t03JsHas(t, load, "censusUnknown = lane.unknown; censusKind = lane.kindMismatch;", "R15 the census is the lane's, landed after the record loop")
+	// THE CLAMPS THAT REMAIN ARE THE WRITER'S BOUNDS, reached only over a
+	// locked entry — never a forward read of a stranger's layout.
+	runtime := fixedRuntime
+	t03JsHas(t, runtime, "else if (v > size) { v = size; report.clamped++; }", "R15 the count clamp is the writer's bound")
+	t03JsHas(t, runtime, "else if (v > cap) { v = cap; report.clamped++; }", "R15 the text clamp is the writer's span")
+	t03JsHas(t, runtime, "plan.record = TableFixedSize(theirs, 0);", "R15 the compile holds the writer's declared record")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
@@ -375,6 +446,8 @@ func TestFixedRoadmapJsT03PlansVersions(t *testing.T) {
 		{id: "js/R22", check: t03JsR22},
 		{id: "js/R3", check: t03JsR3},
 		{id: "js/R32", check: t03JsR32},
+		{id: "js/R10", check: t03JsR10},
+		{id: "js/R15", check: t03JsR15},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
