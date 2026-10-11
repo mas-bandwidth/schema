@@ -265,33 +265,56 @@ func t05R30(t *testing.T) {
 // plan with the compare at the tag's own width; a 64-bit ordinal temporary; the
 // remap table as long as the WRITER's variant count, refusing by name past the
 // length word". Every clause is a fact about the emitted runtime's own source,
-// so it is pinned there: the guard's ordinal lane is a long, the guard width
-// rides a lane of its own and the compare is made at it, the ordinal is read
-// through a 64-bit temporary, and the remap table carries its length in slot 0.
+// so it is pinned there: the guard's ordinal lane is a long AND SO IS arg2 (the
+// OUTER tag an arm inside an arm also answers to, ALGORITHM §4.1), the guard
+// width rides a lane of its own and the compare is made at it on BOTH lanes,
+// the ordinal is read through a 64-bit temporary, the remap table carries its
+// length in slot 0, and past the uint16 length word the plan refuses by name.
 func t05R31(t *testing.T) {
 	files := t05Files(t, "VNEW_enum_width.schema")
 	src, ok := files["TableFixed.java"]
 	if !ok {
 		t.Fatal("R31: the emitter wrote no TableFixed.java")
 	}
-	// FULL-WIDTH LANES: arg is a long, never a byte lane, and argw is the
-	// guard's width (ALGORITHM §4.1: "arg IS FULL WIDTH AND SO IS arg2: no byte
-	// lane anywhere").
+	// FULL-WIDTH LANES: arg is a long, never a byte lane, and so is arg2 — the
+	// OUTER tag an arm inside an arm also answers to (ALGORITHM §4.1: "arg IS
+	// FULL WIDTH AND SO IS arg2: no byte lane anywhere").
 	for _, want := range []string{
 		"public long arg;",
 		"public byte argw;",
+		"public int guard2 = noGuard;",
+		"public long arg2;",
+		"public byte argw2;",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("R31: the plan's lanes are not full width — %q is not emitted", want)
 		}
 	}
-	// THE COMPARE AT THE TAG'S OWN WIDTH, never on a prefix.
+	// THE COMPARE AT THE TAG'S OWN WIDTH, never on a prefix, on BOTH guard
+	// lanes: the inner tag at argw and the OUTER tag at argw2, CONJOINED (an
+	// entry runs when both hold their ordinal, §4.1).
 	for _, want := range []string{
 		"final int gw = guardWidth(p.argw);",
 		"if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }",
+		"final int gw2 = guardWidth(p.argw2);",
+		"if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("R31: the guard compare is not at the tag's own width — %q is not emitted", want)
+		}
+	}
+	// THE CONJOINED LANE IS STAMPED ON THE COMPILED WALK: a nested union's arm
+	// entries answer to the OUTER tag on the second lane, and a third nested
+	// union refuses by name rather than drop a condition (§4.1, §5.8 row 6).
+	for _, want := range []string{
+		"final int restampFrom = c.count;",
+		"if (c.plan[q].guard2 != noGuard) { c.recordTooLarge = true; break; }",
+		"c.plan[q].guard2 = guard;",
+		"c.plan[q].arg2 = arg;",
+		"c.plan[q].argw2 = outerW;",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
 		}
 	}
 	// A 64-BIT ORDINAL TEMPORARY (ALGORITHM §4.5: "through a 64-bit temporary").
@@ -300,10 +323,13 @@ func t05R31(t *testing.T) {
 	}
 	// THE REMAP TABLE'S LENGTH WORD, and the table laid as long as the writer's
 	// variant count (ALGORITHM §5.8 row 14: "as long as the WRITER's variant
-	// count, with a length word").
+	// count, with a length word"). Past the uint16 length word the plan refuses
+	// by name rather than answering a wrong value (a truncated length word
+	// would silently remap the 65536th variant to None).
 	for _, want := range []string{
 		"final int n = remap[p.aux] & 0xFFFF;",
 		"remap[at] = (short) n;",
+		"if (n < 0 || n > 65535) { overflow = true; return 0; }",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("R31: the remap table's length word is not emitted — %q is not present", want)
