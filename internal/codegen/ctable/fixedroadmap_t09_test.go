@@ -123,6 +123,17 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_put128_u( b + 46, value->u128 );",
 			},
 		},
+		{
+			// "bits(N) fields". §3.4: bits(N) rides at its storage kind — here
+			// bits(12) in a uint32 storage, held to its width bound 2^12 - 1 =
+			// 4095 by the bounds pass.
+			id: "bits-values/c/valid-data",
+			want: []string{
+				"uint32_t bitsv;",
+				"table_fixed_put32( b + 62, (uint32_t) value->bitsv );",
+				"value->bitsv > 4095ull",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
