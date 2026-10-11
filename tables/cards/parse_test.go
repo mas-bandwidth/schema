@@ -291,3 +291,73 @@ func TestParseRefusals(t *testing.T) {
 		}
 	})
 }
+
+// TestRenderRoundTrip proves Render emits RESULT first, the mapped keys in the
+// fixed declaration order, extras in stored order, then the body bytes verbatim,
+// and that Parse(Render(Parse(t))) keeps the owned wire while FromJSON(ToJSON)
+// keeps every header field and the body with a clean report (docs/SPEC-TABLES.md
+// §16).
+func TestRenderRoundTrip(t *testing.T) {
+	t.Parallel()
+	data := readFixture(t, "normalized-valid.md")
+	rec, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	start := bytes.Index(data, []byte("SOURCE: "))
+	nl := bytes.IndexByte(data[start:], '\n')
+	wantBody := data[start+nl+1:]
+
+	text, rep, err := Render(rec)
+	if err != nil {
+		t.Fatalf("Render: %v (report %+v)", err, rep)
+	}
+	if !bytes.HasPrefix(text, []byte("RESULT: a-cut-ignores-the-previous-tags-cancelled-release-run sha=000000000000 tier: pro\n")) {
+		t.Fatalf("render does not start with RESULT: %q", text[:80])
+	}
+	for _, k := range []string{"RESULT:", "REPO:", "BASE:", "PRIORITY:", "PATHS:", "SHARED:", "SOURCE:"} {
+		if !bytes.Contains(text, []byte(k)) {
+			t.Fatalf("render is missing %q", k)
+		}
+	}
+	if strings.Index(string(text), "REPO:") > strings.Index(string(text), "BASE:") ||
+		strings.Index(string(text), "BASE:") > strings.Index(string(text), "PRIORITY:") ||
+		strings.Index(string(text), "PRIORITY:") > strings.Index(string(text), "PATHS:") ||
+		strings.Index(string(text), "PATHS:") > strings.Index(string(text), "SHARED:") ||
+		strings.Index(string(text), "SHARED:") > strings.Index(string(text), "SOURCE:") {
+		t.Fatalf("render emits mapped keys out of order:\n%s", text)
+	}
+	if !bytes.HasSuffix(text, wantBody) {
+		t.Fatalf("render does not end with the exact body bytes")
+	}
+
+	rec2, err := Parse(text)
+	if err != nil {
+		t.Fatalf("Parse(Render(Parse(t))): %v", err)
+	}
+	if !bytes.Equal(rec2.Wire(), rec.Wire()) {
+		t.Fatal("Parse(Render(Parse(t))) changed the wire")
+	}
+	text2, _, err := Render(rec2)
+	if err != nil {
+		t.Fatalf("second Render: %v", err)
+	}
+	if !bytes.Equal(text2, text) {
+		t.Fatal("repeated round trips are not stable")
+	}
+
+	json, _, err := ToJSON(rec)
+	if err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	rec3, err := FromJSON(json)
+	if err != nil {
+		t.Fatalf("FromJSON(ToJSON(parsed)): %v", err)
+	}
+	if !bytes.Equal(rec3.Wire(), rec.Wire()) {
+		t.Fatal("FromJSON(ToJSON(parsed)) changed the wire")
+	}
+	if got := stringData(&rec3.root.Body, nil); !bytes.Equal(got, wantBody) {
+		t.Fatal("FromJSON(ToJSON(parsed)) changed the body")
+	}
+}
