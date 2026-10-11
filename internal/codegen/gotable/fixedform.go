@@ -512,8 +512,20 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 					fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
 				// THE GUARD'S WIDTH IS THE TAG'S (§5.2): stamped here, the read
 				// loop compares the tag WHOLE and a foreign 0x0101 is not arm 1.
-				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t\tout[q].ArgW = %d\n%s\t}\n",
-					ind, ind, src, ind, i+1, ind, tag, ind)
+				// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG (§4.1): an entry
+				// an inner union already guarded gets the outer tag on the
+				// SECOND lane, never over the first, so both tags must hold.
+				g.pf("%s\tfor q := guardAt; q < n; q++ {\n", ind)
+				g.pf("%s\t\tif out[q].Guard == tableFixedNoGuard {\n", ind)
+				g.pf("%s\t\t\tout[q].Guard = %s\n", ind, src)
+				g.pf("%s\t\t\tout[q].Arg = %d\n", ind, i+1)
+				g.pf("%s\t\t\tout[q].ArgW = %d\n", ind, tag)
+				g.pf("%s\t\t} else {\n", ind)
+				g.pf("%s\t\t\tout[q].Guard2 = %s\n", ind, src)
+				g.pf("%s\t\t\tout[q].Arg2 = %d\n", ind, i+1)
+				g.pf("%s\t\t\tout[q].ArgW2 = %d\n", ind, tag)
+				g.pf("%s\t\t}\n", ind)
+				g.pf("%s\t}\n", ind)
 				g.pf("%s}\n", ind)
 			}
 			return

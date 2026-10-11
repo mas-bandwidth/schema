@@ -63,7 +63,12 @@ const tableFixedMaxDepth int32 = 64
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
 	Src, Dst, Size, Aux, Guard, Arg uint32
-	Op, ArgW, DstSize, Sign, Meta uint8
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO (docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
+	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
+	// nests a union leaves the lane unset and the read is unchanged.
+	Guard2, Arg2 uint32
+	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
 }
 
 type TableFixedDst struct {
@@ -228,6 +233,8 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
+			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -281,6 +288,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
+		// runs only when the second lane's tag holds its ordinal as well.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
 			continue
 		}
 		switch p.Op {
@@ -778,6 +790,13 @@ func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 	}
 	if e.Guard != tableFixedNoGuard {
 		if g := uint64(e.Guard) + uint64(tableFixedArgWidth(e.ArgW)); g > end {
+			end = g
+		}
+	}
+	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
+	// of the entry's source reach.
+	if e.ArgW2 != 0 {
+		if g := uint64(e.Guard2) + uint64(tableFixedArgWidth(e.ArgW2)); g > end {
 			end = g
 		}
 	}
