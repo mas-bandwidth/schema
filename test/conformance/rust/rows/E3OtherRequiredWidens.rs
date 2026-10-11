@@ -23,9 +23,7 @@
 #[path = "../../../../build/tables-generated-rust/tblfu2/src/fixed_runtime.rs"]
 mod fixed_runtime;
 
-use fixed_runtime::{
-    TableFixedEntry, TableFixedOp, TableFixedReport, table_fixed_run, TABLE_FIXED_NO_GUARD,
-};
+use fixed_runtime::{TableFixedEntry, TableFixedOp, TableFixedReport, table_fixed_run};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -47,14 +45,13 @@ fn widen_one(src: &[u8], dst_size: usize, sign: u8) -> Vec<u8> {
         dst: 0,
         size: src.len() as u32,
         dstsize: dst_size as u8,
-        guard: TABLE_FIXED_NO_GUARD,
         op: TableFixedOp::Widen,
         sign,
         ..TableFixedEntry::default()
     };
     let mut image = vec![0u8; dst_size];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[entry], &[], src, &mut image, &mut report);
+    table_fixed_run(&[entry], &[], &[], src, &mut image, &mut report);
     image
 }
 
@@ -124,14 +121,13 @@ fn other_required_widen_ladder_cases() {
         dst: 0,
         size: 1,
         dstsize: 4,
-        guard: TABLE_FIXED_NO_GUARD,
         op: TableFixedOp::Widen,
         sign: 1,
         ..TableFixedEntry::default()
     };
     let mut image = [0u8; 4];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[entry], &[], &[0xFF], &mut image, &mut report);
+    table_fixed_run(&[entry], &[], &[], &[0xFF], &mut image, &mut report);
     check(
         report.widened == 1 && !report.malformed && !report.refused,
         "a single widen op moves widened == 1 and no flag",
