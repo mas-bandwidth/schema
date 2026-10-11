@@ -118,7 +118,7 @@ func fixedDartUnionSupported(u *ir.Union, depth int) bool {
 	}
 	for _, v := range u.Variants {
 		if v.F == nil {
-			return false
+			continue // §3.4: a payload-free arm contributes its tag and no storage.
 		}
 		a := v.F
 		if a.Type.Pointer || a.IsMap() || a.IsList() || a.KeyEnum != "" || a.Type.Optional {
@@ -141,6 +141,21 @@ func fixedDartUnionSupported(u *ir.Union, depth int) bool {
 	return true
 }
 
+// FixedTableClosureSupported identifies explicitly fixed units whose complete
+// closure this emitter carries (§2.6, §3.4). The compiler can admit their union
+// fields without admitting the same constructs in variable-table codecs.
+func FixedTableClosureSupported(u *ir.Unit) bool {
+	if len(u.Tables) == 0 {
+		return false
+	}
+	for _, st := range u.Tables {
+		if !st.FixedDeclared || fixedRefusal(st) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // fixedRefusal answers why a table cannot carry the fixed form in Dart, or ""
 // when it can. NAMED, NEVER SILENT is the property: a table this backend will
 // not emit the form for gets a line in the generated library saying which
@@ -156,7 +171,7 @@ func fixedRefusal(st *ir.Struct) string {
 			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
 	}
 	if !fixedDartSupported(st, 0) {
-		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or a union arm holding text, an array or an optional (docs/SPEC-TABLES.md §3.4)"
+		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or an optional union arm (docs/SPEC-TABLES.md §3.4)"
 	}
 	if n := fixedOptionalInPacketType(st, 0); n != "" {
 		// §3.4's ONE departure from §2.3: on this form `?T` and a plain `T`

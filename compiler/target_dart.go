@@ -34,7 +34,26 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if err := refuseWideText(u, "dart"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "dart"); err != nil {
+	if err := refuseValueDefaults(u, "dart"); err != nil {
+		return nil, err
+	}
+	if err := refuseWasRows(u, "dart"); err != nil {
+		return nil, err
+	}
+	// §2.6, §3.4: supported explicitly fixed closures have tag/arm storage in
+	// the fixed library; variable-table closures retain their named refusals.
+	if !darttable.FixedTableClosureSupported(u) {
+		if err := refuseTableArms(u, "dart"); err != nil {
+			return nil, err
+		}
+		if err := refuseVoidArms(u, "dart"); err != nil {
+			return nil, err
+		}
+	}
+	if err := refuseUnionArrays(u, "dart"); err != nil {
+		return nil, err
+	}
+	if err := refuseBlobs(u, "dart"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "dart"); err != nil {

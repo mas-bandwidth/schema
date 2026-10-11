@@ -708,7 +708,9 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
-				g.emitWriteValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				if v.F != nil { // §3.4: a payload-free arm writes only its tag.
+					g.emitWriteValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n", ind)
 			}
 			g.pf("%s  default:\n%s    break;\n%s}\n", ind, ind, ind)
@@ -842,7 +844,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
-				g.emitDecodeValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				if v.F != nil { // §3.4: a payload-free arm reads only its tag.
+					g.emitDecodeValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n", ind)
 			}
 			// A TAG PAST THE LAST ARM IS None (§3.4): the arms run from 1 and

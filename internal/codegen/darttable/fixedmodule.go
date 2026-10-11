@@ -208,9 +208,9 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
-// fixedLocalUnions finds declared unions with direct field-line arms. Their
-// packet target has no value class for those arms, so the fixed form emits the
-// storage it reads and writes (SPEC-TABLES §2.6, §3.4).
+// fixedLocalUnions finds unions with direct field-line or payload-free arms.
+// Their fixed form owns its storage, including a tag-only union with no arm
+// members (SPEC-TABLES §2.6, §3.4).
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
@@ -223,6 +223,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 		local := false
 		for _, v := range un.Variants {
 			if v.F == nil {
+				local = true // §2.6: fixed storage owns the tag-only arm, with no member.
 				continue
 			}
 			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {

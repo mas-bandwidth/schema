@@ -16,12 +16,10 @@ package darttable
 // refusal-name and byte-template checks.
 //
 // dart/R27 and dart/P3 read the C++ reference's byte oracle
-// (`build/fixedform-corpus/manifest.txt`), which the build writes only from
-// `test/tables/fixedform_dump.cpp` against the absent `../serialize` sibling
-// runtime. `payload-free-arms/dart/valid-data` remains refused because the
-// shared closure has no storage for an explicit void arm (`ir/fixedform.go`,
-// docs/SPEC-TABLES.md §2.6); the scalar, text and array arm rows and arrays of
-// unions have direct Dart round trips below.
+// (`build/fixedform-corpus/manifest.txt`), which the build writes from
+// `test/tables/fixedform_dump.cpp` against the pinned serialize runtime.
+// The scalar, text, array and payload-free arms and arrays of unions have
+// direct Dart round trips below; payload-free arms own only their tag (§2.6).
 
 import (
 	"os"
@@ -509,6 +507,86 @@ fixed table Rec
   check(arrayOut[0].pick.type == 3 && arrayOut[0].pick.values[0] == -17 &&
       arrayOut[0].pick.values[1] == 29 && arrayOut[0].pick.values[3] == 2147483647,
       'fixed array values or final element did not land: ${arrayOut[0].pick.values[0]},${arrayOut[0].pick.values[1]},${arrayOut[0].pick.values[3]} ${why(arrayReport)}');
+`)
+	})
+
+	// payload-free-arms/dart/valid-data: SPEC-TABLES §2.6 and §3.4 give a
+	// payload-free arm its own tag and zero payload bytes. Both declaration-edge
+	// tags survive write/read, a tag-only union needs no invented member, and
+	// the widest-arm slack is zero even when the output buffer starts dirty.
+	t.Run("payload-free-arms/dart/valid-data", func(t *testing.T) {
+		t.Parallel()
+		const schema = `package probe
+union Action {
+    ping
+    value int32
+    done
+}
+union Signal {
+    first
+    last
+}
+fixed table Rec {
+    lead int32
+    action Action
+    signal Signal
+    tail int32
+}
+`
+		// The registered target must reach the same fixed emitter: a direct
+		// backend probe alone does not prove the compiler's refusal is lifted.
+		dir := t.TempDir()
+		path := filepath.Join(dir, "Probe.schema")
+		if err := os.WriteFile(path, []byte(schema), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "generated"), path)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("payload-free arm compiler target: %v\n%s", err, out)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "generated", "ProbeFixed.dart")); err != nil {
+			t.Fatalf("payload-free arm has no reachable fixed codec: %v", err)
+		}
+		variable := filepath.Join(dir, "Variable.schema")
+		if err := os.WriteFile(variable, []byte(strings.Replace(schema, "fixed table Rec", "table Rec", 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd = exec.Command("go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "variable"), variable)
+		if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "union") {
+			t.Fatalf("non-fixed union closure lost its named refusal: %v\n%s", err, out)
+		}
+		t08RoundTrip(t, t08DartBinary(t), schema, `
+  final v = t.Rec();
+  t.initRec(v);
+  v.lead = 17;
+  v.tail = 19;
+  final plan = t.recFixedNewPlan();
+  for (final action in [0, 1, 2, 3]) {
+    for (final signal in [1, 2]) {
+      v.action.type = action;
+      v.action.value = 123456;
+      v.signal.type = signal;
+      final bytes = Uint8List(t.recFixedMeasure(1))..fillRange(0, t.recFixedMeasure(1), 0xa5);
+      check(t.recFixedSave([v], 1, bytes) == bytes.length, 'payload-free save $action/$signal');
+      final body = bytes.length - t.recFixedBodyBytes;
+      check(bytes[body + 4] == action && bytes[body + 9] == signal, 'payload-free tags ride at declared offsets');
+      if (action != 2) {
+        check(bytes.sublist(body + 5, body + 9).every((x) => x == 0), 'payload-free arm has zero widest-arm slack');
+      }
+      final out = [t.Rec()];
+      t.initRec(out[0]);
+      out[0].action.type = 2;
+      out[0].action.value = -1;
+      final report = t.TableFixedReport();
+      check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
+          report.refused == 0 && !report.malformed && report.clamped == 0,
+          'payload-free read $action/$signal: ${why(report)}');
+      check(out[0].action.type == action && out[0].signal.type == signal,
+          'payload-free tags did not land $action/$signal');
+      if (action == 2) check(out[0].action.value == 123456, 'payload between free arms did not land');
+      check(out[0].lead == 17 && out[0].tail == 19, 'payload-free arms moved neighbors');
+    }
+  }
 `)
 	})
 
