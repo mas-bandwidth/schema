@@ -102,15 +102,15 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 			// manifest's bytes into the caller's buffer, refusing a short one.
 			body := fmt.Sprintf(`
   final want = Uint8List.fromList(%s);
-  final measured = t.AnnounceMeasure();
+  final measured = t.announceMeasure();
   check(measured == want.length, 'AnnounceMeasure=$measured want=${want.length}');
   final buffer = Uint8List(want.length);
-  final wrote = t.Announce(buffer);
+  final wrote = t.announce(buffer);
   check(wrote == want.length, 'Announce=$wrote want=${want.length}');
   var same = true;
   for (var i = 0; i < want.length; i++) { if (buffer[i] != want[i]) { same = false; } }
   check(same, 'Announce did not copy the manifest file');
-  check(t.Announce(Uint8List(want.length - 1)) == -1, 'a short buffer is not refused');
+  check(t.announce(Uint8List(want.length - 1)) == -1, 'a short buffer is not refused');
 `, dartBytes(conn.bytes))
 			if out, err := runAnnounceProbe(t, u, body); err != nil {
 				t.Fatalf("%s: Announce/AnnounceMeasure on the manifest's file: %v\n%s", un.unit, err, out)
@@ -134,7 +134,7 @@ func TestMessageFormAnnounceDart(t *testing.T) {
   final valid = Uint8List.fromList(%s);
   final v = t.TableVocabulary(entries: List<t.TableMessageEntry>.generate(8192, (i) => t.TableMessageEntry(0, 0)));
   final r = t.TableReport();
-  check(t.AnnounceRead(v, valid, r),
+  check(t.announceRead(v, valid, r),
       'AnnounceRead refused the manifest announcement: %s');
   check(v.announced, 'the accepted vocabulary is not marked announced');
   check(v.count == %d, 'count=${v.count} want=%d');
@@ -190,34 +190,34 @@ func TestMessageFormAnnounceDart(t *testing.T) {
   // second_announcement, and refusal is terminal
   final v1 = t.TableVocabulary(entries: storage());
   final r1 = t.TableReport();
-  check(t.AnnounceRead(v1, valid, r1), 'first announcement refused: %s');
-  check(!t.AnnounceRead(v1, valid, r1), 'a second announcement is not refused');
+  check(t.announceRead(v1, valid, r1), 'first announcement refused: %s');
+  check(!t.announceRead(v1, valid, r1), 'a second announcement is not refused');
   check(r1.refused && r1.reason == 'second_announcement', 'second reason=${r1.reason}');
-  check(!t.AnnounceRead(v1, valid, r1), 'a third announcement is not refused (terminal)');
+  check(!t.announceRead(v1, valid, r1), 'a third announcement is not refused (terminal)');
   check(r1.reason == 'second_announcement', 'terminal reason=${r1.reason}');
   // vocabulary_too_large, both bounds
   final v2 = t.TableVocabulary(entries: storage(), maxEntries: 0);
   final r2 = t.TableReport();
-  check(!t.AnnounceRead(v2, valid, r2), 'the entry-count bound is not refused');
+  check(!t.announceRead(v2, valid, r2), 'the entry-count bound is not refused');
   check(r2.refused && r2.reason == 'vocabulary_too_large', 'entry bound reason=${r2.reason}');
   final v3 = t.TableVocabulary(entries: storage(), maxBytes: 1);
   final r3 = t.TableReport();
-  check(!t.AnnounceRead(v3, valid, r3), 'the byte bound is not refused');
+  check(!t.announceRead(v3, valid, r3), 'the byte bound is not refused');
   check(r3.refused && r3.reason == 'vocabulary_too_large', 'byte bound reason=${r3.reason}');
   // the two strict checks, answered malformed
   final v4 = t.TableVocabulary(entries: storage());
   final r4 = t.TableReport();
-  check(!t.AnnounceRead(v4, Uint8List.fromList(%s), r4), 'a body with no build-version is not refused');
+  check(!t.announceRead(v4, Uint8List.fromList(%s), r4), 'a body with no build-version is not refused');
   check(!r4.refused && r4.malformed, 'no build-version: malformed=${r4.malformed} refused=${r4.refused}');
   final v5 = t.TableVocabulary(entries: storage());
   final r5 = t.TableReport();
-  check(!t.AnnounceRead(v5, Uint8List.fromList(%s), r5), 'a body with no vocabulary is not refused');
+  check(!t.announceRead(v5, Uint8List.fromList(%s), r5), 'a body with no vocabulary is not refused');
   check(!r5.refused && r5.malformed, 'no vocabulary: malformed=${r5.malformed} refused=${r5.refused}');
   // an unknown field is skipped and counted, never malformed: only the two
   // strict checks damage, so a later minor's added field is tolerated.
   final v6 = t.TableVocabulary(entries: storage());
   final r6 = t.TableReport();
-  check(t.AnnounceRead(v6, Uint8List.fromList(%s), r6),
+  check(t.announceRead(v6, Uint8List.fromList(%s), r6),
       'an unknown field is not tolerated: %s');
   check(v6.announced && !r6.refused && !r6.malformed,
       'unknown field: malformed=${r6.malformed} refused=${r6.refused}');
@@ -226,12 +226,12 @@ func TestMessageFormAnnounceDart(t *testing.T) {
   // a reserved id in the vocabulary is malformed, not a refusal
   final v7 = t.TableVocabulary(entries: storage());
   final r7 = t.TableReport();
-  check(!t.AnnounceRead(v7, Uint8List.fromList(%s), r7), 'a reserved-id entry is not refused');
+  check(!t.announceRead(v7, Uint8List.fromList(%s), r7), 'a reserved-id entry is not refused');
   check(!r7.refused && r7.malformed, 'reserved entry: malformed=${r7.malformed} refused=${r7.refused}');
   // a repeated entry is malformed
   final v8 = t.TableVocabulary(entries: storage());
   final r8 = t.TableReport();
-  check(!t.AnnounceRead(v8, Uint8List.fromList(%s), r8), 'a repeated entry is not refused');
+  check(!t.announceRead(v8, Uint8List.fromList(%s), r8), 'a repeated entry is not refused');
   check(!r8.refused && r8.malformed, 'repeated entry: malformed=${r8.malformed} refused=${r8.refused}');
 `, dartBytes(conn.bytes), "${r1.reason} malformed=${r1.malformed}",
 			dartBytes(noVersion), dartBytes(noVocab),

@@ -62,14 +62,14 @@ func dartTableAnnouncementConstant(u *ir.Unit) string {
 }
 
 // dartMessageAnnounceRuntime is the shared Dart runtime for the announcement
-// surface. The descriptors and the report are classes, so their names are
-// reached through the class; the helper functions the read walks are free at
-// library scope, the same shape the fixed runtime's free helpers take, so each
-// is registered in internal/tablenames for the Dart backend and a schema
-// declaring one is refused rather than generating Dart that does not compile.
-// The names are the reference's own — the C# leg spells them `TableVocabulary`,
-// `Announce`, `AnnounceMeasure`, `AnnounceRead` — so a reader crossing legs
-// reads one vocabulary of names.
+// surface. Its classes and its free functions are all DECLARATIONS at library
+// scope, so every one of them claims a name: each is registered in
+// internal/tablenames for the Dart backend and a schema declaring one is
+// refused rather than generating Dart that does not compile. The free
+// functions take Dart's own convention, lowerCamelCase (docs/SPEC-TABLES.md
+// §6.1: `TableVocabulary`, `announce`, `announceMeasure`, `announceRead`), the
+// same shape the fixed runtime's free helpers take, and the classes keep the
+// shared PascalCase.
 const dartMessageAnnounceRuntime = `
 // ---------------------------------------------------------------------------
 // THE MESSAGE FORM'S ANNOUNCEMENT, form byte 2 (docs/SPEC-TABLES.md §3.3)
@@ -147,11 +147,11 @@ class TableReport {
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
 /// (§3.3) — the length, emitted beside the bytes.
-int AnnounceMeasure() => tableAnnouncementLength;
+int announceMeasure() => tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
 /// length, or -1 when the buffer is too small. Nothing here allocates.
-int Announce(Uint8List buffer) {
+int announce(Uint8List buffer) {
   if (buffer.length < tableAnnouncementLength) {
     return -1;
   }
@@ -164,7 +164,7 @@ int Announce(Uint8List buffer) {
 /// Reads one announcement into 'vocabulary'. "NO RE-ANNOUNCEMENT, EVER."
 /// (§3.3): a vocabulary that already announced, or whose first announcement
 /// was refused, answers 'second_announcement' and is terminal.
-bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport report) {
+bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport report) {
   if (vocabulary.attempted) {
     return report.Refuse('second_announcement');
   }
