@@ -30,6 +30,7 @@ package rusttable
 // rust/P1 [verify]: identity == compiled.
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -161,6 +162,28 @@ func t08P1(t *testing.T) {
 	t08Has(t, text, "SAME LOOP either way", "P1 one reader path, identity and compiled alike")
 }
 
+// ---- rust/P3 -----------------------------------------------------------------
+
+// t08P3 holds rust/P3 to §4.5's hostile clause — "hostile bytes, sweep +
+// sanitizer": the reader never leaves the buffer, and a swept mutation answers
+// one of exactly three ways (refuse, damage, land) and never a fourth. On this
+// leg the sweep is the harness's own the_hostile_sweep
+// (test/rust-fixedform/src/main.rs), which mutates every byte of the union
+// corpus (header, layout and both records) and holds "three answers never a
+// fourth" — the memory-safety clause the C++ reference needs a sanitizer to
+// hold is held here by the type system, and the sweep is what catches a
+// mutation that lands where a refusal should have.
+func t08P3(t *testing.T) {
+	data, err := os.ReadFile("../../../test/rust-fixedform/src/main.rs")
+	if err != nil {
+		t.Fatalf("P3: reading the fixed-form harness: %v", err)
+	}
+	src := string(data)
+	t08Has(t, src, "fn the_hostile_sweep", "P3 the hostile sweep is in the harness")
+	t08Has(t, src, "three answers never a fourth", "P3 the sweep holds the three-answer contract")
+	t08Has(t, src, "is DAMAGE, not a short read", "P3 a short read is damage, not a read")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapRustT08WritesConformance(t *testing.T) {
@@ -172,6 +195,7 @@ func TestFixedRoadmapRustT08WritesConformance(t *testing.T) {
 		{id: "rust/W7", check: t08W7},
 		{id: "rust/W16", check: t08W16},
 		{id: "rust/P1", check: t08P1},
+		{id: "rust/P3", check: t08P3},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
