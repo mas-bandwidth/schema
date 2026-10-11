@@ -177,6 +177,16 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"value->fx > 65536",
 			},
 		},
+		{
+			// "Unsigned fixed-point fields". §3.4: ufixed(16, 16) is 32 wire
+			// bits in a uint32 storage, held to the raw literal 65536.
+			id: "unsigned-fixed-point/c/valid-data",
+			want: []string{
+				"uint32_t ufx;",
+				"table_fixed_put32( b + 86, (uint32_t) value->ufx );",
+				"value->ufx > 65536",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
