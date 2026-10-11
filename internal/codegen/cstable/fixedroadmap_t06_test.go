@@ -13,9 +13,17 @@ package cstable
 
 import (
 	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -118,6 +126,15 @@ fixed table T {
 	}
 	t06Has(t, body, "if ((ulong)value.P.Type > 2) { value.P.Type = (PickType)0; clamped++; }",
 		"C9 a union tag past the arm count lands None and counts")
+
+	// A tag past the last arm of a union whose tag is two bytes wide: 300 names
+	// no arm of the 257, and lands None on both plans, never an arm.
+	for _, plan := range []string{"identity", "compiled"} {
+		t.Run("forged-tag-roundtrip-"+plan, func(t *testing.T) {
+			out, err := t06WideRun(t)
+			csVersionAssert(t, out, err, "forged/"+plan)
+		})
+	}
 }
 
 // t06C10: cs/C10 [verify] "enum ordinal past top → None" — an ordinal past the
@@ -183,6 +200,19 @@ func t06R31(t *testing.T) {
 	wide := generateCS(t, b.String())
 	if !guardedPlanHasArgW(wide, 2) {
 		t.Error("R31: a 256-arm union's emitted static plan did not carry the full-width tag lane ArgW=2")
+	}
+
+	// THE VALUE, NOT ONLY THE WIDTH: ArgW=2 says the compare reads two bytes, and
+	// it is the ordinal beside it (arg) that the compare is made against. The
+	// 256th arm's ordinal truncated to a byte (arg 0 beside ArgW 2) while the
+	// width stayed right, so a width-only assertion stayed green. A 257-arm
+	// union is written and read back on the emitted static plan and on a compiled
+	// lineage plan, and ordinals 255, 256 and 257 must land as themselves.
+	for _, plan := range []string{"identity", "compiled"} {
+		t.Run("ordinal-roundtrip-"+plan, func(t *testing.T) {
+			out, err := t06WideRun(t)
+			csVersionAssert(t, out, err, "ordinals/"+plan)
+		})
 	}
 }
 
@@ -299,4 +329,249 @@ fixed table T {
 	t06Has(t, strings.Join(strings.Fields(src), " "),
 		"TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
 		"R11 one plan per lineage peer, so the writer's bound travels with the peer's plan")
+}
+
+// ---- the 257-arm round trip (§5.2 EMIT kind 15, §5.8 row 7) -----------------
+
+const t06WideArms = 257
+
+var (
+	t06WideOnce sync.Once
+	t06WideOut  []byte
+	t06WideErr  error
+)
+
+// t06WideRun generates the 257-arm unit, writes records through the generated
+// writer and reads them back on both plans, in one dotnet run shared by the
+// subtests that read its rows. A missing runtime checkout or SDK is a skip and
+// is a failure under SCHEMA_REQUIRE_CORPUS, which `make tables-cs-versioning`
+// sets: a target that needs a sibling runtime is named as not run, never faked.
+func t06WideRun(t *testing.T) ([]byte, error) {
+	t.Helper()
+	runtime, err := filepath.Abs("../../../../serialize.cs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dotnet := os.Getenv("DOTNET")
+	if dotnet == "" {
+		dotnet = "dotnet"
+	}
+	missing := ""
+	if _, err := os.Stat(filepath.Join(runtime, "src", "Serialize.cs")); err != nil {
+		missing = "the C# runtime checkout is not at " + runtime
+	} else if _, err := exec.LookPath(dotnet); err != nil {
+		missing = "no dotnet SDK: " + err.Error()
+	}
+	if missing != "" {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s", missing)
+		}
+		t.Skip(missing)
+	}
+	t06WideOnce.Do(func() { t06WideOut, t06WideErr = t06WideBuildAndRun(runtime, dotnet) })
+	return t06WideOut, t06WideErr
+}
+
+func t06WideBuildAndRun(runtime, dotnet string) ([]byte, error) {
+	dir, err := os.MkdirTemp("", "t06wide")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+
+	var schema strings.Builder
+	schema.WriteString("package probe\n\nunion Wide {\n")
+	for i := range t06WideArms {
+		fmt.Fprintf(&schema, "    a%d int32\n", i)
+	}
+	schema.WriteString("}\n\nfixed table Root {\n    pick Wide\n    seq int32\n}\n")
+	u, err := t06UnitOf(schema.String())
+	if err != nil {
+		return nil, err
+	}
+	own, ok := FixedLineageOf(u, "Root")
+	if !ok {
+		return nil, fmt.Errorf("FixedLineageOf has no entry for Root")
+	}
+	// ONE OLDER PEER with the same layout and another hash: the reader selects it
+	// by the file's hash and reads under the COMPILED plan, not the static one.
+	older := FixedLineageEntry{Wire: own.Wire ^ 0x5a5a5a5a, Layout: own.Layout, Record: own.Record}
+	files, err := csharp.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	tables, err := GenerateLineage(u, map[string][]FixedLineageEntry{"Root": {older}})
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(files, tables)
+	for name, data := range files {
+		path := filepath.Join(dir, "gen", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			return nil, err
+		}
+	}
+
+	var set, get strings.Builder
+	for i := range t06WideArms {
+		fmt.Fprintf(&set, "                case %d: p.A%d = v; break;\n", i+1, i)
+		if i > 0 {
+			get.WriteString(", ")
+		}
+		fmt.Fprintf(&get, "p.A%d", i)
+	}
+	probe := fmt.Sprintf(`using System;
+using System.Buffers.Binary;
+
+namespace Probe
+{
+    static class WideProbe
+    {
+        const int Arms = %d;
+
+        static void SetArm(Wide p, int ord, int v)
+        {
+            switch (ord)
+            {
+%s                default: throw new Exception("no arm " + ord);
+            }
+        }
+
+        static int[] ArmValues(Wide p) { return new int[] { %s }; }
+
+        // One record written through the generated writer and read back. A tag
+        // that names an arm carries 1000+ordinal in that arm; a forged tag
+        // carries nothing. The peer read patches the file's hash and the record's
+        // hash to the older peer's, so the reader selects the compiled plan.
+        static string Once(ulong tag, bool arm, bool peer)
+        {
+            Root w = new Root();
+            w.Seq = 41;
+            w.Pick.Type = (WideType)tag;
+            if (arm) { SetArm(w.Pick, (int)tag, 1000 + (int)tag); }
+            byte[] buf = new byte[Schema.RootFixedMeasure(1)];
+            long wrote = Schema.RootFixedSave(w, buf);
+            if (wrote != buf.Length) { return "tag " + tag + ": wrote " + wrote + " of " + buf.Length; }
+            if (peer)
+            {
+                ulong oldHash = Schema.RootFixedHash ^ 0x5a5a5a5aUL;
+                BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(Schema.TableFixedWire.HashAt), oldHash);
+                uint layoutBytes = BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes));
+                BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes), oldHash);
+            }
+            Root[] back = new Root[] { new Root() };
+            TableReport rep = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[65536];
+            long n = Schema.RootFixedLoad(back, buf, plan, rep);
+            if (n != 1 || rep.Refused || rep.Malformed)
+            {
+                return "tag " + tag + ": read n=" + n + " reason=" + rep.Reason + " malformed=" + rep.Malformed;
+            }
+            if (back[0].Seq != 41) { return "tag " + tag + ": the scalar after the union is " + back[0].Seq; }
+            int[] vals = ArmValues(back[0].Pick);
+            if (!arm)
+            {
+                if ((ulong)back[0].Pick.Type != 0) { return "tag " + tag + " names no arm and must land None, not " + (ulong)back[0].Pick.Type; }
+                for (int i = 0; i < Arms; ++i) { if (vals[i] != 0) { return "tag " + tag + " names no arm but arm " + (i + 1) + " landed " + vals[i]; } }
+                return null;
+            }
+            if ((ulong)back[0].Pick.Type != tag) { return "tag " + tag + " landed as ordinal " + (ulong)back[0].Pick.Type; }
+            for (int i = 0; i < Arms; ++i)
+            {
+                int want = (i + 1) == (int)tag ? 1000 + (int)tag : 0;
+                if (vals[i] != want) { return "tag " + tag + ": arm " + (i + 1) + " holds " + vals[i] + ", want " + want; }
+            }
+            return null;
+        }
+
+        static int Group(string row, ulong[] tags, bool arm, bool peer)
+        {
+            int bad = 0;
+            foreach (ulong tag in tags)
+            {
+                string why = Once(tag, arm, peer);
+                if (why != null) { bad += ProbeLog.Fail(row, why); }
+            }
+            if (bad == 0) { Console.WriteLine("ROW " + row + ": ok"); }
+            return bad;
+        }
+
+        public static int Run()
+        {
+            ulong[] ordinals = new ulong[] { 1, 2, 128, 255, 256, 257 };
+            ulong[] forged = new ulong[] { 258, 300, 65535 };
+            int bad = 0;
+            bad += Group("ordinals/identity", ordinals, true, false);
+            bad += Group("ordinals/compiled", ordinals, true, true);
+            bad += Group("forged/identity", forged, false, false);
+            bad += Group("forged/compiled", forged, false, true);
+            return bad;
+        }
+    }
+}
+
+static class ProbeLog
+{
+    public static int Fail(string row, string what)
+    {
+        Console.WriteLine("ROW " + row + ": FAILED " + what);
+        return 1;
+    }
+}
+
+static class ProbeMain
+{
+    static int Main()
+    {
+        try { return Probe.WideProbe.Run() == 0 ? 0 : 1; }
+        catch (Exception e) { Console.WriteLine("ROW harness: FAILED " + e.ToString()); return 1; }
+    }
+}
+`, t06WideArms, set.String(), get.String())
+	if err := os.WriteFile(filepath.Join(dir, "ProbeMain.cs"), []byte(probe), 0o600); err != nil {
+		return nil, err
+	}
+	proj := fmt.Sprintf(`<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>cswide</AssemblyName>
+    <NoWarn>CS0162;CS0168;CS0219;CS8600;CS8602;CS8604;CS8625</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="gen/**/*.cs" />
+    <Compile Include="%s/src/Serialize.cs" />
+    <Compile Include="%s/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>
+`, runtime, runtime)
+	if err := os.WriteFile(filepath.Join(dir, "cswide.csproj"), []byte(proj), 0o600); err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1")
+	return cmd.CombinedOutput()
+}
+
+func t06UnitOf(src string) (*ir.Unit, error) {
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		return nil, fmt.Errorf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		return nil, fmt.Errorf("check: %v", cerrs[0])
+	}
+	return u, nil
 }

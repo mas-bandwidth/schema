@@ -25,13 +25,13 @@ public struct TableFixedEntry
     public uint Aux;
     public uint Guard;
     public byte Op;
-    public byte Arg; // Arm ordinal compared by Guard, at ArgW bytes
+    public ulong Arg; // Arm ordinal compared by Guard, at ArgW bytes
     public byte DstSize;
     public byte Sign;
     public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
     public byte ArgW; // THE GUARD'S WIDTH IN BYTES. Zero is read as one.
 
-    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1)
+    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, ulong arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1)
     {
         Src = src;
         Dst = dst;
@@ -552,7 +552,7 @@ const tableFixedWireSource = `
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg, bool census)
+            uint guard, ulong arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -595,7 +595,7 @@ const tableFixedWireSource = `
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg, bool census)
+            uint guard, ulong arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -752,10 +752,10 @@ const tableFixedWireSource = `
                             if (ta.Id == ma.Id)
                             {
                                 TableFixedEntry tag = new TableFixedEntry(
-                                    their_at, aux_at, my_tag, k + 1, their_at, Const, (byte)(j + 1), 0);
+                                    their_at, aux_at, my_tag, k + 1, their_at, Const, (ulong)(j + 1), 0);
                                 c.Push(tag);
                                 CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
-                                             mine, my_arm, dst, at, their_at, (byte)(j + 1), census);
+                                             mine, my_arm, dst, at, their_at, (ulong)(j + 1), census);
                                 break;
                             }
                             their_arm += Subtree(theirs, their_arm);

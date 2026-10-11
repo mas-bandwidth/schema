@@ -297,7 +297,7 @@ type fixedPlanEntry struct {
 	aux   int
 	guard int64
 	op    byte
-	arg   byte
+	arg   uint64
 	meta  byte
 	argw  byte // THE GUARD'S WIDTH IN BYTES. Zero is read as one at emit.
 }
@@ -598,7 +598,7 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 	}
 }
 
-func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	id := ir.TableFieldWireId(f)
@@ -635,7 +635,7 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 	b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, id uint64, size int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, id uint64, size int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -859,7 +859,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 	}
 }
 
-func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id uint64, note string, guard int64, arg byte, wireOff *int64) {
+func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id uint64, note string, guard int64, arg uint64, wireOff *int64) {
 	wireBase := *wireOff
 	elemSize := fixedElementBytes(f)
 
@@ -913,7 +913,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				armProp := ir.GoExportName(v.Name)
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
-				b.buildElement(v.F, armExpr, armBase, armID, v.Name, wireBase, byte(j+1), wireOff)
+				b.buildElement(v.F, armExpr, armBase, armID, v.Name, wireBase, uint64(j+1), wireOff)
 			}
 			b.argw = savedArgw
 			*wireOff = wireBase + elemSize
@@ -1004,7 +1004,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 	*wireOff += w
 }
 
-func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, baseSlot int, guard int64, arg byte, wireOff *int64) {
+func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, baseSlot int, guard int64, arg uint64, wireOff *int64) {
 	wireBase := *wireOff
 	elemSize := fixedElementBytes(f)
 
@@ -1038,7 +1038,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				armProp := ir.GoExportName(v.Name)
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
-				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, wireBase, byte(j+1), wireOff)
+				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, wireBase, uint64(j+1), wireOff)
 			}
 			b.argw = savedArgw
 			*wireOff = wireBase + elemSize
@@ -1093,7 +1093,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 	*wireOff += w
 }
 
-func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -1121,7 +1121,7 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 	b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
