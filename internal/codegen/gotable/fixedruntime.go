@@ -374,18 +374,17 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
 			// read through a 32-bit temporary an eight-byte ordinal loses its
 			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
+			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
+			// None here, and tableFixedForgedBounds counts it once in the
+			// BOUNDS pass, on the compiled plan as the storage clamp counts the
+			// identity plan's own forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4,
+			// §5.8 row 12, fix 27).
 			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
 			var v uint32
 			if raw != 0 && raw <= uint64(table[0]) {
 				v = uint32(table[raw])
-			} else if raw != 0 {
-				// AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS
-				// CLAMPED (§5.4): the compiled plan counts it exactly as the
-				// identity plan's bounds pass does, which tests the READER's
-				// top value and so a remapped 0 never trips it.
-				report.Clamped++
 			}
 			switch p.DstSize {
 			case 1:
@@ -422,17 +421,54 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			for i := uint32(0); i < p.Size; i++ {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
-			// AN UNGUARDED None CONST WITH DstSize = THE WRITER'S ARM COUNT:
-			// a tag past that set lands None (already written just above) and
-			// COUNTS, so the compiled plan counts it exactly as the identity
-			// plan's decode bound does and the SAME forged bytes land the SAME
-			// Clamped == 1 on either plan (schema#1254, §5.4, §5.8 row 12).
+			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
+			// and a raw tag past the writer's arm count (this entry's DstSize) is
+			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
+			// compiled plan as the storage clamp counts the identity plan's own
+			// forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
 			// tableFixedSrcEnd gives this one entry a source reach, so the
 			// record bound has already refused a plan that would read past it.
+		}
+	}
+	return ""
+}
+
+// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
+// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
+// union tag past the writer's arm count, is landed None by the ordinal/const
+// op — which moves nothing — and counted HERE, once per field, on the compiled
+// plan exactly as the identity plan's storage clamp counts its own forged tag.
+// The identity plan carries no ordinal or unguarded const entry (its union
+// tag and leaves are copy), so this pass is silent for it, and the writer's
+// count the storage clamp cannot see — the remap table's length word, or the
+// entry's DstSize — is why the count lives in the plan-aware pass here and not
+// in the op (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
+func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
+		// whose guard does not match never lands, so it never counts.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
+		// whose second lane does not hold never lands, so it never counts.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		switch p.Op {
+		case tableFixedOrdinal:
+			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			table := unsafe.Slice(p16, int(*p16)+1)
+			if raw != 0 && raw > uint64(table[0]) {
+				report.Clamped++
+			}
+		case tableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
 				var raw uint64
-				for i := uint32(0); i < p.Size; i++ {
-					raw |= uint64(src[p.Src+i]) << (8 * i)
+				for k := uint32(0); k < p.Size; k++ {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
 				}
 				if raw > uint64(p.DstSize) {
 					report.Clamped++
@@ -440,7 +476,6 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		}
 	}
-	return ""
 }
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
