@@ -107,6 +107,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
+	// announcement and this unit's own. They are zero on every other read.
+	BuildVersionPeer uint64
+	BuildVersionOwn  uint64
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -331,6 +336,34 @@ func tableRefuseError(reason TableRefuseReason) error {
 		return nil
 	}
 	return reason
+}
+
+// TableBuildVersionMismatch is the typed error a strict announcement refusal
+// reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
+// reader's own, each a 64-bit number.
+type TableBuildVersionMismatch struct{ Peer, Own uint64 }
+
+func (m TableBuildVersionMismatch) Error() string {
+	const digits = "0123456789abcdef"
+	var peer, own [16]byte
+	for i := 15; i >= 0; i-- {
+		peer[i] = digits[m.Peer&0xf]
+		m.Peer >>= 4
+	}
+	for i := 15; i >= 0; i-- {
+		own[i] = digits[m.Own&0xf]
+		m.Own >>= 4
+	}
+	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
+}
+
+// Err is the report's typed error: the strict build-version refusal as a
+// TableBuildVersionMismatch (docs/SPEC-TABLES.md §3.3), nil on a clean read.
+func (r *TableReport) Err() error {
+	if r != nil && r.Reason == "build_version_mismatch" {
+		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	return nil
 }
 
 const tableIdCapacity = 78
@@ -1127,6 +1160,7 @@ type TableVocabulary struct {
 	BuildVersion       uint64
 	Announced, Refused bool
 	MaxBytes           int64
+	Strict             bool
 }
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
@@ -1251,6 +1285,11 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if versionCount != 1 || wordsCount != 1 {
 		report.Malformed = true
 		return false
+	}
+	if v.Strict && v.BuildVersion != BuildVersion {
+		report.BuildVersionPeer = v.BuildVersion
+		report.BuildVersionOwn = BuildVersion
+		return tableMessageRefuse(report, "build_version_mismatch")
 	}
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
@@ -2786,12 +2825,14 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // (upgrade the client). Those are the operator's two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-// on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
-// never from the file.
+// on, the layout bytes verbatim with its byte length BESIDE the pointer, and
+// the RECORD SIZE taken from the lock and never from the file. The members are
+// §5.9 #19's: hash, layout, layout_bytes, record_bytes, in that order.
 type TableFixedKnownLayout struct {
-	Hash   uint64
-	Layout []byte
-	Record int64
+	Hash        uint64
+	Layout      []byte
+	LayoutBytes int
+	Record      int64
 }
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
@@ -10839,8 +10880,9 @@ var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
 
 var TableEntityFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:   0x45d64db53ce7ac1f,
-		Record: 59,
+		Hash:        0x45d64db53ce7ac1f,
+		LayoutBytes: 514,
+		Record:      59,
 		Layout: []byte{
 			0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
 			0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
@@ -11056,8 +11098,9 @@ var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
 
 var TableStatFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:   0x1cdc2a66a7601422,
-		Record: 16,
+		Hash:        0x1cdc2a66a7601422,
+		LayoutBytes: 55,
+		Record:      16,
 		Layout: []byte{
 			0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
 			0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
@@ -11392,8 +11435,9 @@ var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
 
 var TableMixedFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:   0x301b55c58e640302,
-		Record: 1232,
+		Hash:        0x301b55c58e640302,
+		LayoutBytes: 1279,
+		Record:      1232,
 		Layout: []byte{
 			0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
 			0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00,

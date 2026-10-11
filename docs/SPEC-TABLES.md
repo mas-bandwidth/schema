@@ -4886,6 +4886,17 @@ UDP either.
   than a hope: a peer whose announcement was refused holds no retry on that
   connection, and a peer that wants another try wants a new connection, which
   starts with an empty vocabulary like any other.
+- **STRICT MODE IS OPT-IN, and the default is unchanged.** A caller sets
+  `TableVocabulary.Strict` before `AnnounceRead`. With it set, an announcement
+  whose build version is not the unit's own is refused by the name
+  `build_version_mismatch`, sets no vocabulary, keeps the peer's build version,
+  moves no counter and is never `malformed`, and is terminal like every refused
+  first announcement. The refusal carries a typed error,
+  `TableBuildVersionMismatch`, whose `Peer` and `Own` are the peer's version and
+  the unit's own, reached with `errors.As` through `TableReport.Err`, which
+  returns it for this reason and nil on a clean read. With `Strict` unset the
+  reader stays tolerant exactly as before, and closing the connection remains
+  the application's act.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
   sharing no state with the last one has nowhere to put an announcement, so the
   announcement would ride every request and cost more than the id table it
@@ -5717,7 +5728,13 @@ precedent.
   `TableRetain`, holding one direction's RESOLVED entries. It indexes the
   caller's own storage rather than the announcement's bytes (the storage
   shape, above), so the announcement is free the moment `AnnounceRead`
-  returns.
+  returns. Its **`Strict`** field is the message form's opt-in (above): set
+  before `AnnounceRead`, a peer announcement whose build version is not the
+  unit's own is refused as `build_version_mismatch`. The refusal is reported
+  as the typed error **`TableBuildVersionMismatch`** — `Peer` and `Own` are
+  the two 64-bit versions — reached with `errors.As` through
+  **`TableReport.Err`**, which returns it for this reason and nil on a clean
+  read.
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
   `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
   backend emits the first two as a constant byte array and its length rather
@@ -5733,8 +5750,10 @@ precedent.
   array of roots, and there is no measure and no save beside it: retention
   writing form `2` is `SaveRetainMessages`, which refuses by name (above).
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
-  `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`** beside
-  the form byte's own `newer_form`. `vocabulary_too_large` covers both bounds,
+  `build_version_mismatch`, `vocabulary_too_large`, `batch_too_large` and
+  `message_form_as_file`** beside
+  the form byte's own `newer_form`. `build_version_mismatch` is the strict
+  opt-in's refusal (above). `vocabulary_too_large` covers both bounds,
   the entry count and the vocabulary's bytes, and `batch_too_large` covers both
   of its own, `M` above 256 on the write side and `M` above the caller's
   capacity on the read side, because a caller reads a reason and then reads the
