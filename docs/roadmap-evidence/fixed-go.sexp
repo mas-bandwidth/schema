@@ -81,7 +81,7 @@
 (:id "go/C5" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/C5") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
 (:id "go/R24" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/R24") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
 (:id "go/W7" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t08_test.go: TestFixedRoadmapGoT08WritesConformance/go/W7") :tested-revision "6a9da680e118ccf50cd68a7a2b02556a355e8193")
-(:id "go/W16" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t08_test.go: TestFixedRoadmapGoT08WritesConformance/go/W16") :tested-revision "6a9da680e118ccf50cd68a7a2b02556a355e8193")
+(:id "go/W16" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t08_test.go: TestFixedRoadmapGoT08WritesConformance/go/W16") :tested-revision "8ce8937324a9417cec1893cd4aa77d6ecdd1ddcd")
 (:id "go/R28" :state :unknown :note "the offset+count into a pool of (guard, arg, argw) links, outermost first, and the only bound the layout's 64 are not asserted; only the two-lane outer-tag conjunction is. The wall ended first.")
 (:id "go/W6" :state :unknown :note "the plan-partition clause appears held by the pre-existing TestFixedFormPlanPartition, whose RUN and BITE were not reconfirmed within the wall.")
 (:id "go/P1" :state :unknown :note "identity == compiled is asserted by no test of this card; the wall ended first.")
