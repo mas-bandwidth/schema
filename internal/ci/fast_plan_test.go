@@ -1,12 +1,26 @@
 package ci
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// selectorOutput returns the selector's own verdict from the combined output.
+// The script ends with a newline-free `printf`, so its verdict is the text
+// after the last newline; a bench whose bash sources a startup file that reads
+// an unset PS1 under the selector's `set -u` prefixes the selection with a
+// diagnostic line that no child environment can suppress, and only that line
+// is dropped. A clean runner has no newline, so the output is unchanged.
+func selectorOutput(out []byte) string {
+	if i := bytes.LastIndexByte(out, '\n'); i >= 0 {
+		return string(out[i+1:])
+	}
+	return string(out)
+}
 
 // scriptEnv returns environ without the startup files a non-interactive bash
 // sources before the -c script: BASH_ENV, or ENV for a POSIX shell. A bench
@@ -56,11 +70,12 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
-			got, err := cmd.CombinedOutput()
+			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatalf("selector: %v: %s", err, got)
+				t.Fatalf("selector: %v: %s", err, out)
 			}
-			if string(got) != tc.want {
+			got := selectorOutput(out)
+			if got != tc.want {
 				t.Fatalf("%s selected %q; want %q", tc.files, got, tc.want)
 			}
 		})

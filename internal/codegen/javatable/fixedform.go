@@ -1159,13 +1159,27 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 		// this scatter; write still stores MAX (Dart #834).
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString:
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
+		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
+		// validity over the stated length, never over N, and a violation
+		// refuses by name with nothing decoded past it.
+		g.pf("%sif (!TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, buf, at, base+4, val, name, rep)
+		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
+		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
+			ind, val, name, val, name, val, name, val, name, val, name)
+	case f.Type.Kind == ir.TBytes:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TWString:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
+		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
+		// UTF-16 with no zero unit over the stated length, never over 2N.
+		g.pf("%sif (!TableFixed.textOk(TableFixed.textWide, %s, %s + %d, %s.%sLength * 2)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, buf, at, base+4, val, name, rep)
 		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
 		g.pf("%s    %s.%s[i] = (char) TableFixed.get16(%s, %s + %d + i * 2);\n", ind, val, name, buf, at, base+4)
 		g.pf("%s}\n", ind)
@@ -1693,6 +1707,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 		g.pf("            TableFixed.clampWriterBounds(writerBounds, image, report);\n")
 	}
 	g.pf("            scatter(image, 0, values[k], report);\n")
+	g.pf("            if (report.refused) { return -1; }\n")
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
 	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")

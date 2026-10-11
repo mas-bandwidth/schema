@@ -103,6 +103,12 @@ func (g *fixedModule) needHome(symbols ...string) { g.need(g.homeBase+"Table", s
 func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		// THE MESSAGE FORM IS A FIXED TABLE'S (§3.3), so its announcement
+		// surface lands in the home beside the fixed runtime and only for a
+		// unit with a fixed root. A plain `table` unit emits none of it.
+		if len(jsFixedUnitRoots(g.unit)) > 0 {
+			g.pf("%s", messageAnnouncementRuntime(g.unit))
+		}
 		g.gen.unit = g.unit
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/js, and is imported rather than emitted twice.

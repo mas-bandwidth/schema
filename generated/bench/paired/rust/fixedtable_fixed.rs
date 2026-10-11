@@ -455,13 +455,14 @@ pub fn fixed_table_fixed_load(
             let mut clamped = 0i32;
             let mut damaged = 0i32;
             fixed_table_fixed_clamp_body(&mut values[k], &mut clamped, &mut damaged);
-            report.clamped += clamped as u32;
-            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on
-            // the one FLAG and not on a counter: the field read its declared
-            // default and the rest of the record stands.
+            // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,
+            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form
+            // having no `L` to continue past. REFUSE is total, so the refusal
+            // is taken before any counter is added.
             if damaged != 0 {
-                report.malformed = true;
+                return report.refuse(TableFixedReason::TextIllFormed);
             }
+            report.clamped += clamped as u32;
         }
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read

@@ -1817,7 +1817,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
-	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
+	// THE RUN REPORTS ITS OWN REFUSAL (§4.5, §5.8 row 8): a content violation
+	// in the used units comes back as the name text_ill_formed, and the load
+	// refuses BY NAME — not malformed, and nothing decoded past it.
+	g.pf("        string run_why = TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
+	g.pf("        if (run_why != null)\n        {\n")
+	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            return -1;\n        }\n")
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.
@@ -1848,7 +1854,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableReport report = null,\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = default)\n{\n")
 	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
-	g.pf("    TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch);\n}\n\n", name)
+	g.pf("    string run_why = TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch);\n", name)
+	g.pf("    if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n}\n\n")
 }
 
 func (g *tableGen) emitCsByteArray(b []byte) {

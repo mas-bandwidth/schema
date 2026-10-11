@@ -2204,8 +2204,12 @@ fn the_declared_width() {
 //
 // A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them. A
 // payload that is not the text its kind says it is is DAMAGE and not data, and
-// the verdict is the one every other form reaches: the field reads its DECLARED
-// DEFAULT, one `malformed` is raised, and the rest of the record stands.
+// the verdict is a REFUSAL BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11;
+// §5.8 row 8): the load returns `None` with `refused` set and `reason`
+// `text_ill_formed`, so nothing decoded and no counter moved. The field's bytes
+// are cleared to their declared default before the refusal, so nothing
+// downstream reads the damage. The reference raised `malformed` and let the
+// record stand where this page says the name is owed.
 //
 // `bytes(N)` has no content rule at all, and the control below proves it: the
 // same forgery in a `bytes(6)` is data and passes through untouched.
@@ -2223,7 +2227,7 @@ fn the_text_content_rule(dir: &str) {
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
     check(
-        n == Some(2) && !report.malformed,
+        n == Some(2) && !report.malformed && !report.refused,
         "NEGATIVE CONTROL: the reference's own text is well formed and raises nothing",
     );
     check(
@@ -2236,28 +2240,39 @@ fn the_text_content_rule(dir: &str) {
     let mut forged = golden.clone();
     forged[body + 26] = 0x80;
     let mut report = tblfx1::TableFixedReport::default();
-    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        report.malformed,
-        "the content rule: a lone continuation byte is DAMAGE and raises malformed",
+        n.is_none()
+            && report.refused
+            && report.reason == tblfx1::TableFixedReason::TextIllFormed
+            && !report.malformed,
+        "the content rule: a lone continuation byte is DAMAGE and REFUSES BY NAME — text_ill_formed",
     );
     check(
         values[0].label[..2] == *b"fx" && values[0].label_length == 2,
-        "the content rule: and the field reads its DECLARED DEFAULT, not the damage",
+        "the content rule: and the field is cleared to its DECLARED DEFAULT, not the damage",
     );
     check(
-        values[0].keep == 4242 && values[0].renamed == 321,
-        "the content rule: the rest of the record stands — the damage is one field's",
+        report.unknown == 0
+            && report.kind_mismatch == 0
+            && report.widened == 0
+            && report.clamped == 0,
+        "the content rule: REFUSE IS TOTAL — no counter moved (§4.5)",
     );
 
     // AN INTERIOR NULL is legal UTF-8 and is not legal on this wire.
     let mut forged = golden.clone();
     forged[body + 27] = 0x00; // inside the three used bytes of "fx1"
     let mut report = tblfx1::TableFixedReport::default();
-    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        report.malformed && values[0].label_length == 2,
-        "the content rule: an interior NUL is damage too, and takes the default",
+        n.is_none()
+            && report.refused
+            && report.reason == tblfx1::TableFixedReason::TextIllFormed
+            && values[0].label_length == 2,
+        "the content rule: an interior NUL is damage too, and refuses by name to the cleared default",
     );
 
     // AND THE SLACK CARRIES NO MEANING: the same byte PAST the used length is
@@ -2267,7 +2282,7 @@ fn the_text_content_rule(dir: &str) {
     let mut report = tblfx1::TableFixedReport::default();
     tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.malformed && values[0].label[..3] == *b"fx1",
+        !report.malformed && !report.refused && values[0].label[..3] == *b"fx1",
         "the content rule: a byte past the USED LENGTH means nothing and is not judged",
     );
 
@@ -2278,7 +2293,7 @@ fn the_text_content_rule(dir: &str) {
     let mut report = tblfx1::TableFixedReport::default();
     tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.malformed && values[0].blob[0] == 0x80,
+        !report.malformed && !report.refused && values[0].blob[0] == 0x80,
         "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
     );
 }

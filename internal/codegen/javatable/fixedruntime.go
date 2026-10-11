@@ -372,7 +372,15 @@ public final class TableFixed {
         /** A HASH THIS BUILD ONCE SERVED AND HAS RETIRED -- below the floor. The
          *  operator's answer is the other one: UPGRADE THE CLIENT. It reports the
          *  file's hash too (ALG 5.9 #7). */
-        layoutUnsupported
+        layoutUnsupported,
+        /** ILL-FORMED TEXT IN THE USED UNITS (docs/FIXED-FORM-ALGORITHM.md
+         *  §4.5 fix 11): a kind 12 payload that is not well-formed UTF-8 or
+         *  carries a zero byte, or a kind 33 payload with an unpaired surrogate
+         *  or a zero unit, refuses the read BY NAME rather than landing the
+         *  field's default -- the verdict the packet reader gives, this form
+         *  having no length to continue past. The content check reads the USED
+         *  units only, never the slack. */
+        textIllFormed
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -441,6 +449,57 @@ public final class TableFixed {
         return v;
     }
 
+    /** THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §3.4; docs/
+     *  FIXED-FORM-ALGORITHM.md §4.5 fix 11): the used units alone are held --
+     *  never the slack -- and ill-formed text REFUSES BY NAME rather than
+     *  landing a default. flavour textUtf8 checks well-formed UTF-8 with no
+     *  zero byte among the used bytes; textWide checks paired surrogates with
+     *  no zero unit, an ODD length being damage; any other flavour (a
+     *  bytes(N), which this form never runs through the text op) is not text
+     *  and is always well. */
+    public static boolean textOk(int flavour, byte[] src, int at, int len) {
+        if (flavour == textWide) {
+            if ((len & 1) != 0) { return false; }
+            for (int i = 0; i < len; i += 2) {
+                final int u = get16(src, at + i);
+                if (u == 0) { return false; }
+                if (u >= 0xD800 && u <= 0xDBFF) {
+                    if (i + 2 >= len) { return false; }
+                    final int lo = get16(src, at + i + 2);
+                    if (lo < 0xDC00 || lo > 0xDFFF) { return false; }
+                    i += 2;
+                } else if (u >= 0xDC00 && u <= 0xDFFF) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        for (int i = 0; i < len; ) {
+            final int b0 = src[at + i] & 0xFF;
+            if (b0 == 0) { return false; }            // a zero byte is damage
+            if (b0 < 0x80) { i += 1; continue; }
+            int need, cp;
+            if ((b0 & 0xE0) == 0xC0) { need = 1; cp = b0 & 0x1F; }
+            else if ((b0 & 0xF0) == 0xE0) { need = 2; cp = b0 & 0x0F; }
+            else if ((b0 & 0xF8) == 0xF0) { need = 3; cp = b0 & 0x07; }
+            else { return false; }                    // a lone or overlong lead
+            if (i + 1 + need > len) { return false; } // truncated
+            for (int k = 1; k <= need; k++) {
+                final int b = src[at + i + k] & 0xFF;
+                if ((b & 0xC0) != 0x80) { return false; }
+                cp = (cp << 6) | (b & 0x3F);
+            }
+            // no overlong spelling, no UTF-8-encoded surrogate and nothing
+            // past the Unicode ceiling U+10FFFF: a four-byte lead that decodes
+            // above it is ill-formed and the packet reader refuses it too
+            // (internal/codegen/java/utf8.go, the utf8Point > 0x10FFFF guard).
+            final int min = (need == 1) ? 0x80 : (need == 2) ? 0x800 : 0x10000;
+            if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }
+            i += 1 + need;
+        }
+        return true;
+    }
+
     /** run one plan over one record body, landing it in this reader's image. */
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
@@ -475,6 +534,11 @@ public final class TableFixed {
                     int v = get32(src, srcAt + p.src);
                     if (v < 0) { v = 0; report.clamped++; }
                     else if (v > cap) { v = cap; report.clamped++; }
+                    // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE
+                    // (§4.5 fix 11): UTF-8 validity over v bytes, wide code
+                    // units over v units -- never the slack -- and a violation
+                    // REFUSES BY NAME with nothing decoded past it.
+                    if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) { report.refuse(Reason.textIllFormed); return; }
                     put32(image, p.dst, v);
                     System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
                     break;
