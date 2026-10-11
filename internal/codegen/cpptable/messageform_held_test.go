@@ -33,10 +33,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cppHeldRun generates the leg's C++ headers for the unit and compiles a probe
-// that includes them and runs `body` (C++ that returns nonzero and prints its
-// red line on a failed assertion). The probe reads golden files by path, so
-// the manifest rows pass those paths through.
+// cppHeldRun generates the leg's C++ for the unit, compiles a probe against
+// every generated Table header, links the generated translation units beside
+// it, and runs `body` (C++ that returns nonzero and prints its red line on a
+// failed assertion). The probe reads golden files by path, so the manifest
+// rows pass those paths through; the include roots a generated header can
+// reach — the repo's native-type headers and the sibling serialize runtime —
+// are on the compile line so a unit that names either still builds.
 func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 	t.Helper()
 	files, err := cpp.Generate(u)
@@ -50,8 +53,8 @@ func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 	maps.Copy(files, tables)
 
 	outDir := t.TempDir()
-	var header string
-	var names []string
+	var headers []string
+	var sources []string
 	for name, data := range files {
 		if strings.Contains(name, "/") {
 			continue
@@ -59,22 +62,33 @@ func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 		if err := os.WriteFile(filepath.Join(outDir, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		names = append(names, name)
 		if strings.HasSuffix(name, "Table.h") {
-			header = name
+			headers = append(headers, name)
+		}
+		if strings.HasSuffix(name, ".cpp") {
+			sources = append(sources, filepath.Join(outDir, name))
 		}
 	}
-	if header == "" {
+	if len(headers) == 0 {
 		t.Fatal("no Table.h was generated")
 	}
-	sort.Strings(names)
+	sort.Strings(headers)
+	sort.Strings(sources)
+
+	// Every generated Table.h is included, not just one: a multi-file unit
+	// (the pointer corpus's graphdemo) declares its roots across files, and a
+	// probe that names one root needs that file's header. The runtimes are
+	// per-package guarded, so the whole set is safe in one translation unit.
+	var includes strings.Builder
+	for _, h := range headers {
+		fmt.Fprintf(&includes, "#include \"%s\"\n", h)
+	}
 
 	probe := fmt.Sprintf(`#include <cstdio>
 #include <cstring>
 #include <cstdint>
 #include <vector>
-#include "%s"
-
+%s
 using namespace %s;
 
 static bool slurp( const char * path, std::vector<uint8_t> & out )
@@ -95,7 +109,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, u.Package, body)
+`, includes.String(), u.Package, body)
 	if err := os.WriteFile(filepath.Join(outDir, "probe.cpp"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +117,26 @@ int main( void )
 	if cxx == "" {
 		cxx = "c++"
 	}
-	build := exec.Command(cxx, "-std=c++17", "-O1", "-I"+outDir, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
+	// The two include roots a generated header can reach beyond outDir: the
+	// repo's own native-type headers (test/tables, a `cpp_include` like the
+	// pointer corpus's graph_colour.h, docs/SPEC-TABLES.md §4.2) and the
+	// documented sibling serialize runtime (../serialize, the 128-bit storage
+	// types a Table header names only when its closure declares one,
+	// docs/SPEC-TABLES.md §3). Supplying both lets a manifest unit that names
+	// either still compile, and the generated variable-unit sources below link
+	// beside the probe.
+	native, err := filepath.Abs("../../../test/tables")
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialize, err := filepath.Abs("../../../../serialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + native, "-I" + serialize, filepath.Join(outDir, "probe.cpp")}
+	args = append(args, sources...)
+	args = append(args, "-o", filepath.Join(outDir, "probe"))
+	build := exec.Command(cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
@@ -480,43 +513,6 @@ func loadHeldUnitPaths(t *testing.T, root string, paths []string) *ir.Unit {
 	return u
 }
 
-// cppForeignIncludes answers the `#include "..."` names in the generated
-// headers that are NOT one of the generated files themselves — a sibling
-// runtime include, a native type's `cpp_include`, or a 128-bit unit's
-// serialize.h. A row whose unit carries one is named as not run, never faked
-// (docs/SPEC-TABLES.md §3.3; the card's toolchain is the cpp leg, and a
-// sibling runtime checkout is not built).
-func cppForeignIncludes(files map[string][]byte) []string {
-	generated := map[string]bool{}
-	for name := range files {
-		if !strings.Contains(name, "/") {
-			generated[name] = true
-		}
-	}
-	foreign := map[string]bool{}
-	for name, data := range files {
-		if strings.Contains(name, "/") {
-			continue
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if !strings.HasPrefix(line, "#include \"") {
-				continue
-			}
-			inc := strings.TrimSuffix(strings.TrimPrefix(line, "#include \""), "\"")
-			if !generated[inc] {
-				foreign[inc] = true
-			}
-		}
-	}
-	out := make([]string, 0, len(foreign))
-	for inc := range foreign {
-		out = append(out, inc)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // cppConnectionBody asserts a `connection` row: the generated announcement is
 // the reference's file byte for byte and the announcement reader accepts it.
 func cppConnectionBody(announcement string) string {
@@ -572,6 +568,66 @@ func cppMessageBody(root, announcement, fileWire, batchWire string) string {
         { printf( "SaveMessages failed\n" ); return 1; }
     if ( memcmp( out.data(), batchWire.data(), batchWire.size() ) != 0 )
         { printf( "the batch bytes differ from the reference\n" ); return 1; }
+`
+	return strings.NewReplacer(
+		"@ROOT@", root,
+		"@ANNOUNCE@", fmt.Sprintf("%q", announcement),
+		"@FILE@", fmt.Sprintf("%q", fileWire),
+		"@BATCH@", fmt.Sprintf("%q", batchWire),
+	).Replace(tmpl)
+}
+
+// cppVariableMessageBody asserts a `message` row whose root is a VARIABLE
+// table (a pointered root, read through a region): loading either form and
+// saving the other reproduces the other's pinned bytes, the §3.3 round trip
+// the manifest's `message` line pins. A variable root is held by reference,
+// so each form is read into its own region and re-saved as the other.
+func cppVariableMessageBody(root, announcement, fileWire, batchWire string) string {
+	const tmpl = `
+    std::vector<uint8_t> announcement, fileWire, batchWire;
+    if ( !slurp( @ANNOUNCE@, announcement ) || !slurp( @FILE@, fileWire ) || !slurp( @BATCH@, batchWire ) )
+        { printf( "a golden is missing\n" ); return 1; }
+    TableMessageEntry entries[kTableMessageEntriesHere];
+    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
+    TableReport announced; memset( &announced, 0, sizeof( announced ) );
+    if ( !AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &announced ) )
+        { printf( "AnnounceRead refused the reference announcement\n" ); return 1; }
+    // the FILE form, read into its own region (§3.3): a pointered root is held
+    // by reference, and the caller owns the region.
+    TableReport fileReport; memset( &fileReport, 0, sizeof( fileReport ) );
+    const int64_t fileNeed = @ROOT@LoadMeasure( fileWire.data(), (int64_t) fileWire.size() );
+    if ( fileNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the file-form golden\n" ); return 1; }
+    std::vector<uint8_t> fileRegion( (size_t) fileNeed );
+    const @ROOT@ * fileRoot = @ROOT@Load( fileRegion.data(), fileNeed, fileWire.data(), (int64_t) fileWire.size(), &fileReport );
+    if ( fileRoot == NULL ) { printf( "@ROOT@Load refused the file-form golden\n" ); return 1; }
+    // loading the FILE form and saving the MESSAGE form reproduces the message
+    // bytes (§3.3).
+    const @ROOT@ * fileRoots[1] = { fileRoot };
+    TableReport fileSaveReport; memset( &fileSaveReport, 0, sizeof( fileSaveReport ) );
+    const int64_t fileMsgSize = @ROOT@MeasureMessages( fileRoots, 1, &fileSaveReport );
+    if ( fileMsgSize < 0 ) { printf( "MeasureMessages failed on the file-form value\n" ); return 1; }
+    std::vector<uint8_t> fileMsg( (size_t) fileMsgSize );
+    if ( @ROOT@SaveMessages( fileRoots, 1, fileMsg.data(), fileMsgSize, &fileSaveReport ) != fileMsgSize )
+        { printf( "SaveMessages failed on the file-form value\n" ); return 1; }
+    if ( memcmp( fileMsg.data(), batchWire.data(), batchWire.size() ) != 0 )
+        { printf( "the file form saved as a message differs from the message reference\n" ); return 1; }
+    // loading the MESSAGE form and saving the FILE form reproduces the file
+    // bytes (§3.3).
+    TableReport msgReport; memset( &msgReport, 0, sizeof( msgReport ) );
+    const int64_t msgNeed = @ROOT@LoadMeasure( vocabulary, batchWire.data(), (int64_t) batchWire.size() );
+    if ( msgNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the message-form golden\n" ); return 1; }
+    std::vector<uint8_t> msgRegion( (size_t) msgNeed );
+    const @ROOT@ * msgRoots[1] = { NULL };
+    int64_t count = 1;
+    if ( !@ROOT@LoadMessages( msgRoots, &count, msgRegion.data(), msgNeed, vocabulary, batchWire.data(), (int64_t) batchWire.size(), &msgReport ) || count != 1 )
+        { printf( "@ROOT@LoadMessages: count=%lld\n", (long long) count ); return 1; }
+    const int64_t msgFileSize = @ROOT@Measure( msgRoots[0] );
+    if ( msgFileSize < 0 ) { printf( "@ROOT@Measure failed on the message-form value\n" ); return 1; }
+    std::vector<uint8_t> msgFile( (size_t) msgFileSize );
+    if ( @ROOT@Save( msgRoots[0], msgFile.data(), msgFileSize ) != msgFileSize )
+        { printf( "@ROOT@Save failed on the message-form value\n" ); return 1; }
+    if ( memcmp( msgFile.data(), fileWire.data(), fileWire.size() ) != 0 )
+        { printf( "the message form saved as a file differs from the file reference\n" ); return 1; }
 `
 	return strings.NewReplacer(
 		"@ROOT@", root,
@@ -646,21 +702,11 @@ func TestMessageFormHeldCPP(t *testing.T) {
 			if !ok {
 				t.Fatalf("manifest row %q names unit %q with no unit line", row.name, conn.unit)
 			}
-			files, err := cpp.Generate(u)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tables, err := GenerateLineage(u, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			maps.Copy(files, tables)
-			if foreign := cppForeignIncludes(files); len(foreign) > 0 {
-				t.Skipf("not run: the unit names a sibling include (%s), never faked", strings.Join(foreign, ", "))
-			}
 			var body string
 			if row.connectionRow {
 				body = cppConnectionBody(filepath.Join(root, conn.path))
+			} else if ir.VariableTables(u)[row.root] {
+				body = cppVariableMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			} else {
 				body = cppMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
