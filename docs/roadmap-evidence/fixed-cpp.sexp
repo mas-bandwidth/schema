@@ -1,0 +1,8 @@
+(:id "union-field-arms/cpp/valid-data" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t11_test.go: TestFixedRoadmapCppT11UnionsOptionals/union-field-arms") :tested-revision "3d354aa41bc742c1228a209bd338529aa0a82524")
+(:id "payload-free-arms/cpp/valid-data" :state :unknown :note "the shared eligibility/layout walk and the cpp emitter carry no payload-free declared arm (roadmap :unsupported), so nothing writes or reads a tag-only arm")
+(:id "union-arrays/cpp/valid-data" :state :unknown :note "the direct non-default and boundary write and read of a [..2]Pick array is not asserted")
+(:id "optional-scalars/cpp/valid-data" :state :unknown :note "the direct non-default and boundary write and read of ?int32 and ?Grade is not asserted")
+(:id "optional-nesting/cpp/valid-data" :state :unknown :note "the direct non-default and boundary write and read of ?Leaf is not asserted")
+(:id "optional-arrays/cpp/valid-data" :state :unknown :note "the direct non-default and boundary write and read of an optional array is not asserted")
+(:id "scalar-defaults/cpp/valid-data" :state :unknown :note "the fresh-storage and missing-field prefill of a declared scalar and enum default is not asserted")
+(:id "text-bytes-flags-defaults/cpp/valid-data" :state :unknown :note "the fresh-storage and missing-field prefill of a string, byte-buffer and flags default is not asserted")
