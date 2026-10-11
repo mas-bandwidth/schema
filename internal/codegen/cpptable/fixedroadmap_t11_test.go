@@ -1,11 +1,11 @@
 package cpptable
 
-// THE T11 ROADMAP SUITE (docs/roadmap.sexp, node `fixed-tables`, the eight
+// THE T11 ROADMAP SUITE (docs/roadmap.sexp, node fixed-tables, the eight
 // union/optional/default capability rows) on the CPP leg, in roadmap order.
 // Every done row here is an ordinary valid-data capability: the leg WRITES a
 // value with non-default and boundary values and READS it back through its own
 // fixed form, asserted, in a target the gate runs
-// (`go test ./internal/codegen/cpptable/`). The proof is a probe: the schema is
+// (go test ./internal/codegen/cpptable/). The proof is a probe: the schema is
 // generated into C++ (the leg's own fixed-form header), compiled with the C++
 // reference and run against a write/read round-trip.
 //
@@ -13,7 +13,7 @@ package cpptable
 // refuses is named here with its reason and skipped BY NAME, never green and
 // never red — a green folds an unrun row into a pass, a red blames the row for
 // the gate. Both refused rows are refused OUTSIDE this card's PATHS
-// (internal/codegen/cpptable/*), so their verdicts are `:unknown`, not done.
+// (internal/codegen/cpptable/*), so their verdicts are :unknown, not done.
 
 import (
 	"fmt"
@@ -22,11 +22,11 @@ import (
 	"testing"
 )
 
-// cppT11RoundTrip assembles the C++ of a write/read round-trip over `count`
-// records of the fixed table `root`: each record is reset to its declared
-// defaults (the prefill), then `setup` stores non-default values, the whole
-// batch is saved into `buffer` and loaded into `back`, a clean read must move
-// no counter and name no refusal, and `check` asserts each value back whole.
+// cppT11RoundTrip assembles the C++ of a write/read round-trip over count
+// records of the fixed table root: each record is reset to its declared
+// defaults (the prefill), then setup stores non-default values, the whole
+// batch is saved into buffer and loaded into back, a clean read must move
+// no counter and name no refusal, and check asserts each value back whole.
 // It is the body of the probe cppRunCapability (the package's generate-and-run
 // helper) compiles and runs; a fixed-table-only unit needs no sibling runtime.
 func cppT11RoundTrip(root, setup, check string, count int) string {
@@ -139,7 +139,7 @@ fixed table Root
 
 		// optional-scalars/cpp/valid-data — "Optional scalar and enum fields"
 		// (docs/roadmap.sexp:6937), contract §2.3; §3.4 record, ?T. The page
-		// sentences: `?T` is "the present flag THEN the payload, which rides
+		// sentences: ?T is "the present flag THEN the payload, which rides
 		// WHOLE" (docs/FIXED-FORM-ALGORITHM.md:190) and "PRESENCE decides whether
 		// the field rides, never content ... a field that rode sets present =
 		// true; a field that did not leaves present = false with the value at
@@ -163,8 +163,7 @@ fixed table Root
 			setup: `    value[0].tail = 1;
     value[0].num = -2147483647 - 1; value[0].num_present = true;
     value[0].mark = Grade::Gold;     value[0].mark_present = true;
-    value[1].tail = 2;
-    // value[1].num_present and value[1].mark_present stay false: the absent side.`,
+    value[1].tail = 2;   // value[1].num_present and value[1].mark_present stay false: the absent side.`,
 			check: `    if ( back[0].tail != 1 ) { printf( "tail0: %d\n", back[0].tail ); return 1; }
     if ( !back[0].num_present || back[0].num != -2147483647 - 1 ) { printf( "num: present=%d v=%d\n", (int) back[0].num_present, back[0].num ); return 1; }
     if ( !back[0].mark_present || back[0].mark != Grade::Gold ) { printf( "mark: present=%d v=%d\n", (int) back[0].mark_present, (int) back[0].mark ); return 1; }
@@ -175,7 +174,7 @@ fixed table Root
 
 		// optional-nesting/cpp/valid-data — "Optional nested values"
 		// (docs/roadmap.sexp:7034), contract §2.3; ALGORITHM §7 P1/P3. The page
-		// sentences: a nested `type` rides "inline; no length, no terminator"
+		// sentences: a nested type rides "inline; no length, no terminator"
 		// (docs/FIXED-FORM-ALGORITHM.md:185) and an optional's payload "rides
 		// WHOLE" under its present flag (:190). Two records: a present nested
 		// value at the int32 high end and a non-empty text, then the absent side.
@@ -201,8 +200,7 @@ fixed table Root
     value[0].opt.v = 2147483647;
     strcpy( value[0].opt.tag, "nested" );
     value[0].opt.tag_length = 6;
-    value[1].tail = 10;
-    // value[1].opt_present stays false: the absent side.`,
+    value[1].tail = 10;   // value[1].opt_present stays false: the absent side.`,
 			check: `    if ( back[0].tail != 9 ) { printf( "tail0: %d\n", back[0].tail ); return 1; }
     if ( !back[0].opt_present ) { printf( "opt absent\n" ); return 1; }
     if ( back[0].opt.v != 2147483647 ) { printf( "opt.v: %d\n", back[0].opt.v ); return 1; }
@@ -237,8 +235,7 @@ fixed table Root
     value[0].cells_count = 2;
     value[0].cells[0] = -2147483647 - 1;
     value[0].cells[1] = 2147483647;
-    value[1].tail = 4;
-    // value[1].cells_present stays false: the absent side.`,
+    value[1].tail = 4;   // value[1].cells_present stays false: the absent side.`,
 			check: `    if ( back[0].tail != 3 ) { printf( "tail0: %d\n", back[0].tail ); return 1; }
     if ( !back[0].cells_present ) { printf( "cells absent\n" ); return 1; }
     if ( back[0].cells_count != 2 ) { printf( "cells count: %d\n", back[0].cells_count ); return 1; }
