@@ -161,6 +161,10 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 	var v Host
 	HostReset(&v)
 	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &compiled)
+	// THE FORGED ORDINAL'S COUNT IS THE BOUNDS PASS'S, NOT THE OP'S (§5.4, fix
+	// 27): the ordinal op lands None and moves nothing, and the generated read
+	// counts it in tableFixedForgedBounds, which this run must call too.
+	tableFixedForgedBounds(plan, made, record[8:], &compiled)
 	if v.G != GradeNone {
 		t.Fatalf("compiled plan: a forged ordinal landed %d", v.G)
 	}
