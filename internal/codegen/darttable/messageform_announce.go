@@ -136,6 +136,7 @@ class TableReport {
 
   void Damage() {
     malformed = true;
+    reason = 'malformed';
   }
 
   bool Refuse(String why) {
