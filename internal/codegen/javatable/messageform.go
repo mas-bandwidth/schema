@@ -132,6 +132,20 @@ public final class TableVocabulary {
     public int maxEntries = 4096;
     public int maxBytes = 65536;
 
+    // A REFERENCE NAMES AN ENTRY COUNTED FROM ONE, and reference 0 names none
+    // (docs/SPEC-TABLES.md §3.3): the resolved entry is the batch read's.
+    public Entry entry(long ref) {
+        if (ref <= 0 || ref > count) { return null; }
+        return entries[(int) ref - 1];
+    }
+
+    // A name reference resolves to the entry's id only when the entry is a
+    // NAME (kind 0) and not one of the three reserved ids (§3.3).
+    public long name(long ref) {
+        final Entry e = entry(ref);
+        return (e != null && e.shape.kind == 0 && Long.compareUnsigned(e.id, -3L) < 0) ? e.id : 0;
+    }
+
     public void reset(int capacity) {
         this.entries = new Entry[capacity];
         this.count = 0;
