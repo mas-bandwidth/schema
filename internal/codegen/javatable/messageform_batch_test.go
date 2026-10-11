@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestMessageFormBatchJava pins the MESSAGE FORM's BATCH SURFACE
@@ -41,6 +43,29 @@ fixed table LoginRequest
 			}
 		}
 		runMessageDriver(t, files, messageRoundTripDriver)
+		// "an all-default nested table is not written" (docs/SPEC-TABLES.md
+		// §3.3): a nested table at its declared defaults costs nothing, so the
+		// batch of an all-default Outer is its terminator alone and
+		// SaveMessages gives the three bytes back exactly.
+		nested := generate(t, `package probe
+
+fixed table Outer
+{
+    a     uint32
+    inner Inner
+}
+
+type Inner
+{
+    x uint32
+    y uint32
+}
+`)
+		runMessageDriver(t, nested, nestedElisionDriver)
+		// "SaveMessages of them gives the batch bytes back exactly" (§3.3):
+		// the manifest's `message` rows are the C++ reference's bytes, so a
+		// fixed root's batch reproduces its pinned wire byte for byte.
+		runManifestMessageRows(t)
 	})
 
 	t.Run("refusals", func(t *testing.T) {
@@ -63,26 +88,30 @@ fixed table LoginRequest
 }
 
 func runMessageDriver(t *testing.T, files map[string][]byte, driver string) {
+	runMessageDriverPkg(t, "probe", files, driver)
+}
+
+func runMessageDriverPkg(t *testing.T, pkg string, files map[string][]byte, driver string) {
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")
 	classes := filepath.Join(dir, "classes")
-	if err := os.MkdirAll(filepath.Join(src, "probe"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(src, pkg), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(src, "probe", name), data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(src, pkg, name), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(src, "probe", "Driver.java"), []byte(driver), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, pkg, "Driver.java"), []byte(driver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pkgSrc, err := filepath.Glob(filepath.Join(src, "probe", "*.java"))
+	pkgSrc, err := filepath.Glob(filepath.Join(src, pkg, "*.java"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +119,7 @@ func runMessageDriver(t *testing.T, files map[string][]byte, driver string) {
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "probe.Driver").CombinedOutput()
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, pkg+".Driver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
@@ -160,6 +189,34 @@ const messageRoundTripDriver = batchDriverPrologue + `
         if (got[0].sessionTokenLength != 2 || got[0].sessionToken[0] != (byte) 0xAA
                 || got[0].sessionToken[1] != (byte) 0xBB) { fail("token"); }
         if (got[0].nameLength != 3 || !textOf(got[0].name, 3).equals("abc")) { fail("name"); }
+        System.out.println("ok");
+    }
+}
+`
+
+const nestedElisionDriver = batchDriverPrologue + `
+    public static void main(String[] args) {
+        final OuterFixed.Value v = new OuterFixed.Value();
+        final OuterFixed.Value[] values = { v };
+        final TableMessage.Report report = new TableMessage.Report();
+        // an all-default nested table is not written (§3.3): the batch is its
+        // terminator alone, three bytes, no reference to ` + "`inner`" + `.
+        final long m = OuterMessage.measureMessages(values, report);
+        if (m != 3 || report.refused) { fail("measure " + m); }
+        final byte[] buf = new byte[3];
+        if (OuterMessage.saveMessages(values, buf, report) != 3) { fail("save"); }
+        if (buf[0] != 2 || buf[1] != 0 || buf[2] != 0) { fail("all-default bytes"); }
+        // a nested table at a non-default value rides and reads back (§3.3).
+        v.inner.x = 5;
+        final long m2 = OuterMessage.measureMessages(values, report);
+        if (m2 <= 3 || report.refused) { fail("nested measure " + m2); }
+        final byte[] buf2 = new byte[(int) m2];
+        if (OuterMessage.saveMessages(values, buf2, report) != m2) { fail("nested save"); }
+        final TableVocabulary vocab = mkVocab();
+        final OuterFixed.Value[] got = { new OuterFixed.Value() };
+        final TableMessage.Report r2 = new TableMessage.Report();
+        if (OuterMessage.loadMessages(got, buf2, vocab, r2) != 1 || r2.refused || r2.malformed) { fail("nested load"); }
+        if (got[0].inner.x != 5 || got[0].inner.y != 0) { fail("nested value"); }
         System.out.println("ok");
     }
 }
@@ -241,3 +298,180 @@ const messageDamageDriver = batchDriverPrologue + `
     }
 }
 `
+
+// manifestMessageRow is one manifest `message` line: the connection's unit
+// directory and the message's pinned batch wire (docs/SPEC-TABLES.md §3.3).
+type manifestMessageRow struct {
+	name, root, unitDir, batchPath string
+}
+
+// manifestMessageRows reads the `message` rows of the cross-language manifest
+// and resolves each to its unit directory and batch wire. The manifest is read
+// here rather than copied: a new row is a new assertion with no edit.
+func manifestMessageRows(t *testing.T) []manifestMessageRow {
+	t.Helper()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := map[string]string{}
+	conns := map[string]string{}
+	var rows []manifestMessageRow
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		switch fields[0] {
+		case "unit":
+			if len(fields) >= 3 {
+				units[fields[1]] = fields[2]
+			}
+		case "connection":
+			if len(fields) >= 3 {
+				conns[fields[1]] = fields[2]
+			}
+		case "message":
+			if len(fields) >= 6 {
+				rows = append(rows, manifestMessageRow{
+					name:      fields[1],
+					root:      fields[3],
+					unitDir:   units[conns[fields[2]]],
+					batchPath: fields[5],
+				})
+			}
+		}
+	}
+	if len(rows) == 0 {
+		t.Fatalf("%s carries no message rows", "MANIFEST.txt")
+	}
+	return rows
+}
+
+// runManifestMessageRows pins every manifest `message` row whose root is a
+// fixed table with a plain closure (no enum, union, keyed or pointer field):
+// LoadMessages of the batch gives a value, MeasureMessages equals the batch's
+// length, and SaveMessages gives the pinned bytes back exactly (§3.3). A row
+// whose closure the carried reader cannot yet compile is skipped rather than
+// asserted, and is named in the report rather than here.
+func runManifestMessageRows(t *testing.T) {
+	t.Helper()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range manifestMessageRows(t) {
+		u := loadUnitDir(t, root, row.unitDir)
+		st, ok := u.Tables[row.root]
+		if !ok || !st.FixedDeclared {
+			continue
+		}
+		if !plainMessageClosure(st, map[string]bool{}) {
+			continue
+		}
+		batch, err := os.ReadFile(filepath.Join(root, row.batchPath))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runMessageDriverPkg(t, u.Package, messageBatchClosure(u, files, row.root),
+			messageManifestDriver(u, row.root, hexOf(batch)))
+	}
+}
+
+// plainMessageClosure reports whether a root's closure has no enum, union,
+// keyed or pointer field — the shapes whose generated reader the carried work
+// does not yet compile (reported, not this card's). A plain root is the one
+// whose batch this card pins byte for byte.
+func plainMessageClosure(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return true
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.KeyEnum != "" {
+			return false
+		}
+		if f.Type.Kind == ir.TNamed {
+			switch r := f.Type.Ref.(type) {
+			case *ir.Enum, *ir.Union:
+				return false
+			case *ir.Struct:
+				if !plainMessageClosure(r, seen) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// messageBatchClosure keeps only the files one root's batch needs: the shared
+// runtimes and the root's fixed-form and message-form classes. The sibling
+// roots' classes are dropped, because a sibling whose reader the carried work
+// does not compile must not stop this root's pin.
+func messageBatchClosure(u *ir.Unit, files map[string][]byte, root string) map[string][]byte {
+	st := u.Tables[root]
+	var order []*ir.Struct
+	fixedCollectTypes(st, map[string]bool{}, &order)
+	out := map[string][]byte{
+		"TableMessage.java":    files["TableMessage.java"],
+		"TableVocabulary.java": files["TableVocabulary.java"],
+		"TableFixed.java":      files["TableFixed.java"],
+	}
+	for _, t := range order {
+		out[messageClass(t.Name)+".java"] = files[messageClass(t.Name)+".java"]
+		out[fixedClass(t.Name)+".java"] = files[fixedClass(t.Name)+".java"]
+	}
+	return out
+}
+
+// messageManifestDriver compiles one manifest row's root and asserts the batch
+// it loads saves back to the pinned bytes exactly (§3.3).
+func messageManifestDriver(u *ir.Unit, root, batchHex string) string {
+	const tmpl = `package @PKG@;
+
+public final class Driver {
+    private Driver() {}
+    static void fail(String w) { System.out.println("FAILED: " + w); System.exit(1); }
+    static String hex(byte[] b) { final StringBuilder o = new StringBuilder(); for (final byte v : b) o.append(String.format("%02x", v)); return o.toString(); }
+    static byte[] fromHex(String s) { final byte[] o = new byte[s.length()/2]; for (int i = 0; i < o.length; i++) o[i] = (byte) Integer.parseInt(s.substring(2*i, 2*i+2), 16); return o; }
+    static TableVocabulary mkVocab() {
+        final TableVocabulary v = new TableVocabulary();
+        v.reset(4096);
+        final TableVocabulary.Report r = new TableVocabulary.Report();
+        final byte[] ann = new byte[TableVocabulary.announceMeasure()];
+        if (TableVocabulary.announce(ann) != ann.length) fail("announce");
+        if (!TableVocabulary.announceRead(v, ann, r)) fail("announceRead");
+        return v;
+    }
+    public static void main(String[] args) {
+        final byte[] batch = fromHex("@HEX@");
+        final TableVocabulary vocab = mkVocab();
+        final @VAL@.Value[] got = { new @VAL@.Value() };
+        final TableMessage.Report r = new TableMessage.Report();
+        final long c = @MSG@.loadMessages(got, batch, vocab, r);
+        if (c != 1 || r.refused || r.malformed) fail("load " + c + " " + r.reason);
+        final long m = @MSG@.measureMessages(got, r);
+        if (m != batch.length) fail("measure " + m + " want " + batch.length);
+        final byte[] out = new byte[(int) m];
+        if (@MSG@.saveMessages(got, out, r) != m) fail("save");
+        if (!hex(out).equals("@HEX@")) fail("bytes " + hex(out) + " want " + "@HEX@");
+        System.out.println("ok");
+    }
+}
+`
+	return strings.NewReplacer(
+		"@PKG@", u.Package,
+		"@HEX@", batchHex,
+		"@VAL@", fixedClass(root),
+		"@MSG@", messageClass(root),
+	).Replace(tmpl)
+}

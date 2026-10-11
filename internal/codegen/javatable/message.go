@@ -197,7 +197,17 @@ func (g *messageGen) emitWriteBody(st *ir.Struct) {
 		if f.Type.Optional {
 			g.pf("            if (v.%sPresent) {\n", member(f))
 		}
-		g.pf("            if (%s) { w.put(%d, TableMessage.refBits); %s }\n", g.rides(f, expr), messageSlot(g.unit, entry), g.value(f, expr))
+		if isElidableStructField(f) {
+			// "an all-default nested table is not written" (§3.3), so the
+			// writer measures the nested body into a zeroed probe and rides
+			// only when it exceeds the reference it would cost, mirroring
+			// gotable/messagewrite.go's probe.
+			g.pf("            final TableMessage.Writer probe = new TableMessage.Writer(null, 0, true);\n")
+			g.pf("            if (!%s.writeBody(probe, %s)) return false;\n", messageClass(f.Type.Name), expr)
+			g.pf("            if (probe.bits > TableMessage.refBits) { w.put(%d, TableMessage.refBits); %s }\n", messageSlot(g.unit, entry), g.value(f, expr))
+		} else {
+			g.pf("            if (%s) { w.put(%d, TableMessage.refBits); %s }\n", g.rides(f, expr), messageSlot(g.unit, entry), g.value(f, expr))
+		}
 		if f.Type.Optional {
 			g.pf("            }\n")
 		}
@@ -499,6 +509,15 @@ func isStructRef(t ir.FieldType) bool {
 	}
 	_, ok := t.Ref.(*ir.Struct)
 	return ok
+}
+
+// isElidableStructField reports a struct field the elision rule probes before
+// writing (docs/SPEC-TABLES.md §3.3: "an all-default nested table is not
+// written"). An optional `?T`, an array element and a keyed slot keep their
+// own presence rules, so only a plain by-value nested table is probed.
+func isElidableStructField(f *ir.Field) bool {
+	return !f.Type.Optional && !f.Type.Pointer && f.Array == ir.ArrayNone &&
+		f.KeyEnum == "" && isStructRef(f.Type)
 }
 
 func isUnionRef(t ir.FieldType) bool {
