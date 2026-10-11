@@ -692,11 +692,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
+	if ir.TableFixedClampNeeded(st) {
+		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
+		g.pf("        // §5.8): the counters this record's plan and ranges have moved are put\n")
+		g.pf("        // back before the refusal returns, so the refusing record moves none.\n")
+		g.pf("        const int32_t rec_clamped = report->clamped;\n")
+		g.pf("        const int32_t rec_widened = report->widened;\n")
+	}
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
-		g.pf("        %sFixedClamp( values[k], report );\n", st.Name)
+		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
+		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 }
@@ -885,7 +893,9 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
-// one place the count reaches the report.
+// one place the count reaches the report. It answers false on an ill-formed
+// text refusal, so the load can leave the refusing record's counters where they
+// stood — REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.8).
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	if !ir.TableFixedClampNeeded(st) {
 		return
@@ -895,16 +905,17 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// count, an enum ordinal past the enum's top value. Straight-line, after\n")
 	g.pf("// the copy, over STORAGE, so the identity plan and a plan compiled from a\n")
 	g.pf("// stranger's layout are held to the same numbers by the same pass. Every\n")
-	g.pf("// clamp COUNTS.\n")
-	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("// clamp COUNTS, and a content rule REFUSES BY NAME.\n")
+	g.pf("inline bool %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
 	g.pf("    int32_t damaged = 0;\n")
 	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	g.pf("    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md\n")
+	g.pf("    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag\n")
+	g.pf("    // that carries the verdict is `refused` + the name, never `malformed`.\n")
+	g.pf("    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }\n")
 	g.pf("    report->clamped += clamped;\n")
-	g.pf("    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
-	g.pf("    // one flag and not on a counter: the field read its declared default\n")
-	g.pf("    // and the rest of the record stands.\n")
-	g.pf("    if ( damaged != 0 ) { report->malformed = true; }\n}\n\n")
+	g.pf("    return true;\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -956,12 +967,12 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // slack carries no meaning and reading it would be the cost this form exists to
 // avoid.
 //
-// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and it is the same
-// verdict every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
-// `malformed` counts, and the rest of the record stands. It is what SPEC.md
-// §4.7 and §4.12 put on the packet wire, where the whole read refuses — here
-// the record is positional, so the damage is one field's and the reader does
-// not lose the others to it.
+// A PAYLOAD THAT IS NOT TEXT IS A REFUSAL BY NAME AND NOT DAMAGE: the
+// `damaged` flag the root's clamp turns into `refused` + `text_ill_formed`,
+// nothing decoded and no counter moved. It is the verdict the packet reader
+// gives (SPEC.md §4.7), where the whole read refuses; the clamp this file emits
+// is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md
+// §4.5, fix 11). The slack is unspecified on read and never judged.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	if f.Type.Kind == ir.TWString {
@@ -971,13 +982,6 @@ func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
-	g.pf("%s    memset( %s.%s, 0, sizeof( %s.%s ) );\n", ind, val, f.Name, val, f.Name)
-	if f.Type.Kind == ir.TString && hasByteDefault(f) {
-		g.pf("%s    memcpy( %s.%s, %s, %d ); // the declared default\n", ind, val, f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
-		g.pf("%s    %s.%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
-	} else {
-		g.pf("%s    %s.%s_length = 0;\n", ind, val, f.Name)
-	}
 	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 
