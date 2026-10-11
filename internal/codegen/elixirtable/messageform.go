@@ -522,8 +522,17 @@ const messageRuntimeBody = `  defstruct [
                 hif = f32(hi)
                 resf = f32(res)
 
-                if lof < hif and resf > 0.0 do
-                  {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                # A quantized triple whose delta or delta/res is not finite in
+                # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
+                if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
+                  delta = round_f32(hif - lof)
+
+                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
+                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                  else
+                    :error
+                  end
+
                 else
                   :error
                 end
@@ -548,20 +557,38 @@ const messageRuntimeBody = `  defstruct [
     end
   end
 
-  defp shape(kind, bin) when kind == 14 or kind == 16 do
+  # An array's shape is min, max, then the element kind (u8) after them, two
+  # numbers (§3.3's shape table).
+  defp shape(kind, bin) when kind == 14 do
     case leb(bin) do
       {:ok, min, rest} ->
         case leb(rest) do
           {:ok, max, rest2} ->
-            cond do
-              kind == 14 and (min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min) -> :error
-              kind == 16 and max > 0xFFFFFFFF -> :error
-              kind == 14 -> {:ok, %{kind: kind, min: min, max: max}, rest2}
-              true -> {:ok, %{kind: kind, max: max}, rest2}
+            if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
+              :error
+            else
+              {:ok, %{kind: kind, min: min, max: max}, rest2}
             end
 
           :error ->
             :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  # An enum-keyed array's shape is slots, then the element kind (u8) after it,
+  # ONE number and no min (§3.3's shape table): the row spells slots and the
+  # element byte follows it.
+  defp shape(kind, bin) when kind == 16 do
+    case leb(bin) do
+      {:ok, slots, rest} ->
+        if slots > 0xFFFFFFFF do
+          :error
+        else
+          {:ok, %{kind: kind, max: slots}, rest}
         end
 
       :error ->
@@ -578,8 +605,6 @@ const messageRuntimeBody = `  defstruct [
   defp leb(<<b, rest::binary>>) when b < 0x80, do: {:ok, b, rest}
 
   defp leb(bin), do: leb(bin, 0, 0)
-
-  defp leb(_bin, 9, _acc), do: :error
 
   defp leb(<<b, rest::binary>>, i, acc) do
     cond do
@@ -607,8 +632,29 @@ const messageRuntimeBody = `  defstruct [
   defp zigzag(raw), do: bxor(raw >>> 1, -band(raw, 1))
 
   # A float32, read bit-transparent (docs/SPEC-TABLES.md §3.3's float32 facts).
+  # A non-finite pattern — an infinity or a NaN — is a hostile width on the
+  # announcement and reads back as :nonfinite, because the BEAM's arithmetic
+  # refuses to hold one as a float term (fixedRuntime's f32_value does the same).
   defp f32(bits) do
-    <<f::little-float-32>> = <<bits::little-32>>
-    f
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      :nonfinite
+    else
+      <<f::little-float-32>> = <<bits::little-32>>
+      f
+    end
+  end
+
+  # A finite float rounded to float32, or :nonfinite where it overflows the
+  # width: the page's "not finite in float32" (docs/SPEC-TABLES.md §3.3), which
+  # a ranged float's delta or delta/res reaches by overflow alone.
+  defp round_f32(x) do
+    <<bits::little-32>> = <<x::little-float-32>>
+
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      :nonfinite
+    else
+      <<f::little-float-32>> = <<bits::little-32>>
+      f
+    end
   end
 `
