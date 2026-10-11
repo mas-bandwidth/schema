@@ -94,6 +94,45 @@ int main(void)
 }
 `,
 		},
+		{
+			id: "unsigned-integers/c/valid-data",
+			schema: `package probe
+fixed table UnsignedInts
+{
+    u8  uint8
+    u16 uint16
+    u32 uint32
+    u64 uint64
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+` + t09Check + `
+int main(void)
+{
+    UnsignedInts value[2], loaded[2];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[1].u8 = UINT8_MAX; value[1].u16 = UINT16_MAX; value[1].u32 = UINT32_MAX; value[1].u64 = UINT64_MAX;
+    need = unsigned_ints_fixed_measure(2);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(unsigned_ints_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = unsigned_ints_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    CHECK(n == 2);
+    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(loaded[0].u8 == 0 && loaded[0].u16 == 0 && loaded[0].u32 == 0 && loaded[0].u64 == 0);
+    CHECK(loaded[1].u8 == UINT8_MAX && loaded[1].u16 == UINT16_MAX && loaded[1].u32 == UINT32_MAX && loaded[1].u64 == UINT64_MAX);
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
