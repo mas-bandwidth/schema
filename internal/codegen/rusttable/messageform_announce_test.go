@@ -113,6 +113,13 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"vocabulary_too_large_entries",
 			"malformed_missing_version",
 			"malformed_missing_vocabulary",
+			"malformed_version_kind", "malformed_version_width", "malformed_version_duplicate",
+			"malformed_vocabulary_kind", "malformed_vocabulary_element", "malformed_vocabulary_duplicate",
+			"unknown_scalar", "unknown_array", "unknown_table", "unknown_string", "unknown_wstring",
+			"unknown_keyed_array", "unknown_escape", "unknown_no_payload", "unknown_pointer", "unknown_enum",
+			"unknown_union", "unknown_union_none", "unknown_all_scalar_widths",
+			"unknown_framed_payload_is_opaque", "malformed_unknown_frame", "malformed_unknown_frame_leb",
+			"malformed_unknown_kind", "malformed_unknown_frame_overflow",
 		} {
 			id := id
 			t.Run(name+"/"+id, func(t *testing.T) {
@@ -316,6 +323,37 @@ func announceProbe(u *announceUnit) string {
 	fmt.Fprintf(&b, "const MISSING_VERSION: [u8; %d] = [%s];\n", len(missingVersion), rustBytes(missingVersion))
 	fmt.Fprintf(&b, "const MISSING_VOCAB: [u8; %d] = [%s];\n\n", len(missingVocab), rustBytes(missingVocab))
 
+	// §3.3: "Every other field of its body is ordinary and tolerant, so an
+	// unknown one is skipped and counted." §3's payload rows give fixed
+	// storage widths, L plus L bytes for framed kinds, and references for
+	// pointer/enum/union. Insert before both strict fields to prove the next
+	// field is read at the right offset, with exactly one unknown counted.
+	b.WriteString(`
+fn with_unknown(payload: &[u8]) -> Vec<u8> {
+    let mut data = vec![1, 3];
+    data.extend_from_slice(payload);
+    data.extend_from_slice(&ANNOUNCE[1..ANNOUNCE.len() - 8]);
+    data.extend_from_slice(&0x1234567890abcdefu64.to_le_bytes());
+    data.extend_from_slice(&3u64.to_le_bytes());
+    data
+}
+fn reads_unknown(payload: &[u8]) -> bool {
+    let mut storage = vec![TableMessageEntry::default(); 4096];
+    let mut vocab = TableVocabulary::new(&mut storage);
+    let mut report = TableReport::default();
+    announce_read(&mut vocab, &with_unknown(payload), &mut report)
+        && report.unknown == 1 && !report.malformed && !report.refused
+        && vocab.announced && vocab.build_version == EXPECTED_BUILD
+        && vocab.count == EXPECTED_COUNT
+        && (0..vocab.count).all(|i| vocab.entries[i].id == EXPECTED_IDS[i] && vocab.entries[i].kind == EXPECTED_KINDS[i])
+}
+fn is_malformed(data: &[u8]) -> bool {
+    let mut storage = vec![TableMessageEntry::default(); 4096];
+    let mut vocab = TableVocabulary::new(&mut storage);
+    let mut report = TableReport::default();
+    !announce_read(&mut vocab, data, &mut report) && report.malformed && !report.refused && !vocab.announced
+}
+`)
 	b.WriteString("fn main() {\n")
 	// 2.1: the constant and its length.
 	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
@@ -356,6 +394,51 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &MISSING_VOCAB, &mut report);\n")
 	b.WriteString("        say(\"malformed_missing_vocabulary\", !ok && report.malformed && !report.refused, \"a body without the vocabulary is not malformed\");\n    }\n")
+	// §3.3: "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT
+	// CHECKS"; unknown containers are skipped by their ordinary outer L,
+	// without imposing an announcement-only check on their inner payload.
+	b.WriteString(`
+    say("unknown_scalar", reads_unknown(&[6, 42]), "an ordinary unknown scalar is not skipped and counted");
+    say("unknown_array", reads_unknown(&[14, 4, 6, 2, 42, 43]), "an ordinary unknown bytes array is not skipped and counted");
+    say("unknown_table", reads_unknown(&[13, 4, 3, 6, 42, 0]), "an ordinary unknown table is not skipped and counted");
+    say("unknown_string", reads_unknown(&[12, 2, b'a', b'b']), "string L is not skipped in bytes");
+    say("unknown_wstring", reads_unknown(&[33, 2, b'a', 0]), "wstring L is not skipped in bytes");
+    say("unknown_keyed_array", reads_unknown(&[16, 5, 6, 1, 3, 1, 42]), "an ordinary unknown keyed array is not skipped");
+    say("unknown_escape", reads_unknown(&[31, 2, 254, 255]), "escape L is not skipped");
+    say("unknown_no_payload", reads_unknown(&[32, 0]), "the no-payload length is not consumed");
+    say("unknown_pointer", reads_unknown(&[17, 130, 1]), "a pointer index is not skipped as LEB128");
+    say("unknown_enum", reads_unknown(&[30, 3]), "an enum reference is not skipped as LEB128");
+    say("unknown_union", reads_unknown(&[15, 3, 6, 1, 42]), "an unknown union's arm and L are not skipped");
+    say("unknown_union_none", reads_unknown(&[15, 0]), "an unknown None union consumes more than its zero reference");
+    let scalars: [(u8, usize); 23] = [(1,1),(2,1),(3,2),(4,4),(5,8),(6,1),(7,2),(8,4),(9,8),(10,4),(11,8),(18,16),(19,16),(20,1),(21,2),(22,4),(23,8),(24,16),(25,1),(26,2),(27,4),(28,8),(29,16)];
+    say("unknown_all_scalar_widths", scalars.into_iter().all(|(kind, width)| { let mut p = vec![kind]; p.resize(width + 1, 0xff); reads_unknown(&p) }), "an ordinary scalar width is wrong");
+    say("unknown_framed_payload_is_opaque", [12,13,14,16,31,32,33].into_iter().all(|kind| reads_unknown(&[kind, 1, 255])), "an unknown framed field gets an extra content check");
+    // §3: L frames "L bytes"; "a non-minimal encoding is MALFORMED", as is
+    // "a tenth byte with a bit above the 64th value bit". A bare kind outside
+    // the closed set is "DAMAGE — a kind it cannot skip".
+    say("malformed_unknown_frame", is_malformed(&with_unknown(&[14, 255, 255, 255, 255, 15])), "an out-of-body L is accepted");
+    say("malformed_unknown_frame_leb", is_malformed(&with_unknown(&[14, 128, 0])), "a noncanonical L is accepted");
+    say("malformed_unknown_frame_overflow", is_malformed(&with_unknown(&[14, 128, 128, 128, 128, 128, 128, 128, 128, 128, 2])), "an LEB128 beyond 64 bits is accepted");
+    say("malformed_unknown_kind", is_malformed(&with_unknown(&[34])), "a bare kind outside the closed set is accepted");
+
+    // §3.3: build version "present, exactly once, kind 9, eight bytes wide",
+    // vocabulary "present, exactly once, kind 14, element kind 6". These
+    // original two strict checks continue to answer malformed, not refusal.
+    let mut wrong_version_kind = ANNOUNCE.to_vec(); wrong_version_kind[2] = 8;
+    say("malformed_version_kind", is_malformed(&wrong_version_kind), "build version kind check is lost");
+    let mut short_version = vec![1, 1, 9]; short_version.extend_from_slice(&ANNOUNCE[ANNOUNCE.len()-24..]);
+    say("malformed_version_width", is_malformed(&short_version), "build version width check is lost");
+    let mut twice_version = ANNOUNCE[..11].to_vec(); twice_version.extend_from_slice(&ANNOUNCE[1..]);
+    say("malformed_version_duplicate", is_malformed(&twice_version), "build version uniqueness check is lost");
+    let mut wrong_vocab_kind = ANNOUNCE.to_vec(); wrong_vocab_kind[12] = 13;
+    say("malformed_vocabulary_kind", is_malformed(&wrong_vocab_kind), "vocabulary kind check is lost");
+    let mut wrong_vocab_element = ANNOUNCE.to_vec();
+    let mut vat = 13; while wrong_vocab_element[vat] & 128 != 0 { vat += 1; } vat += 1; wrong_vocab_element[vat] = 7;
+    say("malformed_vocabulary_element", is_malformed(&wrong_vocab_element), "vocabulary element check is lost");
+    let body_end = ANNOUNCE.len() - 24;
+    let mut twice_vocab = ANNOUNCE[..body_end-1].to_vec(); twice_vocab.extend_from_slice(&ANNOUNCE[11..]);
+    say("malformed_vocabulary_duplicate", is_malformed(&twice_vocab), "vocabulary uniqueness check is lost");
+`)
 	b.WriteString("}\n")
 	return b.String()
 }

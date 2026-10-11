@@ -477,7 +477,7 @@ fn read_leb(bytes: &[u8], at: &mut usize) -> (u64, bool) {
     while *at < bytes.len() {
         let b = bytes[*at];
         *at += 1;
-        if shift >= 64 {
+        if shift >= 64 || (shift == 63 && b > 1) {
             return (0, false);
         }
         value |= ((b & 0x7f) as u64) << shift;
@@ -691,46 +691,48 @@ fn kind_width(kind: u8) -> usize {
     match kind {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
-        4 | 8 | 10 | 17 | 22 | 27 => 4,
+        4 | 8 | 10 | 22 | 27 => 4,
         5 | 9 | 11 | 23 | 28 => 8,
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
 }
 
-/// A tolerant skip of an UNKNOWN field by its kind (§3.3). This reader knows
-/// only the announcement's own two fields, so a field of any other id is
-/// stepped over by its kind: fixed-width kinds by their storage width, a
-/// string or a wstring by its length, and a name or a no-payload field by
-/// nothing.
+/// A tolerant skip of an UNKNOWN announcement field (§3.3) by the ordinary
+/// form-1 payload rows (§3): scalar storage widths, LEB128 pointer/enum
+/// references, and L plus L bytes for framed kinds. A union's nonzero arm
+/// reference is followed by its kind byte and the same L-framed payload.
+/// Unknown container contents are opaque: only the two announcement fields
+/// get the strict checks (§3.3).
 fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
-    if kind == 0 || kind == 32 {
-        return true;
-    }
     let width = kind_width(kind);
     if width > 0 {
-        if *at + width > bytes.len() {
+        if width > bytes.len() - *at {
             return false;
         }
         *at += width;
         return true;
     }
-    if kind == 12 {
-        let (n, ok) = read_leb(bytes, at);
-        if !ok || *at + (n as usize) > bytes.len() {
+    if kind == 17 || kind == 30 {
+        return read_leb(bytes, at).1;
+    }
+    if kind == 15 {
+        let (reference, ok) = read_leb(bytes, at);
+        if !ok || reference == 0 {
+            return ok;
+        }
+        if *at >= bytes.len() {
             return false;
         }
-        *at += n as usize;
-        return true;
+        *at += 1; // the arm's kind; its payload is skipped by L (§3)
+    } else if !matches!(kind, 12 | 13 | 14 | 16 | 31 | 32 | 33) {
+        return false; // a bare kind outside §3's closed set is damage
     }
-    if kind == 33 {
-        let (n, ok) = read_leb(bytes, at);
-        if !ok || *at + (n as usize) * 2 > bytes.len() {
-            return false;
-        }
-        *at += (n as usize) * 2;
-        return true;
+    let (length, ok) = read_leb(bytes, at);
+    if !ok || length > (bytes.len() - *at) as u64 {
+        return false;
     }
-    false
+    *at += length as usize;
+    true
 }
 `
