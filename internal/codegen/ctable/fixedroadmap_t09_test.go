@@ -251,6 +251,46 @@ int main(void)
 }
 `,
 		},
+		{
+			id: "compressed-floats/c/valid-data",
+			schema: `package probe
+fixed table CompressedFloat
+{
+    v float32 | min = -1, max = 1, resolution = 0.01
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+` + t09Check + `
+int main(void)
+{
+    CompressedFloat value[5], loaded[5];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[0].v = 1.0f;        /* the declared max, in range */
+    value[1].v = -1.0f;       /* the declared min, in range */
+    value[2].v = 0.123456f;   /* off the 0.01 grid: it rides as the float, never requantized */
+    value[3].v = 2.0f;        /* above max: clamped to 1.0f */
+    value[4].v = -2.0f;       /* below min: clamped to -1.0f */
+    need = compressed_float_fixed_measure(5);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(compressed_float_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = compressed_float_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    CHECK(n == 5);
+    CHECK(!report.malformed && !report.refused && report.clamped == 2);
+    CHECK(loaded[0].v == 1.0f && loaded[1].v == -1.0f);
+    CHECK(loaded[2].v == 0.123456f);
+    CHECK(loaded[3].v == 1.0f && loaded[4].v == -1.0f);
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
