@@ -497,6 +497,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
+	// announcement and this unit's own. They are zero on every other read.
+	BuildVersionPeer uint64
+	BuildVersionOwn  uint64
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served

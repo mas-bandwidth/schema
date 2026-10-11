@@ -23,6 +23,8 @@ func init() {
 		Name{Name: "previous_form", What: "a form byte this form is AHEAD of — the variable form handed to a fixed reader (§3, §3.4)"},
 		Name{Name: "no_vocabulary", What: "no table for this connection"},
 		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
+		Name{Name: "build_version_mismatch", What: "a strict announcement whose build version is not this unit's (§3.3)"},
+		Name{Name: "TableBuildVersionMismatch", What: "the typed error a strict build-version refusal carries, with the peer's version and this unit's own (§3.3)"},
 		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
 		Name{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
 		// THE FILE REFUSALS (docs/SPEC-TABLES.md §6.5, §7, §11, §19.2): the one

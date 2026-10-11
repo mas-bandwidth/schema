@@ -88,7 +88,7 @@ func tableMessageBits(n uint64)int64 {var count int64;for n!=0 {count++;n>>=1};r
 type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
 type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape }
 // Storage belongs to the caller and is resolved once for one connection direction.
-type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64 }
+type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool }
 func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{Entries:storage,MaxBytes:64*1024}}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.Id,ok&&e.Shape.Kind==0&&e.Id<0xfffffffffffffffd}
@@ -106,6 +106,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  case 0xfffffffffffffffd:if kind!=14{report.Malformed=true;return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Malformed=true;return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Malformed=true;return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
  default:report.Unknown++;if !r.Skip(kind){report.Malformed=true;return false}}
  };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
+ if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionPeer=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i:=int64(0);i<count;i++ {if v.Entries[i]==e{report.Malformed=true;return false}};v.Entries[count]=e;count++}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true

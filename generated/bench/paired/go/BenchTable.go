@@ -45,6 +45,11 @@ type TableReport struct {
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
+	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
+	// announcement and this unit's own. They are zero on every other read.
+	BuildVersionPeer uint64
+	BuildVersionOwn  uint64
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -269,6 +274,34 @@ func tableRefuseError(reason TableRefuseReason) error {
 		return nil
 	}
 	return reason
+}
+
+// TableBuildVersionMismatch is the typed error a strict announcement refusal
+// reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
+// reader's own, each a 64-bit number.
+type TableBuildVersionMismatch struct{ Peer, Own uint64 }
+
+func (m TableBuildVersionMismatch) Error() string {
+	const digits = "0123456789abcdef"
+	var peer, own [16]byte
+	for i := 15; i >= 0; i-- {
+		peer[i] = digits[m.Peer&0xf]
+		m.Peer >>= 4
+	}
+	for i := 15; i >= 0; i-- {
+		own[i] = digits[m.Own&0xf]
+		m.Own >>= 4
+	}
+	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
+}
+
+// Err is the report's typed error: the strict build-version refusal as a
+// TableBuildVersionMismatch (docs/SPEC-TABLES.md §3.3), nil on a clean read.
+func (r *TableReport) Err() error {
+	if r != nil && r.Reason == "build_version_mismatch" {
+		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+	}
+	return nil
 }
 
 const tableIdCapacity = 79
@@ -1063,6 +1096,7 @@ type TableVocabulary struct {
 	BuildVersion       uint64
 	Announced, Refused bool
 	MaxBytes           int64
+	Strict             bool
 }
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
@@ -1187,6 +1221,11 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if versionCount != 1 || wordsCount != 1 {
 		report.Malformed = true
 		return false
+	}
+	if v.Strict && v.BuildVersion != BuildVersion {
+		report.BuildVersionPeer = v.BuildVersion
+		report.BuildVersionOwn = BuildVersion
+		return tableMessageRefuse(report, "build_version_mismatch")
 	}
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
@@ -2722,12 +2761,14 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // (upgrade the client). Those are the operator's two distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
-// on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
-// never from the file.
+// on, the layout bytes verbatim with its byte length BESIDE the pointer, and
+// the RECORD SIZE taken from the lock and never from the file. The members are
+// §5.9 #19's: hash, layout, layout_bytes, record_bytes, in that order.
 type TableFixedKnownLayout struct {
-	Hash   uint64
-	Layout []byte
-	Record int64
+	Hash        uint64
+	Layout      []byte
+	LayoutBytes int
+	Record      int64
 }
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
