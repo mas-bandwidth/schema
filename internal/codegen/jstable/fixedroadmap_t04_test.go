@@ -89,9 +89,13 @@ func TestFixedRoadmapJsT04Versions(t *testing.T) {
 // leg carries BOTH widen ops — the integer widen (op 4) and the float widen
 // (op 6) — and the integer widen sign-extends by the WRITER's sign bit
 // (FIXED-FORM-ALGORITHM §5.2: "TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT"). The
-// running of the ladder is TestJSFixedVersioningNewReadsOld's int_widen,
-// uint_widen and float_widen rows, which write with one generation and read
-// with the next under node.
+// write/read running of the ladder is TestJSFixedVersioningNewReadsOld's
+// int_widen, uint_widen and float_widen rows (a newer generated reader loads a
+// file written from the older generation — int16 -> int32 at -1, INT16_MIN and
+// INT16_MAX, and the f32 bits into an f64), which the `tables-js-versioning`
+// gate runs under node; the evidence form names it beside this subtest, which
+// holds the emitted runtime those rows drive on a tree that never built the
+// corpus.
 func t04E3(t *testing.T) {
 	src := t04Source(t)
 	n := t04Norm(src)
@@ -123,8 +127,9 @@ func t04C8(t *testing.T) {
 // default through the prefill that fills the plan's holes; an unnamed older
 // field is counted ONCE under unknown per peer; a narrower integer or float is
 // widened exactly and counts once; the writer's template zeros are what a
-// shorter array or string leaves as slack (SPEC-TABLES §3.4; FIXED-FORM-
-// ALGORITHM §5.2 "the prefill already put the declared default there").
+// shorter array or string leaves as slack; and an older enum's ordinals are the
+// reader's, the list being a prefix (SPEC-TABLES §3.4; FIXED-FORM-ALGORITHM
+// §5.2 "the prefill already put the declared default there").
 func t04R20(t *testing.T) {
 	src := t04Source(t)
 	n := t04Norm(src)
@@ -138,6 +143,15 @@ func t04R20(t *testing.T) {
 		"R20 a narrow value widened exactly counts one widened")
 	t04Has(t, n, "bytes.fill(0, at + 8, at + TFixedRecordBytes); // the template's zeros",
 		"R20 the writer's template zeros are what shorter array or string slack keeps")
+	// THE FIFTH CLAUSE: the writer's ordinal j remaps to the reader's variant k
+	// matched BY ID, so with the reader's list a PREFIX of the writer's the
+	// match is the same position — k == j and the reader lands ordinal j+1, the
+	// ordinal the writer wrote (FIXED-FORM-ALGORITHM §5.2 case 30: "the ordinal
+	// is the layout's position"; the forged-ordinal lane in the read loop then
+	// answers a byte the writer could not have written, fixedruntime.go's
+	// TableFixedOpOrdinal case).
+	t04Has(t, n, "if (TableFixedSameId(mine, mi + 1 + k, theirs, ti + 1 + j)) { landed = k + 1; break; }",
+		"R20 an older enum's ordinal is the reader's by matched id, so a prefixed list keeps it")
 }
 
 // t04R21: "widenf is the bit-exact widening — signalling NaNs kept, the quiet
