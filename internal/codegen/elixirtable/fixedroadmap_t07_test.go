@@ -46,6 +46,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -61,12 +63,44 @@ func t07Filter(t *testing.T, tables map[string][]byte) string {
 	return ""
 }
 
+// t07Module is the <Base>Fixed.ex module of one schema FILE of a unit.
+func t07Module(t *testing.T, tables map[string][]byte, base string) string {
+	t.Helper()
+	name := base + FixedModuleSuffix + ".ex"
+	data, ok := tables[name]
+	if !ok {
+		t.Fatalf("no %s module was emitted", name)
+	}
+	return string(data)
+}
+
 // t07Has is a required substring of a source, named by rule.
 func t07Has(t *testing.T, src, want, what string) {
 	t.Helper()
 	if !strings.Contains(src, want) {
 		t.Errorf("%s: the source does not carry %q", what, want)
 	}
+}
+
+// t07Files builds a unit from two in-memory schema files, the shape a fixed
+// form crosses when a union arm names a union declared in ANOTHER file. Each
+// file is its own check.SourceFile with its own Base, so a declaration's file
+// of record (unit.DeclFile) keeps the two sides apart the way a real unit does.
+func t07Files(t *testing.T, xa, xb string) *ir.Unit {
+	t.Helper()
+	mk := func(base, src string) check.SourceFile {
+		name := base + ".schema"
+		ast, errs := parser.Parse(name, []byte(src))
+		if len(errs) != 0 {
+			t.Fatalf("parse %s: %v", name, errs)
+		}
+		return check.SourceFile{Path: name, Name: name, Base: base, Bytes: []byte(src), AST: ast}
+	}
+	u, cerrs := check.Unit([]check.SourceFile{mk("xa", xa), mk("xb", xb)})
+	if len(cerrs) != 0 {
+		t.Fatalf("check: %v", cerrs)
+	}
+	return u
 }
 
 // t07LiveSource is the shared fixture for the live-extents and writing rows: a
@@ -301,6 +335,48 @@ fixed table Root
 	t07Has(t, body, "def inner_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m", "W16 the nested union's own projection is emitted")
 	t07Has(t, body, "def a_fixed_write_into(value, acc) do", "W16 the inner arm `a`'s writer is emitted")
 	t07Has(t, body, "def b_fixed_write_into(value, acc) do", "W16 the inner arm `b`'s writer is emitted")
+
+	// THE SAME HOLD ACROSS A FILE BOUNDARY. The outer union lives in one file,
+	// the union-in-union arm in another; the nested union's own helper must be
+	// emitted in the ARM'S OWN MODULE (the file that declares it), reached by
+	// the caller through its qualifier — not only the call site, and not only
+	// when both unions share a file.
+	cross, err := Generate(t07Files(t, `package probe
+
+union Outer
+{
+    c Inner
+    d D
+}
+
+type D { v int32 }
+
+fixed table Root
+{
+    pick  Outer
+    tail  uint32 = 2
+}
+`, `package probe
+
+union Inner
+{
+    a A
+    b B
+}
+
+type A { v int32 }
+type B { v int64 }
+`))
+	if err != nil {
+		t.Fatalf("W16: cross-file Generate: %v", err)
+	}
+	xaBody := t07Module(t, cross, "xa")
+	xbBody := t07Module(t, cross, "xb")
+	t07Has(t, xaBody, "Probe.XbFixed.inner_fixed_write_into(value.c, acc)", "W16 the cross-file caller reaches the nested union through its own module")
+	t07Has(t, xbBody, "def inner_fixed_write_into(value, acc) do", "W16 the nested union's own writer is emitted in the arm's own module")
+	t07Has(t, xbBody, "def inner_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m", "W16 the nested union's own projection is emitted in the arm's own module")
+	t07Has(t, xbBody, "def a_fixed_write_into(value, acc) do", "W16 the cross-file inner arm `a`'s writer is emitted")
+	t07Has(t, xbBody, "def b_fixed_write_into(value, acc) do", "W16 the cross-file inner arm `b`'s writer is emitted")
 }
 
 // ---- elixir/R28 -------------------------------------------------------------

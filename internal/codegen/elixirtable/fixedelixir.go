@@ -193,20 +193,21 @@ func (g *fixedGen) module(roots, closure []*ir.Struct) []byte {
 // arm that is ITSELF A UNION is descended into too, so a nested union's own
 // helper is emitted beside the caller whose dispatch names it
 // (docs/FIXED-FORM-ALGORITHM.md §4.1 "an arm inside an arm answers to the OUTER
-// tag").
+// tag"). The descent crosses a FILE BOUNDARY: an outer union declared in
+// another file is not emitted here, but its arm still names the nested union,
+// so the walk descends through it and only the emission is gated on mine.
 func (g *fixedGen) unionsIn(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
 	var addUnion func(u *ir.Union)
 	addUnion = func(u *ir.Union) {
-		if !g.mine(u.Name) {
-			return
-		}
 		if seen[u.Name] {
 			return
 		}
 		seen[u.Name] = true
-		out = append(out, u)
+		if g.mine(u.Name) {
+			out = append(out, u)
+		}
 		for _, v := range u.Variants {
 			if v.F == nil {
 				continue
