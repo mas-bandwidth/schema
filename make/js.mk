@@ -97,11 +97,14 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	# the bytes, and the units those rows name must be generated here or the
 	# shipped leg answers every one of them absent. vocab/vocab9 are the units
 	# test/vocabgen writes, whose vocabulary passes 127 ids so a message names
-	# slots on both sides of the one-byte boundary. (The `backend` unit's
-	# Envelope holds a table-side union this target refuses by name — §2.6,
-	# §11 — so those rows stay absent until the compiler carries the form.)
+	# slots on both sides of the one-byte boundary. The `backend` unit is the
+	# three message roots themselves (docs/SPEC-TABLES.md §3.3): its Envelope
+	# holds a table-side union, which the JavaScript fixed form carries and
+	# refuses only per table its own closure cannot hold (§2.6, §3.4), so the
+	# unit is generated whole and its message rows answer the bytes.
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab tables/vocab
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab9 tables/vocab9
+	./bin/schema generate --lang js --out build/tables-generated-js/backend tables/backend
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#

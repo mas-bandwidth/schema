@@ -18,7 +18,6 @@ package jstable
 // `<case>.absent` in `make conformance`, however well the driver is wired.
 
 import (
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,8 +25,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 )
 
 // TestMessageFormConformanceJavaScript holds the JavaScript conformance
@@ -89,20 +86,18 @@ func TestMessageFormConformanceJavaScript(t *testing.T) {
 		// row it carries is written `<case>.absent` and the matrix reads the
 		// surface as the feature the leg lacks — the outcome this card exists
 		// to replace.
-		// THE UNITS THE LEG CARRIES. The `backend` unit's Envelope holds a
-		// table-side union, which this target does not carry and names refused
-		// (docs/SPEC-TABLES.md §2.6, §11 — the refusal is the compiler's, before
-		// the emitter runs), so its rows are the `<case>.absent` the matrix
-		// counts and it is not among the units this target must generate. Every
-		// other unit the driver's message rows name is one the leg can carry, and
-		// the shipped recipe is the only thing that generates them.
+		// EVERY UNIT THE DRIVER'S MESSAGE ROWS READ IS A UNIT THIS TARGET
+		// MUST GENERATE, `backend` INCLUDED. The `backend` unit's Envelope
+		// holds a table-side union, but the JavaScript fixed form CARRIES that
+		// construct and refuses only the tables its own closure cannot hold
+		// (docs/SPEC-TABLES.md §2.6, §3.4; compiler/target_javascript.go,
+		// internal/codegen/jstable/fixedRefusal), so the unit is generated
+		// whole and no row is exempt: an exemption here is exactly what let the
+		// shipped recipe answer 5 rows and `<case>.absent` for 8 while the gate
+		// stayed green.
 		recipe := stampRecipe(t, "build/tables-generated-js/.stamp")
-		refused := map[string]bool{"backend": true}
 		carried := 0
 		for _, dir := range driverMessageDirs(t) {
-			if refused[dir] {
-				continue
-			}
 			carried++
 			want := "--out build/tables-generated-js/" + dir + " tables/" + dir
 			if !strings.Contains(recipe, want) {
@@ -365,35 +360,30 @@ func driverMessageTablePaths(t *testing.T) map[string]string {
 	return out
 }
 
-// writeConformanceTree generates each named unit's whole JavaScript tree — the
-// packet modules and the table modules — into `root/<dir>`, the layout the
-// Makefile writes and the driver's SCHEMA_JS_GENERATED reads. A unit this
-// backend cannot generate (docs/SPEC-TABLES.md §11) is skipped: the driver
-// answers its rows `<case>.absent`.
+// writeConformanceTree generates each named unit's whole JavaScript tree into
+// `root/<dir>` THE WAY THE SHIPPED `build/tables-generated-js/.stamp` RECIPE
+// DOES: by running the schema command, which applies the compiler's own
+// refusals BEFORE any emitter runs (compiler/target_javascript.go). Calling the
+// emitters directly here BYPASSES those refusals — which is how an earlier cut
+// of this gate generated a `backend` unit the shipped target refused and logged
+// 12 answers while the shipped tree answered 5: a gate that does not measure the
+// shipped leg. A unit the target refuses now FAILS the command and this test —
+// the backend gap this card exists to close — and is never skipped in silence.
 func writeConformanceTree(t *testing.T, root string, units [][2]string) {
 	t.Helper()
+	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, u := range units {
-		unit := loadUnitPaths(t, []string{repoPath(u[1])})
-		files, err := js.Generate(unit)
-		if err != nil {
-			continue
-		}
-		tables, err := GenerateLineage(unit, nil)
-		if err != nil {
-			continue
-		}
-		maps.Copy(files, tables)
 		out := filepath.Join(root, u[0])
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		for name, data := range files {
-			if strings.Contains(name, "/") {
-				continue
-			}
-			if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-				t.Fatal(err)
-			}
+		cmd := exec.Command("go", "run", "./cmd/schema", "generate", "--lang", "js", "--out", out, u[1])
+		cmd.Dir = repo
+		if data, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("the shipped target refused the `%s` unit its message driver reads: %v\n%s", u[1], err, data)
 		}
 	}
 }
