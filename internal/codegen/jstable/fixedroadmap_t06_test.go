@@ -31,6 +31,9 @@ func TestFixedRoadmapJsT06Bounds(t *testing.T) {
 	}{
 		{"js/C7", t06JsC7},
 		{"js/R30", t06JsR30},
+		{"js/C9", t06JsC9},
+		{"js/C10", t06JsC10},
+		{"js/R31", t06JsR31},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -106,4 +109,75 @@ fixed table T
 	t02Has(t, t02Norm(body),
 		"if (value.Q < 0) { value.Q = 0; report.clamped++; } else if (value.Q > 1) { value.Q = 1; report.clamped++; }",
 		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
+}
+
+// ---- js/C9 "union tag past arms → None" -------------------------------------
+
+// t06JsC9 holds C9 to the emitted bounds pass over a union: a tag past the arm
+// count lands the union's None and counts. docs/SPEC-TABLES.md §3.4 and
+// FIXED-FORM-VERSIONING-TESTS.md (the remap of an unknown variant to None, the
+// hostile half of the ordinal rows).
+func t06JsC9(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+union Pick
+{
+    a int32
+    b int32
+}
+
+fixed table T
+{
+    p Pick
+}
+`, "T")
+	t02Has(t, t02Norm(body),
+		"if (value.P.Type > 2) { value.P.Type = 0; report.clamped++; }",
+		"C9 a union tag past the arm count lands None and counts")
+}
+
+// ---- js/C10 "enum ordinal past top → None" ----------------------------------
+
+// t06JsC10 holds C10 to the emitted bounds pass over an enum: an ordinal past
+// the enum's top value lands None and counts. docs/SPEC-TABLES.md §3.4.
+func t06JsC10(t *testing.T) {
+	body := t06Decode(t, `package probe
+
+enum Tier
+{
+    Bronze
+    Silver
+    Gold
+}
+
+fixed table T
+{
+    tier Tier
+}
+`, "T")
+	t02Has(t, t02Norm(body),
+		"if (value.Tier > 3) { value.Tier = 0; report.clamped++; }",
+		"C10 an enum ordinal past the enum's top value lands None and counts")
+}
+
+// ---- js/R31 "full-width lanes" ----------------------------------------------
+
+// t06JsR31 holds R31's runtime clauses in the emitted runtime text: the guard
+// compares at the tag's own width and never at its first byte, so a foreign
+// 0x0101 at a two-byte tag is not arm 1; the ordinal temporary is sixty-four
+// bits (two u32 lanes, this language's spelling of a 64-bit fact, §5.9 #34), so
+// an eight-byte ordinal keeps its top four bytes; and the remap table's length
+// word is laid in slot zero, so the table is as long as the writer's variant
+// count and never capped at 255. docs/SPEC-TABLES.md §3.4,
+// docs/FIXED-FORM-ALGORITHM.md §5.9 item 42 and §5.8 row 14.
+func t06JsR31(t *testing.T) {
+	rt := t02Norm(fixedRuntime)
+	t02Has(t, rt, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)",
+		"R31 the guard compares at its own width, never at its first byte")
+	t02Has(t, rt, "let lo = 0, hi = 0;",
+		"R31 the ordinal temporary is sixty-four bits, two u32 lanes, never truncated to 32")
+	t02Has(t, rt, "const extent = remap[table];",
+		"R31 the remap table's length word is its slot zero, the extent a raw ordinal is held to")
+	t02Has(t, rt, "plan.remap[at] = n;",
+		"R31 the remap table is laid as long as the writer's variant count, never capped at 255")
 }
