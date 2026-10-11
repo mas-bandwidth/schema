@@ -37,6 +37,7 @@ func TestFixedRoadmapGoT11UnionsOptionals(t *testing.T) {
 	}{
 		{"union-values/go/valid-data", t11UnionValues},
 		{"union-arrays/go/valid-data", t11UnionArrays},
+		{"optional-scalars/go/valid-data", t11OptionalScalars},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
@@ -189,4 +190,48 @@ func TestT11UnionArrays(t *testing.T) {
 	}
 }
 `)
+}
+
+// ---- go/optional-scalars ----------------------------------------------------
+
+// t11OptionalScalars holds an optional scalar to its present byte and payload:
+// the flag is written as a normalised bool and the payload "rides WHOLE whether
+// or not it is present, and when the flag is 0 what rides is zero"
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, fix 13). Present at both int32 ends and
+// absent both round-trip. The enum clause carries no probe: an enum's Go
+// spelling is the packet codec's, so the emitted optional-enum surface is read
+// instead and the subtest says so.
+func t11OptionalScalars(t *testing.T) {
+	t11Run(t, `package probe
+fixed table Root { n ?int32 }
+`, t11RoundTrip+`
+func TestT11OptionalScalars(t *testing.T) {
+	var v Root
+	for _, present := range []bool{false, true} {
+		for _, n := range []int32{-2147483648, 0, 2147483647} {
+			RootReset(&v)
+			v.NPresent = present
+			v.N = n
+			got := saveLoad(t, v)
+			if got.NPresent != present || (present && got.N != n) {
+				t.Fatalf("present=%v n=%d read back %+v", present, n, got)
+			}
+			if !present && got.N != 0 {
+				t.Fatalf("absent optional read back payload %d, want the template's zero", got.N)
+			}
+		}
+	}
+}
+`)
+	// The enum clause, read off the emitted fixed surface: e ?E writes the
+	// present byte, then copies the storage at its declared width under the
+	// flag, exactly as the scalar arm does.
+	src := t02GoEmit(t, unitFrom(t, `package probe
+enum E { A, B }
+fixed table Root { e ?E }
+`))
+	n := t02GoNorm(src)
+	t02GoHas(t, n, "tableFixedPut8(b[0:], p)", "optional-scalars: the present byte is written first")
+	t02GoHas(t, n, "if value.EPresent { tableFixedPut8(b[1:], uint8(value.E)) }", "optional-scalars: the enum payload follows only when present")
+	t02GoHas(t, n, "Op: tableFixedBool} // e present", "optional-scalars: the present byte reads back into a Go bool")
 }
