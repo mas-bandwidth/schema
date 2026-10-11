@@ -91,6 +91,15 @@ func FromJSON(text []byte) (*Record, error) {
 	if err := checkCard(b.GetRoot(), &b.Arena); err != nil {
 		return nil, err
 	}
+	return publishRecord(&b, report)
+}
+
+// publishRecord is the one checked-write path Parse and FromJSON share: it
+// locks the builder, measures and saves its root to a defensive wire copy, and
+// publishes a Record over a private copy of the packed region, so a built card
+// is published only on complete success (docs/SPEC-TABLES.md §6.2; card API
+// AND OWNERSHIP: "publishes only on complete checked success").
+func publishRecord(b *CardBuilder, report TableReport) (*Record, error) {
 	if !b.Lock() {
 		return nil, errors.New("cards: packing failed")
 	}
@@ -174,7 +183,68 @@ func checkCard(root *Card, arena *TableArena) error {
 	if err := checkIDList(&root.Needs, "needs", arena); err != nil {
 		return err
 	}
+	if err := checkExtraList(&root.Extra, arena); err != nil {
+		return err
+	}
 	return nil
+}
+
+// cardString returns the used bytes of a generated string(N) field
+// (docs/SPEC-TABLES.md §6.1): the fixed buffer clipped to the used length.
+func cardString(buf []byte, length int32) string {
+	n := int32(len(buf))
+	if length < n {
+		n = length
+	}
+	if n < 0 {
+		n = 0
+	}
+	return string(buf[:n])
+}
+
+// checkExtraList enforces the extras rules shared by Parse, FromJSON and every
+// facade write before anything is published (card HEADER MAPPING): each extra
+// key is a well-formed key of at most its string(32) bound and is not a mapped
+// header key (a collision would render a duplicate header line), and each value
+// is well-formed single-line UTF-8 without NUL, never dropped or truncated.
+func checkExtraList(list *TableList[KeyValueRow], arena *TableArena) error {
+	if list.Count < 0 || int64(list.Count) > MaxListEntries {
+		return fmt.Errorf("cards: extra has %d entries, past the %d-entry ceiling (docs/SPEC-TABLES.md §2.9)", list.Count, MaxListEntries)
+	}
+	var elemErr error
+	visit := func(e *KeyValueRow) bool {
+		key := []byte(cardString(e.Key[:], e.KeyLength))
+		if len(key) > 32 {
+			elemErr = fmt.Errorf("cards: extra key %q is %d bytes, past the string(32) bound", key, len(key))
+			return false
+		}
+		if !utf8.Valid(key) || bytes.IndexByte(key, 0) >= 0 {
+			elemErr = errors.New("cards: extra has a key that is not well-formed UTF-8 without NUL")
+			return false
+		}
+		if !validHeaderKey(string(key)) {
+			elemErr = fmt.Errorf("cards: extra key %q is not a valid header key", key)
+			return false
+		}
+		if mappedHeaderKey(string(key)) {
+			elemErr = fmt.Errorf("cards: extra key %q duplicates a mapped header key", key)
+			return false
+		}
+		if e.Value != 0 {
+			v := stringData(&e.Value, arena)
+			if !utf8.Valid(v) || bytes.IndexByte(v, 0) >= 0 || bytes.IndexByte(v, '\n') >= 0 || bytes.IndexByte(v, '\r') >= 0 {
+				elemErr = fmt.Errorf("cards: extra key %q has a value that is not well-formed single-line UTF-8 without NUL", key)
+				return false
+			}
+		}
+		return true
+	}
+	if arena == nil {
+		CardExtraEach(list, visit)
+	} else {
+		CardExtraEach(list, visit, arena)
+	}
+	return elemErr
 }
 
 func stringData(slot *int64, arena *TableArena) []byte {
@@ -185,6 +255,14 @@ func stringData(slot *int64, arena *TableArena) []byte {
 		v = TableStringAt(slot, arena)
 	}
 	return v.Data
+}
+
+// setStringField places a Go string into a generated string(N) buffer and its
+// used-length companion (docs/SPEC-TABLES.md §6.1). The caller checks the
+// declared bound first; this helper never truncates.
+func setStringField(dst []byte, n *int32, s string) {
+	copy(dst, s)
+	*n = int32(len(s))
 }
 
 func checkPathList(list *TableList[PathTextRow], name string,

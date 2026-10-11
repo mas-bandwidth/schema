@@ -173,9 +173,14 @@ cards-generate: bin/schema
 	$(call go_table_module,cards,cards)
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
+	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
+	cp tables/cards/parse_test.go build/tables-generated-go/cards/parse_test.go
 	@mkdir -p build/tables-generated-go/cards/fuzz
 	@if [ -f tables/cards/fuzz/card-populated.wire ]; then cp tables/cards/fuzz/card-populated.wire build/tables-generated-go/cards/fuzz/card-populated.wire; fi
 	@if [ -f tables/cards/fuzz/card-populated.json ]; then cp tables/cards/fuzz/card-populated.json build/tables-generated-go/cards/fuzz/card-populated.json; fi
+	@mkdir -p build/tables-generated-go/cards/testdata/epoch17
+	cp tables/cards/testdata/epoch17/rejected-legacy.md build/tables-generated-go/cards/testdata/epoch17/rejected-legacy.md
+	cp tables/cards/testdata/epoch17/normalized-valid.md build/tables-generated-go/cards/testdata/epoch17/normalized-valid.md
 
 cards-test: cards-generate
 	./bin/schema check tables/cards

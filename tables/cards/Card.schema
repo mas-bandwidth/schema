@@ -25,6 +25,14 @@ table CardID
     s string(64)
 }
 
+// KeyValue is one unmapped header key and its opaque value, kept in arrival
+// order in Card.extra so a render can re-emit what a parse could not map.
+table KeyValue
+{
+    key   string(32)
+    value *string
+}
+
 table Card
 {
     id               string(64)
@@ -50,4 +58,5 @@ table Card
     head             string(40)
     branch           string(128)
     body             *string
+    extra            []KeyValue
 }
