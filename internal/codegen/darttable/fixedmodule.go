@@ -207,6 +207,10 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		// THE MESSAGE FORM'S ANNOUNCEMENT (§3.3) rides the runtime home beside
+		// the fixed runtime: the form is a fixed table's, so a unit that has a
+		// fixed root is exactly the unit whose announcement is emitted.
+		g.emitMessageAnnouncement()
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/dart, and is imported rather than emitted twice.
 		for _, st := range closure {

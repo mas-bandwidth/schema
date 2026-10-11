@@ -51,5 +51,37 @@ func init() {
 		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
 		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
+		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
+		// form byte 2. It is emitted for a unit that declares a fixed root,
+		// beside the fixed runtime, and it puts helper FUNCTIONS at library
+		// scope — the same shape as the fixed form's free helpers above —
+		// so each is claimed on this list's own rule: a schema declaring one
+		// would otherwise generate Dart that does not compile. The C#, Go and
+		// C++ legs register their announcement runtimes' spellings the same
+		// way.
+		Name{Name: "TableAnnouncement", What: "the announced message bit codec: the compiler-settled announcement bytes (§3.3)"},
+		Name{Name: "TableAnnouncementLength", What: "the announced message bit codec: the announcement's length, emitted beside the bytes (§3.3)"},
+		Name{Name: "TableMessageBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
+		Name{Name: "TableMessageEntryEnd", What: "the announced message bit codec: step over one entry's id, kind and shape"},
+		Name{Name: "TableMessageKnownKind", What: "the announced message bit codec: whether a kind is in the closed set"},
+		Name{Name: "TableMessageKindWidth", What: "the announced message bit codec: the fixed width of a scalar kind's payload"},
+		Name{Name: "TableMessageLeb", What: "the announced message bit codec: the canonical LEB128 length every length takes (§3)"},
+		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
+		Name{Name: "TableMessageShapeEnd", What: "the announced message bit codec: step over one shape's width facts"},
+		Name{Name: "TableMessageSkipField", What: "the announced message bit codec: step over one unknown body field's payload by its kind (§3.3)"},
+		// THE ANNOUNCEMENT SURFACE'S LIBRARY-SCOPE CLASSES AND VERBS. A class
+		// at library scope claims a name exactly as the fixed form's classes do
+		// (TableFixedReport, TableFixedPlan, ...), so TableVocabulary,
+		// TableMessageEntry and TableReport are claimed here too. The three
+		// free functions the page names — announce, announceMeasure,
+		// announceRead (docs/SPEC-TABLES.md §3.3, §6.1) — are claimed in this
+		// registry's PascalCase form, the bijection stated above; the C, C++
+		// and Go legs already claim those three spellings.
+		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
+		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
+		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
+		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
+		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit (§3.3)"},
+		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table (§3.3)"},
 	)
 }
