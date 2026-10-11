@@ -147,6 +147,16 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"TableFixedPut128( b + 47, value.u128 );",
 			},
 		},
+		{
+			// "Ranged integer fields". §3.4: the field is held to its declared
+			// min and max after the copy; min = 0 / max = 100 are the literals.
+			id: "ranged-integers/cpp/valid-data",
+			want: []string{
+				"int32_t rng = 0;",
+				"clamped += (int) ( value.rng < 0 ) | (int) ( value.rng > 100 );",
+				"value.rng = ( value.rng < 0 ) ? 0 : ( ( value.rng > 100 ) ? 100 : value.rng );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
