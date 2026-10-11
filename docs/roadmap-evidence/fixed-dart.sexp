@@ -53,3 +53,7 @@
 (:id "dart/E5" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t04_test.go: TestFixedRoadmapDartT04Versions/dart/E5") :tested-revision "f2da87e8488aef9f6b12b3fec204450a968e12ec")
 (:id "dart/W2" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t04_test.go: TestFixedRoadmapDartT04Versions/dart/W2") :tested-revision "f2da87e8488aef9f6b12b3fec204450a968e12ec")
 (:id "dart/R21" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t04_test.go: TestFixedRoadmapDartT04Versions/dart/R21") :tested-revision "2f166fb652c044299e4aa9aa4538c4b82efa5536")
+(:id "optional-scalars/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/optional-scalars/dart/valid-data") :tested-revision "e16b83a32")
+(:id "optional-arrays/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/optional-arrays/dart/valid-data") :tested-revision "e16b83a32")
+(:id "scalar-defaults/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/scalar-defaults/dart/valid-data") :tested-revision "e16b83a32")
+(:id "text-bytes-flags-defaults/dart/valid-data" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t09_test.go: TestFixedRoadmapDartT09Optionals/text-bytes-flags-defaults/dart/valid-data") :tested-revision "e16b83a32")
