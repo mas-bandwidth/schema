@@ -95,10 +95,12 @@ class TableVocabulary {
   /// "STRICT MODE IS OPT-IN, and the default is unchanged." (§3.3).
   bool strict = false;
 
-  /// THE RESERVED IDS the announcement's trailer names (§3.3). They are
-  /// members so nothing lands at library scope, the leg's own rule.
+  /// THE RESERVED IDS the announcement's trailer names (§3.3), and the node
+  /// table's, which a second entry may not name. They are members so nothing
+  /// lands at library scope, the leg's own rule.
   static const int buildVersionWireId = -2; // 0xFFFFFFFFFFFFFFFE as signed
   static const int vocabularyWireId = -3; // 0xFFFFFFFFFFFFFFFD as signed
+  static const int nodeWireId = -1; // 0xFFFFFFFFFFFFFFFF as signed
 
   TableVocabulary({
     required this.entries,
@@ -115,7 +117,11 @@ class TableVocabulary {
 class TableMessageEntry {
   final int id;
   final int kind;
-  TableMessageEntry(this.id, this.kind);
+  /// The entry's wire bytes, its triple's identity: §3.3 lets one NAME appear
+  /// at two shapes, so a repeated entry is the same bytes and not the same id.
+  final Uint8List signature;
+  TableMessageEntry(this.id, this.kind, [Uint8List? signature])
+      : signature = signature ?? Uint8List(0);
 }
 
 /// THE REPORT the announcement read answers on. A refusal is terminal: it
@@ -266,8 +272,17 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       at += length.$1;
       vocabularies++;
     } else {
+      // §3.3: "Every other field of its body is ordinary and tolerant, so an
+      // unknown one is skipped and counted and the announcement can GAIN a
+      // field in a later minor without a lockstep redeploy." Only a failed
+      // strict check is malformed, so the payload is stepped over by its kind
+      // and the walk continues; a payload that will not step is the one break.
+      final skipped = tableMessageSkipField(bytes, at, bodyEnd, kind);
+      if (skipped < 0) {
+        break;
+      }
+      at = skipped;
       report.unknown++;
-      break;
     }
   }
   if (!terminated || versions != 1 || vocabularies != 1) {
@@ -284,10 +299,12 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var vAt = vocabularyStart;
   final vEnd = vocabularyStart + vocabularyLength;
   var seen = 0;
+  var nodeSeen = false;
   while (vAt < vEnd) {
     if (seen >= vocabulary.maxEntries) {
       return report.Refuse('vocabulary_too_large');
     }
+    final start = vAt;
     final next = tableMessageEntryEnd(bytes, vAt, vEnd);
     if (next < 0) {
       report.Damage();
@@ -295,8 +312,26 @@ bool AnnounceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     }
     final id = view.getUint64(vAt, Endian.little);
     final kind = bytes[vAt + 8];
+    // §3.3: "THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
+    // VOCABULARY." An entry carrying one is malformed; the node table's id may
+    // name at most one entry; a repeated entry is malformed too.
+    if (id == TableVocabulary.buildVersionWireId ||
+        id == TableVocabulary.vocabularyWireId ||
+        (id == TableVocabulary.nodeWireId && nodeSeen)) {
+      report.Damage();
+      return false;
+    }
+    if (id == TableVocabulary.nodeWireId) {
+      nodeSeen = true;
+    }
+    for (var i = 0; i < seen; i++) {
+      if (tableMessageSameEntry(bytes, start, next, vocabulary.entries[i].signature)) {
+        report.Damage();
+        return false;
+      }
+    }
     vAt = next;
-    vocabulary.entries[seen] = TableMessageEntry(id, kind);
+    vocabulary.entries[seen] = TableMessageEntry(id, kind, bytes.sublist(start, next));
     seen++;
   }
   vocabulary.count = seen;
@@ -399,6 +434,108 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
 bool tableMessageKnownKind(int kind) => kind <= 33;
+
+/// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
+/// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
+/// malformed, and the identity is the bytes because one name may carry two
+/// shapes.
+bool tableMessageSameEntry(Uint8List bytes, int start, int end, Uint8List signature) {
+  if (end - start != signature.length) {
+    return false;
+  }
+  for (var i = 0; i < signature.length; i++) {
+    if (bytes[start + i] != signature[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// tableMessageKindWidth is the fixed width of a scalar kind's payload, or 0
+/// where the kind is not a fixed-width scalar (docs/SPEC-TABLES.md §3).
+int tableMessageKindWidth(int kind) {
+  switch (kind) {
+    case 1:
+    case 2:
+    case 6:
+    case 20:
+    case 25:
+      return 1;
+    case 3:
+    case 7:
+    case 21:
+    case 26:
+      return 2;
+    case 4:
+    case 8:
+    case 10:
+    case 22:
+    case 27:
+      return 4;
+    case 5:
+    case 9:
+    case 11:
+    case 23:
+    case 28:
+      return 8;
+    case 18:
+    case 19:
+    case 24:
+    case 29:
+      return 16;
+    default:
+      return 0;
+  }
+}
+
+/// tableMessageSkipField steps over ONE unknown body field's payload by its
+/// kind (docs/SPEC-TABLES.md §3.3), the reference's Skip(kind) rule: a
+/// fixed-width scalar is its width, a reference or a union is a LEB, and a
+/// length-prefixed slice — 12, 13, 14, 16, 31, 32, 33 — is a LEB length then
+/// that many bytes. Answers the offset past the payload, or -1
+/// where the bytes run out or a kind this reader cannot step is named.
+int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
+  final width = tableMessageKindWidth(kind);
+  if (width != 0) {
+    return at + width <= end ? at + width : -1;
+  }
+  switch (kind) {
+    case 17:
+    case 30:
+      final v = tableMessageLeb(bytes, at, end);
+      return v.$1 < 0 ? -1 : v.$2;
+    case 12:
+    case 13:
+    case 14:
+    case 16:
+    case 31:
+    case 32:
+    case 33:
+      final n = tableMessageLeb(bytes, at, end);
+      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+        return -1;
+      }
+      return n.$2 + n.$1;
+    case 15:
+      final arm = tableMessageLeb(bytes, at, end);
+      if (arm.$1 < 0) {
+        return -1;
+      }
+      if (arm.$1 == 0) {
+        return arm.$2;
+      }
+      if (arm.$2 >= end) {
+        return -1;
+      }
+      final n = tableMessageLeb(bytes, arm.$2 + 1, end);
+      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+        return -1;
+      }
+      return n.$2 + n.$1;
+    default:
+      return -1;
+  }
+}
 
 /// tableMessageBits is the width of a reference into an n-entry vocabulary.
 int tableMessageBits(int n) {

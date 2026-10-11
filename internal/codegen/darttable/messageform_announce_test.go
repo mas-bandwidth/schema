@@ -162,8 +162,27 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 		u := loadUnit(t, units[0].path)
 		conn := conns[units[0].unit]
 		vocabBytes := ir.TableVocabularyBytes(ir.TableVocabulary(u))
+		vocabCount := len(ir.TableVocabulary(u))
 		noVersion := craftAnnouncement(vocabBytes, ir.BuildVersion(u), false, true)
 		noVocab := craftAnnouncement(vocabBytes, ir.BuildVersion(u), true, false)
+		// A later minor's added field: an id the vocabulary does not name,
+		// carried at an ordinary kind. §3.3: "Every other field of its body is
+		// ordinary and tolerant, so an unknown one is skipped and counted and
+		// the announcement can GAIN a field in a later minor without a lockstep
+		// redeploy."
+		withUnknown := craftAnnouncementWithUnknown(vocabBytes, ir.BuildVersion(u), 0x0123456789abcdef, 1, []byte{0x00})
+		// "THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
+		// VOCABULARY" (§3.3): an entry carrying one is malformed.
+		reservedEntry := binary.LittleEndian.AppendUint64(nil, ir.TableBuildVersionWireId)
+		reservedEntry = append(reservedEntry, 1)
+		reservedVocab := craftAnnouncement(reservedEntry, ir.BuildVersion(u), true, true)
+		// A repeated entry is malformed: two identical entries disagree on one
+		// name's shape, which §3.3's "one NAME can appear at two shapes" allows
+		// only when the triples differ.
+		dupEntry := binary.LittleEndian.AppendUint64(nil, 0x0123456789abcdef)
+		dupEntry = append(dupEntry, 1)
+		dupVocab := append(append([]byte{}, dupEntry...), dupEntry...)
+		dupAnnounce := craftAnnouncement(dupVocab, ir.BuildVersion(u), true, true)
 		body := fmt.Sprintf(`
   final valid = Uint8List.fromList(%s);
   List<t.TableMessageEntry> storage() =>
@@ -194,8 +213,31 @@ func TestMessageFormAnnounceDart(t *testing.T) {
   final r5 = t.TableReport();
   check(!t.AnnounceRead(v5, Uint8List.fromList(%s), r5), 'a body with no vocabulary is not refused');
   check(!r5.refused && r5.malformed, 'no vocabulary: malformed=${r5.malformed} refused=${r5.refused}');
+  // an unknown field is skipped and counted, never malformed: only the two
+  // strict checks damage, so a later minor's added field is tolerated.
+  final v6 = t.TableVocabulary(entries: storage());
+  final r6 = t.TableReport();
+  check(t.AnnounceRead(v6, Uint8List.fromList(%s), r6),
+      'an unknown field is not tolerated: %s');
+  check(v6.announced && !r6.refused && !r6.malformed,
+      'unknown field: malformed=${r6.malformed} refused=${r6.refused}');
+  check(r6.unknown == 1, 'unknown=${r6.unknown} want=1');
+  check(v6.count == %d, 'count=${v6.count} want=%d');
+  // a reserved id in the vocabulary is malformed, not a refusal
+  final v7 = t.TableVocabulary(entries: storage());
+  final r7 = t.TableReport();
+  check(!t.AnnounceRead(v7, Uint8List.fromList(%s), r7), 'a reserved-id entry is not refused');
+  check(!r7.refused && r7.malformed, 'reserved entry: malformed=${r7.malformed} refused=${r7.refused}');
+  // a repeated entry is malformed
+  final v8 = t.TableVocabulary(entries: storage());
+  final r8 = t.TableReport();
+  check(!t.AnnounceRead(v8, Uint8List.fromList(%s), r8), 'a repeated entry is not refused');
+  check(!r8.refused && r8.malformed, 'repeated entry: malformed=${r8.malformed} refused=${r8.refused}');
 `, dartBytes(conn.bytes), "${r1.reason} malformed=${r1.malformed}",
-			dartBytes(noVersion), dartBytes(noVocab))
+			dartBytes(noVersion), dartBytes(noVocab),
+			dartBytes(withUnknown), "${r6.reason} malformed=${r6.malformed} unknown=${r6.unknown} count=${v6.count}",
+			vocabCount, vocabCount,
+			dartBytes(reservedVocab), dartBytes(dupAnnounce))
 		out, err := runAnnounceProbe(t, u, body)
 		if err != nil {
 			t.Fatalf("the announcement refusals: %v\n%s", err, out)
@@ -269,6 +311,35 @@ func craftAnnouncement(vocab []byte, build uint64, withVersion, withVocabulary b
 		body = append(body, field...)
 		ids = append(ids, ir.TableMessageVocabularyWireId)
 	}
+	body = append(body, 0)
+	out := []byte{1}
+	out = append(out, body...)
+	for _, id := range ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
+}
+
+// craftAnnouncementWithUnknown builds a form-`1` announcement carrying the two
+// required fields AND one further field under an id the vocabulary does not
+// name, so the tolerant body walk is driven: §3.3 "Every other field of its
+// body is ordinary and tolerant, so an unknown one is skipped and counted".
+func craftAnnouncementWithUnknown(vocab []byte, build, unknownId uint64, kind byte, payload []byte) []byte {
+	body := []byte{}
+	var ids []uint64
+	body = append(body, 1, 9)
+	body = binary.LittleEndian.AppendUint64(body, build)
+	ids = append(ids, ir.TableBuildVersionWireId)
+	field := []byte{6}
+	field = append(field, lebBytes(uint64(len(vocab)))...)
+	field = append(field, vocab...)
+	body = append(body, 2, 14)
+	body = append(body, lebBytes(uint64(len(field)))...)
+	body = append(body, field...)
+	ids = append(ids, ir.TableMessageVocabularyWireId)
+	body = append(body, 3, kind)
+	body = append(body, payload...)
+	ids = append(ids, unknownId)
 	body = append(body, 0)
 	out := []byte{1}
 	out = append(out, body...)
