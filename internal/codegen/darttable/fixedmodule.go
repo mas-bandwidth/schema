@@ -663,10 +663,16 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  for (var k = 0; k < n; k++) {\n")
 	g.call("    ", "", "tableFixedFillRun",
 		[]string{"fills", "fillCount", lower + "FixedPrefill", "plan.image"}, ";")
-	g.pf("    tableFixedRun(\n")
+	g.pf("    // THE RUN NAMES ITS OWN REFUSAL (§4.5 fix 11): a text entry whose USED\n")
+	g.pf("    // units are ill-formed comes back as `text_ill_formed`, and the whole\n")
+	g.pf("    // read refuses BY NAME — nothing is decoded past it, and the entry that\n")
+	g.pf("    // violated the rule moved no counter and wrote no byte.\n")
+	g.pf("    final runWhy = tableFixedRun(\n")
 	g.pf("      entries,\n      entryCount,\n      bytes,\n      view,\n      at + 8,\n")
 	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
+	g.pf("    if (runWhy != TableFixedRefusal.none) {\n")
+	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
 	g.pf("    at += recordBytes;\n")
