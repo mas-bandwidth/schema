@@ -82,12 +82,20 @@ fixed table T
 
 // ---- go/R30 "compressed float rides as the float" ---------------------------
 
-// t06GoR30 holds R30's emitter and digest clauses. docs/SPEC-TABLES.md §3.4:
-// "it rides as the float, not as a quantized index"; docs/FIXED-FORM-VERSIONING-TESTS.md
-// §cfloat_res_refine: "the resolution is in the DEFINITIONS DIGEST ('Q', bill
-// §13), so the wire hash moves when the step does". In the fixed form the stored
-// value is the float32 itself, min/max are the reader's bounds the clamp uses,
-// and resolution is a 'Q' row of the digest.
+// t06GoR30 holds R30's fixed-write, digest and clamp clauses. docs/SPEC-TABLES.md
+// §3.4: "it rides as the float, not as a quantized index";
+// docs/FIXED-FORM-VERSIONING-TESTS.md §cfloat_res_refine: "the resolution is in
+// the DEFINITIONS DIGEST ('Q', bill §13), so the wire hash moves when the step
+// does". In the fixed form the stored value is the float32 itself, min/max are
+// the reader's bounds the clamp uses, and resolution is a 'Q' row of the digest.
+//
+// The title's three widening clauses — "finer widens", "coarser refuses by
+// name", "dropping the triple widens" — are the LOCK's monotone law held by
+// internal/lockfile/cfloatrange_test.go (a package this card's PATHS do not
+// cover and this gate does not run), and "fp-contract off on every leg" is a
+// build discipline in make/golang.mk, not a value a unit read lands; they are
+// filed `unknown` on this card, not asserted here, exactly as the C leg's
+// identical title is (internal/codegen/ctable/fixedroadmap_t06_test.go:236).
 func t06GoR30(t *testing.T) {
 	u := unitFrom(t, `package probe
 
@@ -101,7 +109,23 @@ fixed table T
 	if len(d) < 18 || d[0] != 'R' || d[17] != 'Q' {
 		t.Errorf("R30: the digest does not carry the resolution under 'Q': % x", d)
 	}
-	body := t06ClampBody(t, t02GoEmit(t, u))
+	src := t02GoEmit(t, u)
+	// THE FIXED FORM STORES THE FLOAT'S BITS, the variable form beside it
+	// quantizes the same field onto its step count — one unit, two encodings,
+	// and the fixed form's is the raw float (docs/SPEC-TABLES.md §3.4: "it rides
+	// as the float, not as a quantized index"). putf32 is the float's own bits;
+	// the message stream's quantizing shape is the variable encoding and is
+	// nowhere in this write.
+	write := funcSource(src, "func TFixedWriteBody(")
+	if write == "" {
+		t.Fatal("R30: the leg emitted no TFixedWriteBody; the fixed form's write is absent")
+	}
+	t02GoHas(t, t02GoNorm(write), "tableFixedPutF32(b[0:], value.Q)",
+		"R30 the fixed write stores the float32 itself with putf32, never a quantized index")
+	if strings.Contains(write, "tableMessage") || strings.Contains(write, "SerializeBits") {
+		t.Error("R30: the fixed write quantizes the compressed float, so it no longer rides as the float")
+	}
+	body := t06ClampBody(t, src)
 	t02GoHas(t, t02GoNorm(body),
 		"if value.Q < 0.0 { value.Q = 0.0 (*clamped)++ } else if value.Q > 1.0 { value.Q = 1.0 (*clamped)++ }",
 		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
@@ -166,9 +190,17 @@ fixed table T
 // fixedguard_test.go's TestFixedGuardIsComparedAtItsFullWidth); the ordinal
 // op's own read is the 64-bit tableFixedTagAt at p.Size, so an eight-byte
 // ordinal keeps its top four bytes and never goes through a 32-bit temporary;
-// and the remap pool's length word is 16 bits, so the table can be as long as
-// the writer's variant count. docs/SPEC-TABLES.md §3.4,
+// and the remap pool is as long as the WRITER's variant count, refusing by name
+// past its u16 length word. docs/SPEC-TABLES.md §3.4,
 // docs/FIXED-FORM-ALGORITHM.md §1.2, §5.2, §5.4, §5.9 item 42.
+//
+// The title's "arg/arg2 full width" clause is the C leg's TWO-lane guard
+// (uint64_t arg; uint64_t arg2; internal/codegen/ctable/fixedroadmap_t06_test.go:325).
+// This leg's static plan has ONE ordinal lane — TableFixedEntry.Arg is a uint32
+// and there is no second lane (fixedruntime.go:64-67) — so the title's shape is
+// not on this leg and that clause is filed `unknown`, not asserted here. What
+// the leg does carry, the compare at the tag's own width through ArgW and the
+// 64-bit temporary, is asserted below and end-to-end.
 func t06GoR31(t *testing.T) {
 	rt := t02GoNorm(tableFixedRuntime)
 	t02GoHas(t, rt, "func tableFixedTagAt(src []byte, at uint32, w uint8) uint64",
@@ -189,6 +221,12 @@ func t06GoR31(t *testing.T) {
 	t02GoHas(t, rt, "const tableFixedRemapMax uint32 = 0xFFFF",
 		"R31 the remap pool's length word is 16 bits, so the table is as long as the writer's variant count")
 	t02GoHas(t, rt, "if n > tableFixedRemapMax {", "R31 a writer's variant count past the length word refuses")
+	// THE LENGTH IS THE WRITER'S VARIANT COUNT (§5.2), not the reader's and never
+	// a fixed 255: the pool's n is te.Children, the WRITER's child count, and the
+	// table is built and laid at that length.
+	t02GoHas(t, rt, "n := te.Children", "R31 the remap table's length is the writer's variant count")
+	t02GoHas(t, rt, "m := make([]uint16, n)", "R31 the remap table is built at the writer's variant count")
+	t02GoHas(t, rt, "e.Aux = tableFixedLayTable(c, m, int32(n))", "R31 the writer-counted table rides the ordinal entry")
 }
 
 // ---- go/C12 "bool byte != 0" ------------------------------------------------
