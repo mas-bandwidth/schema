@@ -389,7 +389,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(g.unit, st)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
@@ -418,12 +418,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Guard2 != ir.TableFixedNoGuard {
 			guard2 = fmt.Sprintf("%du", e.Guard2)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
+		// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
+		// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
+		// which is every unguarded and singly-nested entry.
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %d }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+			e.GuardCount, e.GuardIndex, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
-	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n\n", n, guarded)
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, guarded)
+	// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+	// into, OUTERMOST FIRST, the only bound the layout's 64 (§5.8 row 6).
+	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
+	for _, l := range pool {
+		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	g.pf("};\n")
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_guard_count = %d;\n\n", n, len(pool))
 
 	cover := ir.TableFixedIdentityCoverage(g.unit, st)
 	g.pf("/* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds\n")
@@ -611,6 +623,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
+	g.pf("    const TableFixedGuardLink * entry_guards = %s_fixed_guards;\n", n)
 	g.pf("    const TableFixedFill * fill = NULL;\n")
 	g.pf("    int32_t fill_count = 0;\n")
 	g.pf("    %s defaults;\n", st.Name)
@@ -701,7 +714,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        int32_t rec_widened = 0;\n")
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), &rec_clamped, &rec_widened );\n")
+	g.pf("        table_fixed_run( entries, entry_guards, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), &rec_clamped, &rec_widened );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")

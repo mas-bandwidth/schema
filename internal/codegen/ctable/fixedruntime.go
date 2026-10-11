@@ -192,6 +192,18 @@ static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
    entry belongs to an arm, and SCHEMA_TABLE_FIXED_NO_GUARD when it does not. */
+/* TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+   the ordinal it must hold, and the width it is compared at. A chain is a
+   CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+   the first link is the outermost union's tag and the last the innermost one
+   (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64. */
+typedef struct TableFixedGuardLink
+{
+    uint32_t guard;
+    uint64_t arg;
+    uint8_t argw;
+} TableFixedGuardLink;
+
 typedef struct TableFixedEntry
 {
     uint32_t src;
@@ -229,6 +241,14 @@ typedef struct TableFixedEntry
     uint32_t guard2;
     uint64_t arg2;
     uint8_t argw2;
+    /* guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): offset+count
+       into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound
+       the layout's 64. Zero count is "the two inline lanes only", which is
+       every unguarded and singly-nested entry; a chain past two rides the pool
+       whole, so an arm inside an arm inside an arm answers to BOTH outer tags
+       and its own. */
+    uint8_t guard_count;
+    uint32_t guard_index;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -567,7 +587,8 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
    accumulators and NOT written to the report here, so a content rule that
    refuses after the loop still leaves the report's counters all zero — REFUSE
    is total (docs/FIXED-FORM-ALGORITHM.md §5.8). */
-static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, const TableFixedGuardLink * guard_pool,
+                                           int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
                                            int32_t * clamped_out, int32_t * widened_out )
@@ -590,9 +611,27 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
-        if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
-        table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
+        int32_t matches = 1;
+        if ( p->guard_count > 0 )
+        {
+            /* THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+               (guard, arg, argw) links, OUTERMOST FIRST, every link a
+               CONJUNCTION. A chain past two nested unions rides here whole,
+               so an arm inside an arm inside an arm answers to BOTH outer
+               tags and its own. */
+            int32_t j;
+            for ( j = 0; j < (int32_t) p->guard_count; ++j )
+            {
+                const TableFixedGuardLink * l = &guard_pool[ p->guard_index + (uint32_t) j ];
+                if ( table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+            }
+        }
+        else
+        {
+            if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        }
+        if ( matches ) { table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened ); }
     }
     *clamped_out = clamped;
     *widened_out = widened;
