@@ -20,6 +20,7 @@ package darttable
 // here.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -256,6 +257,144 @@ fixed table T
 	}
 }
 
+// ---- dart/E9 ----------------------------------------------------------------
+
+// t05E9 holds dart/E9: "duplicate never raised". The report carries the lane
+// and no plan op, no bounds pass and no projection ever bumps it — a record
+// whose every field is named twice over still moves nothing.
+func t05E9(t *testing.T) {
+	runtime := t05Runtime()
+	t05Has(t, runtime, "int duplicate = 0;", "E9 the duplicate lane starts at zero")
+	t05Has(t, runtime, "duplicate = 0;", "E9 the duplicate lane resets with the report")
+	t05No(t, runtime, "duplicate++", "E9 duplicate never raised")
+	if n := strings.Count(runtime, "duplicate"); n != 2 {
+		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want the declaration and the reset only", n)
+	}
+	if n := strings.Count(t05Emitted(t, `package probe
+
+fixed table T
+{
+    x int32
+}
+`), "duplicate"); n != 2 {
+		t.Errorf("E9: `duplicate` occurs %d times in the emitted unit, want the report lane only", n)
+	}
+}
+
+// ---- dart/R16 ---------------------------------------------------------------
+
+// t05R16 holds dart/R16 to §5.4's counters, each asserted by the site that owns
+// it: the census ONCE per peer after the loop, `widened` once per entry per
+// record, `clamped` once per entry per record for a count and a text length,
+// and the bounds pass's count of a FORGED ORDINAL remapped to None on BOTH
+// plans. `copy` and `present` land their value and move nothing.
+func t05R16(t *testing.T) {
+	runtime := t05Runtime()
+	// unknown: once per peer at COMPILE, after the record loop, and never per
+	// record (§5.4, §5.9 #6).
+	t05Has(t, runtime, "if (!named && census) {\n        report.unknown++;\n      }",
+		"R16 unknown is once per field of a peer at COMPILE")
+	t05Has(t, runtime, "report.kindMismatch++;", "R16 kind_mismatch is once per moved pair at COMPILE")
+	// widened: once per entry per record.
+	for _, name := range []string{"widen", "widenFloat"} {
+		t05Has(t, t05OpCase(t, runtime, name), "report.widened++;",
+			"R16 widened once per entry per record")
+	}
+	// clamped: once per entry per record for a count and for a text length.
+	for _, name := range []string{"count", "text"} {
+		t05Has(t, t05OpCase(t, runtime, name), "report.clamped++;",
+			"R16 clamped once per entry per record for "+name)
+	}
+	// THE BOUNDS PASS COUNTS A FORGED ORDINAL REMAPPED TO None, ON BOTH PLANS:
+	// the compiled plan's ordinal op counts it, and the identity plan's decode
+	// counts it after landing None. §4.6, §5.4's "counts twice" note.
+	t05Has(t, t05OpCase(t, runtime, "ordinal"), "report.clamped++;",
+		"R16 the compiled plan's ordinal op counts a forged ordinal")
+	identity := t05Emitted(t, `package probe
+
+enum Tier
+{
+    Bronze
+    Silver
+    Gold
+}
+
+fixed table T
+{
+    tier Tier
+}
+`)
+	t05Has(t, identity, "report.clamped++;",
+		"R16 the identity plan's ordinal bounds pass counts a forged ordinal")
+	t05Has(t, identity, "= 0;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
+	// A FOLDED ELEMENT RUN IS ONE and a widened run is never folded, so the
+	// coalescer merges COPY entries and nothing else (§5.4's "per ENTRY",
+	// §5.9 #33).
+	t05Has(t, runtime, "e[p + TableFixedLane.op] == TableFixedOp.copy &&\n            e[b + TableFixedLane.op] == TableFixedOp.copy &&",
+		"R16 the coalescer folds copies only, so a widened run counts per entry")
+	// copy AND present MOVE NOTHING.
+	for _, name := range []string{"copy", "present"} {
+		t05No(t, t05OpCase(t, runtime, name), "report.",
+			"R16 the "+name+" op lands its value and moves no counter")
+	}
+}
+
+// ---- dart/R18 ---------------------------------------------------------------
+
+// t05R18 holds dart/R18: "a clamp that cannot fire is not emitted and nothing
+// moves". §5.4: an end that sits ON the storage type's own limit describes a
+// value the load cannot hold, so the comparison has no false case; the elided
+// check never clamped, so the counter it would have moved never moved either.
+// The same rule is written for an ordinal whose extent FILLS its storage
+// width, which this leg emits as the tautology the law permits.
+func t05R18(t *testing.T) {
+	const full = `package probe
+
+fixed table T
+{
+    full int32 = 5 | min = -2147483648, max = 2147483647
+}
+`
+	src := t05Emitted(t, full)
+	// The two ends ARE the storage limits, so neither comparison is written and
+	// the literals appear nowhere in the emitted source. THE DECODE IS THE PASS
+	// THAT WOULD HOLD THEM, and it carries no counter at all.
+	decode := t05Between(t, src, "void tFixedDecode(", "\nfinal Uint8List tFixedLayout")
+	t05No(t, decode, "> 2147483647", "R18 a max on the storage limit is not emitted")
+	t05No(t, decode, "< -2147483648", "R18 a min on the storage limit is not emitted")
+	t05No(t, decode, "report.clamped++", "R18 a clamp that cannot fire moves nothing")
+
+	// THE CONTROL: a bound INSIDE the storage type's range has a false case and
+	// IS emitted, so the elision above is a decision and not an absent pass.
+	const inside = `package probe
+
+fixed table T
+{
+    a int32 = 5 | min = 0, max = 1000
+}
+`
+	live := t05Emitted(t, inside)
+	t05Has(t, live, "value.a > 1000", "R18 a bound inside the storage range is emitted")
+	t05Has(t, live, "report.clamped++;", "R18 the emitted clamp counts")
+
+	// AN ORDINAL WHOSE EXTENT FILLS ITS WIDTH: 255 variants live in a byte, so
+	// the read-side `> 255` has no false case. This leg writes the tautology,
+	// which §5.4 permits, and the load's own width is what makes it one.
+	var b strings.Builder
+	b.WriteString("package probe\n\nenum Big\n{\n")
+	for i := 0; i < 255; i++ {
+		fmt.Fprintf(&b, "    V%d\n", i)
+	}
+	b.WriteString("}\n\nfixed table T\n{\n    e Big\n}\n")
+	big := findTable(t, unitFrom(t, b.String()), "T")
+	if got := ir.TableFixedStorageBytes(big.Fields[0].Type); got != 1 {
+		t.Fatalf("R18: the 255-variant enum rides in %d bytes, want the byte that fills it", got)
+	}
+	bigSrc := t05Emitted(t, b.String())
+	t05Has(t, bigSrc, "view.getUint8(", "R18 the filling ordinal is loaded at its one-byte width")
+	t05Has(t, bigSrc, "value.e > 255", "R18 the filling ordinal's clamp is the storage maximum itself")
+}
+
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapDartT05Evolution(t *testing.T) {
@@ -267,6 +406,9 @@ func TestFixedRoadmapDartT05Evolution(t *testing.T) {
 		{id: "dart/E6", check: t05E6},
 		{id: "dart/E8", check: t05E8},
 		{id: "dart/R19", check: t05R19},
+		{id: "dart/E9", check: t05E9},
+		{id: "dart/R16", check: t05R16},
+		{id: "dart/R18", check: t05R18},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
