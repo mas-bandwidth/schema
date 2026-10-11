@@ -174,6 +174,9 @@ func checkCard(root *Card, arena *TableArena) error {
 	if err := checkIDList(&root.Needs, "needs", arena); err != nil {
 		return err
 	}
+	if err := checkExtras(&root.Extra, arena); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -241,6 +244,49 @@ func checkIDList(list *TableList[CardIDRow], name string, arena *TableArena) err
 		CardNeedsEach(list, visit)
 	} else {
 		CardNeedsEach(list, visit, arena)
+	}
+	return elemErr
+}
+
+// checkExtras enforces the extras rules before any facade write publishes: the
+// 512-entry ceiling shared with the other collections, well-formed UTF-8 keys
+// and values without NUL, and no key duplicating a mapped header name
+// (docs/SPEC-TABLES.md §2.9).
+func checkExtras(list *TableList[KeyValueRow], arena *TableArena) error {
+	if list.Count < 0 || int64(list.Count) > MaxListEntries {
+		return fmt.Errorf("cards: extra has %d entries, past the %d-entry ceiling (docs/SPEC-TABLES.md §2.9)", list.Count, MaxListEntries)
+	}
+	var elemErr error
+	visit := func(e *KeyValueRow) bool {
+		n := int32(len(e.Key))
+		if e.KeyLength < n {
+			n = e.KeyLength
+		}
+		if n < 0 {
+			n = 0
+		}
+		k := e.Key[:n]
+		if !utf8.Valid(k) || bytes.IndexByte(k, 0) >= 0 {
+			elemErr = errors.New("cards: extra has a key that is not well-formed UTF-8 without NUL")
+			return false
+		}
+		if reservedHeaderKeys[string(k)] {
+			elemErr = fmt.Errorf("cards: extra key %q duplicates a mapped header key", string(k))
+			return false
+		}
+		if e.Value != 0 {
+			v := stringData(&e.Value, arena)
+			if !utf8.Valid(v) || bytes.IndexByte(v, 0) >= 0 {
+				elemErr = errors.New("cards: extra has a value that is not well-formed UTF-8 without NUL")
+				return false
+			}
+		}
+		return true
+	}
+	if arena == nil {
+		CardExtraEach(list, visit)
+	} else {
+		CardExtraEach(list, visit, arena)
 	}
 	return elemErr
 }
