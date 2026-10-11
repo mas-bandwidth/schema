@@ -65,3 +65,4 @@
 (:id "c/R27" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t08_test.go: TestFixedRoadmapCT08WritesConformance/c/R27") :tested-revision "5c5d6bd6dbce2e95a200c1f12e27282963b1114a")
 (:id "c/P3" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t08_test.go: TestFixedRoadmapCT08WritesConformance/c/P3") :tested-revision "5c5d6bd6dbce2e95a200c1f12e27282963b1114a")
 (:id "c/P4" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t08_test.go: TestFixedRoadmapCT08WritesConformance/c/P4") :tested-revision "5c5d6bd6dbce2e95a200c1f12e27282963b1114a")
+(:id "c/R28" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t08_test.go: TestFixedRoadmapCT08WritesConformance/c/R28") :tested-revision "42157d5ece16ab3cfb0559f7b25aafdf37ee3b20")
