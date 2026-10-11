@@ -762,7 +762,7 @@ func fixedIsUnionType(t ir.FieldType) bool {
 // statement rather than printing it so a loop body can stay on one line.
 func (g *fixedGen) compositeReset(t ir.FieldType, path string) string {
 	if fixedIsUnionType(t) {
-		return path + ".Type = 0; // None; dormant arms keep their storage"
+		return path + ".Type = 0; /* None; dormant arms keep their storage */"
 	}
 	g.require(fixedElementClass(t), t.Name)
 	return fmt.Sprintf("Init%s(%s);", fixedElementClass(t), path)
