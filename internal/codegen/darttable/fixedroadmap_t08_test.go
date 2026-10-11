@@ -444,42 +444,59 @@ union Pick
 
 fixed table Rec
 {
+    lead int32
     pick Pick
+    tail int32
 }
 `, `
   final v = t.Rec();
   t.initRec(v);
-  v.pick.type = 1;
-  v.pick.scalar = 12345;
-  final scalarBytes = Uint8List(t.recFixedMeasure(1));
-  check(t.recFixedSave([v], 1, scalarBytes) == scalarBytes.length, 'scalar arm save');
+  v.lead = 17;
+  v.tail = 19;
   final plan = t.recFixedNewPlan();
-  final report = t.TableFixedReport();
-  final scalarOut = [t.Rec()];
-  t.initRec(scalarOut[0]);
-  check(t.recFixedLoad(scalarOut, 1, scalarBytes, scalarBytes.length, plan, report) == 1 &&
-      report.refused == 0 && !report.malformed, 'scalar arm read: ${why(report)}');
-  check(scalarOut[0].pick.type == 1 && scalarOut[0].pick.scalar == 12345,
-      'scalar arm did not round trip');
+  for (final scalar in [-2147483648, 2147483647]) {
+    v.pick.type = 1;
+    v.pick.scalar = scalar;
+    final bytes = Uint8List(t.recFixedMeasure(1));
+    check(t.recFixedSave([v], 1, bytes) == bytes.length, 'scalar boundary save $scalar');
+    final out = [t.Rec()];
+    t.initRec(out[0]);
+    final report = t.TableFixedReport();
+    check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
+        report.refused == 0 && !report.malformed, 'scalar boundary read $scalar: ${why(report)}');
+    check(out[0].lead == 17 && out[0].tail == 19,
+        'scalar arm moved its neighbors: ${out[0].lead},${out[0].tail}');
+    check(out[0].pick.type == 1 && out[0].pick.scalar == scalar,
+        'scalar limit did not round trip: expected=$scalar got=${out[0].pick.scalar}');
+  }
 
-  v.pick.type = 2;
-  v.pick.textLength = 2;
-  v.pick.text[0] = 0x41;
-  v.pick.text[1] = 0x42;
-  final textBytes = Uint8List(t.recFixedMeasure(1));
-  check(t.recFixedSave([v], 1, textBytes) == textBytes.length, 'text arm save');
-  final textOut = [t.Rec()];
-  t.initRec(textOut[0]);
-  final textReport = t.TableFixedReport();
-  check(t.recFixedLoad(textOut, 1, textBytes, textBytes.length, plan, textReport) == 1 &&
-      textReport.refused == 0 && !textReport.malformed, 'text arm read: ${why(textReport)}');
-  check(textOut[0].pick.type == 2 && textOut[0].pick.textLength == 2 &&
-      textOut[0].pick.text[0] == 0x41 && textOut[0].pick.text[1] == 0x42,
-      'text arm did not round trip: tag=${textOut[0].pick.type} len=${textOut[0].pick.textLength} bytes=${textOut[0].pick.text[0]},${textOut[0].pick.text[1]} ${why(textReport)}');
+  for (final length in [0, 8]) {
+    v.pick.type = 2;
+    v.pick.textLength = length;
+    for (var i = 0; i < length; i++) {
+      v.pick.text[i] = 0x41 + i;
+    }
+    final bytes = Uint8List(t.recFixedMeasure(1));
+    check(t.recFixedSave([v], 1, bytes) == bytes.length, 'text boundary save $length');
+    final out = [t.Rec()];
+    t.initRec(out[0]);
+    final report = t.TableFixedReport();
+    check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
+        report.refused == 0 && !report.malformed, 'text boundary read $length: ${why(report)}');
+    check(out[0].lead == 17 && out[0].tail == 19,
+        'text arm moved its neighbors: ${out[0].lead},${out[0].tail}');
+    check(out[0].pick.type == 2 && out[0].pick.textLength == length,
+        'text length boundary did not land: expected=$length got=${out[0].pick.textLength}');
+    for (var i = 0; i < length; i++) {
+      check(out[0].pick.text[i] == 0x41 + i,
+          'text boundary byte $i did not land: ${out[0].pick.text[i]}');
+    }
+  }
 
   v.pick.type = 3;
   v.pick.values[0] = -17;
   v.pick.values[1] = 29;
+  v.pick.values[3] = 2147483647;
   final arrayBytes = Uint8List(t.recFixedMeasure(1));
   check(t.recFixedSave([v], 1, arrayBytes) == arrayBytes.length, 'array arm save');
   final arrayOut = [t.Rec()];
@@ -487,8 +504,11 @@ fixed table Rec
   final arrayReport = t.TableFixedReport();
   check(t.recFixedLoad(arrayOut, 1, arrayBytes, arrayBytes.length, plan, arrayReport) == 1 &&
       arrayReport.refused == 0 && !arrayReport.malformed, 'array arm read: ${why(arrayReport)}');
+  check(arrayOut[0].lead == 17 && arrayOut[0].tail == 19,
+      'array arm moved its neighbors: ${arrayOut[0].lead},${arrayOut[0].tail}');
   check(arrayOut[0].pick.type == 3 && arrayOut[0].pick.values[0] == -17 &&
-      arrayOut[0].pick.values[1] == 29, 'array arm did not round trip: tag=${arrayOut[0].pick.type} values=${arrayOut[0].pick.values[0]},${arrayOut[0].pick.values[1]} ${why(arrayReport)}');
+      arrayOut[0].pick.values[1] == 29 && arrayOut[0].pick.values[3] == 2147483647,
+      'fixed array values or final element did not land: ${arrayOut[0].pick.values[0]},${arrayOut[0].pick.values[1]},${arrayOut[0].pick.values[3]} ${why(arrayReport)}');
 `)
 	})
 
@@ -516,26 +536,29 @@ fixed table Rec
   final v = t.Rec();
   t.initRec(v);
   v.lead = 3;
-  v.historyCount = 2;
-  v.history[0].type = 1;
-  v.history[0].ping.n = 11;
-  v.history[1].type = 1;
-  v.history[1].ping.n = 22;
   v.trail = 5;
-  final bytes = Uint8List(t.recFixedMeasure(1));
-  check(t.recFixedSave([v], 1, bytes) == bytes.length, 'union array save');
   final plan = t.recFixedNewPlan();
-  final report = t.TableFixedReport();
-  final out = [t.Rec()];
-  t.initRec(out[0]);
-  final n = t.recFixedLoad(out, 1, bytes, bytes.length, plan, report);
-  check(n == 1 && report.refused == 0 && !report.malformed,
-      'union array read: n=$n ${why(report)}');
-  check(out[0].lead == 3 && out[0].historyCount == 2 && out[0].trail == 5,
-      'union array count or neighbours did not land');
-  check(out[0].history[0].type == 1 && out[0].history[0].ping.n == 11 &&
-      out[0].history[1].type == 1 && out[0].history[1].ping.n == 22,
-      'union array tags or payloads did not land');
+  for (final count in [0, 4]) {
+    v.historyCount = count;
+    for (var i = 0; i < count; i++) {
+      v.history[i].type = 1;
+      v.history[i].ping.n = 11 * (i + 1);
+    }
+    final bytes = Uint8List(t.recFixedMeasure(1));
+    check(t.recFixedSave([v], 1, bytes) == bytes.length, 'union array boundary save $count');
+    final out = [t.Rec()];
+    t.initRec(out[0]);
+    final report = t.TableFixedReport();
+    final n = t.recFixedLoad(out, 1, bytes, bytes.length, plan, report);
+    check(n == 1 && report.refused == 0 && !report.malformed,
+        'union array boundary read $count: n=$n ${why(report)}');
+    check(out[0].lead == 3 && out[0].historyCount == count && out[0].trail == 5,
+        'union array boundary count or neighbors did not land: expected=$count got=${out[0].historyCount}');
+    for (var i = 0; i < count; i++) {
+      check(out[0].history[i].type == 1 && out[0].history[i].ping.n == 11 * (i + 1),
+          'union array element $i did not land at count=$count');
+    }
+  }
 `)
 	})
 

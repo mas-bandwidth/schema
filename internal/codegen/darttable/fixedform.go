@@ -405,7 +405,9 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 					w.push(fixedLayoutEntry{id: ir.TableWireId(v.WireName()), kind: ir.TableKindNoPayload, note: v.Name}, fixedDst{})
 					continue
 				}
-				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), at+tag)
+				// Arm storage starts at the payload in the union value class; at locates
+				// the union in its parent record and does not prefix arm destinations.
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:

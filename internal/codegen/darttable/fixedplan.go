@@ -162,6 +162,14 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			saved := p.argw
 			p.argw = int(tag)
 			for i, v := range r.Variants {
+				if v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
+					if _, ok := v.F.Type.Ref.(*ir.Struct); ok {
+						// Nested record arms keep the established storage walk,
+						// whose child offsets follow the union's wire address.
+						fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+						continue
+					}
+				}
 				fixedPlanSub(p, v.F, src+tag, src, i+1)
 			}
 			p.argw = saved
