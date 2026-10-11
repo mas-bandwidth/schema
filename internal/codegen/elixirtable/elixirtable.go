@@ -126,6 +126,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, fixed)
 
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
+
+	// THE MESSAGE FORM'S ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3): the surface a
+	// `fixed table` root owes. The form is a fixed table's and nobody else's, so
+	// the announcement surface is emitted for fixed roots, beside BuildVersion —
+	// the announcement is a compile-time constant of the unit.
+	if len(fixedRoots(u)) > 0 {
+		out[TableMessageModule+".ex"] = messageformModule(u, ns)
+	}
 	return out, nil
 }
 

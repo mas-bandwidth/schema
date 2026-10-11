@@ -276,7 +276,7 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 	copy(d[:n], s[:n])
 }
 
-func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
+func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
@@ -340,6 +340,14 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			} else if uint32(v) > capn {
 				v = int32(capn)
 				report.Clamped++
+			}
+			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
+			// violation REFUSES BY NAME, the verdict the packet reader gives
+			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
+			// length above CLAMPS and counts; the bytes it kept are checked now,
+			// over v units and never over the span.
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return "text_ill_formed"
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
@@ -420,6 +428,90 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		}
 	}
+	return ""
+}
+
+// tableFixedTextIllFormed reports whether a text payload's USED units are the
+// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
+// bytes(N) carries no text rule at all, and slack past the used units is
+// unspecified and never a refusal (docs/SPEC-TABLES.md §3.4). The used argument
+// is the clamped length in the flavour's own units. THE STRING RULE IS THE
+// PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
+// interior zero (internal/codegen/golang/functions.go, the TString arm), so
+// every ill-formed sequence utf8 refuses — overlong, surrogate, past U+10FFFF,
+// an invalid lead — refuses here too and not only structural truncation.
+func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
+	switch meta {
+	case tableFixedTextUtf8:
+		if !utf8.Valid(p[:used]) {
+			return true
+		}
+		for _, c := range p[:used] {
+			if c == 0 {
+				return true
+			}
+		}
+	case tableFixedTextWide:
+		for i := uint32(0); i < used; i++ {
+			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
+			switch {
+			case u == 0:
+				return true
+			case u >= 0xD800 && u <= 0xDBFF:
+				if i+1 >= used {
+					return true
+				}
+				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
+				if lo < 0xDC00 || lo > 0xDFFF {
+					return true
+				}
+				i++
+			case u >= 0xDC00 && u <= 0xDFFF:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
+// text entries, run before the caller's storage is touched. It walks each text
+// entry under its own guard, clamps its length exactly as the scatter will, and
+// answers the one name an ill-formed payload refuses with
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
+// is total: no counter moves, nothing is decoded, and not one destination byte
+// is written — the prefill included", so the check lives here rather than only
+// inside the scatter, where an earlier entry's write would already have landed.
+// It writes nothing and moves no counter.
+func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Op != tableFixedText {
+			continue
+		}
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
+		// entry runs only under its own tag, and one that does not run cannot
+		// refuse.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		unit := uint32(1)
+		if p.Meta == tableFixedTextWide {
+			unit = 2
+		}
+		capn := p.Size / unit
+		v := int32(tableFixedGet32(src[p.Src:]))
+		if v < 0 {
+			v = 0
+		} else if uint32(v) > capn {
+			v = int32(capn)
+		}
+		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+			return "text_ill_formed"
+		}
+	}
+	return ""
 }
 
 type tableFixedLayoutEntry struct {
