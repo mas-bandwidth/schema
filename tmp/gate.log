@@ -1,0 +1,304 @@
+./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
+./bin/schema generate --lang cpp --out build/tables-generated/block tables/block
+warning: table RenderFrame: a fixed table's record body is 7533108 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+./bin/schema generate --lang cpp --out build/tables-generated/blockhome tables/blockhome
+warning: table PartFrame: a fixed table's record body is 10892 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/messages tables/messages
+warning: table ToolMessage: a fixed table's record body is 4594 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang cpp --out build/tables-generated/stream tables/stream
+./bin/schema generate --lang cpp --out build/tables-generated/blobs tables/blobs
+./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut1 test/tables/UT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/ut2 test/tables/UT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn1 test/tables/FN1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/hb test/tables/HB.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fn2 test/tables/FN2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu1 test/tables/FU1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fu2 test/tables/FU2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh1 test/tables/FH1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fh2 test/tables/FH2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fg1 test/tables/FG1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe1 test/tables/FE1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fe2 test/tables/FE2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm1 test/tables/FM1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fm2 test/tables/FM2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
+./bin/schema generate --lang cpp --out build/tables-generated/jsonkeys test/tables/JsonKeys.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m1 test/tables/M1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/m2 test/tables/M2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a1 test/tables/A1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/g1 test/tables/G1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k1 test/tables/K1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/k2 test/tables/K2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/a2 test/tables/A2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w1 test/tables/W1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/w2 test/tables/W2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r1 test/tables/R1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/r2 test/tables/R2.schema
+# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
+# root carrying a signalling NaN and a payload NaN, and the same root one
+# generation on with the float32 fields respelled float64 — the widened rung
+./bin/schema generate --lang cpp --out build/tables-generated/f1 test/tables/F1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/f2 test/tables/F2.schema
+# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
+# where the tool's cook half and the reference's are held to one artifact
+./bin/schema generate --lang cpp --out build/tables-generated/l1 test/tables/L1.schema
+# THE FIXED FORM'S VERSIONING PAIR (docs/SPEC-TABLES.md §3.4): a widened
+# field, a rename under `was`, a field each side does not have, and a whole
+# nested TYPE the older side has no name for
+./bin/schema generate --lang cpp --out build/tables-generated/fx1 test/tables/FX1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/fx2 test/tables/FX2.schema
+# ==== BEGIN rowan/cpp-versioning-lists ====
+# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
+# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
+# the SAME table name on both sides (one lineage) and a package each, so
+# both generations compile into one test binary — the FX1/FX2 precedent.
+# The reference's two read columns are test/tables/versioning_lists.cpp.
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_append test/tables/VOLD_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_append test/tables/VNEW_field_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_deprecate test/tables/VOLD_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_deprecate test/tables/VNEW_field_deprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_field_undeprecate test/tables/VOLD_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_field_undeprecate test/tables/VNEW_field_undeprecate.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_append test/tables/VOLD_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_append test/tables/VNEW_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_enum_width test/tables/VOLD_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_enum_width test/tables/VNEW_enum_width.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_append test/tables/VOLD_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_append test/tables/VNEW_union_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_union_arm_payload_widen test/tables/VOLD_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_union_arm_payload_widen test/tables/VNEW_union_arm_payload_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_flags_append test/tables/VOLD_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_flags_append test/tables/VNEW_flags_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_keyed_array_enum_append test/tables/VOLD_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_keyed_array_enum_append test/tables/VNEW_keyed_array_enum_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_nested_append test/tables/VOLD_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_nested_append test/tables/VNEW_nested_append.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
+# ==== END rowan/cpp-versioning-lists ====
+./bin/schema generate --lang cpp --out build/tables-generated/scalars tables/scalars
+./bin/schema generate --lang cpp --out build/tables-generated/maps tables/maps
+./bin/schema generate --lang cpp --out build/tables-generated/lists tables/lists
+./bin/schema generate --lang cpp --out build/tables-generated/arms tables/arms
+./bin/schema generate --lang cpp --out build/tables-generated/scalars2 test/tables/Scalars2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/backend tables/backend
+./bin/schema generate --lang cpp --out build/tables-generated/vocab tables/vocab
+./bin/schema generate --lang cpp --out build/tables-generated/vocab9 tables/vocab9
+./bin/schema generate --lang cpp --out build/tables-generated/bases test/tables/Bases.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt1 test/tables/RT1.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt2 test/tables/RT2.schema
+./bin/schema generate --lang cpp --out build/tables-generated/rt3 test/tables/RT3.schema
+# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
+# because examples/ pins gate 1 for all nine targets and eight of them
+# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
+./bin/schema generate --lang cpp --out build/tables-generated/wide examples-wide
+# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_bounded_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_fixed_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_array_elem_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_constant_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_string_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_wstring_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bytes_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_int_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_uint_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_float_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_range_widen.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_cfloat_res_refine.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_bits_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_fixed_I_grow_element.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_optional_add.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_hostile_bool.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VMID_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_floor.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRA_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VBRB_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_lineage_merge.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VOLD_unknown_census.schema
+./bin/schema generate --lang cpp --out build/tables-generated/vnum test/tables/VNEW_unknown_census.schema
+# ---- rowan/cpp-versioning-numbers: END ----
+./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+g++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+    -Ibuild/tables-generated/vnum \
+    -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was \
+    -I../serialize test/tables/fixedform_dump.cpp -o build/schema_test_fixedform_dump
+./build/schema_test_fixedform_dump build/fixedform-corpus
+fixed form: the C++ reference's byte oracle is in build/fixedform-corpus
+fixed form: what each file holds is in build/fixedform-corpus/manifest.txt (76 lines)
+ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable	10.620s
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	1.042s
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+warning: table RenderFrame: a fixed table's record body is 7533108 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+warning: table PartFrame: a fixed table's record body is 10892 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+cd test/rust-fixedform && PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
+SKIP the_prefill_holes' compiled missing-field block: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP an_older_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP a_newer_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP an_optional: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer` — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_ordinal_slide, both halves: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_text_under_an_arm's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_text_under_an_arm's compiled stray-true-bytes half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_enum_extent's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_negative_controls' plan_too_large case: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5) — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached.
+SKIP RULE: the entry count fits the layout length exactly: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: an entry count of zero is not a layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a kind outside the closed set is REFUSED, not skipped: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the root entry is a TABLE: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a constant size its kind does not admit: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a table's size is the sum of its fields': docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the tree runs out of layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the layout outlasts the tree: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a record size past 65536: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a size that would overflow the sum: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a nesting depth past the walk's own bound: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: fewer bytes than a header is layout_malformed: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP the_union_controls' compiled forged-tag half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read; the identity half above still watches a forged tag land None and count one clamped — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+P3 hostile sweep: 2334 mutations over 389 bytes — refused=1445 malformed=35 landed=854, three answers never a fourth
+rust fixed form: the bytes are the C++ reference's — the union corpus with them — and the versioned path is the path
+cd test/rust-fixedform && PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
+SKIP the_prefill_holes' compiled missing-field block: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP an_older_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP a_newer_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP an_optional: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer` — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_ordinal_slide, both halves: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_text_under_an_arm's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_text_under_an_arm's compiled stray-true-bytes half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_enum_extent's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+SKIP the_negative_controls' plan_too_large case: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5) — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached.
+SKIP RULE: the entry count fits the layout length exactly: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: an entry count of zero is not a layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a kind outside the closed set is REFUSED, not skipped: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the root entry is a TABLE: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a constant size its kind does not admit: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a table's size is the sum of its fields': docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the tree runs out of layout: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: the layout outlasts the tree: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a record size past 65536: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a size that would overflow the sum: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: a nesting depth past the walk's own bound: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP RULE: fewer bytes than a header is layout_malformed: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.
+SKIP the_union_controls' compiled forged-tag half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read; the identity half above still watches a forged tag land None and count one clamped — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.
+P3 hostile sweep: 2334 mutations over 389 bytes — refused=1445 malformed=35 landed=854, three answers never a fourth
+rust fixed form: the bytes are the C++ reference's — the union corpus with them — and the versioned path is the path
+fixed form: the C++ reference's byte oracle is in build/fixedform-corpus
+fixed form: what each file holds is in build/fixedform-corpus/manifest.txt (76 lines)
+PATH="/opt/homebrew/opt/rustup/bin:$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+	go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable	5.899s
+tables Rust versioning: §5 read both columns of every row against the C++ reference bytes
+=== RUN   TestFixedRoadmapRustT06Bounds
+=== PAUSE TestFixedRoadmapRustT06Bounds
+=== CONT  TestFixedRoadmapRustT06Bounds
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C7
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C7
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/R30
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/R30
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C9
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C9
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C10
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C10
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/R31
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/R31
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C12
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C12
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C13
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C13
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/R17
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/R17
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C1
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C1
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/C2
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/C2
+=== RUN   TestFixedRoadmapRustT06Bounds/rust/R11
+=== PAUSE TestFixedRoadmapRustT06Bounds/rust/R11
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C7
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/R17
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C13
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C12
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/R11
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C2
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C1
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/R31
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C10
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/C9
+=== CONT  TestFixedRoadmapRustT06Bounds/rust/R30
+--- PASS: TestFixedRoadmapRustT06Bounds (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C7 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C13 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/R17 (0.01s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C12 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/R11 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C2 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C1 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C10 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/C9 (0.00s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/R31 (0.01s)
+    --- PASS: TestFixedRoadmapRustT06Bounds/rust/R30 (0.01s)
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable	0.040s
+generated-tree: 39 generation rule(s)
+NOT COMMITTED — the generated/ tree on disk differs from HEAD:
+    M	generated/bench/paired/rust/fixed_runtime.rs
+    M	generated/bench/paired/rust/fixedtable_fixed.rs
+  commit the regenerated files.
+MISSING — 2 file(s) this compiler emits that the tree does not carry:
+    generated/bench/paired/elixir/TableMessage.ex
+    generated/bench/paired/java/TableVocabulary.java
+  add or restore them: they are generator output the tree does not carry.
+CHANGED — 20 file(s) whose committed bytes are not what this compiler emits:
+    generated/bench/paired/c/BenchTable.h
+    generated/bench/paired/c/FixedTableTable.h
+    generated/bench/paired/cs/BenchTable.cs
+    generated/bench/paired/cs/FixedTableTable.cs
+    generated/bench/paired/elixir/FixedRuntime.ex
+    generated/bench/paired/elixir/WrapFixed.ex
+    generated/bench/paired/go/BenchTable.go
+    generated/bench/paired/go/FixedTableTable.go
+    generated/bench/paired/java/BenchMixedFixed.java
+    generated/bench/paired/java/FixedTableFixed.java
+    generated/bench/paired/java/MixedChatEventFixed.java
+    generated/bench/paired/java/MixedEntityFixed.java
+    generated/bench/paired/java/MixedHitEventFixed.java
+    generated/bench/paired/java/MixedPickupEventFixed.java
+    generated/bench/paired/java/MixedStatFixed.java
+    generated/bench/paired/java/TableFixed.java
+    generated/bench/paired/js/BenchTable.js
+    generated/bench/tables/c/BenchTableTable.h
+    generated/bench/tables/cs/BenchTableTable.cs
+    generated/bench/tables/go/BenchTableTable.go
+  regenerate and commit them; the committed tree is what this repository receipts findings against.
+the generated/ tree is NOT what this compiler emits. The lists above are the whole difference.
+the emission that decided this is at build/generated-tree/fresh; the tree on disk is untouched.

@@ -259,6 +259,9 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
     op: TableFixedOp::Copy,
     arg: 0,
     argw: 1,
+    guard2: TABLE_FIXED_NO_GUARD,
+    arg2: 0,
+    argw2: 1,
     dstsize: 0,
     sign: 0,
 }];
