@@ -115,7 +115,8 @@ func t05C7(t *testing.T) {
 		"C7 the ranged scalar clamps to its declared min and max")
 	// §4.6: "a RANGED SCALAR clamps to the min and max the plan carries,
 	// COUNT clamped". Forge both ends in a file the old writer really saves;
-	// identity and compiled readers must keep their own declaration's bounds.
+	// identity and compiled readers clamp to the writer bound carried by the
+	// lineage plan (ALGORITHM §5.4), before the reader's wider bounds pass.
 	pkg := javaPackageOf(versioningSchemaUnit(t, "VOLD_range_widen.schema"))
 	classes := t03Build(t, t.TempDir(), "range_widen", []sideSpec{
 		{key: "reads", schema: "VNEW_range_widen.schema", older: []string{"VOLD_range_widen.schema"}},
@@ -123,20 +124,30 @@ func t05C7(t *testing.T) {
 	}, map[string]string{"Probe_capability.java": t03SaveLoadProbe("Probe_capability", pkg, "RangeWiden", `
         vals[0].lead = 1; vals[0].v = 42; vals[0].trail = 2;`)})
 	raw, err := os.ReadFile(t03BytesOf(t, t03RunSaveLoad(t, classes, "Probe_capability")))
-	if err != nil { t.Fatal(err) }
-	if len(raw) < 20 { t.Fatal("C7: saved file has no header") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) < 20 {
+		t.Fatal("C7: saved file has no header")
+	}
 	body := 20 + int(binary.LittleEndian.Uint32(raw[16:20])) + 8
 	if body+12 != len(raw) || binary.LittleEndian.Uint32(raw[body+4:]) != 42 {
 		t.Fatal("C7: saved record does not carry the fixture's ranged scalar")
 	}
-	for _, tc := range []struct { name string; raw uint32; old, newer string }{
-		{"negative", 0xffffffff, "0", "0"}, {"over", 201, "100", "200"},
+	for _, tc := range []struct {
+		name       string
+		raw        uint32
+		old, newer string
+	}{
+		{"negative", 0xffffffff, "0", "0"}, {"over", 201, "100", "100"},
 	} {
 		forged := append([]byte(nil), raw...)
 		binary.LittleEndian.PutUint32(forged[body+4:], tc.raw)
 		path := filepath.Join(t.TempDir(), tc.name+".bin")
-		if err := os.WriteFile(path, forged, 0o600); err != nil { t.Fatal(err) }
-		for _, side := range []struct { probe, want string }{{"Probe_refuses", tc.old}, {"Probe_reads", tc.newer}} {
+		if err := os.WriteFile(path, forged, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, side := range []struct{ probe, want string }{{"Probe_refuses", tc.old}, {"Probe_reads", tc.newer}} {
 			r := runProbe(t, classes, side.probe, path)
 			if r.n != 1 || r.refused || r.malformed || r.value["v"] != side.want || r.clamped != 1 {
 				t.Errorf("C7 %s/%s: want v=%s and exactly one clamp, got %+v", tc.name, side.probe, side.want, r)
