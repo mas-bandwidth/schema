@@ -210,6 +210,51 @@ func t08W6(t *testing.T) {
 		a.guard == b.guard && a.arg == b.arg && a.src+a.size == b.src && a.dst == b.dst {
 		t.Errorf("W6: the pair at the split was coalesced across it")
 	}
+
+	// THE COMPILED LANE'S PLAN TOO, driven: LineagePlans compiles a peer's
+	// layout against this build's own, and its plan must come out partitioned
+	// with the split on the lane. The reader (New) grew a scalar past the
+	// union; the writer (Old) has the union and no extra, so the compiled plan
+	// has both halves — head, the union's unguarded None tag and the tail
+	// before the split, the arms after it.
+	t08CSOK(t, `package probe
+
+union Pick
+{
+    a int32
+    b int32
+}
+
+fixed table Old
+{
+    head int32
+    pick Pick
+    tail int32
+}
+
+fixed table New
+{
+    head int32
+    pick Pick
+    tail int32
+    extra int32 = 5
+}
+`, `Probe.TableFixedKnownLayout[] known = new Probe.TableFixedKnownLayout[] {
+    new Probe.TableFixedKnownLayout(Probe.Schema.OldFixedHash, Probe.Schema.OldFixedLayout, Probe.Schema.OldFixedRecordBytes)
+};
+Probe.TableFixedLineagePlan[] plans = Probe.Schema.TableFixedWire.LineagePlans(known, Probe.Schema.NewFixedLayout, Probe.Schema.NewFixedDst, Probe.Schema.NewFixedHash);
+Probe.TableFixedLineagePlan lane = plans[0];
+if (lane.Why != null) { bad += ProbeLog.Fail("W6 lineage: " + lane.Why); }
+else if (lane.Split <= 0 || lane.Split >= lane.Count) { bad += ProbeLog.Fail("W6 lineage: split=" + lane.Split + " of " + lane.Count + " is not a real partition"); }
+else
+{
+    for (int i = 0; i < lane.Count; ++i)
+    {
+        bool g = lane.Entries[i].Guard != Probe.Schema.TableFixedWire.NoGuard;
+        if (i < lane.Split && g) { bad += ProbeLog.Fail("W6 lineage: entry " + i + " below the split carries a GUARD"); }
+        if (i >= lane.Split && !g) { bad += ProbeLog.Fail("W6 lineage: entry " + i + " above the split carries NO guard"); }
+    }
+}`)
 }
 
 // t08P1: P1 [verify] "identity == compiled" — SPEC-TABLES §3.4: "THE SAME LOOP
