@@ -271,6 +271,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the batch
+	// verbs over one announced vocabulary, a fixed table's wire.
+	maps.Copy(out, generateMessageFiles(u))
 	return out, nil
 }
 
@@ -329,7 +332,7 @@ func runtimeFileNames() []string {
 		"TableBytes",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
-		"BuildVersion",
+		"BuildVersion", "TableMessage",
 	}
 }
 
