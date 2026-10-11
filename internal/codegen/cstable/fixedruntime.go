@@ -25,13 +25,22 @@ public struct TableFixedEntry
     public uint Aux;
     public uint Guard;
     public byte Op;
-    public byte Arg; // Arm ordinal compared by Guard, at ArgW bytes
+    public ulong Arg; // Arm ordinal compared by Guard, at ArgW bytes
     public byte DstSize;
     public byte Sign;
     public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
     public byte ArgW; // THE GUARD'S WIDTH IN BYTES. Zero is read as one.
+    // Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+    // TO, CONJOINED with Guard/Arg: the entry runs only when BOTH tags hold
+    // their ordinal (docs/FIXED-FORM-ALGORITHM.md §4.1). Arg2 carries the outer
+    // arm ordinal and its own lane carries NO BYTE: it is full width like Arg.
+    // NoGuard on Guard2 is "no second condition", which is every entry that is
+    // not nested.
+    public uint Guard2;
+    public ulong Arg2; // The OUTER arm ordinal compared by Guard2, at ArgW2 bytes
+    public byte ArgW2; // THE OUTER GUARD'S WIDTH IN BYTES. Zero is read as one.
 
-    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1)
+    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, ulong arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1, uint guard2 = 0xFFFFFFFFu, ulong arg2 = 0, byte argW2 = 1)
     {
         Src = src;
         Dst = dst;
@@ -44,6 +53,9 @@ public struct TableFixedEntry
         Sign = sign;
         Meta = meta;
         ArgW = argW;
+        Guard2 = guard2;
+        Arg2 = arg2;
+        ArgW2 = argW2;
     }
 }
 
@@ -545,6 +557,11 @@ const tableFixedWireSource = `
 
             public uint LayTable(ReadOnlySpan<ushort> values, int n)
             {
+                // THE LENGTH WORD IS uint16, so a table that does not fit one
+                // refuses the plan BY NAME rather than truncating its own length
+                // (§5.8 row 14): the remap is one slot per writer variant, and a
+                // count past 65535 is a plan that does not fit.
+                if (n < 0 || n > 65535) { Overflow = true; return 0; }
                 int bytes = (n + 1) * 2;
                 int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                 int total = entrySize * Capacity;
@@ -572,7 +589,7 @@ const tableFixedWireSource = `
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg, bool census)
+            uint guard, ulong arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -615,7 +632,7 @@ const tableFixedWireSource = `
             ref Compiler c,
             TableFixedLayoutView theirs, int ti, uint their_at,
             TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-            uint guard, byte arg, bool census)
+            uint guard, ulong arg, bool census)
         {
             TableFixedLayoutEntry te = EntryAt(theirs, ti);
             TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -772,10 +789,10 @@ const tableFixedWireSource = `
                             if (ta.Id == ma.Id)
                             {
                                 TableFixedEntry tag = new TableFixedEntry(
-                                    their_at, aux_at, my_tag, k + 1, their_at, Const, (byte)(j + 1), 0);
+                                    their_at, aux_at, my_tag, k + 1, their_at, Const, (ulong)(j + 1), 0);
                                 c.Push(tag);
                                 CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
-                                             mine, my_arm, dst, at, their_at, (byte)(j + 1), census);
+                                             mine, my_arm, dst, at, their_at, (ulong)(j + 1), census);
                                 break;
                             }
                             their_arm += Subtree(theirs, their_arm);
@@ -795,7 +812,13 @@ const tableFixedWireSource = `
                         c.Push(new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size));
                         break;
                     }
-                    uint n = Math.Min(te.Children, 255u);
+                    // FULL WIDTH (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.8 row 14):
+                    // the remap is one slot per writer variant, never a
+                    // 255-deep stack array. A count past the uint16 length word
+                    // does not fit the length word: the table refuses the plan
+                    // by name rather than answering a wrong ordinal.
+                    uint n = te.Children;
+                    if (n > 65535u) { c.Overflow = true; break; }
                     ushort[] map = new ushort[n];
                     for (uint j = 0; j < n; ++j)
                     {
@@ -1060,6 +1083,9 @@ const tableFixedWireSource = `
                 // an entry belonging to an ARM runs only under its own tag,
                 // compared at ArgW bytes, never as a prefix
                 if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                // AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the
+                // entry runs only when the second lane's tag holds its ordinal.
+                if (p.Guard2 != NoGuard && TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
                 switch (p.Op)
                 {
                     case Copy:
