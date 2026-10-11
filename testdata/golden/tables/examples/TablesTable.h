@@ -121,7 +121,13 @@ enum TableMessageReason
     // floor is layout_unsupported. Both carry the file's hash and nothing else
     // (bill §12.4).
     layout_newer,
-    layout_unsupported
+    layout_unsupported,
+    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
+    // used units that are not paired UTF-16 — refuses the read BY NAME, the
+    // verdict the packet reader gives, this form having no L to continue past.
+    // Nothing is decoded and no counter moves.
+    text_ill_formed
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -12252,8 +12258,6 @@ inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & clampe
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
     {
-        memset( value.name, 0, sizeof( value.name ) );
-        value.name_length = 0;
         damaged++;
     }
     LoadoutConfigFixedClampBody( value.loadout, clamped, damaged );
@@ -12265,8 +12269,6 @@ inline void RootConfigFixedClampBody( RootConfig & value, int32_t & clamped, int
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) )
     {
-        memset( value.version_note, 0, sizeof( value.version_note ) );
-        value.version_note_length = 0;
         damaged++;
     }
     for ( int64_t i = 0; i < (int64_t) value.weapons_count; ++i )
@@ -12284,17 +12286,18 @@ inline void RootConfigFixedClampBody( RootConfig & value, int32_t & clamped, int
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void WeaponConfigFixedClamp( WeaponConfig & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool WeaponConfigFixedClamp( WeaponConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     WeaponConfigFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- WeaponConfig, the fixed form ----
@@ -12571,10 +12574,20 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( WeaponConfigFixedKnownRanges[lineage_at], WeaponConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        WeaponConfigFixedClamp( values[k], report );
+        if ( !WeaponConfigFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -12585,17 +12598,18 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void LoadoutConfigFixedClamp( LoadoutConfig & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool LoadoutConfigFixedClamp( LoadoutConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     LoadoutConfigFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- LoadoutConfig, the fixed form ----
@@ -12994,10 +13008,20 @@ inline int64_t LoadoutConfigFixedLoad( LoadoutConfig * values, int64_t capacity,
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( LoadoutConfigFixedKnownRanges[lineage_at], LoadoutConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        LoadoutConfigFixedClamp( values[k], report );
+        if ( !LoadoutConfigFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -13008,17 +13032,18 @@ inline int64_t LoadoutConfigFixedLoad( LoadoutConfig * values, int64_t capacity,
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void ProfileConfigFixedClamp( ProfileConfig & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool ProfileConfigFixedClamp( ProfileConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     ProfileConfigFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- ProfileConfig, the fixed form ----
@@ -13478,10 +13503,20 @@ inline int64_t ProfileConfigFixedLoad( ProfileConfig * values, int64_t capacity,
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( ProfileConfigFixedKnownRanges[lineage_at], ProfileConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        ProfileConfigFixedClamp( values[k], report );
+        if ( !ProfileConfigFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -13492,17 +13527,18 @@ inline int64_t ProfileConfigFixedLoad( ProfileConfig * values, int64_t capacity,
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void RootConfigFixedClamp( RootConfig & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool RootConfigFixedClamp( RootConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     RootConfigFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- RootConfig, the fixed form ----
@@ -14199,10 +14235,20 @@ inline int64_t RootConfigFixedLoad( RootConfig * values, int64_t capacity, const
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RootConfigFixedKnownRanges[lineage_at], RootConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        RootConfigFixedClamp( values[k], report );
+        if ( !RootConfigFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;

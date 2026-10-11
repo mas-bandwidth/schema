@@ -121,7 +121,13 @@ enum TableMessageReason
     // floor is layout_unsupported. Both carry the file's hash and nothing else
     // (bill §12.4).
     layout_newer,
-    layout_unsupported
+    layout_unsupported,
+    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
+    // used units that are not paired UTF-16 — refuses the read BY NAME, the
+    // verdict the packet reader gives, this form having no L to continue past.
+    // Nothing is decoded and no counter moves.
+    text_ill_formed
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -7494,6 +7500,22 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
     *count = bodies;
     return TableMessageBatchClose( br );
 }
+
+// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's LAYOUT and then
+// the values in declared order, every field at its declared storage width.
+// The writer is the constant bytes memcpy'd and then stores; the reader is
+// ONE loop over ONE plan, the identity plan here and a plan compiled from
+// the writer's own layout for anybody else. There is no second reader.
+
+// table WideBlob has NO FIXED FORM in C++: its record body is 280012 bytes, past §3.4's 65536-byte fixed-form ceiling, so no conforming reader decodes a record that size — it keeps form 1 and the `fixed` keyword still buys it the CLASS (docs/SPEC-TABLES.md §3.4).
+// Its form-1 surface is unaffected; nothing about form 1 moves (docs/SPEC-TABLES.md §3.4).
+
+// THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
+// schema compiler rather than folded by this one, because they are the same
+// offsets every other port needs; these are that arithmetic checked against
+// this compiler's own, at build time, one line per fact the plans rest on.
 
 inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {

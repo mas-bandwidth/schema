@@ -100,7 +100,13 @@ enum TableMessageReason
     // floor is layout_unsupported. Both carry the file's hash and nothing else
     // (bill §12.4).
     layout_newer,
-    layout_unsupported
+    layout_unsupported,
+    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
+    // used units that are not paired UTF-16 — refuses the read BY NAME, the
+    // verdict the packet reader gives, this form having no L to continue past.
+    // Nothing is decoded and no counter moves.
+    text_ill_formed
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -14793,8 +14799,6 @@ inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damag
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
     {
-        memset( value.name, 0, sizeof( value.name ) );
-        value.name_length = 0;
         damaged++;
     }
 }
@@ -14805,8 +14809,6 @@ inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & d
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
     {
-        memset( value.path, 0, sizeof( value.path ) );
-        value.path_length = 0;
         damaged++;
     }
 }
@@ -14817,8 +14819,6 @@ inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped,
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
     {
-        memset( value.path, 0, sizeof( value.path ) );
-        value.path_length = 0;
         damaged++;
     }
     if ( (uint64_t) value.mode > 2u ) { value.mode = Mode::None; clamped++; }
@@ -14830,8 +14830,6 @@ inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped,
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
     {
-        memset( value.path, 0, sizeof( value.path ) );
-        value.path_length = 0;
         damaged++;
     }
 }
@@ -14841,17 +14839,18 @@ inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped,
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void UserFixedClamp( User & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool UserFixedClamp( User & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     UserFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- User, the fixed form ----
@@ -15096,10 +15095,20 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( UserFixedKnownRanges[lineage_at], UserFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        UserFixedClamp( values[k], report );
+        if ( !UserFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -15110,17 +15119,18 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void ScriptFixedClamp( Script & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool ScriptFixedClamp( Script & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     ScriptFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- Script, the fixed form ----
@@ -15369,10 +15379,20 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( ScriptFixedKnownRanges[lineage_at], ScriptFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        ScriptFixedClamp( values[k], report );
+        if ( !ScriptFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -15914,17 +15934,18 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void OpenDocumentFixedClamp( OpenDocument & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool OpenDocumentFixedClamp( OpenDocument & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     OpenDocumentFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- OpenDocument, the fixed form ----
@@ -16190,10 +16211,20 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( OpenDocumentFixedKnownRanges[lineage_at], OpenDocumentFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        OpenDocumentFixedClamp( values[k], report );
+        if ( !OpenDocumentFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -16204,17 +16235,18 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void SaveDocumentFixedClamp( SaveDocument & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool SaveDocumentFixedClamp( SaveDocument & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     SaveDocumentFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- SaveDocument, the fixed form ----
@@ -16463,10 +16495,20 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( SaveDocumentFixedKnownRanges[lineage_at], SaveDocumentFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        SaveDocumentFixedClamp( values[k], report );
+        if ( !SaveDocumentFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
