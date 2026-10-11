@@ -1,0 +1,48 @@
+# cpp-t03 the gate, attempt 5
+# go vet ./internal/codegen/cpptable/
+vet: clean
+# make tables-fixedform-corpus (NOT RUN: sibling runtime ../serialize absent)
+# make tables-fixedform tables-fixed-properties (NOT RUN: sibling runtime ../serialize absent)
+# SCHEMA_REQUIRE_CORPUS=1 go test -p 2 -count=1 -timeout 600s ./internal/codegen/cpptable/ ./internal/ci/
+--- FAIL: TestFixedFormRaggedTail (0.00s)
+    fixedform_ragged_tail_test.go:31: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedFormUnder20Bytes (0.00s)
+    fixedform_under_20_bytes_test.go:30: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningCfloatRangeWiden (0.00s)
+    fixedversioning_cfloat_range_widen_test.go:24: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningCfloatResRefine (0.00s)
+    fixedversioning_cfloat_res_refine_test.go:22: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningCountClampEnds (0.00s)
+    fixedversioning_count_clamp_ends_test.go:20: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningForgedOrdinalBothPlans (0.00s)
+    fixedversioning_forged_ordinal_both_plans_test.go:23: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningRefuseWritesNothing (0.00s)
+    fixedversioning_refuse_writes_nothing_test.go:27: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningNewReadsOld (0.00s)
+    fixedversioning_test.go:290: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningWriterBoundCount (0.00s)
+    fixedversioning_test.go:518: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningUnionTagBothPlans (0.00s)
+    fixedversioning_union_tag_both_plans_test.go:39: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningUnionUnselectedArm (0.00s)
+    fixedversioning_union_unselected_arm_row_test.go:27: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningUnknownCensusManyRecords (0.00s)
+    fixedversioning_unknown_census_many_test.go:19: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningUnknownCensus (0.00s)
+    fixedversioning_unknown_census_test.go:16: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+--- FAIL: TestFixedVersioningWriterBoundCountTwoPeers (0.00s)
+    fixedversioning_writer_bound_count_two_peers_test.go:30: SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus: stat /Users/glenn/nova-bench/run/swarm-pr7-slot1/slots/schema-cpp-t03-plans-versions.w5.g3.e17/jobs/schema-cpp-t03-plans-versions.w5/repo/build/fixedform-corpus/old_array_bounded_grow.bin: no such file or directory
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable	0.446s
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	2.771s
+FAIL
+require-corpus exit 1
+# go test -count=1 -timeout 600s -run TestFixedRoadmapCppT03PlansVersions ./internal/codegen/cpptable/
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/R6 (0.01s)
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/R22 (0.02s)
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/R3 (0.02s)
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/R29 (0.19s)
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/E3/other-required-widens (0.19s)
+    --- PASS: TestFixedRoadmapCppT03PlansVersions/cpp/R15 (0.19s)
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable	0.301s
