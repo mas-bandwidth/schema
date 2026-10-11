@@ -831,6 +831,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
+	// AND THE FORGED ORDINAL, in the BOUNDS pass and not in the `ordinal`/`const`
+	// op (§5.4, fix 27): the op lands None and moves nothing, and this pass reads
+	// the writer's count the plan carries — the remap table's length word, or an
+	// unguarded const's DstSize — which the storage clamp cannot see. Silent for
+	// the identity plan, whose entries are `copy`.
+	g.pf("\t\ttableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4).\n")

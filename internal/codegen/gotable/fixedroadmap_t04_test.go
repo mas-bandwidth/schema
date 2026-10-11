@@ -22,11 +22,10 @@ package gotable
 // exact; w = default" and the title's "moves no counter at all" are asserted on
 // the running read.
 //
-// ONE TASK IN THIS ROW IS REPORTED `unknown`, NOT SUBTESTED.
-// go/R16 is reported `unknown`: its last clause — "copy/const/present/ordinal move nothing" — is not
-// held on this leg, which counts `clamped` in the `ordinal` and `const` ops
-// rather than in the bounds pass (§5.4's "counts twice", fix 27, schema#1254),
-// and the numeric clauses need a running load this card cannot build.
+// EVERY TASK IN THIS ROW IS SUBTESTED. go/R16's last clause —
+// "copy/const/present/ordinal move nothing" — is held: the `ordinal` and `const`
+// ops count no clamp, and the forged ordinal's count lives in the bounds pass
+// (§5.4, fix 27, schema#1254).
 
 import (
 	"fmt"
@@ -493,9 +492,8 @@ func t04GoE9(t *testing.T) {
 
 // ---- go/R16 -----------------------------------------------------------------
 
-// t04GoR16 asserts the §5.4 counter clauses this leg HOLDS, and its comment
-// records the clause it does not. The COMPILE census is once per peer and never
-// per record: §5.4's "once per peer and never per record" is emitted as
+// t04GoR16 asserts §5.4's counters exactly. The COMPILE census is once per peer
+// and never per record: §5.4's "once per peer and never per record" is emitted as
 // `censusUnknown, censusKind = lane.Unknown, lane.KindMismatch` (one lane read)
 // and ONE `report.Unknown += censusUnknown` after the record loop, so no record
 // and no second read of the same peer moves it. `widened` is once per entry per
@@ -503,14 +501,15 @@ func t04GoE9(t *testing.T) {
 // `report.Widened++` inside the per-entry loop, and §5.4's "a folded element run
 // is ONE" is the copy/present fold (`tableFixedRuns` folds only
 // `tableFixedCopy`/`tableFixedBool`), so a widen run is never folded. `count`
-// and `text` clamp once per entry. THIS SUBTEST DOES NOT PROVE THE TITLE'S LAST
-// CLAUSE. §5.4 puts the forged ordinal's `clamped` in the BOUNDS PASS, on both
-// plans, and says "a port that counts in the op as well counts twice"
-// (docs/FIXED-FORM-ALGORITHM.md §5.4), and fix 27 says the leg that already
-// counts it IN THE OP has the OP to move; this leg counts it in
-// `tableFixedOrdinal` (the compiled plan) and in `tableFixedConst` (the identity
-// plan) — schema#1254, §5.8 row 12 — which is the opposite of "copy, const,
-// present, ordinal move nothing". So the task is reported unknown, not done.
+// and `text` clamp once per entry. AND THE TITLE'S LAST CLAUSE: §5.4 says
+// "`copy`, `const`, `present`, `ordinal` ... the op lands its value and moves
+// nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans"
+// (docs/FIXED-FORM-ALGORITHM.md §5.4, fix 27). The `ordinal` and `const` op
+// cases therefore carry NO `report.Clamped++`; the forged ordinal/union tag is
+// counted by `tableFixedForgedBounds`, the bounds pass the compiled read runs
+// over the record's source, while the identity plan — which carries no
+// `ordinal` or unguarded `const` entry — has its own forged tag counted by the
+// storage clamp (§5.8 row 12, schema#1254).
 func t04GoR16(t *testing.T) {
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if run == "" {
@@ -527,7 +526,24 @@ func t04GoR16(t *testing.T) {
 			t.Errorf("R16: %s does not clamp once per entry", op)
 		}
 	}
+	// THE OPS MOVE NOTHING (§5.4): the ordinal and const ops land their value and
+	// count no clamp; the forged ordinal's count is the bounds pass's. The const
+	// case is last under the switch, so its block runs to the function's return.
+	for _, op := range [][2]string{
+		{"case tableFixedOrdinal:", "case tableFixedWiden:"},
+		{"case tableFixedConst:", "return \"\""},
+	} {
+		if strings.Contains(t02GoBlock(t, run, op[0], op[1]), "report.Clamped++") {
+			t.Errorf("R16: %s counts clamped in the op; §5.4 puts the forged count in the bounds pass, not the op", op[0])
+		}
+	}
+	if !strings.Contains(tableFixedRuntime, "func tableFixedForgedBounds(") {
+		t.Error("R16: the bounds pass that counts a forged ordinal is not emitted")
+	}
 	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
+	if !strings.Contains(load, "tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)") {
+		t.Error("R16: the compiled read does not run the bounds pass that counts a forged ordinal")
+	}
 	if n := strings.Count(load, "report.Unknown += censusUnknown"); n != 1 {
 		t.Errorf("R16: the load adds the unknown census %d times, want once per peer", n)
 	}
