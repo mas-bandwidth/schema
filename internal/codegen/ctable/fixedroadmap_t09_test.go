@@ -141,6 +141,42 @@ int main(void)
 			id: "unsigned-128/c/valid-data",
 			skip: "the 128-bit storage is serialize.h's lo/hi pair and the header includes serialize.h only for a unit that holds it; serialize.h ships in the sibling serialize.c checkout, which is absent here, so a compiled unsigned-128 probe cannot be built",
 		},
+		{
+			id: "bits-values/c/valid-data",
+			schema: `package probe
+fixed table BitsValue
+{
+    v bits(12)
+}
+`,
+			main: `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+` + t09Check + `
+int main(void)
+{
+    BitsValue value[2], loaded[2];
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    memset(&value, 0, sizeof(value));
+    value[0].v = 4095;  /* the width bound 2^12 - 1 */
+    value[1].v = 4096;  /* one past the bound: the read-side pass clamps to 4095 */
+    need = bits_value_fixed_measure(2);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(bits_value_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = bits_value_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    CHECK(n == 2);
+    CHECK(!report.malformed && !report.refused && report.clamped == 1);
+    CHECK(loaded[0].v == 4095);
+    CHECK(loaded[1].v == 4095);  /* the width bound held the value, and counted once */
+    return 0;
+}
+`,
+		},
 	}
 	for _, tc := range tests {
 		tc := tc
