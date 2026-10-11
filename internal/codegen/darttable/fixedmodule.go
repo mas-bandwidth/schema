@@ -272,6 +272,9 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 		// the fixed runtime: the form is a fixed table's, so a unit that has a
 		// fixed root is exactly the unit whose announcement is emitted.
 		g.emitMessageAnnouncement()
+		// AND ITS BATCH SURFACE (§3.3), the same home rule: the bit codec and
+		// the per-body read/write ride once, beside the fixed runtime.
+		g.emitMessageBatchRuntime()
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/dart, and is imported rather than emitted twice.
 		for _, un := range fixedLocalUnions(closure) {
@@ -287,6 +290,9 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
+		}
+		for _, st := range closure {
+			g.emitMessageBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
 	}
@@ -685,6 +691,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.kindMismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
+
+	// THE MESSAGE FORM'S BATCH SURFACE (§3.3), beside the fixed form's: a
+	// fixed root's is the unit whose batch verbs are emitted.
+	g.emitMessageBatch(st)
 }
 
 func (g *fixedModule) emitBytes(b []byte) {
