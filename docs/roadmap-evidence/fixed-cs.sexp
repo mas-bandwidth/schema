@@ -80,3 +80,4 @@
 (:id "cs/C1" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/C1") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
 (:id "cs/C2" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/C2") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
 (:id "cs/R11" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/R11") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
+(:id "cs/R31" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/R31") :tested-revision "8eaf6ee7a63dc950416ae49c7ceb87d43327a535")
