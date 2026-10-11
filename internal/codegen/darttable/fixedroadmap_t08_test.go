@@ -492,4 +492,51 @@ fixed table Rec
 `)
 	})
 
+	// union-arrays/dart/valid-data [capability] — "Arrays of unions: valid-data
+	// write/read acceptance" (docs/SPEC-TABLES.md §3.4 [N]T / [Min..Max]T). The
+	// counted array writes two non-default union values and reads each tag/payload.
+	t.Run("union-arrays/dart/valid-data", func(t *testing.T) {
+		t.Parallel()
+		t08RoundTrip(t, t08DartBinary(t), `package probe
+
+type Ping { n int32 }
+
+union Reply
+{
+    ping Ping
+}
+
+fixed table Rec
+{
+    lead    int32
+    history [..4]Reply
+    trail   int32
+}
+`, `
+  final v = t.Rec();
+  t.initRec(v);
+  v.lead = 3;
+  v.historyCount = 2;
+  v.history[0].type = 1;
+  v.history[0].ping.n = 11;
+  v.history[1].type = 1;
+  v.history[1].ping.n = 22;
+  v.trail = 5;
+  final bytes = Uint8List(t.recFixedMeasure(1));
+  check(t.recFixedSave([v], 1, bytes) == bytes.length, 'union array save');
+  final plan = t.recFixedNewPlan();
+  final report = t.TableFixedReport();
+  final out = [t.Rec()];
+  t.initRec(out[0]);
+  final n = t.recFixedLoad(out, 1, bytes, bytes.length, plan, report);
+  check(n == 1 && report.refused == 0 && !report.malformed,
+      'union array read: n=$n ${why(report)}');
+  check(out[0].lead == 3 && out[0].historyCount == 2 && out[0].trail == 5,
+      'union array count or neighbours did not land');
+  check(out[0].history[0].type == 1 && out[0].history[0].ping.n == 11 &&
+      out[0].history[1].type == 1 && out[0].history[1].ping.n == 22,
+      'union array tags or payloads did not land');
+`)
+	})
+
 }
