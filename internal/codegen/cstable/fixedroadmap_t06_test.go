@@ -228,6 +228,30 @@ func t06R31(t *testing.T) {
 		t.Error("R31: the ordinal is not bounded by the remap table's length word")
 	}
 
+	// THE REMAP TABLE IS AS LONG AS THE WRITER's VARIANT COUNT, and a count
+	// that does not fit the length word refuses the plan BY NAME (§5.8 row 14):
+	// the ENUM CASE is where the table is laid, one slot per writer variant,
+	// never the reference's 255-deep stack array. The weak ordinal-op
+	// assertions above only prove the op reads and bounds a length word; this
+	// reads the site that builds it.
+	enumAt := strings.Index(tableFixedWireSource, "case 30: // Enum")
+	if enumAt < 0 {
+		t.Fatal("R31: the compiler walk has no enum case")
+	}
+	enumCase := tableFixedWireSource[enumAt:]
+	if end := strings.Index(enumCase, "case 12: case 33:"); end > 0 {
+		enumCase = enumCase[:end]
+	}
+	t06Has(t, enumCase, "uint n = te.Children;",
+		"R31 the remap table is one slot per the WRITER's variant count, never capped at 255")
+	if strings.Contains(enumCase, "Math.Min(te.Children, 255u)") {
+		t.Error("R31: the remap table is capped at 255 entries, silently dropping the writer's 256th variant")
+	}
+	t06Has(t, enumCase, "if (n > 65535u) { c.Overflow = true; break; }",
+		"R31 a remap past the uint16 length word refuses the plan by name")
+	t06Has(t, tableFixedWireSource, "if (n < 0 || n > 65535) { Overflow = true; return 0; }",
+		"R31 LayTable refuses a remap it cannot fit in the length word")
+
 	var b strings.Builder
 	b.WriteString("package probe\n\nunion Wide {\n")
 	for i := range 256 {

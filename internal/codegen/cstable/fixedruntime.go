@@ -537,6 +537,11 @@ const tableFixedWireSource = `
 
             public uint LayTable(ReadOnlySpan<ushort> values, int n)
             {
+                // THE LENGTH WORD IS uint16, so a table that does not fit one
+                // refuses the plan BY NAME rather than truncating its own length
+                // (§5.8 row 14): the remap is one slot per writer variant, and a
+                // count past 65535 is a plan that does not fit.
+                if (n < 0 || n > 65535) { Overflow = true; return 0; }
                 int bytes = (n + 1) * 2;
                 int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                 int total = entrySize * Capacity;
@@ -787,7 +792,13 @@ const tableFixedWireSource = `
                         c.Push(new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size));
                         break;
                     }
-                    uint n = Math.Min(te.Children, 255u);
+                    // FULL WIDTH (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.8 row 14):
+                    // the remap is one slot per writer variant, never a
+                    // 255-deep stack array. A count past the uint16 length word
+                    // does not fit the length word: the table refuses the plan
+                    // by name rather than answering a wrong ordinal.
+                    uint n = te.Children;
+                    if (n > 65535u) { c.Overflow = true; break; }
                     ushort[] map = new ushort[n];
                     for (uint j = 0; j < n; ++j)
                     {
