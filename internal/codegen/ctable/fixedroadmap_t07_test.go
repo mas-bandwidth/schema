@@ -10,13 +10,37 @@ package ctable
 // docs/SPEC-TABLES.md §3.4.
 
 import (
+	"strings"
 	"testing"
 )
 
 const (
+	t07ArraySchema = `package probe
+fixed table Grow {
+    vals [..4]int32
+}
+`
+	t07UnionSchema = `package probe
+type Narrow { x uint8 = 0 }
+type Wide { y uint64 = 0 }
+union Pick
+{
+    narrow Narrow
+    wide   Wide
+}
+fixed table Box {
+    pick Pick
+}
+`
 	t07BytesSchema = `package probe
 fixed table Blob {
     data bytes(4)
+}
+`
+	t07BytesRowSchema = `package probe
+fixed table Blob {
+    label string(8)
+    data  bytes(6)
 }
 `
 	t07ClampSchema = `package probe
@@ -35,6 +59,10 @@ func TestFixedRoadmapCT07Writes(t *testing.T) {
 		{"c/C14", cT07BoundsLiveOnly},
 		{"c/W4", cT07ReadSlack},
 		{"c/W9", cT07PrefillUnwritten},
+		{"c/W1", cT07WriteSlackZeros},
+		{"c/W3", cT07ZeroBehindArm},
+		{"c/W5", cT07WriteChecksDebug},
+		{"c/W8", cT07BytesArrayRow},
 	}
 	for _, row := range rows {
 		t.Run(row.id, func(t *testing.T) {
@@ -170,4 +198,105 @@ int main(void)
     return 0;
 }
 `)
+}
+
+// c/W1 "write slack is template zeros": the save memsets the record body to
+// zero (the template) and the write body stores only the live bytes, so a
+// counted array's bytes past the used ones are the template's zeros (§3.4).
+func cT07WriteSlackZeros(t *testing.T) {
+	runCGenerated(t, t07ArraySchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    Grow value;
+    int64_t need;
+    uint8_t file[256];
+    int64_t layout;
+    uint8_t * body;
+    int i;
+    memset(&value, 0x7F, sizeof(value));
+    value.vals_count = 1;
+    value.vals[0] = 42;
+    value.vals[1] = 0x7F7F7F7F; value.vals[2] = 0x7F7F7F7F; value.vals[3] = 0x7F7F7F7F;
+    need = grow_fixed_measure(1);
+    if (grow_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("save\n"); return 1; }
+    layout = table_fixed_get32(file + kTableFixedHeaderBytes);
+    body = file + kTableFixedHeaderBytes + 4 + layout + 8;
+    if (table_fixed_get32(body) != 1) { printf("count\n"); return 1; }
+    for (i = 1; i < 4; ++i) {
+        uint8_t * slot = body + 4 + i * 4;
+        if (slot[0] || slot[1] || slot[2] || slot[3]) { printf("slack slot %d is not the template's zeros\n", i); return 1; }
+    }
+    if (value.vals[1] != 0x7F7F7F7F) { printf("the write mutated the value it read\n"); return 1; }
+    return 0;
+}
+`)
+}
+
+// c/W3 "zero behind a narrower arm": §4.1 — "A union writes the tag and the
+// taken arm only, zero behind a narrower one." The template's zeros stand
+// behind a narrow arm, so a wider arm's bytes are zero when the narrow one rode.
+func cT07ZeroBehindArm(t *testing.T) {
+	runCGenerated(t, t07UnionSchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    Box value;
+    int64_t need, layout;
+    uint8_t file[256];
+    uint8_t * body;
+    int i;
+    memset(&value, 0x7F, sizeof(value));
+    value.pick.type = PICK_TYPE_NARROW;
+    value.pick.as.narrow.x = 0xAB;
+    need = box_fixed_measure(1);
+    if (box_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("save\n"); return 1; }
+    layout = table_fixed_get32(file + kTableFixedHeaderBytes);
+    body = file + kTableFixedHeaderBytes + 4 + layout + 8;
+    if (body[0] != PICK_TYPE_NARROW) { printf("tag=%d\n", body[0]); return 1; }
+    if (body[1] != 0xAB) { printf("narrow arm=%x\n", body[1]); return 1; }
+    for (i = 2; i < 9; ++i) {
+        if (body[i]) { printf("byte behind the narrow arm is 0x%02x, not the template's zero\n", body[i]); return 1; }
+    }
+    return 0;
+}
+`)
+}
+
+// c/W5 "write checks DEBUG only": the write-side bound is `schema_assert`,
+// which NDEBUG removes exactly as it removes `assert` — nothing aborts behind
+// it (§3.4). The generated writer carries the assert and no fatal.
+func cT07WriteChecksDebug(t *testing.T) {
+	h := tableH(t, t07ArraySchema)
+	if !strings.Contains(h, "schema_assert( value->vals_count >= 0 && value->vals_count <= 4 )") {
+		t.Fatal("the write bound is not schema_assert: it would not be removed by NDEBUG")
+	}
+	if !strings.Contains(h, "#define schema_assert assert") {
+		t.Fatal("schema_assert is not defined as assert: NDEBUG would not remove the write check")
+	}
+}
+
+// c/W8 "bytes(N) takes the array row": docs/FIXED-FORM-ALGORITHM.md §4.1,
+// fix 10 — "A `bytes(N)` takes the ARRAY's row, not a text field's — the count
+// to `aux` and the elements to `dst`", where a text field's row is the other
+// way round. The generated `<root>_fixed_dst` is the destination row the plan
+// compiler reads: the bytes field's row must carry the buffer at `dst` with
+// stride one and the live count at `aux` (meta 3), and the `string(N)` field
+// beside it is the CONTROL, the text convention with the length at `dst`, no
+// stride and the buffer at `aux` (meta 1). The offsets are the declaration's
+// and the generated header states them beside each row.
+func cT07BytesArrayRow(t *testing.T) {
+	h := tableH(t, t07BytesRowSchema)
+	// the array row: buffer at dst, stride one, live count at aux, meta 3
+	bytes := "{ 16, 1, 24, 1, 3 }, /* data */"
+	// the control, the text convention: length at dst, no stride, buffer at aux
+	text := "{ 12, 0, 0, 0, 1 }, /* label */"
+	if !strings.Contains(h, bytes) {
+		t.Fatalf("bytes(N) takes the array row: the destination row must put the buffer at dst, stride one and the live count at aux — got no row %q", bytes)
+	}
+	if !strings.Contains(h, text) {
+		t.Fatalf("bytes(N) takes the array row: the text row is the CONTROL and must stay the text convention — length at dst, buffer at aux — got no row %q", text)
+	}
 }
