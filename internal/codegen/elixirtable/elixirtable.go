@@ -125,6 +125,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, fixed)
 
+	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: a batch of
+	// bitpacked bodies under one announced vocabulary. It is a FIXED TABLE's
+	// and nobody else's (§2.2), so its roots are the fixed form's own.
+	if len(fixedRoots(u)) > 0 {
+		out[MessageRuntimeModule+".ex"] = messageRuntimeModule(u, ns)
+		message, err := generateMessage(u, ns)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, message)
+	}
+
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 	return out, nil
 }
