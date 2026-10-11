@@ -51,8 +51,8 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 					// stay as they are).
 					return
 				}
-			st := findTable(t, u, row.root)
-			probe := messageRoundTripProbe(u, st, row.name, conn.path, row.batch)
+				st := findTable(t, u, row.root)
+				probe := messageRoundTripProbe(u, st, row.name, conn.path, row.batch)
 				out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
 					"ann.bin":   mustRead(t, conn.path),
 					"batch.bin": mustRead(t, row.batch),
