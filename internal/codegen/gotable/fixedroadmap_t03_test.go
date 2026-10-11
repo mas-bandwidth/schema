@@ -22,6 +22,9 @@ package gotable
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -576,6 +579,64 @@ func t03GoR21(t *testing.T) {
 	t03GoHas(t, widenF, "<<29", "R21 the 23-bit mantissa becomes the 52-bit one")
 	t03GoHas(t, widenF, "math.Float64bits(float64(math.Float32frombits(bits)))", "R21 every other exponent converts exactly")
 	t03GoHasNot(t, widenF, "tableFixedPutF64(dst[p.Dst:], float64(", "R21 the float rung still widens through the hardware conversion")
+	// THE CLAUSE EXECUTED, not merely present as text: the emitted arm's own
+	// body is lifted out of tableFixedRuntime and RUN over the f32 patterns,
+	// and the f64 bits it lands are read back and compared. A broken sign copy,
+	// a forced quiet bit or a dropped payload bit is red here; the substring
+	// checks above cannot see any of the three. The probe carries no sibling
+	// runtime and no foreign toolchain — only the Go compiler this leg runs.
+	t03GoR21Exec(t, widenF)
+}
+
+// t03GoR21Exec compiles and runs the exact text of the emitted
+// tableFixedWidenF arm over the NaN inputs the title names, wiring the few
+// names the arm reads (src, dst, p, report, tableFixedGet32, tableFixedPut64,
+// math) around it, so a planted edit to the arm turns this red by the bits it
+// lands, not by an absent substring (docs/SPEC-TABLES.md §3.4, §21.2).
+func t03GoR21Exec(t *testing.T, arm string) {
+	t.Helper()
+	if !strings.Contains(arm, "var widened uint64") {
+		t.Fatalf("R21: the arm text is not the assembled widen: %q", arm)
+	}
+	probe := "package probe\n\n" +
+		"import (\n\t\"encoding/binary\"\n\t\"math\"\n\t\"testing\"\n)\n\n" +
+		"const tableFixedWidenF uint8 = 6\n\n" +
+		"type TableFixedEntry struct{ Src, Dst uint32 }\n" +
+		"type TableReport struct{ Widened int32 }\n\n" +
+		"func tableFixedGet32(b []byte) uint32 { return binary.LittleEndian.Uint32(b) }\n" +
+		"func tableFixedPut64(b []byte, v uint64) { binary.LittleEndian.PutUint64(b, v) }\n\n" +
+		"func widenF(src, dst []byte, p TableFixedEntry, report *TableReport) {\n" +
+		arm + "\n}\n\n" +
+		"func TestWidenF(t *testing.T) {\n" +
+		"\tfor _, c := range []struct {\n\t\tin   uint32\n\t\twant uint64\n\t\twhat string\n\t}{\n" +
+		"\t\t{0x7f800001, 0x7ff0000020000000, \"positive signalling NaN keeps its quiet bit clear\"},\n" +
+		"\t\t{0x7fc00000, 0x7ff8000000000000, \"positive quiet NaN stays quiet\"},\n" +
+		"\t\t{0xff800001, 0xfff0000020000000, \"negative signalling NaN copies its sign\"},\n" +
+		"\t\t{0x7fbfffff, 0x7ff7ffffe0000000, \"full low-mantissa payload rides the shift\"},\n" +
+		"\t\t{0x3f800000, 0x3ff0000000000000, \"finite widens exactly\"},\n" +
+		"\t} {\n" +
+		"\t\tsrc := make([]byte, 4)\n\t\tdst := make([]byte, 8)\n" +
+		"\t\tbinary.LittleEndian.PutUint32(src, c.in)\n" +
+		"\t\tvar r TableReport\n" +
+		"\t\twidenF(src, dst, TableFixedEntry{}, &r)\n" +
+		"\t\tif got := binary.LittleEndian.Uint64(dst); got != c.want {\n" +
+		"\t\t\tt.Errorf(\"%s: widenF(0x%08x) landed 0x%016x, want 0x%016x\", c.what, c.in, got, c.want)\n\t\t}\n" +
+		"\t\tif r.Widened != 1 {\n" +
+		"\t\t\tt.Errorf(\"%s: the widen did not count: Widened=%d\", c.what, r.Widened)\n\t\t}\n" +
+		"\t}\n}\n"
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module probe\n\ngo 1.26\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "widen_test.go"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("R21: the emitted widen arm failed to run bit-exact:\n%v\n%s", err, out)
+	}
 }
 
 // ---- go/R29 -----------------------------------------------------------------
