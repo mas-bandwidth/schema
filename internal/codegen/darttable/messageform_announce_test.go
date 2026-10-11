@@ -97,6 +97,24 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 			if gotLen != len(conn.bytes) {
 				t.Fatalf("%s: AnnounceMeasure emits %d, the manifest's file is %d bytes", un.unit, gotLen, len(conn.bytes))
 			}
+			// The clause names the two FUNCTIONS, so the assertion runs them:
+			// AnnounceMeasure is the emitted length and Announce copies the
+			// manifest's bytes into the caller's buffer, refusing a short one.
+			body := fmt.Sprintf(`
+  final want = Uint8List.fromList(%s);
+  final measured = t.AnnounceMeasure();
+  check(measured == want.length, 'AnnounceMeasure=$measured want=${want.length}');
+  final buffer = Uint8List(want.length);
+  final wrote = t.Announce(buffer);
+  check(wrote == want.length, 'Announce=$wrote want=${want.length}');
+  var same = true;
+  for (var i = 0; i < want.length; i++) { if (buffer[i] != want[i]) { same = false; } }
+  check(same, 'Announce did not copy the manifest file');
+  check(t.Announce(Uint8List(want.length - 1)) == -1, 'a short buffer is not refused');
+`, dartBytes(conn.bytes))
+			if out, err := runAnnounceProbe(t, u, body); err != nil {
+				t.Fatalf("%s: Announce/AnnounceMeasure on the manifest's file: %v\n%s", un.unit, err, out)
+			}
 		}
 	})
 
