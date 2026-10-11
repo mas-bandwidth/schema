@@ -74,18 +74,21 @@ type Vec
     x int32
     y int32
 }
+fixed table Tab { n int32 }
 union Body
 {
     v Vec
+    t Tab
     n int32
 }
 fixed table Root { body Body }
 `,
 		// §3.4 "EVERY FIELD AT ITS BOUND": a union is its tag then its widest
-		// arm. The by-value type payload at a non-default value and the scalar
-		// arm at a boundary value. The value struct the table module splices is
-		// declared here because the packet half of a `type` needs the absent
-		// sibling runtime.
+		// arm. The by-value type payload and the fixed-table payload, each at a
+		// non-default value, and the scalar arm at a boundary value. The value
+		// struct the table module splices for the `type` payload is declared
+		// here because the packet half of a `type` needs the absent sibling
+		// runtime; the `fixed table` payload is a table the module emits whole.
 		probe: t11Prelude + `
 type Vec struct {
 	X int32
@@ -101,6 +104,14 @@ func TestUnionValues(t *testing.T) {
 	got := roundtrip(t, v)
 	if got.Body.Type != BodyTypeV || got.Body.V.X != 11 || got.Body.V.Y != -22 {
 		t.Fatalf("type arm: %+v", got.Body)
+	}
+	v = Root{}
+	RootReset(&v)
+	v.Body.Type = BodyTypeT
+	v.Body.T.N = 41
+	got = roundtrip(t, v)
+	if got.Body.Type != BodyTypeT || got.Body.T.N != 41 {
+		t.Fatalf("fixed-table arm: %+v", got.Body)
 	}
 	v = Root{}
 	RootReset(&v)
