@@ -47,11 +47,11 @@ func TestFixedRoadmapJsT09UnionsOptionals(t *testing.T) {
 		id  string
 		run func(t *testing.T)
 	}{
-		{"union-field-arms", t09UnionFieldArms},
-		{"union-arrays", t09UnionArrays},
-		{"optional-arrays", t09OptionalArrays},
-		{"scalar-defaults", t09ScalarDefaults},
-		{"text-bytes-flags-defaults", t09TextBytesFlagsDefaults},
+		{"union-field-arms/js/valid-data", t09UnionFieldArms},
+		{"union-arrays/js/valid-data", t09UnionArrays},
+		{"optional-arrays/js/valid-data", t09OptionalArrays},
+		{"scalar-defaults/js/valid-data", t09ScalarDefaults},
+		{"text-bytes-flags-defaults/js/valid-data", t09TextBytesFlagsDefaults},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
