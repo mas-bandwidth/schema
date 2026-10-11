@@ -117,6 +117,7 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 	}{
 		{"enum-values/c/valid-data", cT10EnumValues},
 		{"utf16-values/c/valid-data", cT10UTF16Values},
+		{"byte-buffers/c/valid-data", cT10ByteBuffers},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {
@@ -196,6 +197,39 @@ fixed table WstringGrow
         for ( k = 2; k < 16; ++k )
             if ( back[0].text[k] != (uint16_t) ( 0x100 + k ) )
                 { printf( "code unit %d is %04x\n", k, back[0].text[k] ); return 1; }
+    }
+`)
+}
+
+// byte-buffers/c/valid-data — "Bounded byte buffers: valid-data write/read
+// acceptance". §3.4: "`bytes(N)` — 4 (the length in BYTES, int32 LE) + N bytes".
+// The buffer fills the bound (16 bytes) and every byte is distinct, so a reader
+// that truncates at a terminator or reads bytes as text moves one.
+func cT10ByteBuffers(t *testing.T) {
+	cT10Run(t, `package probe
+fixed table BytesGrow
+{
+    lead  uint32 = 1
+    blob  bytes(16)
+    trail uint32 = 2
+}
+`, "BytesGrow", `
+    {
+        int k;
+        v.lead = 0xAAAAAAAAu;
+        v.trail = 0xBBBBBBBBu;
+        for ( k = 0; k < 16; ++k ) { v.blob[k] = (uint8_t) ( 0x80 + k ); }
+        v.blob_length = 16;
+        n = @S@_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+        if ( n < 0 ) { printf( "save failed\n" ); return 1; }
+        if ( @S@_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+            { printf( "load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+        if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
+            { printf( "the row moved a neighbour: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
+        if ( back[0].blob_length != 16 ) { printf( "blob_length=%d\n", (int) back[0].blob_length ); return 1; }
+        for ( k = 0; k < 16; ++k )
+            if ( back[0].blob[k] != (uint8_t) ( 0x80 + k ) )
+                { printf( "byte %d is %02x\n", k, back[0].blob[k] ); return 1; }
     }
 `)
 }
