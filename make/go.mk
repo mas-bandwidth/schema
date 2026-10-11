@@ -174,6 +174,7 @@ cards-generate: bin/schema
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
+	cp tables/cards/render.go build/tables-generated-go/cards/render.go
 	cp tables/cards/parse_test.go build/tables-generated-go/cards/parse_test.go
 	@mkdir -p build/tables-generated-go/cards/fuzz
 	@if [ -f tables/cards/fuzz/card-populated.wire ]; then cp tables/cards/fuzz/card-populated.wire build/tables-generated-go/cards/fuzz/card-populated.wire; fi

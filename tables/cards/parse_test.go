@@ -70,6 +70,173 @@ func cardBody(rec *Record) []byte {
 	return stringData(&rec.root.Body, nil)
 }
 
+// TestParseRenderCorpus parses the normalized seed, asserts every mapped header
+// value and the exact body suffix, renders it back byte-identically, and proves
+// the parse-render-parse round trip keeps the owned wire and a JSON round trip
+// keeps every field and the body with a clean report (card STEP 3, STEP 4).
+func TestParseRenderCorpus(t *testing.T) {
+	t.Parallel()
+	fixture := readFixture(t, "normalized-valid.md")
+	rec, err := Parse(fixture)
+	if err != nil {
+		t.Fatalf("Parse(normalized-valid.md): %v", err)
+	}
+	root := rec.root
+	if got := cardString(root.Id[:], root.IdLength); got != "a-cut-ignores-the-previous-tags-cancelled-release-run" {
+		t.Errorf("id = %q", got)
+	}
+	if got := cardString(root.Sha[:], root.ShaLength); got != "000000000000" {
+		t.Errorf("sha = %q", got)
+	}
+	if root.Tier != Tierpro {
+		t.Errorf("tier = %v", root.Tier)
+	}
+	if got := cardString(root.Repo[:], root.RepoLength); got != "mas-bandwidth/nova-tools" {
+		t.Errorf("repo = %q", got)
+	}
+	if got := cardString(root.Base[:], root.BaseLength); got != "dev" {
+		t.Errorf("base = %q", got)
+	}
+	if got := cardString(root.Kind[:], root.KindLength); got != "" {
+		t.Errorf("kind = %q, want empty default", got)
+	}
+	if root.Priority != Priorityhigh {
+		t.Errorf("priority = %v", root.Priority)
+	}
+	wantPaths := []string{"pkg/release/ci.go", "pkg/release/ci_test.go", "pkg/release/release.go", "cmd/nova-update/README.md", "docs/fixes.sexp", "FIXES.md"}
+	if got := pathList(&root.Paths); !equalStrings(got, wantPaths) {
+		t.Errorf("paths = %q, want %q", got, wantPaths)
+	}
+	if got := pathList(&root.New); len(got) != 0 {
+		t.Errorf("new = %q, want empty", got)
+	}
+	wantShared := []string{"docs/fixes.sexp", "FIXES.md"}
+	if got := pathList(&root.Shared); !equalStrings(got, wantShared) {
+		t.Errorf("shared = %q, want %q", got, wantShared)
+	}
+	if got := idList(&root.Needs); len(got) != 0 {
+		t.Errorf("needs = %q, want empty", got)
+	}
+	if root.DoneWhen != 0 {
+		t.Errorf("done_when = %q, want absent", stringData(&root.DoneWhen, nil))
+	}
+	if root.DeadlineMinutes != 0 {
+		t.Errorf("deadline_minutes = %d, want 0", root.DeadlineMinutes)
+	}
+	if root.Source == 0 {
+		t.Error("source is absent, want the SOURCE value")
+	} else if got := string(stringData(&root.Source, nil)); got != fixtureField(t, fixture, "SOURCE") {
+		t.Errorf("source = %q", got)
+	}
+	if got := extraPairs(rec); len(got) != 0 {
+		t.Errorf("extra = %q, want empty", got)
+	}
+	wantBody := bodyAfter(t, fixture, "SOURCE")
+	if got := cardBody(rec); !bytes.Equal(got, wantBody) {
+		t.Errorf("body suffix differs: got %d bytes, want %d", len(got), len(wantBody))
+	}
+
+	text, report, err := Render(rec)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Equal(text, fixture) {
+		t.Fatalf("Render does not reproduce the canonical seed:\n%s\n--- vs ---\n%s", text, fixture)
+	}
+	if report.Malformed {
+		t.Errorf("Render report is malformed: %+v", report)
+	}
+
+	rec2, err := Parse(text)
+	if err != nil {
+		t.Fatalf("Parse(Render(...)): %v", err)
+	}
+	if !bytes.Equal(rec2.Wire(), rec.Wire()) {
+		t.Fatal("parse-render-parse round trip changed the owned wire")
+	}
+	text3, _, err := Render(rec2)
+	if err != nil {
+		t.Fatalf("second Render: %v", err)
+	}
+	if !bytes.Equal(text3, text) {
+		t.Fatal("repeated round trip grew or rewrote the text")
+	}
+
+	json, _, err := ToJSON(rec)
+	if err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	rec3, err := FromJSON(json)
+	if err != nil {
+		t.Fatalf("FromJSON(ToJSON(...)): %v", err)
+	}
+	if !bytes.Equal(rec3.Wire(), rec.Wire()) {
+		t.Fatal("JSON round trip changed the owned wire")
+	}
+	if got := cardBody(rec3); !bytes.Equal(got, wantBody) {
+		t.Error("JSON round trip changed the body")
+	}
+}
+
+// TestParseExtrasAndDeadline pins the unmapped keys (extras) in arrival order,
+// DONE-WHEN, DEADLINE conversion, and the separate tier line's agreement with
+// RESULT, through Parse and Render (card HEADER MAPPING).
+func TestParseExtrasAndDeadline(t *testing.T) {
+	t.Parallel()
+	text := "RESULT: extra-card sha=0123456789ab tier: pro\n" +
+		"REPO: repo\n" +
+		"LEG: go\n" +
+		"START: 2026-01-01\n" +
+		"TOOLCHAIN: rust\n" +
+		"DONE-WHEN: make cards-test\n" +
+		"DEADLINE: finish within 90 minutes.\n" +
+		"tier: pro\n" +
+		"prose line one\n"
+	rec, err := Parse([]byte(text))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := extraPairs(rec)
+	want := []extraKV{
+		{key: "LEG", value: "go"},
+		{key: "START", value: "2026-01-01"},
+		{key: "TOOLCHAIN", value: "rust"},
+	}
+	if !equalExtra(got, want) {
+		t.Errorf("extras = %+v, want %+v", got, want)
+	}
+	if rec.root.DoneWhen == 0 || string(stringData(&rec.root.DoneWhen, nil)) != "make cards-test" {
+		t.Errorf("done_when = %q", stringData(&rec.root.DoneWhen, nil))
+	}
+	if rec.root.DeadlineMinutes != 90 {
+		t.Errorf("deadline_minutes = %d, want 90", rec.root.DeadlineMinutes)
+	}
+	if got := cardBody(rec); string(got) != "prose line one\n" {
+		t.Errorf("body = %q", got)
+	}
+
+	rendered, _, err := Render(rec)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	wantRendered := "RESULT: extra-card sha=0123456789ab tier: pro\n" +
+		"REPO: repo\n" +
+		"DONE-WHEN: make cards-test\n" +
+		"DEADLINE: finish within 90 minutes.\n" +
+		"LEG: go\n" +
+		"START: 2026-01-01\n" +
+		"TOOLCHAIN: rust\n" +
+		"prose line one\n"
+	if string(rendered) != wantRendered {
+		t.Errorf("Render:\n%s\n--- want ---\n%s", rendered, wantRendered)
+	}
+	if rec2, err := Parse(rendered); err != nil {
+		t.Fatalf("Parse(Render(...)): %v", err)
+	} else if !bytes.Equal(rec2.Wire(), rec.Wire()) {
+		t.Fatal("extras round trip changed the wire")
+	}
+}
+
 // TestParseRefusesAStrandedKey proves the malformed legacy seed and a minimal
 // SOURCE-after-prose brief are refused naming the key and line, while NOTE: and
 // unknown key-shaped lines within prose stay opaque (card STRANDED KEYS).
