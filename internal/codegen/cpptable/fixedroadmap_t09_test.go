@@ -213,7 +213,16 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.ufx = ( value.ufx > 65536 ) ? 65536 : value.ufx;",
 			},
 		},
-		// t09-more-cases
+		{
+			// "Boolean values". §3.4 fix 2: a bool lands as byte != 0 through
+			// kTableFixedBool on both plans, never a memcpy that could hold 2.
+			id: "bool-values/cpp/valid-data",
+			want: []string{
+				"bool b = false;",
+				"TableFixedPut8( b + 0, value.b ? 1 : 0 );",
+				"kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // b",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
