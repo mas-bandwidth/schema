@@ -212,7 +212,7 @@ fixed table Lineage
 	t07Has(t, load, "let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);", "W9 the load computes the plan's unwritten ranges")
 	t07Has(t, load, "image[o..o + z].copy_from_slice(&LINEAGE_FIXED_DEFAULTS[o..o + z]);", "W9 the declared defaults land in the holes")
 	runtime := string(fixedRuntimeBody)
-	t07Has(t, runtime, "if p.guard != TABLE_FIXED_NO_GUARD {", "W9 a guarded entry is not a write, so it stays a hole")
+	t07Has(t, runtime, "if p.guard_count != 0 {", "W9 a guarded entry is not a write, so it stays a hole")
 	// THE IDENTITY PLAN IS ONE COPY OF THE WHOLE BODY, so its hole list is
 	// empty: there is no identity flag in the loop, an empty list is what
 	// skips the work.

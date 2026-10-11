@@ -20,8 +20,7 @@
 mod tblfu1;
 
 use tblfu1::{
-    TableFixedEntry, TableFixedOp, TableFixedReport, table_fixed_run,
-    TABLE_FIXED_NO_GUARD,
+    TableFixedEntry, TableFixedGuard, TableFixedOp, TableFixedReport, table_fixed_run,
 };
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -68,45 +67,53 @@ fn record(outer_tag: u8, inner_tag: u8, payload: i32, tail: i32) -> [u8; BODY_LE
     r
 }
 
-// ---- The plan — entries inside a nested union arm, guarded by OUTER tag ----
+// ---- The plan — entries inside a nested union arm, guarded by a CHAIN ----
 //
 // The compiled plan for NestRoot, reading FH1's bytes, builds entries where
-// the inner union's arm entries are guarded by the OUTER tag. We construct
+// the inner union's arm entries are guarded by a TWO-LINK chain: OUTER tag
+// first (link 0), inner tag second (link 1). The entry carries offset+count
+// into the pool, and runs only when EVERY link holds its ordinal. We construct
 // that plan by hand:
 //
-// Entry 0: Const — write the inner tag into the image, guarded by outer.
-//   guard = 0 (outer tag at offset 0), arg = 1 (arm 'wrap'), argw = 1
-//   size = 1, aux = 1 (inner arm ordinal 'leaf'), dst = 0
+//   guards[0] = outer tag at offset 0, ordinal 1 (arm 'wrap')
+//   guards[1] = inner tag at offset 1, ordinal 1 (arm 'leaf')
 //
-// Entry 1: Copy — copy the inner payload, guarded by outer (SAME guard).
-//   guard = 0, arg = 1, argw = 1
-//   size = 4, src = 2, dst = 1
+// Entry 0: Const — write the inner tag into the image, guarded by the chain.
+//   guard_off = 0, guard_count = 2, size = 1, aux = 1 (inner arm ordinal
+//   'leaf'), dst = 0
+//
+// Entry 1: Copy — copy the inner payload, guarded by the SAME chain.
+//   guard_off = 0, guard_count = 2, size = 4, src = 2, dst = 1
 //
 // Entry 2: Copy — copy the tail, unguarded.
-//   guard = NO_GUARD, size = 4, src = 6, dst = 5
+//   guard_off = 0, guard_count = 0, size = 4, src = 6, dst = 5
 
-fn guard_chain_plan() -> Vec<TableFixedEntry> {
-    vec![
-        // Const: write inner tag = 1 (arm 'leaf') under the outer guard
+fn guard_chain_plan() -> (Vec<TableFixedEntry>, Vec<TableFixedGuard>) {
+    let guards = vec![
+        // link 0: the OUTER tag at offset 0, arm 'wrap'
+        TableFixedGuard { guard: 0, arg: 1, argw: 1 },
+        // link 1: the INNER tag at offset 1, arm 'leaf'
+        TableFixedGuard { guard: 1, arg: 1, argw: 1 },
+    ];
+    let plan = vec![
+        // Const: write inner tag = 1 (arm 'leaf') under the whole chain
         TableFixedEntry {
             src: 0,
             dst: 0,
             size: 1,
             aux: 1, // the inner arm ordinal we write
-            guard: 0,  // outer tag offset
-            arg: 1,    // arm 'wrap' ordinal
-            argw: 1,   // 1-byte tag
+            guard_off: 0,
+            guard_count: 2, // OUTER then INNER, both must hold
             op: TableFixedOp::Const,
             ..TableFixedEntry::default()
         },
-        // Copy: inner payload under the SAME outer guard
+        // Copy: inner payload under the SAME chain
         TableFixedEntry {
             src: 2,
             dst: 1,
             size: 4,
-            guard: 0,  // outer tag offset — the guard chain
-            arg: 1,    // arm 'wrap'
-            argw: 1,
+            guard_off: 0,
+            guard_count: 2,
             op: TableFixedOp::Copy,
             ..TableFixedEntry::default()
         },
@@ -115,30 +122,33 @@ fn guard_chain_plan() -> Vec<TableFixedEntry> {
             src: 6,
             dst: 5,
             size: 4,
-            guard: TABLE_FIXED_NO_GUARD,
+            guard_off: 0,
+            guard_count: 0,
             op: TableFixedOp::Copy,
             ..TableFixedEntry::default()
         },
-    ]
+    ];
+    (plan, guards)
 }
 
 #[test]
 fn r28_guard_chain_outer_tag_guards_inner_entries() {
     FAILURES.store(0, Ordering::Relaxed);
-    let plan = guard_chain_plan();
+    let (plan, guards) = guard_chain_plan();
+    let remap: &[u16] = &[];
 
-    // GREEN: outer tag is 1 (arm 'wrap'), inner tag is 1 (arm 'leaf').
-    // The outer guard matches on entries 0 and 1, so the inner tag and
+    // GREEN: outer tag is 1 (arm 'wrap'), inner tag is 1 (arm 'leaf'). Every
+    // link of the chain holds, so entries 0 and 1 run: the inner tag and
     // payload land. Entry 2 (tail) is unguarded and always lands.
     let rec = record(1, 1, 42, 7);
     let mut image = [0u8; 10];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&plan, &[], &rec, &mut image, &mut report);
+    table_fixed_run(&plan, &guards, remap, &rec, &mut image, &mut report);
 
-    check(image[0] == 1, "guard chain GREEN: inner tag 1 written under outer guard");
+    check(image[0] == 1, "guard chain GREEN: inner tag 1 written under the chain");
     check(
         i32::from_le_bytes(image[1..5].try_into().unwrap()) == 42,
-        "guard chain GREEN: payload 42 lands under outer guard",
+        "guard chain GREEN: payload 42 lands under the chain",
     );
     check(
         i32::from_le_bytes(image[5..9].try_into().unwrap()) == 7,
@@ -149,46 +159,47 @@ fn r28_guard_chain_outer_tag_guards_inner_entries() {
         "guard chain GREEN: no damage or refusal",
     );
 
-    // NEGATIVE CONTROL: outer tag is 2 (arm 'other'). The outer guard does
-    // NOT match entries 0 and 1, so they are SKIPPED — the inner tag stays 0
-    // (the prefill default) and the payload stays 0. Entry 2 (tail) still
-    // lands because it is unguarded. If the inner entries were guarded by the
-    // INNER tag instead of the OUTER one, this would still land the inner
-    // payload — that is the bug the guard chain fixes.
+    // NEGATIVE CONTROL: outer tag is 2 (arm 'other'). The OUTER link does
+    // not hold, so entries 0 and 1 are SKIPPED — the inner tag stays 0 (the
+    // prefill default) and the payload stays 0. Entry 2 (tail) still lands
+    // because it is unguarded. If the inner entries were guarded by the INNER
+    // tag only, this would still land the inner payload — that is the bug the
+    // chain fixes: an arm inside an arm answers to the OUTER tag too.
     let rec_other = record(2, 1, 42, 7);
     let mut image_other = [0u8; 10];
     let mut report_other = TableFixedReport::default();
-    table_fixed_run(&plan, &[], &rec_other, &mut image_other, &mut report_other);
+    table_fixed_run(&plan, &guards, remap, &rec_other, &mut image_other, &mut report_other);
 
     check(
         image_other[0] == 0,
-        "guard chain NEGATIVE: inner tag stays 0 — outer guard skipped the const entry",
+        "guard chain NEGATIVE: inner tag stays 0 — outer link skipped the const entry",
     );
     check(
         i32::from_le_bytes(image_other[1..5].try_into().unwrap()) == 0,
-        "guard chain NEGATIVE: payload stays 0 — outer guard skipped the copy entry",
+        "guard chain NEGATIVE: payload stays 0 — outer link skipped the copy entry",
     );
     check(
         i32::from_le_bytes(image_other[5..9].try_into().unwrap()) == 7,
         "guard chain NEGATIVE: tail still lands (unguarded)",
     );
 
-    // NEGATIVE CONTROL 2: outer tag matches but inner tag differs.
-    // The outer guard fires entries 0 and 1 regardless of the inner tag —
-    // the inner tag's check is NOT the outer guard. This proves the guard
-    // chain uses the OUTER tag's ordinal, not the inner one.
+    // NEGATIVE CONTROL 2: outer tag matches but inner tag differs. The OUTER
+    // link holds and the INNER link does not, so entries 0 and 1 are SKIPPED —
+    // every link must hold, and the inner tag is its own condition. If the
+    // guard chain checked only the OUTER tag, this would still land the inner
+    // payload, which is the half-chain the two-link chain closes.
     let rec_inner_diff = record(1, 2, 99, 3);
     let mut image_inner = [0u8; 10];
     let mut report_inner = TableFixedReport::default();
-    table_fixed_run(&plan, &[], &rec_inner_diff, &mut image_inner, &mut report_inner);
+    table_fixed_run(&plan, &guards, remap, &rec_inner_diff, &mut image_inner, &mut report_inner);
 
     check(
-        image_inner[0] == 1,
-        "guard chain: outer tag fires the const — inner tag written as 1 regardless of src[1]",
+        image_inner[0] == 0,
+        "guard chain: inner link holds the const — inner tag stays 0 when src[1] is not 1",
     );
     check(
-        i32::from_le_bytes(image_inner[1..5].try_into().unwrap()) == 99,
-        "guard chain: outer tag fires the copy — payload lands regardless of inner tag",
+        i32::from_le_bytes(image_inner[1..5].try_into().unwrap()) == 0,
+        "guard chain: inner link holds the copy — payload stays 0 when the inner tag differs",
     );
 
     let failures = FAILURES.load(Ordering::Relaxed);

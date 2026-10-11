@@ -319,12 +319,13 @@ func t06R17(t *testing.T) {
 // ---- rust/R31 -----------------------------------------------------------------
 
 // t06R31 holds rust/R31's clauses to §4.1 and §4.5:
-//   - `arg` AND `arg2` are FULL WIDTH (`arg: u64`, `arg2: u64`) and the compare
-//     is made at the tag's OWN width (`argw`, `argw2`), never on a prefix;
-//   - `guard2`/`arg2`/`argw2` ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
-//     ANSWERS TO, CONJOINED with `guard`/`arg`: the entry runs only when BOTH
-//     tags hold their ordinal (§4.1, §5.8 row 6), and a THIRD tag has no lane
-//     and the plan refuses WHOLE;
+//   - `arg` is FULL WIDTH (`arg: u64`) and the compare is made at the tag's OWN
+//     width (`argw`), never on a prefix;
+//   - the guard is a CHAIN (§4.1's follow-on, rust/R28): the entry carries
+//     offset+count into a pool of (guard, arg, argw) links, OUTERMOST FIRST, so
+//     an arm inside an arm answers to the OUTER tag CONJOINED with its own, and
+//     the chain's only bound is the layout's 64 — a deeper chain refuses WHOLE
+//     by name rather than dropping a condition;
 //   - an `ordinal` op reads its source `through a 64-bit temporary`;
 //   - the remap table is AS LONG AS THE WRITER's variant count (`reserve(n)`
 //     with `n = te.children`), never a temporary's cap, so a writer's variant
@@ -334,17 +335,19 @@ func t06R17(t *testing.T) {
 func t06R31(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	t06Has(t, runtime, "pub arg: u64,", "R31 the guard's ordinal is full width")
-	t06Has(t, runtime, "pub guard2: u32,", "R31 the OUTER tag's offset is a lane of its own")
-	t06Has(t, runtime, "pub arg2: u64,", "R31 the OUTER tag's ordinal is full width too")
-	t06Has(t, runtime, "pub argw2: u8,", "R31 the OUTER tag's width is carried, never a prefix")
-	t06Has(t, runtime, "Some(tag) => Some(table_fixed_tag(tag) == arg),",
+	t06Has(t, runtime, "pub argw: u8,", "R31 the guard's width is carried, never a prefix")
+	t06Has(t, runtime, "pub struct TableFixedGuard {",
+		"R31 the (guard, arg, argw) link pool the plan carries offset+count into")
+	t06Has(t, runtime, "pub guard_off: u32,", "R31 the entry carries the pool offset")
+	t06Has(t, runtime, "pub guard_count: u8,", "R31 the entry carries the pool count")
+	t06Has(t, runtime, "Some(tag) if table_fixed_tag(tag) == link.arg => {}",
 		"R31 the compare is made at the tag's own width and never on a prefix")
-	t06Has(t, runtime, "table_fixed_guard(src, p.guard2, p.arg2, p.argw2),",
-		"R31 an arm inside an arm answers to BOTH tags, conjoined")
-	t06Has(t, runtime, "guard2: outer_guard,",
-		"R31 a nested arm's entry carries the OUTER tag on the second lane")
-	t06Has(t, runtime, "if guard2 != TABLE_FIXED_NO_GUARD {",
-		"R31 a THIRD nested tag has no lane and the plan refuses whole")
+	t06Has(t, runtime, "c.conjoin(goff, gcount, their_at, j as u64 + 1, their_tag as u8)",
+		"R31 an arm inside an arm conjoins its own link onto the OUTER chain")
+	t06Has(t, runtime, "guard_off: n_off as u32,", "R31 a nested arm's entry carries the conjoined chain's offset")
+	t06Has(t, runtime, "guard_count: n_count as u8,", "R31 a nested arm's entry carries the conjoined chain's count")
+	t06Has(t, runtime, "count + 1 > MAX_DEPTH as usize",
+		"R31 a chain past the layout's 64 has no room and the plan refuses whole")
 	t06Has(t, runtime, "let mut raw: u64 = 0;", "R31 an ordinal reads through a 64-bit temporary")
 	t06Has(t, runtime, "let n = te.children as usize;",
 		"R31 the remap table is as long as the WRITER's variant count")
@@ -354,10 +357,10 @@ func t06R31(t *testing.T) {
 		"R31 a count past the length word is the pool's own overflow")
 	t06Has(t, runtime, "Some(count) if raw != 0 && raw <= u64::from(*count) => {",
 		"R31 the length word is slot 0 and an ordinal past it is out of range")
-	// THE PREMISE THIS TASK RESTS ON: this port DOES emit nested unions, so
-	// `arg2` is this leg's surface. The outer union's scatter calls the inner
-	// union's scatter on its own arm — a live arm-inside-an-arm, not a type the
-	// emitter refuses.
+	// THE PREMISE THIS TASK RESTS ON: this port DOES emit nested unions, so the
+	// guard chain is this leg's surface. The outer union's scatter calls the
+	// inner union's scatter on its own arm — a live arm-inside-an-arm, not a type
+	// the emitter refuses.
 	nestedSrc := `package probe
 
 type LeafA { x int32 = 0 }
@@ -388,28 +391,17 @@ fixed table T
 	if !strings.Contains(outer, "leaf_fixed_scatter(") {
 		t.Errorf("R31: the outer union's scatter does not call the inner union's scatter, so the emitted surface has no nested union to guard:\n%s", outer)
 	}
-	// AND THE PLAN LANES OF THE EMITTED RUNTIME, not the shared Go IR walk: the
+	// AND THE PLAN LINKS OF THE EMITTED RUNTIME, not the shared Go IR walk: the
 	// emitted Rust runtime plan — `table_fixed_compile`, which is THE plan this
 	// leg emits into every fixed module and the one the reader actually runs —
-	// builds a nested arm's entry with the INNER tag on lane one and the
-	// inherited OUTER tag moved to lane two, conjoined (docs/FIXED-FORM-ALGORITHM.md
-	// §4.1, §5.8 row 6; docs/SPEC-TABLES.md §3.4). These six field assignments
-	// ARE the emitted plan's lane pair for an arm inside an arm: the inner tag at
-	// ITS own offset and width with the arm's ordinal, and the outer tag's offset,
-	// ordinal and width on the second lane. The third-tag refusal makes a deeper
-	// chain refuse WHOLE rather than drop a condition.
-	t06Has(t, runtime, "guard: their_at,",
-		"R31 the emitted plan reads the INNER tag at its own offset")
-	t06Has(t, runtime, "arg: j as u64 + 1,",
-		"R31 the emitted plan's inner lane is the arm's ordinal at full width")
-	t06Has(t, runtime, "argw: their_tag as u8,",
-		"R31 the emitted plan compares at the INNER tag's own width")
-	t06Has(t, runtime, "let outer_guard = guard;",
-		"R31 the emitted plan moves the inherited OUTER tag to lane two")
-	t06Has(t, runtime, "arg2: outer_arg,",
-		"R31 the emitted plan's second lane is the OUTER ordinal at full width")
-	t06Has(t, runtime, "argw2: outer_argw,",
-		"R31 the emitted plan carries the OUTER tag's width on the second lane")
+	// CONJOINS a nested arm's own link onto the inherited OUTER chain, outermost
+	// first (docs/FIXED-FORM-ALGORITHM.md §4.1's follow-on; docs/SPEC-TABLES.md
+	// §3.4). The conjoin call's own arguments ARE the arm's link: the INNER tag
+	// at ITS own offset (`their_at`), the arm's ordinal at full width (`j as u64
+	// + 1`), and the tag's own width (`their_tag as u8`), appended after the
+	// inherited links — and the entry below references the result by offset+count.
+	t06Has(t, runtime, "their_at, j as u64 + 1, their_tag as u8)",
+		"R31 the emitted plan's own link is the INNER tag at its offset, ordinal and width")
 }
 
 // ---- rust/C1 -----------------------------------------------------------------
@@ -477,7 +469,7 @@ fixed table T
 	load := t06Load(t, text, "T")
 	t06Has(t, load, "let n = rest.len() / record_bytes;",
 		"R11 the record count is the file's, divided by the LOCK's record size")
-	t06Has(t, load, "table_fixed_run(entries, table, &record[8..], &mut image, report);",
+	t06Has(t, load, "table_fixed_run(entries, guards, table, &record[8..], &mut image, report);",
 		"R11 one plan runs per read, selected for its lineage entry")
 }
 

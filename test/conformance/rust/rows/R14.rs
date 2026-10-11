@@ -53,7 +53,8 @@
 mod fixed_runtime;
 
 use fixed_runtime::{
-    table_fixed_compile, TableFixedBlock, TableFixedEntry, TableFixedReason, TableFixedReport,
+    table_fixed_compile, TableFixedBlock, TableFixedEntry, TableFixedGuard, TableFixedReason,
+    TableFixedReport,
 };
 
 // ---- the vectors ------------------------------------------------------------
@@ -117,9 +118,10 @@ fn compile(
     mine: &TableFixedBlock,
 ) -> (Option<usize>, TableFixedReport) {
     let mut plan = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    let out = table_fixed_compile(theirs, mine, &[], &mut plan, &mut remap, &mut report);
+    let out = table_fixed_compile(theirs, mine, &[], &mut plan, &mut guards, &mut remap, &mut report);
     (out, report)
 }
 
