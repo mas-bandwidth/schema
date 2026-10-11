@@ -222,6 +222,12 @@ export class TableFixedPlan {
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    // tooLarge is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
+    // WHOLE under layout_record_too_large (§5.2) and never lands a short read.
+    this.tooLarge = false;
+    // record is the WRITER's declared root size, the bound every entry's
+    // source extent is held to.
+    this.record = 0;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
@@ -843,7 +849,38 @@ const TableFixedDstAux = 2;
 const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
 
+// TableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
+// guard included, because a guarded entry loads the tag before anything else.
+// A COUNT entry's size is its BOUND and not a byte count, so it reads four
+// bytes; a TEXT entry reads its length word and its units; a constant reads
+// nothing, except the union's None const, which reads the writer's raw tag to
+// count a clamp past the writer's arm set (schema#1254).
+function TableFixedSrcEnd(op, src, size, aux, guard, argw) {
+  let end = 0;
+  if (op === TableFixedOpConst) {
+    end = (aux === 0 && size !== 0) ? src + size : 0;
+  } else if (op === TableFixedOpCount) {
+    end = src + 4;
+  } else if (op === TableFixedOpText) {
+    end = src + 4 + size;
+  } else {
+    end = src + size;
+  }
+  if (guard !== TableFixedNoGuard) {
+    const g = guard + (argw === 0 ? 1 : argw);
+    if (g > end) { end = g; }
+  }
+  return end;
+}
+
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
+  // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
+  // bound is the writer's declared root size and not this reader's: an entry
+  // that reached past it would read the NEXT record's bytes.
+  if (plan.record !== 0 && TableFixedSrcEnd(op, src, size, aux, guard, plan.argw) > plan.record) {
+    plan.tooLarge = true;
+    return;
+  }
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
   if (!TableFixedKeeping(plan, guard)) { return; }
@@ -1257,6 +1294,13 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
       const census = new TableFixedReport();
       const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
+      if (made === -3) {
+        // AN ENTRY PAST THE WRITER'S RECORD IS A REFUSAL BY NAME, never
+        // plan_too_large and never a retry at more room (§5.2).
+        plan.why = TableFixedRefusal.LayoutRecordTooLarge;
+        lane = plan;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1283,6 +1327,10 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.count = 0;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.tooLarge = false;
+  // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the root's
+  // declared size, taken from the layout this plan is compiled against.
+  plan.record = TableFixedSize(theirs, 0);
   plan.argw = 1;
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
   // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
@@ -1296,6 +1344,9 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
+  // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
+  // name: -3 is layout_record_too_large, -1 the plan storage.
+  if (plan.tooLarge) { return -3; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
