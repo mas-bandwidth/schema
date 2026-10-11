@@ -12,67 +12,18 @@ package jstable
 // rather than as a walk." The byte array is `ir.TableAnnouncement`, the same
 // bytes every other backend emits and the manifest pins.
 //
-// THE MODEL HERE IS THE JAVASCRIPT SURFACE'S OWN LOGIC, stated in Go so this
-// leg's test can hold every clause of §3.3 without a JavaScript runtime on the
-// gate's host. The emitted module carries the same surface as text; the
-// constant bytes, the entry count and the reference width are the compiler's
-// and are shared, so a disagreement between the two is a disagreement in the
-// constants the test holds byte for byte.
+// THE READER IS EMITTED (docs/SPEC-TABLES.md §3.3): `AnnounceRead` resolves an
+// announcement "once", keeps the build version while it reads, and refuses a
+// second announcement by name. Its semantics are the reference's `-1` lane and
+// the Go and C# legs' reader, ported whole into the home module the same way
+// `fixedruntime.go` ports the fixed runtime. Nothing in a generated module
+// calls a function the leg does not emit.
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
-
-// jsTableMessageShape and jsTableMessageEntry are the runtime twin of
-// ir.TableMessageShape/Entry with the wide base flattened to two lanes, which
-// is what a JavaScript runtime can hold.
-type jsTableMessageShape struct {
-	Kind, Packing uint8
-	Bits          int64
-	Base          [2]uint64
-	Min, Max      int64
-	QMin, QDelta  float32
-	QCount        uint32
-}
-
-type jsTableMessageEntry struct {
-	Id             uint64
-	Shape, Element jsTableMessageShape
-}
-
-// jsTableVocabulary is §3.3's resolved vocabulary: the caller's storage, the
-// build version that keys it, and the terminal refusal state ("REFUSAL IS
-// TERMINAL"). BuildVersionOwn is the unit's own, compared under Strict.
-type jsTableVocabulary struct {
-	Entries         []jsTableMessageEntry
-	Count           int64
-	RefBits         int64
-	BuildVersion    uint64
-	BuildVersionOwn uint64
-	Announced       bool
-	Refused         bool
-	MaxBytes        int64
-	Strict          bool
-}
-
-// The three open verdicts the announcement reaches.
-const (
-	jsOpenOk uint8 = iota
-	jsOpenRefused
-	jsOpenDamaged
-)
-
-type jsTableReport struct {
-	Verdict          uint8
-	Reason           string
-	Malformed        bool
-	Unknown          int64
-	BuildVersionPeer uint64
-	BuildVersionOwn  uint64
-}
 
 func messageAnnouncementRuntime(u *ir.Unit) string {
 	var b strings.Builder
@@ -97,7 +48,9 @@ func jsByteLiterals(data []byte) string {
 // UpperCamelCase, methods lowerCamelCase, and a refusal is a report field
 // rather than an exception (the reference's `-1`).
 const jsAnnounceRuntime = `
+export const TableMessageOpenOk = 0;
 export const TableMessageOpenRefused = 1;
+export const TableMessageOpenDamaged = 2;
 export class TableVocabulary {
   constructor() { this.Reset(); }
   Reset() {
@@ -127,9 +80,309 @@ export function Announce(buffer) {
   buffer.set(TableMessageAnnouncement);
   return TableMessageAnnouncement.length;
 }
-// The announcement is an ordinary form-1 file: form byte 1, a body, a zero
-// terminator, and the reserved build-version and vocabulary ids as its trailer.
+// The announcement is an ordinary form-1 file, so its reader is the form-1
+// reader (docs/SPEC-TABLES.md §3): a bounded view of the body, the id trailer,
+// and the framing pre-walk that refuses a body ending after its terminator.
+const TableMessageVersionId = BigInt("0xfffffffffffffffe");
+const TableMessageVocabularyId = BigInt("0xfffffffffffffffd");
+const TableMessageNodeId = BigInt("0xffffffffffffffff");
+function TableMessageRead64(bytes, at) {
+  let v = 0n;
+  for (let i = 7; i >= 0; i--) { v = (v << 8n) | BigInt(bytes[at + i]); }
+  return v;
+}
+class TableMessageReader {
+  constructor(buffer, ids) { this.Buffer = buffer; this.Ids = ids; this.Offset = 0; }
+  Clone() { const r = new TableMessageReader(this.Buffer, this.Ids); r.Offset = this.Offset; return r; }
+  Has(n) { return n >= 0 && this.Offset >= 0 && this.Offset <= this.Buffer.length && n <= this.Buffer.length - this.Offset; }
+  Room(n) { return n <= BigInt(this.Buffer.length - this.Offset); }
+  Get8() { return this.Buffer[this.Offset++]; }
+  Get32() {
+    const v = this.Buffer[this.Offset] | (this.Buffer[this.Offset + 1] << 8) |
+      (this.Buffer[this.Offset + 2] << 16) | (this.Buffer[this.Offset + 3] << 24);
+    this.Offset += 4;
+    return v >>> 0;
+  }
+  Get64() { const v = TableMessageRead64(this.Buffer, this.Offset); this.Offset += 8; return v; }
+  LebPair() {
+    const at = this.Offset;
+    if (at < this.Buffer.length) {
+      const b = this.Buffer[at];
+      if (b < 128) { this.Offset = at + 1; return [BigInt(b), true]; }
+    }
+    return [0n, false];
+  }
+  LebWide() {
+    const at = this.Offset;
+    let v = 0n;
+    for (let i = 0; i < 10; i++) {
+      if (!this.Has(1)) { break; }
+      const b = this.Get8();
+      if (i === 9 && b > 1) { break; }
+      v |= BigInt(b & 127) << BigInt(7 * i);
+      if (b < 128) {
+        if (i > 0 && b === 0) { break; }
+        return [v, true];
+      }
+    }
+    this.Offset = at;
+    return [0n, false];
+  }
+  Leb() { const [v, ok] = this.LebPair(); if (ok) { return [v, true]; } return this.LebWide(); }
+  Resolve(ref) {
+    if (ref === 0n || ref > BigInt(Math.floor(this.Ids.length / 8))) { return [0n, false]; }
+    return [TableMessageRead64(this.Ids, Number((ref - 1n) * 8n)), true];
+  }
+  Body() {
+    const [n, ok] = this.Leb();
+    if (!ok || !this.Room(n)) { return [null, false]; }
+    const end = this.Offset + Number(n);
+    const sub = new TableMessageReader(this.Buffer.subarray(this.Offset, end), this.Ids);
+    this.Offset = end;
+    return [sub, true];
+  }
+  Skip(kind) {
+    const fixed = TableMessageKindBytes(kind);
+    if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
+    switch (kind) {
+      case 17: case 30: { const [, ok] = this.Leb(); return ok; }
+      case 12: case 13: case 14: case 16: case 31: case 32: case 33: { const [, ok] = this.Body(); return ok; }
+      case 15: {
+        const [ref, ok] = this.Leb();
+        if (!ok) { return false; }
+        if (ref === 0n) { return true; }
+        if (!this.Has(1)) { return false; }
+        this.Offset++;
+        const [, bok] = this.Body();
+        return bok;
+      }
+    }
+    return false;
+  }
+  EndsEarly() {
+    const r = this.Clone();
+    for (;;) {
+      const [ref, ok] = r.Leb();
+      if (!ok) { return false; }
+      if (ref === 0n) { return r.Offset !== r.Buffer.length; }
+      const [, rok] = r.Resolve(ref);
+      if (!rok || !r.Has(1)) { return false; }
+      if (!r.Skip(r.Get8())) { return false; }
+    }
+  }
+}
+function TableMessageKindBytes(kind) {
+  switch (kind) {
+    case 1: case 2: case 6: case 20: case 25: return 1;
+    case 3: case 7: case 21: case 26: return 2;
+    case 4: case 8: case 10: case 22: case 27: return 4;
+    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 18: case 19: case 24: case 29: return 16;
+  }
+  return 0;
+}
+function TableMessageOpen(data) {
+  if (data.length === 0) { return [null, TableMessageOpenDamaged]; }
+  if (data[0] !== 1) { return [null, TableMessageOpenRefused]; }
+  if (data.length < 9) { return [null, TableMessageOpenDamaged]; }
+  const n = TableMessageRead64(data, data.length - 8);
+  if (n > BigInt(Math.floor((data.length - 9) / 8))) { return [null, TableMessageOpenDamaged]; }
+  const start = data.length - 8 - Number(n) * 8;
+  return [new TableMessageReader(data.subarray(1, start), data.subarray(start, data.length - 8)), TableMessageOpenOk];
+}
+function TableMessageOpenFramed(data) {
+  const [r, verdict] = TableMessageOpen(data);
+  if (verdict === TableMessageOpenOk && r.EndsEarly()) { return [r, TableMessageOpenDamaged]; }
+  return [r, verdict];
+}
+function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
+function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKindBits(k) {
+  if (k === 1) { return 1; }
+  switch (k) {
+    case 2: case 6: case 20: case 25: return 8;
+    case 3: case 7: case 21: case 26: return 16;
+    case 4: case 8: case 10: case 22: case 27: return 32;
+    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 18: case 19: case 24: case 29: return 128;
+  }
+  return -1;
+}
+const TableMessageFloat = new Float32Array(1);
+const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
+function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
+function TableMessageShape() {
+  return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
+}
+function TableMessageShapeRead(r, k) {
+  const s = TableMessageShape();
+  s.Kind = k;
+  s.Bits = TableMessageKindBits(k);
+  if ((k >= 2 && k <= 10) || (k >= 18 && k <= 29)) {
+    if (!r.Has(1)) { return [s, false]; }
+    s.Packing = r.Get8();
+    if (s.Packing === 0) { return [s, true]; }
+    if (s.Packing === 1 && k !== 10) {
+      const [n, ok] = r.Leb();
+      if (!ok || n > BigInt(s.Bits)) { return [s, false]; }
+      s.Bits = Number(n);
+      if (k >= 18) {
+        if (!r.Has(16)) { return [s, false]; }
+        s.Base = [r.Get64(), r.Get64()];
+        return [s, true];
+      }
+      const [raw, bok] = r.Leb();
+      if (!bok) { return [s, false]; }
+      let base = raw;
+      if (k >= 2 && k <= 5) { base = BigInt.asUintN(64, (raw >> 1n) ^ (-(raw & 1n))); }
+      s.Base = [base, 0n];
+      return [s, true];
+    }
+    if (s.Packing === 2 && k === 10) {
+      if (!r.Has(12)) { return [s, false]; }
+      const lo = TableMessageFloat32FromBits(r.Get32());
+      const hi = TableMessageFloat32FromBits(r.Get32());
+      const res = TableMessageFloat32FromBits(r.Get32());
+      if (!(lo < hi) || !(res > 0)) { return [s, false]; }
+      const delta = Math.fround(hi - lo);
+      let values = Math.fround(delta / res);
+      if (delta - delta !== 0 || values - values !== 0) { return [s, false]; }
+      if (!(values >= 1)) { values = 1; } else if (values > 4294967040.0) { values = 4294967040.0; }
+      s.QMin = lo;
+      s.QDelta = delta;
+      s.QCount = Math.ceil(values) >>> 0;
+      s.Bits = TableMessageBits(BigInt(s.QCount));
+      return [s, true];
+    }
+    return [s, false];
+  }
+  if (k === 12 || k === 33) {
+    const [n, ok] = r.Leb();
+    if (!ok || n > 2147483647n) { return [s, false]; }
+    s.Max = Number(n);
+  } else if (k === 14 || k === 16) {
+    if (k === 14) {
+      const [n, ok] = r.Leb();
+      if (!ok || n > 4294967295n) { return [s, false]; }
+      s.Min = Number(n);
+    }
+    const [n, ok] = r.Leb();
+    if (!ok || n > 4294967295n || Number(n) < s.Min) { return [s, false]; }
+    s.Max = Number(n);
+  }
+  return [s, true];
+}
+function TableMessageEntryRead(r) {
+  const e = { Id: 0n, Shape: TableMessageShape(), Element: TableMessageShape() };
+  if (!r.Has(9)) { return [e, false]; }
+  e.Id = r.Get64();
+  const kind = r.Get8();
+  if (!TableMessageKnownKind(kind)) { return [e, false]; }
+  const [shape, ok] = TableMessageShapeRead(r, kind);
+  e.Shape = shape;
+  if (!ok) { return [e, false]; }
+  if (kind === 14 || kind === 16) {
+    if (!r.Has(1)) { return [e, false]; }
+    const elem = r.Get8();
+    if (!TableMessageKnownKind(elem) || elem === 12 || elem === 33) { return [e, false]; }
+    const [es, eok] = TableMessageShapeRead(r, elem);
+    e.Element = es;
+    if (!eok) { return [e, false]; }
+    if (elem === 14 || elem === 16) {
+      if (!r.Has(1)) { return [e, false]; }
+      const inner = r.Get8();
+      if (!TableMessageKnownKind(inner) || inner === 12 || inner === 33) { return [e, false]; }
+    }
+  }
+  return [e, true];
+}
+function TableMessageShapeEqual(a, b) {
+  return a.Kind === b.Kind && a.Packing === b.Packing && a.Bits === b.Bits &&
+    a.Base[0] === b.Base[0] && a.Base[1] === b.Base[1] &&
+    a.Min === b.Min && a.Max === b.Max && a.QMin === b.QMin && a.QDelta === b.QDelta && a.QCount === b.QCount;
+}
+function TableMessageEntryEqual(a, b) {
+  return a !== null && b !== null && a.Id === b.Id &&
+    TableMessageShapeEqual(a.Shape, b.Shape) && TableMessageShapeEqual(a.Element, b.Element);
+}
+function TableMessageRefuse(report, reason) {
+  report.Verdict = TableMessageOpenRefused;
+  report.Reason = reason;
+  return false;
+}
+// TableAnnounceRead is §3.3's reader: "the receiver resolves once. It reads the
+// announcement, resolves every entry against its own descriptors ... THE
+// ANNOUNCEMENT READS TOLERANTLY ... The vocabulary is a pure function of the
+// build version." A refused announcement is TERMINAL.
+function TableAnnounceRead(v, data, report) {
+  const [r, verdict] = TableMessageOpenFramed(data);
+  if (verdict !== TableMessageOpenOk) {
+    if (verdict === TableMessageOpenRefused) {
+      let reason = "newer_form";
+      if (data.length > 0 && data[0] === 2) { reason = "message_form_as_file"; }
+      return TableMessageRefuse(report, reason);
+    }
+    report.Malformed = true;
+    return false;
+  }
+  let versionCount = 0, wordsCount = 0, words = null;
+  for (;;) {
+    const [ref, ok] = r.Leb();
+    if (!ok) { report.Malformed = true; return false; }
+    if (ref === 0n) { break; }
+    const [id, rok] = r.Resolve(ref);
+    if (!rok || !r.Has(1)) { report.Malformed = true; return false; }
+    const kind = r.Get8();
+    if (id === TableMessageVersionId) {
+      if (kind !== 9 || !r.Has(8)) { report.Malformed = true; return false; }
+      v.BuildVersion = r.Get64();
+      versionCount++;
+    } else if (id === TableMessageVocabularyId) {
+      if (kind !== 14) { report.Malformed = true; return false; }
+      const [sub, bok] = r.Body();
+      if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Malformed = true; return false; }
+      const [n, nok] = sub.Leb();
+      if (!nok || n > BigInt(sub.Buffer.length) || n !== BigInt(sub.Buffer.length - sub.Offset)) { report.Malformed = true; return false; }
+      let limit = v.MaxBytes;
+      if (!limit) { limit = 64 * 1024; }
+      if (n > BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      words = sub.Buffer.subarray(sub.Offset);
+      wordsCount++;
+    } else {
+      report.Unknown++;
+      if (!r.Skip(kind)) { report.Malformed = true; return false; }
+    }
+  }
+  if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
+  if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
+    report.BuildVersionPeer = v.BuildVersion;
+    report.BuildVersionOwn = v.BuildVersionOwn;
+    return TableMessageRefuse(report, "build_version_mismatch");
+  }
+  const src = new TableMessageReader(words, null);
+  let count = 0, nodeSeen = false;
+  while (src.Offset < words.length) {
+    if (count >= v.Entries.length) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+    const [e, eok] = TableMessageEntryRead(src);
+    if (!eok || e.Id === TableMessageVocabularyId || e.Id === TableMessageVersionId || (e.Id === TableMessageNodeId && nodeSeen)) {
+      report.Malformed = true;
+      return false;
+    }
+    if (e.Id === TableMessageNodeId) { nodeSeen = true; }
+    for (let i = 0; i < count; i++) {
+      if (TableMessageEntryEqual(v.Entries[i], e)) { report.Malformed = true; return false; }
+    }
+    v.Entries[count] = e;
+    count++;
+  }
+  v.Count = count;
+  v.RefBits = TableMessageBits(BigInt(count));
+  if (v.RefBits === 0) { v.RefBits = 1; }
+  v.Announced = true;
+  return true;
+}
 export function AnnounceRead(v, data, report) {
+  if (report === undefined || report === null) { report = {}; }
   if (v.Announced || v.Refused) {
     report.Verdict = TableMessageOpenRefused;
     report.Reason = "second_announcement";
@@ -140,489 +393,3 @@ export function AnnounceRead(v, data, report) {
   return ok;
 }
 `
-
-// jsTableReader is a bounded view of one body and the file's id trailer.
-type jsTableReader struct {
-	Buffer []byte
-	Offset int64
-	Ids    []byte
-}
-
-func (r *jsTableReader) has(n int64) bool {
-	return n >= 0 && r.Offset >= 0 && r.Offset <= int64(len(r.Buffer)) && n <= int64(len(r.Buffer))-r.Offset
-}
-
-func (r *jsTableReader) room(n uint64) bool {
-	return r.has(0) && n <= uint64(int64(len(r.Buffer))-r.Offset)
-}
-
-func (r *jsTableReader) get8() uint8 { v := r.Buffer[r.Offset]; r.Offset++; return v }
-func (r *jsTableReader) get32() uint32 {
-	v := uint32(r.Buffer[r.Offset]) | uint32(r.Buffer[r.Offset+1])<<8 | uint32(r.Buffer[r.Offset+2])<<16 | uint32(r.Buffer[r.Offset+3])<<24
-	r.Offset += 4
-	return v
-}
-func (r *jsTableReader) get64() uint64 {
-	v := uint64(r.Buffer[r.Offset]) | uint64(r.Buffer[r.Offset+1])<<8 | uint64(r.Buffer[r.Offset+2])<<16 |
-		uint64(r.Buffer[r.Offset+3])<<24 | uint64(r.Buffer[r.Offset+4])<<32 | uint64(r.Buffer[r.Offset+5])<<40 |
-		uint64(r.Buffer[r.Offset+6])<<48 | uint64(r.Buffer[r.Offset+7])<<56
-	r.Offset += 8
-	return v
-}
-
-func (r *jsTableReader) lebPair() (uint64, bool) {
-	at := r.Offset
-	if uint64(at) < uint64(len(r.Buffer)) {
-		b := r.Buffer[at]
-		if b < 128 {
-			r.Offset = at + 1
-			return uint64(b), true
-		}
-	}
-	return 0, false
-}
-
-func (r *jsTableReader) lebWide() (uint64, bool) {
-	at := r.Offset
-	var v uint64
-	for i := 0; i < 10; i++ {
-		if !r.has(1) {
-			break
-		}
-		b := r.get8()
-		if i == 9 && b > 1 {
-			break
-		}
-		v |= uint64(b&127) << (7 * i)
-		if b < 128 {
-			if i > 0 && b == 0 {
-				break
-			}
-			return v, true
-		}
-	}
-	r.Offset = at
-	return 0, false
-}
-
-func (r *jsTableReader) leb() (uint64, bool) {
-	if v, ok := r.lebPair(); ok {
-		return v, true
-	}
-	return r.lebWide()
-}
-
-func (r *jsTableReader) resolve(ref uint64) (uint64, bool) {
-	if ref == 0 || ref > uint64(len(r.Ids)/8) {
-		return 0, false
-	}
-	at := int64((ref - 1) * 8)
-	return uint64(r.Ids[at]) | uint64(r.Ids[at+1])<<8 | uint64(r.Ids[at+2])<<16 | uint64(r.Ids[at+3])<<24 |
-		uint64(r.Ids[at+4])<<32 | uint64(r.Ids[at+5])<<40 | uint64(r.Ids[at+6])<<48 | uint64(r.Ids[at+7])<<56, true
-}
-
-func (r *jsTableReader) body() (jsTableReader, bool) {
-	n, ok := r.leb()
-	if !ok || !r.room(n) {
-		return jsTableReader{}, false
-	}
-	sub := jsTableReader{Buffer: r.Buffer[r.Offset : r.Offset+int64(n)], Ids: r.Ids}
-	r.Offset += int64(n)
-	return sub, true
-}
-
-func jsTableKindBytes(kind uint8) int64 {
-	switch kind {
-	case 1, 2, 6, 20, 25:
-		return 1
-	case 3, 7, 21, 26:
-		return 2
-	case 4, 8, 10, 22, 27:
-		return 4
-	case 5, 9, 11, 23, 28:
-		return 8
-	case 18, 19, 24, 29:
-		return 16
-	}
-	return 0
-}
-
-func (r *jsTableReader) skip(kind uint8) bool {
-	if n := jsTableKindBytes(kind); n != 0 {
-		if !r.has(n) {
-			return false
-		}
-		r.Offset += n
-		return true
-	}
-	switch kind {
-	case 17, 30:
-		_, ok := r.leb()
-		return ok
-	case 12, 13, 14, 16, 31, 32, 33:
-		_, ok := r.body()
-		return ok
-	case 15:
-		ref, ok := r.leb()
-		if !ok {
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		if !r.has(1) {
-			return false
-		}
-		r.Offset++
-		_, ok = r.body()
-		return ok
-	}
-	return false
-}
-
-// endsEarly is the framing pre-walk. It takes the reader BY VALUE, because it
-// only decides and must not advance the caller's cursor (the C++ reference's
-// tableOpenFramed reads it on a copy).
-func (r jsTableReader) endsEarly() bool {
-	for {
-		ref, ok := r.leb()
-		if !ok {
-			return false
-		}
-		if ref == 0 {
-			return r.Offset != int64(len(r.Buffer))
-		}
-		if _, ok = r.resolve(ref); !ok || !r.has(1) {
-			return false
-		}
-		if !r.skip(r.get8()) {
-			return false
-		}
-	}
-}
-
-// jsOpen is the form-1 file open §3's reader states: form byte 1, the body,
-// and the id trailer behind the body's length word.
-func jsOpen(data []byte) (jsTableReader, uint8) {
-	var r jsTableReader
-	if len(data) == 0 {
-		return r, jsOpenDamaged
-	}
-	if data[0] != 1 {
-		return r, jsOpenRefused
-	}
-	if len(data) < 9 {
-		return r, jsOpenDamaged
-	}
-	n := uint64(data[len(data)-8]) | uint64(data[len(data)-7])<<8 | uint64(data[len(data)-6])<<16 |
-		uint64(data[len(data)-5])<<24 | uint64(data[len(data)-4])<<32 | uint64(data[len(data)-3])<<40 |
-		uint64(data[len(data)-2])<<48 | uint64(data[len(data)-1])<<56
-	if n > uint64((len(data)-9)/8) {
-		return r, jsOpenDamaged
-	}
-	start := len(data) - 8 - int(n)*8
-	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	return r, jsOpenOk
-}
-
-func jsOpenFramed(data []byte) (jsTableReader, uint8) {
-	r, verdict := jsOpen(data)
-	if verdict == jsOpenOk && r.endsEarly() {
-		return r, jsOpenDamaged
-	}
-	return r, verdict
-}
-
-func jsMessageBits(n uint64) int64 {
-	var count int64
-	for n != 0 {
-		count++
-		n >>= 1
-	}
-	return count
-}
-
-func jsMessageKnownKind(k uint8) bool { return k <= 33 }
-
-func jsMessageKindBits(k uint8) int64 {
-	if k == 1 {
-		return 1
-	}
-	switch k {
-	case 2, 6, 20, 25:
-		return 8
-	case 3, 7, 21, 26:
-		return 16
-	case 4, 8, 10, 22, 27:
-		return 32
-	case 5, 9, 11, 23, 28:
-		return 64
-	case 18, 19, 24, 29:
-		return 128
-	}
-	return -1
-}
-
-func jsMessageShapeRead(r *jsTableReader, k uint8) (s jsTableMessageShape, ok bool) {
-	s.Kind = k
-	s.Bits = jsMessageKindBits(k)
-	switch {
-	case k >= 2 && k <= 10 || k >= 18 && k <= 29:
-		if !r.has(1) {
-			return s, false
-		}
-		s.Packing = r.get8()
-		if s.Packing == 0 {
-			return s, true
-		}
-		if s.Packing == 1 && k != 10 {
-			n, ok := r.leb()
-			if !ok || n > uint64(s.Bits) {
-				return s, false
-			}
-			s.Bits = int64(n)
-			if k >= 18 {
-				if !r.has(16) {
-					return s, false
-				}
-				s.Base = [2]uint64{r.get64(), r.get64()}
-				return s, true
-			}
-			base, ok := r.leb()
-			if !ok {
-				return s, false
-			}
-			if k >= 2 && k <= 5 {
-				base = uint64(int64(base>>1) ^ -int64(base&1))
-			}
-			s.Base[0] = base
-			return s, true
-		}
-		if s.Packing == 2 && k == 10 {
-			if !r.has(12) {
-				return s, false
-			}
-			lo := math.Float32frombits(r.get32())
-			hi := math.Float32frombits(r.get32())
-			res := math.Float32frombits(r.get32())
-			if !(lo < hi) || !(res > 0) {
-				return s, false
-			}
-			delta := float32(hi - lo)
-			values := float32(delta / res)
-			if delta-delta != 0 || values-values != 0 {
-				return s, false
-			}
-			if !(values >= 1) {
-				values = 1
-			} else if values > 4294967040.0 {
-				values = 4294967040.0
-			}
-			s.QMin = lo
-			s.QDelta = delta
-			s.QCount = uint32(math.Ceil(float64(values)))
-			s.Bits = jsMessageBits(uint64(s.QCount))
-			return s, true
-		}
-		return s, false
-	case k == 12 || k == 33:
-		n, ok := r.leb()
-		if !ok || n > math.MaxInt32 {
-			return s, false
-		}
-		s.Max = int64(n)
-	case k == 14 || k == 16:
-		if k == 14 {
-			n, ok := r.leb()
-			if !ok || n > math.MaxUint32 {
-				return s, false
-			}
-			s.Min = int64(n)
-		}
-		n, ok := r.leb()
-		if !ok || n > math.MaxUint32 || int64(n) < s.Min {
-			return s, false
-		}
-		s.Max = int64(n)
-	}
-	return s, true
-}
-
-func jsMessageEntryRead(r *jsTableReader) (e jsTableMessageEntry, ok bool) {
-	if !r.has(9) {
-		return e, false
-	}
-	e.Id = r.get64()
-	kind := r.get8()
-	if !jsMessageKnownKind(kind) {
-		return e, false
-	}
-	e.Shape, ok = jsMessageShapeRead(r, kind)
-	if !ok {
-		return e, false
-	}
-	if kind == 14 || kind == 16 {
-		if !r.has(1) {
-			return e, false
-		}
-		elem := r.get8()
-		if !jsMessageKnownKind(elem) || elem == 12 || elem == 33 {
-			return e, false
-		}
-		e.Element, ok = jsMessageShapeRead(r, elem)
-		if !ok {
-			return e, false
-		}
-		if elem == 14 || elem == 16 {
-			if !r.has(1) {
-				return e, false
-			}
-			inner := r.get8()
-			if !jsMessageKnownKind(inner) || inner == 12 || inner == 33 {
-				return e, false
-			}
-		}
-	}
-	return e, true
-}
-
-// jsAnnounceRead is the entry point: a refused announcement is TERMINAL, so
-// any failure marks the vocabulary refused and every later call is
-// `second_announcement` (docs/SPEC-TABLES.md §3.3).
-func jsAnnounceRead(v *jsTableVocabulary, data []byte, report *jsTableReport) bool {
-	if v.Announced || v.Refused {
-		if report == nil {
-			report = &jsTableReport{}
-		}
-		return jsRefuse(report, "second_announcement")
-	}
-	ok := jsAnnounceReadCore(v, data, report)
-	if !ok {
-		v.Refused = true
-	}
-	return ok
-}
-
-func jsAnnounceReadCore(v *jsTableVocabulary, data []byte, report *jsTableReport) bool {
-	if report == nil {
-		report = &jsTableReport{}
-	}
-	if v.Announced || v.Refused {
-		return jsRefuse(report, "second_announcement")
-	}
-	r, verdict := jsOpenFramed(data)
-	if verdict != jsOpenOk {
-		if verdict == jsOpenRefused {
-			reason := "newer_form"
-			if len(data) > 0 && data[0] == 2 {
-				reason = "message_form_as_file"
-			}
-			return jsRefuse(report, reason)
-		}
-		report.Malformed = true
-		return false
-	}
-	versionCount, wordsCount := 0, 0
-	var words []byte
-	for {
-		ref, ok := r.leb()
-		if !ok {
-			report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			break
-		}
-		id, ok := r.resolve(ref)
-		if !ok || !r.has(1) {
-			report.Malformed = true
-			return false
-		}
-		kind := r.get8()
-		switch id {
-		case 0xfffffffffffffffe:
-			if kind != 9 || !r.has(8) {
-				report.Malformed = true
-				return false
-			}
-			v.BuildVersion = r.get64()
-			versionCount++
-		case 0xfffffffffffffffd:
-			if kind != 14 {
-				report.Malformed = true
-				return false
-			}
-			sub, ok := r.body()
-			if !ok || !sub.has(1) || sub.get8() != 6 {
-				report.Malformed = true
-				return false
-			}
-			n, ok := sub.leb()
-			if !ok || n > uint64(len(sub.Buffer)) || int64(n) != int64(len(sub.Buffer))-sub.Offset {
-				report.Malformed = true
-				return false
-			}
-			limit := v.MaxBytes
-			if limit == 0 {
-				limit = 64 * 1024
-			}
-			if int64(n) > limit {
-				return jsRefuse(report, "vocabulary_too_large")
-			}
-			words = sub.Buffer[sub.Offset:]
-			wordsCount++
-		default:
-			report.Unknown++
-			if !r.skip(kind) {
-				report.Malformed = true
-				return false
-			}
-		}
-	}
-	if versionCount != 1 || wordsCount != 1 {
-		report.Malformed = true
-		return false
-	}
-	if v.Strict && v.BuildVersion != v.BuildVersionOwn {
-		report.BuildVersionPeer = v.BuildVersion
-		report.BuildVersionOwn = v.BuildVersionOwn
-		return jsRefuse(report, "build_version_mismatch")
-	}
-	src := jsTableReader{Buffer: words}
-	count := int64(0)
-	nodeSeen := false
-	for src.Offset < int64(len(words)) {
-		if count >= int64(len(v.Entries)) {
-			return jsRefuse(report, "vocabulary_too_large")
-		}
-		e, ok := jsMessageEntryRead(&src)
-		if !ok || e.Id == 0xfffffffffffffffd || e.Id == 0xfffffffffffffffe || e.Id == 0xffffffffffffffff && nodeSeen {
-			report.Malformed = true
-			return false
-		}
-		if e.Id == 0xffffffffffffffff {
-			nodeSeen = true
-		}
-		for i := int64(0); i < count; i++ {
-			if v.Entries[i] == e {
-				report.Malformed = true
-				return false
-			}
-		}
-		v.Entries[count] = e
-		count++
-	}
-	v.Count = count
-	v.RefBits = jsMessageBits(uint64(count))
-	if v.RefBits == 0 {
-		v.RefBits = 1
-	}
-	v.Announced = true
-	return true
-}
-
-func jsRefuse(report *jsTableReport, reason string) bool {
-	report.Verdict = jsOpenRefused
-	report.Reason = reason
-	return false
-}

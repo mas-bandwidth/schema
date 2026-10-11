@@ -2,12 +2,17 @@ package jstable
 
 import (
 	"encoding/binary"
+	"fmt"
+	"maps"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -15,6 +20,11 @@ import (
 // form (docs/SPEC-TABLES.md §3.3) on the JavaScript leg, one subtest per
 // clause, against the announcement files the tables manifest pins. The bytes
 // ARE the C++ reference's; the manifest names the units.
+//
+// EVERY CLAUSE IS ASSERTED OVER THE EMITTED MODULE, not a Go model of it: the
+// generated tree is written and run under the leg's own node (jsNode), the way
+// fixedversioning_test.go runs its columns. A surface the leg does not emit, or
+// emits broken, turns a subtest red here.
 func TestMessageFormAnnounceJavaScript(t *testing.T) {
 	t.Parallel()
 
@@ -37,6 +47,7 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		for _, uc := range units {
 			uc := uc
 			t.Run(uc.name, func(t *testing.T) {
+				t.Parallel()
 				u := loadUnit(t, uc.path)
 				src := homeModule(t, u)
 				for _, want := range []string{"export function Announce(", "export function AnnounceMeasure(", "export class TableVocabulary"} {
@@ -69,37 +80,40 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// every entry against its own descriptors ... THE ANNOUNCEMENT READS
 		// TOLERANTLY ... The vocabulary is a pure function of the build
 		// version." (docs/SPEC-TABLES.md §3.3)
+		node := jsNode(t)
 		for _, uc := range units {
 			uc := uc
 			t.Run(uc.name, func(t *testing.T) {
+				t.Parallel()
 				u := loadUnit(t, uc.path)
 				entries := ir.TableVocabulary(u)
-				v := &jsTableVocabulary{
-					Entries:         make([]jsTableMessageEntry, len(entries)),
-					BuildVersionOwn: ir.BuildVersion(u),
-					MaxBytes:        64 * 1024,
+				var want strings.Builder
+				want.WriteString("const want = [\n")
+				for _, e := range entries {
+					fmt.Fprintf(&want, "  [BigInt(\"0x%016x\"), %d],\n", e.Id, e.Kind)
 				}
-				var report jsTableReport
-				if !jsAnnounceRead(v, announcementOf[uc.name], &report) {
-					t.Fatalf("AnnounceRead refused a well-formed announcement: %+v", report)
+				want.WriteString("];\n")
+				probe := fmt.Sprintf(`
+const data = new Uint8Array(readFileSync("./ann.bin"));
+const v = new TableVocabulary();
+v.Init(new Array(%[1]d));
+const report = {};
+if (!AnnounceRead(v, data, report)) { fail("AnnounceRead refused a well-formed announcement: " + JSON.stringify(report)); }
+if (!v.Announced || v.Refused) { fail("the announcement did not set the vocabulary: " + JSON.stringify(report)); }
+if (v.Count !== %[1]d) { fail("resolved " + v.Count + " entries, the unit's closure names %[1]d"); }
+				if (v.BuildVersion !== BigInt("0x%[2]s")) { fail("build version = 0x" + v.BuildVersion.toString(16)); }
+				if (v.RefBits !== %[3]d) { fail("reference width = " + v.RefBits + ", the closure needs %[3]d"); }
+				%[4]s
+				for (let i = 0; i < want.length; i++) {
+				  if (v.Entries[i].Id !== want[i][0] || v.Entries[i].Shape.Kind !== want[i][1]) {
+				    fail("entry " + i + " = id 0x" + v.Entries[i].Id.toString(16) + " kind " + v.Entries[i].Shape.Kind +
+				      ", the page names id 0x" + want[i][0].toString(16) + " kind " + want[i][1]);
+				  }
 				}
-				if !v.Announced || v.Refused {
-					t.Fatalf("the announcement did not set the vocabulary: %+v", v)
-				}
-				if v.Count != int64(len(entries)) {
-					t.Fatalf("resolved %d entries, the unit's closure names %d", v.Count, len(entries))
-				}
-				if v.BuildVersion != ir.BuildVersion(u) {
-					t.Fatalf("build version = %#x, the unit's own %#x", v.BuildVersion, ir.BuildVersion(u))
-				}
-				if v.RefBits != int64(ir.TableMessageRefBits(len(entries))) {
-					t.Fatalf("reference width = %d, the closure needs %d", v.RefBits, ir.TableMessageRefBits(len(entries)))
-				}
-				for i, want := range entries {
-					if v.Entries[i].Id != want.Id || v.Entries[i].Shape.Kind != want.Kind {
-						t.Fatalf("entry %d = id %#x kind %d, the page names id %#x kind %d",
-							i, v.Entries[i].Id, v.Entries[i].Shape.Kind, want.Id, want.Kind)
-					}
+				`, len(entries), fmt.Sprintf("%016x", ir.BuildVersion(u)), ir.TableMessageRefBits(len(entries)), want.String())
+				out, err := jsRunAnnounceProbe(t, node, u, map[string][]byte{"ann.bin": announcementOf[uc.name]}, probe)
+				if err != nil {
+					t.Fatalf("AnnounceRead did not fill %s: %v\n%s", uc.name, err, out)
 				}
 			})
 		}
@@ -112,29 +126,35 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// refused FIRST announcement is the one the connection gets ... every
 		// announcement after it is refused as `second_announcement`."
 		// (docs/SPEC-TABLES.md §3.3)
-		ann := announcementOf["backenddemo"]
-		n := len(ir.TableVocabulary(loadUnit(t, units[0].path)))
-		v := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, n), BuildVersionOwn: ir.BuildVersion(loadUnit(t, units[0].path))}
-		var first jsTableReport
-		if !jsAnnounceRead(v, ann, &first) {
-			t.Fatalf("first announcement: %+v", first)
-		}
-		before := v.Count
-		var second jsTableReport
-		if jsAnnounceRead(v, ann, &second) || second.Verdict != jsOpenRefused || second.Reason != "second_announcement" || second.Malformed {
-			t.Fatalf("a second announcement was not refused by name: %+v", second)
-		}
-		if v.Count != before {
-			t.Fatal("a second announcement replaced the vocabulary")
-		}
-		w := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, n)}
-		var rejected jsTableReport
-		if jsAnnounceRead(w, []byte{9, 9, 9}, &rejected) || rejected.Verdict != jsOpenRefused || rejected.Reason != "newer_form" || w.Announced {
-			t.Fatalf("a refused first announcement was not refused: %+v", rejected)
-		}
-		var later jsTableReport
-		if jsAnnounceRead(w, ann, &later) || later.Reason != "second_announcement" || w.Announced {
-			t.Fatalf("an announcement after a refused first is not second_announcement: %+v", later)
+		node := jsNode(t)
+		u := loadUnit(t, units[0].path)
+		n := len(ir.TableVocabulary(u))
+		probe := fmt.Sprintf(`
+const data = new Uint8Array(readFileSync("./ann.bin"));
+const v = new TableVocabulary();
+v.Init(new Array(%[1]d));
+const first = {};
+if (!AnnounceRead(v, data, first)) { fail("first announcement: " + JSON.stringify(first)); }
+const before = v.Count;
+const second = {};
+if (AnnounceRead(v, data, second) || second.Verdict !== 1 || second.Reason !== "second_announcement" || second.Malformed) {
+  fail("a second announcement was not refused by name: " + JSON.stringify(second));
+}
+if (v.Count !== before) { fail("a second announcement replaced the vocabulary"); }
+const w = new TableVocabulary();
+w.Init(new Array(%[1]d));
+const rejected = {};
+if (AnnounceRead(w, new Uint8Array([9, 9, 9]), rejected) || rejected.Verdict !== 1 || rejected.Reason !== "newer_form" || w.Announced) {
+  fail("a refused first announcement was not refused: " + JSON.stringify(rejected));
+}
+const later = {};
+if (AnnounceRead(w, data, later) || later.Reason !== "second_announcement" || w.Announced) {
+  fail("an announcement after a refused first is not second_announcement: " + JSON.stringify(later));
+}
+`, n)
+		out, err := jsRunAnnounceProbe(t, node, u, map[string][]byte{"ann.bin": announcementOf["backenddemo"]}, probe)
+		if err != nil {
+			t.Fatalf("second_announcement: %v\n%s", err, out)
 		}
 	})
 
@@ -144,16 +164,27 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// THAT CAPACITY, and an announcement above it is refused by name
 		// `vocabulary_too_large` before an entry is touched" and the byte
 		// bound's "64 KiB does not move" (docs/SPEC-TABLES.md §3.3)
-		ann := announcementOf["backenddemo"]
-		entries := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, 1)}
-		var report jsTableReport
-		if jsAnnounceRead(entries, ann, &report) || report.Verdict != jsOpenRefused || report.Reason != "vocabulary_too_large" || report.Malformed || entries.Announced {
-			t.Fatalf("entry count bound: %+v", report)
-		}
-		bytes := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, 64), MaxBytes: 4}
-		var byteReport jsTableReport
-		if jsAnnounceRead(bytes, ann, &byteReport) || byteReport.Verdict != jsOpenRefused || byteReport.Reason != "vocabulary_too_large" || byteReport.Malformed || bytes.Announced {
-			t.Fatalf("vocabulary byte bound: %+v", byteReport)
+		node := jsNode(t)
+		u := loadUnit(t, units[0].path)
+		probe := `
+const data = new Uint8Array(readFileSync("./ann.bin"));
+const entries = new TableVocabulary();
+entries.Init(new Array(1));
+const report = {};
+if (AnnounceRead(entries, data, report) || report.Verdict !== 1 || report.Reason !== "vocabulary_too_large" || report.Malformed || entries.Announced) {
+  fail("entry count bound: " + JSON.stringify(report));
+}
+const bytes = new TableVocabulary();
+bytes.Init(new Array(64));
+bytes.MaxBytes = 4;
+const byteReport = {};
+if (AnnounceRead(bytes, data, byteReport) || byteReport.Verdict !== 1 || byteReport.Reason !== "vocabulary_too_large" || byteReport.Malformed || bytes.Announced) {
+  fail("vocabulary byte bound: " + JSON.stringify(byteReport));
+}
+`
+		out, err := jsRunAnnounceProbe(t, node, u, map[string][]byte{"ann.bin": announcementOf["backenddemo"]}, probe)
+		if err != nil {
+			t.Fatalf("vocabulary_too_large: %v\n%s", err, out)
 		}
 	})
 
@@ -164,6 +195,8 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 		// and the vocabulary present, exactly once, kind `14`, element kind
 		// `6` ... A FAILED STRICT CHECK IS MALFORMED, not a refusal ... The
 		// build version is kept the moment it is read." (docs/SPEC-TABLES.md §3.3)
+		node := jsNode(t)
+		u := loadUnit(t, units[0].path)
 		const version = 0x1122334455667788
 		twice := append(versionField(version), versionField(version)...)
 		twice = append(twice, vocabField(6, nil)...)
@@ -180,19 +213,95 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 			{"vocabulary not kind 14", announcement(append(versionField(version), vocabFieldBadKind(13)...))},
 			{"vocabulary element not kind 6", announcement(append(versionField(version), vocabField(9, nil)...))},
 		}
-		for _, tc := range cases {
-			v := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, 8)}
-			var report jsTableReport
-			if jsAnnounceRead(v, tc.data, &report) || !report.Malformed || report.Verdict == jsOpenRefused || v.Announced {
-				t.Fatalf("%s: want malformed and not a refusal, got %+v", tc.name, report)
-			}
+		extra := map[string][]byte{"keep.bin": announcement(append(versionField(version), 2, 13))}
+		var list strings.Builder
+		list.WriteString("const cases = [\n")
+		for i, tc := range cases {
+			file := fmt.Sprintf("case%d.bin", i)
+			extra[file] = tc.data
+			fmt.Fprintf(&list, "  [%q, %q],\n", tc.name, file)
 		}
-		v := &jsTableVocabulary{Entries: make([]jsTableMessageEntry, 8)}
-		var report jsTableReport
-		if jsAnnounceRead(v, announcement(append(versionField(version), 2, 13)), &report) || !report.Malformed || v.BuildVersion != version || v.Announced {
-			t.Fatalf("the refused announcement did not keep the build version: %+v version=%#x", report, v.BuildVersion)
+		list.WriteString("];\n")
+		probe := fmt.Sprintf(`
+%[1]s
+for (const [name, path] of cases) {
+  const v = new TableVocabulary();
+  v.Init(new Array(8));
+  const report = {};
+  if (AnnounceRead(v, new Uint8Array(readFileSync("./" + path)), report) || !report.Malformed || report.Verdict === 1 || v.Announced) {
+    fail(name + ": want malformed and not a refusal, got " + JSON.stringify(report));
+  }
+}
+const keep = new TableVocabulary();
+keep.Init(new Array(8));
+const keepReport = {};
+if (AnnounceRead(keep, new Uint8Array(readFileSync("./keep.bin")), keepReport) || !keepReport.Malformed ||
+    keep.BuildVersion !== BigInt("0x%[2]s") || keep.Announced) {
+  fail("the refused announcement did not keep the build version: " + JSON.stringify(keepReport) + " version=0x" + keep.BuildVersion.toString(16));
+}
+`, list.String(), fmt.Sprintf("%016x", uint64(version)))
+		out, err := jsRunAnnounceProbe(t, node, u, extra, probe)
+		if err != nil {
+			t.Fatalf("announcement_strict_checks: %v\n%s", err, out)
 		}
 	})
+}
+
+// jsRunAnnounceProbe writes the unit's whole generated tree — the packet
+// modules and the table modules — plus `extra` files into one directory and
+// runs `probe` there with the leg's own node. `probe` imports the announcement
+// surface from the emitted home module and calls `fail(why)` on any breach; the
+// process exits non-zero, and the combined output names the clause.
+func jsRunAnnounceProbe(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string) ([]byte, error) {
+	t.Helper()
+	files, err := js.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	home := ""
+	for name, data := range tables {
+		if strings.Contains(string(data), "TableMessageAnnouncement = new Uint8Array(") {
+			home = name
+		}
+	}
+	if home == "" {
+		t.Fatal("the generated unit carries no announcement surface")
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, data := range extra {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	src := fmt.Sprintf(`// one generated probe over the emitted announcement surface (docs/SPEC-TABLES.md §3.3).
+import { readFileSync } from "node:fs";
+import { TableVocabulary, Announce, AnnounceMeasure, TableMessageAnnouncement, AnnounceRead } from "./%s";
+let failures = 0;
+function fail(why) { console.error("FAIL: " + why); failures++; }
+if (AnnounceMeasure() !== TableMessageAnnouncement.length) { fail("AnnounceMeasure is not the constant array's length"); }
+%s
+if (failures !== 0) { process.exit(1); }
+console.log("ok");
+`, home, probe)
+	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
 }
 
 // manifestAnnouncements reads the tables manifest's `connection` lines and
