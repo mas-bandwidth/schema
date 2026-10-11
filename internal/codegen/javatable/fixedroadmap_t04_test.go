@@ -252,15 +252,36 @@ fixed table T
 		t.Fatalf("R16: Generate: %v", err)
 	}
 	t04Has(t, t04Surface(t, out), "report.unknown += censusUnknown;", "R16 unknown lands once per peer")
-	// widened is EXACTLY min(their_n, my_n) (§5.9 #33): the array case compiles
-	// the element min(their_n, my_n) times, EACH ELEMENT ITS OWN widen entry and
-	// never a folded run, so [..4]int16 into [..4]int32 is FOUR widen entries and
-	// widened == 4 — a bare `widened > 0` cannot tell the four from one.
+	// widened is EXACTLY min(their_n, my_n) (§5.9 #33). The figure is asserted
+	// two ways: the versioning fixture's array_elem_widen row declares widened ==
+	// 4 and widenedError holds the runtime to that exact number — a folded read
+	// would report fewer and fail, so a bare `widened > 0` cannot slip through —
+	// and the compile-shape checks below prove the "never folded" half, that the
+	// array case emits the element min(their_n, my_n) times, each element its own
+	// widen entry.
+	widenRow := versioningRow{name: "array_elem_widen", widen: true, widened: 4}
+	if msg := widenedError(widenRow, probeRun{widened: 1}); msg == "" {
+		t.Error("R16: a folded read (widened=1) must fail the exact count, not pass it")
+	}
+	if msg := widenedError(widenRow, probeRun{widened: 4}); msg != "" {
+		t.Errorf("R16: widened=4 must pass the exact count, got %q", msg)
+	}
+	// THE FIXTURE ITSELF DECLARES THE FIGURE, so the exact count is what the
+	// versioning run asserts and not merely nonzero: a row that loses `widened`
+	// falls back to the loose check §5.9 #33 rejects.
+	for _, row := range versioningRows {
+		if row.name != "array_elem_widen" {
+			continue
+		}
+		if !row.widen || row.widened != 4 {
+			t.Errorf("R16: array_elem_widen must declare widen:true and widened:4 (§5.9 #33), got widen=%v widened=%d", row.widen, row.widened)
+		}
+	}
 	for _, want := range []string{
 		"final int n = Math.min(theirN, myN);",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
-		t04Has(t, runtime, want, "R16 widened is exactly min(their_n, my_n) entries, element by element")
+		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")
 	}
 	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the opCopy case carries no
 	// counter bump at all (only its framing-damage `malformed` guard), so the
