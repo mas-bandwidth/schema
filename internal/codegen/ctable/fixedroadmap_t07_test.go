@@ -37,6 +37,11 @@ fixed table Blob {
     data bytes(4)
 }
 `
+	t07ClampSchema = `package probe
+fixed table Rung {
+    vals [..4]uint8 | min = 0, max = 100
+}
+`
 )
 
 func TestFixedRoadmapCT07Writes(t *testing.T) {
@@ -61,24 +66,66 @@ func TestFixedRoadmapCT07Writes(t *testing.T) {
 	}
 }
 
-// c/C14 "bounds pass walks live only": the read-side bounds pass is the one
-// loop's `table_fixed_run`, and it clamps only the entries that LAND — an
-// unselected arm's entries are skipped by `table_fixed_entry_lands` before a
-// byte is read. §3.4's one loop, and the tag selects the live arm.
+// c/C14 "bounds pass walks live only": the read-side bounds pass is the
+// generated `<name>_fixed_clamp_body`, and it walks a counted array's LIVE
+// elements (`i < value-><name>_count`) and never its slack — an UNWRITTEN slot
+// is not held to the declared bound (§3.4, the clamp pass "walks only what a
+// read can have written: a counted array's LIVE elements and never its
+// slack"). The plan copies the whole array storage, so the test forges the
+// file's slack bytes out of range and a pass that walked the fixed bound would
+// clamp and count them.
 func cT07BoundsLiveOnly(t *testing.T) {
-	h := tableH(t, cReadSchema(t, "VNEW_union_append"))
-	if !strings.Contains(h, "table_fixed_entry_lands") {
-		t.Fatal("the one read loop does not gate each entry on table_fixed_entry_lands: the bounds pass would walk an unselected arm's bytes")
-	}
-	if !strings.Contains(h, "table_fixed_apply") {
-		t.Fatal("the one read loop's bounds pass (table_fixed_apply) is not emitted")
-	}
+	runCGenerated(t, t07ClampSchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    Rung value, loaded;
+    TableReport report;
+    int64_t need, n, layout;
+    uint8_t file[256];
+    uint8_t * body;
+    static TableFixedEntry plan[64];
+    /* LIVE ONLY: count = 1 with the live element in range, and the file's three
+       SLACK slots forged past the declared max. The plan copies the whole array
+       storage, so the slack lands in loaded — a bounds pass that walked the
+       fixed bound would clamp those three forged slack bytes and count 3. */
+    memset(&value, 0, sizeof(value));
+    value.vals_count = 1;
+    value.vals[0] = 7;
+    need = rung_fixed_measure(1);
+    if (rung_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("save\n"); return 1; }
+    layout = table_fixed_get32(file + kTableFixedHeaderBytes);
+    body = file + kTableFixedHeaderBytes + 4 + layout + 8;
+    body[5] = 200; body[6] = 200; body[7] = 200;
+    memset(&loaded, 0, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = rung_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    if (n != 1) { printf("n=%lld\n", (long long)n); return 1; }
+    if (report.clamped != 0) { printf("the bounds pass walked a slack slot: clamped=%d\n", report.clamped); return 1; }
+    /* AND LIVE IS WALKED: count = 2, the second element live and past the max,
+       so exactly one clamp lands and the value moves to the bound. */
+    value.vals_count = 2;
+    value.vals[0] = 7;
+    value.vals[1] = 200;
+    need = rung_fixed_measure(1);
+    if (rung_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("save2\n"); return 1; }
+    memset(&loaded, 0, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = rung_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    if (n != 1) { printf("n2=%lld\n", (long long)n); return 1; }
+    if (report.clamped != 1) { printf("a live out-of-range element was not clamped exactly once: clamped=%d\n", report.clamped); return 1; }
+    if (loaded.vals[1] != 100) { printf("the clamped value is %d, not the max 100\n", (int)loaded.vals[1]); return 1; }
+    return 0;
+}
+`)
 }
 
 // c/W4 "read slack unspecified": §3.4 line for bytes(N) — "ZERO on write past
 // the used bytes, UNSPECIFIED on read, never a refusal". A used length shorter
-// than the bound rides; the bytes past it may hold anything, and the read
-// neither refuses nor clamps them.
+// than the bound rides; the bytes past it may hold ANY value, so the test puts
+// non-zero bytes into the record's slack and the read must neither refuse nor
+// clamp them.
 func cT07ReadSlack(t *testing.T) {
 	runCGenerated(t, t07BytesSchema, `#include "ProbeTable.h"
 #include <stdio.h>
@@ -87,18 +134,25 @@ int main(void)
 {
     Blob value, loaded;
     TableReport report;
-    int64_t need, n;
+    int64_t need, n, layout;
     uint8_t file[256];
+    uint8_t * body;
     static TableFixedEntry plan[64];
     memset(&value, 0, sizeof(value));
     value.data[0] = 'a'; value.data[1] = 'b'; value.data_length = 2;
     need = blob_fixed_measure(1);
     if (blob_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("save\n"); return 1; }
+    /* THE SLACK IS UNSPECIFIED ON READ: the save left the two slack bytes zero
+       (the template); write non-zero bytes there, where a reader that wrongly
+       validated slack would see them. */
+    layout = table_fixed_get32(file + kTableFixedHeaderBytes);
+    body = file + kTableFixedHeaderBytes + 4 + layout + 8;
+    body[6] = 0xAB; body[7] = 0xAB;
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = blob_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     if (n != 1) { printf("n=%lld\n", (long long)n); return 1; }
-    if (report.refused || report.malformed || report.clamped) { printf("refused/malformed/clamped on read slack\n"); return 1; }
+    if (report.refused || report.malformed || report.clamped) { printf("non-zero read slack was refused=%d malformed=%d clamped=%d\n", report.refused, report.malformed, report.clamped); return 1; }
     if (loaded.data_length != 2 || loaded.data[0] != 'a' || loaded.data[1] != 'b') { printf("payload\n"); return 1; }
     return 0;
 }
@@ -106,17 +160,38 @@ int main(void)
 }
 
 // c/W9 "prefill unwritten ranges only": §4.3 — "Prefill the bytes the plan does
-// not write ... The plan compiler computes the UNWRITTEN RANGES ... the
-// identity plan's list is EMPTY". The generated reader carries a fill list and
-// the identity plan names no fill.
+// not write ... the identity plan's list is EMPTY". The test drives the runtime
+// subtraction `<name>_fixed_fills`: against the identity plan the list is empty,
+// and a plan that lands only part of the value bytes yields EXACTLY the bytes it
+// does not write.
 func cT07PrefillUnwritten(t *testing.T) {
-	h := tableH(t, identityHeldSchema)
-	if !strings.Contains(h, "TableFixedFill") {
-		t.Fatal("the reader carries no fill list; the prefill is not a list of unwritten ranges (§4.3)")
-	}
-	if !strings.Contains(h, "fill_count") {
-		t.Fatal("the plan carries no fill_count; the prefill is not the bytes the plan does not write (§4.3)")
-	}
+	runCGenerated(t, identityFlatSchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    TableFixedFill out[64];
+    TableFixedEntry hole[1];
+    int32_t n;
+    /* THE IDENTITY PLAN'S LIST IS EMPTY: its destinations ARE the value bytes
+       (<name>_fixed_cover), so there is nothing left to subtract (§4.3). */
+    n = table_fixed_fills( flat_fixed_plan, flat_fixed_plan_count,
+                           flat_fixed_cover, flat_fixed_cover_count, out );
+    if (n != 0) { printf("the identity plan's prefill list is not empty: %d ranges\n", n); return 1; }
+    /* AND THE LIST IS EXACTLY THE BYTES THE PLAN DOES NOT WRITE: a plan landing
+       only the cover's first four bytes leaves the remaining bytes as fill. */
+    memset(hole, 0, sizeof(hole));
+    hole[0].src = 0;
+    hole[0].dst = flat_fixed_cover[0].dst;
+    hole[0].size = 4;
+    hole[0].op = kTableFixedCopy;
+    n = table_fixed_fills( hole, 1, flat_fixed_cover, flat_fixed_cover_count, out );
+    if (n != 1) { printf("a plan landing four bytes subtrahends to %d ranges, not 1\n", n); return 1; }
+    if (out[0].dst != flat_fixed_cover[0].dst + 4 || out[0].size != flat_fixed_cover[0].size - 4)
+        { printf("the fill is not the unwritten bytes: dst=%u size=%u\n", out[0].dst, out[0].size); return 1; }
+    return 0;
+}
+`)
 }
 
 // c/W1 "write slack is template zeros": the save memsets the record body to
