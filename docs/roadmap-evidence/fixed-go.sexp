@@ -76,3 +76,7 @@
 (:id "go/R17" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t06_test.go: TestFixedRoadmapGoT06Bounds/go/R17") :tested-revision "816b8757aaf5334a8f5d3cbb4d82c5be0faf73c6")
 (:id "go/C1" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t06_test.go: TestFixedRoadmapGoT06Bounds/go/C1") :tested-revision "816b8757aaf5334a8f5d3cbb4d82c5be0faf73c6")
 (:id "go/C2" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t06_test.go: TestFixedRoadmapGoT06Bounds/go/C2") :tested-revision "816b8757aaf5334a8f5d3cbb4d82c5be0faf73c6")
+(:id "go/C3" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/C3") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
+(:id "go/C4" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/C4") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
+(:id "go/C5" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/C5") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
+(:id "go/R24" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/R24") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
