@@ -233,8 +233,25 @@ func TableFixedUnionTagBytes(un *Union) int64 {
 // carries. A pointer, a map and an unbounded array make their holder VARIABLE
 // and never reach here; what this adds is the two shapes the reference does
 // not yet lay out — a union arm carrying text or an array, and a guarded
-// branch, which §3.4 refuses outright.
+// branch, which §3.4 refuses outright. A payload-free (void) union arm is
+// refused here: a port that has not built its tag-only arm storage asks this,
+// and [TableFixedSupportedPayloadFreeArms] is the same test one arm wider.
 func TableFixedSupported(st *Struct, depth int) bool {
+	return tableFixedSupported(st, depth, false)
+}
+
+// TableFixedSupportedPayloadFreeArms is [TableFixedSupported] with the one
+// addition a port whose union carries a payload-free arm needs: a void arm is
+// a value of the tag enum with no storage in the overlay and no bytes to land
+// (§3.4, kind 32), which the layout's own walk already names with a
+// TableKindNoPayload entry of size zero (this file's tableFixedWalkElement).
+// The shared test stays strict so a port that has not built that storage keeps
+// its named refusal instead of walking a nil arm into its emitter.
+func TableFixedSupportedPayloadFreeArms(st *Struct, depth int) bool {
+	return tableFixedSupported(st, depth, true)
+}
+
+func tableFixedSupported(st *Struct, depth int, payloadFree bool) bool {
 	// THE STRUCT NESTING, AT THE LAYOUT'S OWN BOUND ([TableFixedMaxDepth]). A
 	// by-value cycle is refused upstream (§2), so this is a bound and not a
 	// cycle guard; what it must not be is a DIFFERENT number from the one the
@@ -251,20 +268,23 @@ func TableFixedSupported(st *Struct, depth int) bool {
 		if f.Type.Kind == TNamed {
 			switch r := f.Type.Ref.(type) {
 			case *Struct:
-				if !TableFixedSupported(r, depth+1) {
+				if !tableFixedSupported(r, depth+1, payloadFree) {
 					return false
 				}
 			case *Union:
 				for _, v := range r.Variants {
 					if v.F == nil {
-						return false // a void arm has no storage this walk can name
+						if !payloadFree {
+							return false // a void arm has no storage this walk can name
+						}
+						continue
 					}
 					a := v.F
 					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ArrayNone || a.KeyEnum != "" ||
 						a.Type.Kind == TString || a.Type.Kind == TWString || a.Type.Kind == TBytes || a.Type.Optional {
 						return false
 					}
-					if s, ok := a.Type.Ref.(*Struct); ok && a.Type.Kind == TNamed && !TableFixedSupported(s, depth+1) {
+					if s, ok := a.Type.Ref.(*Struct); ok && a.Type.Kind == TNamed && !tableFixedSupported(s, depth+1, payloadFree) {
 						return false
 					}
 				}

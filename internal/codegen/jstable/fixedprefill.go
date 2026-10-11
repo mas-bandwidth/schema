@@ -107,6 +107,9 @@ func fixedPrefillElement(out []byte, at int64, f *ir.Field) {
 			// GUARDED prefill entry in the plan (§5.9 #38's two choices).
 			tag := fixedUnionTagBytes(r)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm has nothing to place, so no default rides
+				}
 				fixedPrefillElement(out, at+tag, v.F)
 			}
 			return
