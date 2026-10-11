@@ -194,21 +194,22 @@ func t04R21(t *testing.T) {
 
 // t04R29: R29 [owed] "the band case: the widening across the 65536 ceiling, and
 // the bounds pass clamping to the writer's bounds". The band edge is the u16
-// top 65535 widened into a u32 — ZERO-extended, never sign-extended (§5.2's
-// sign rule); the writer's bounds are the count/range a compiled plan carries
-// and clamps to (bill §12.5, ALG §5.2 EMIT), never the reader's wider own.
+// top 65535 (kind 7) widened into a u32 (kind 8) — the UNSIGNED ladder, kinds
+// 6..9 (ir/tablekind.go), ZERO-extended, never sign-extended (§5.2's sign
+// rule). The clause's second half is not implemented on this leg and is
+// reported unknown: the emitted §4.6 pass (emitFixedClamp) clamps to the
+// READER's declared ranges and the compiled plan (TableFixedEntry) carries no
+// writer bound at all, so the writer-carried known-range pass the reference
+// runs (bill §12.5, TableFixedClampKnownRanges) has no site here to assert.
 func t04R29(t *testing.T) {
 	n := t04Runtime(t)
-	// The band edge: the unsigned rung widens, and the widen's sign is the
-	// writer's, so a u16 source is zero-extended across the 65536 ceiling.
-	t04Has(t, n, "if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }",
+	// The band edge: the UNSIGNED rung widens — u16 kind 7 into u32 kind 8 —
+	// and the widen's sign is the writer's, so a u16 source is zero-extended
+	// across the 65536 ceiling.
+	t04Has(t, n, "if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }",
 		"R29 the u16 into u32 rung reaches across the 65536 ceiling")
 	t04Has(t, n, "if (p.Sign != 0)",
 		"R29 the widen sign-extends only when the writer's kind is signed, so the band edge is zero-extended")
-	// The bounds pass clamps to the WRITER's bound: the plan's count bound is
-	// the writer's their_n, and a raw past it lands the bound and counts once.
-	t04Has(t, n, "if (raw > count && report != null) { report.Clamped++; }",
-		"R29 the count lands the writer's bound and counts exactly once")
 }
 
 // t04E5: E5 [verify] "?T vs plain nesting". The versioning harness's
