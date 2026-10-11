@@ -686,51 +686,73 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
     (s, true)
 }
 
-/// THE STORAGE WIDTH of a fixed-width kind, and 0 for the framed kinds (§3).
-fn kind_width(kind: u8) -> usize {
+/// A tolerant skip of an UNKNOWN field by its kind (§3.3): the ordinary
+/// form-1 framed-field skip rules, the C++ reference's (cpptable) and the Go
+/// leg's, one function over the closed kind set. This reader knows only the
+/// announcement's own two fields, so a field of any other id is stepped over
+/// by its kind: fixed-width kinds by their storage width, a node index and an
+/// enum's variant by one LEB128, the framed kinds by one LEB128 length and
+/// that many bytes, and a union by its arm reference, its arm's kind byte, one
+/// length and that many bytes. A kind outside the set is not skippable, which
+/// is why the set is closed and why kind 31 exists (§3).
+fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
     match kind {
-        1 | 2 | 6 | 20 | 25 => 1,
-        3 | 7 | 21 | 26 => 2,
-        4 | 8 | 10 | 17 | 22 | 27 => 4,
-        5 | 9 | 11 | 23 | 28 => 8,
-        18 | 19 | 24 | 29 => 16,
-        _ => 0,
+        // the fixed-width kinds, each by its storage width (§3)
+        1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
+        3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
+        4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
+        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
+        // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
+        // stop
+        17 | 30 => {
+            let (_, ok) = read_leb(bytes, at);
+            ok
+        }
+        // THE FRAMED KINDS: one LEB128 length and that many bytes. A string,
+        // a nested body, an array, a keyed array, an escape, a payload-free
+        // field and a wide string all frame the same way on the file, and a
+        // wide string's length is its BYTE count (§3).
+        12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+            let (n, ok) = read_leb(bytes, at);
+            if !ok || *at + (n as usize) > bytes.len() {
+                return false;
+            }
+            *at += n as usize;
+            true
+        }
+        // a UNION: its arm reference, then the arm's kind byte, one length and
+        // that many bytes. Reference 0 is the empty union and stops there.
+        15 => {
+            let (arm, ok) = read_leb(bytes, at);
+            if !ok {
+                return false;
+            }
+            if arm == 0 {
+                return true;
+            }
+            if *at >= bytes.len() {
+                return false;
+            }
+            *at += 1;
+            let (n, ok) = read_leb(bytes, at);
+            if !ok || *at + (n as usize) > bytes.len() {
+                return false;
+            }
+            *at += n as usize;
+            true
+        }
+        // a kind outside the closed set is not skippable (§3)
+        _ => false,
     }
 }
 
-/// A tolerant skip of an UNKNOWN field by its kind (§3.3). This reader knows
-/// only the announcement's own two fields, so a field of any other id is
-/// stepped over by its kind: fixed-width kinds by their storage width, a
-/// string or a wstring by its length, and a name or a no-payload field by
-/// nothing.
-fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
-    if kind == 0 || kind == 32 {
-        return true;
+/// Skip a fixed-width payload of WIDTH bytes, or refuse past the buffer.
+fn skip_width(bytes: &[u8], at: &mut usize, width: usize) -> bool {
+    if *at + width > bytes.len() {
+        return false;
     }
-    let width = kind_width(kind);
-    if width > 0 {
-        if *at + width > bytes.len() {
-            return false;
-        }
-        *at += width;
-        return true;
-    }
-    if kind == 12 {
-        let (n, ok) = read_leb(bytes, at);
-        if !ok || *at + (n as usize) > bytes.len() {
-            return false;
-        }
-        *at += n as usize;
-        return true;
-    }
-    if kind == 33 {
-        let (n, ok) = read_leb(bytes, at);
-        if !ok || *at + (n as usize) * 2 > bytes.len() {
-            return false;
-        }
-        *at += (n as usize) * 2;
-        return true;
-    }
-    false
+    *at += width;
+    true
 }
 `

@@ -16,6 +16,7 @@ package rusttable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -113,6 +114,9 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"vocabulary_too_large_entries",
 			"malformed_missing_version",
 			"malformed_missing_vocabulary",
+			"unknown_scalar",
+			"unknown_array",
+			"unknown_table",
 		} {
 			id := id
 			t.Run(name+"/"+id, func(t *testing.T) {
@@ -316,6 +320,18 @@ func announceProbe(u *announceUnit) string {
 	fmt.Fprintf(&b, "const MISSING_VERSION: [u8; %d] = [%s];\n", len(missingVersion), rustBytes(missingVersion))
 	fmt.Fprintf(&b, "const MISSING_VOCAB: [u8; %d] = [%s];\n\n", len(missingVocab), rustBytes(missingVocab))
 
+	// 2.3: "Every other field of its body is ordinary and tolerant, so an
+	// unknown one is skipped and counted" (§3.3) — the announcement can gain a
+	// field in a later minor without a lockstep redeploy. Three forgeries each
+	// add ONE unknown field of a different framing to the pinned announcement:
+	// a fixed-width scalar, an array, and a nested table body.
+	unknownScalar := forgedWithField(u.announcement, 9, []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 0x1111111111111111)
+	unknownArray := forgedWithField(u.announcement, 14, []byte{0x05, 0x06, 0x03, 0xaa, 0xbb, 0xcc}, 0x2222222222222222)
+	unknownTable := forgedWithField(u.announcement, 13, []byte{0x01, 0x00}, 0x3333333333333333)
+	fmt.Fprintf(&b, "const UNKNOWN_SCALAR: [u8; %d] = [%s];\n", len(unknownScalar), rustBytes(unknownScalar))
+	fmt.Fprintf(&b, "const UNKNOWN_ARRAY: [u8; %d] = [%s];\n", len(unknownArray), rustBytes(unknownArray))
+	fmt.Fprintf(&b, "const UNKNOWN_TABLE: [u8; %d] = [%s];\n\n", len(unknownTable), rustBytes(unknownTable))
+
 	b.WriteString("fn main() {\n")
 	// 2.1: the constant and its length.
 	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
@@ -356,6 +372,18 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &MISSING_VOCAB, &mut report);\n")
 	b.WriteString("        say(\"malformed_missing_vocabulary\", !ok && report.malformed && !report.refused, \"a body without the vocabulary is not malformed\");\n    }\n")
+	// 2.3: an unknown field is skipped and counted, the two strict checks kept:
+	// the read still fills the vocabulary the page names, the build version kept.
+	for _, c := range []struct{ id, cnst, why string }{
+		{"unknown_scalar", "UNKNOWN_SCALAR", "an unknown scalar field is not skipped tolerantly"},
+		{"unknown_array", "UNKNOWN_ARRAY", "an unknown array field is not skipped tolerantly"},
+		{"unknown_table", "UNKNOWN_TABLE", "an unknown table field is not skipped tolerantly"},
+	} {
+		fmt.Fprintf(&b, "    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
+		fmt.Fprintf(&b, "        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
+		fmt.Fprintf(&b, "        let ok = announce_read(&mut vocab, &%s, &mut report);\n", c.cnst)
+		fmt.Fprintf(&b, "        say(\"%s\", ok && !report.refused && !report.malformed && vocab.count == EXPECTED_COUNT && vocab.build_version == EXPECTED_BUILD && report.unknown == 1, \"%s\");\n    }\n", c.id, c.why)
+	}
 	b.WriteString("}\n")
 	return b.String()
 }
@@ -379,4 +407,21 @@ func rustBytes(b []byte) string {
 		fmt.Fprintf(&s, "0x%02x", v)
 	}
 	return s.String()
+}
+
+// forgedWithField appends one unknown field to a pinned announcement: a third
+// trailer entry carrying the field's id and a third body field of the given
+// kind and payload, so the tolerant skip meets a field of an id it does not
+// know. The two strict fields stay exactly where they were.
+func forgedWithField(announcement []byte, kind byte, payload []byte, id uint64) []byte {
+	count := binary.LittleEndian.Uint64(announcement[len(announcement)-8:])
+	end := len(announcement) - 8 - int(count)*8
+	out := []byte{announcement[0]}
+	out = append(out, announcement[1:end-1]...)
+	out = append(out, 0x03, kind)
+	out = append(out, payload...)
+	out = append(out, 0x00)
+	out = append(out, announcement[end:len(announcement)-8]...)
+	out = binary.LittleEndian.AppendUint64(out, id)
+	return binary.LittleEndian.AppendUint64(out, count+1)
 }
