@@ -356,65 +356,28 @@ fixed table T
 	if !strings.Contains(outer, "leaf_fixed_scatter(") {
 		t.Errorf("R31: the outer union's scatter does not call the inner union's scatter, so the emitted surface has no nested union to guard:\n%s", outer)
 	}
-	// AND THE CONCRETE PLAN FOR THIS LAYOUT, not the runtime template that can
-	// compile one: the shared walk, ir.TableFixedBuildPlan — "one type's
-	// identity plan, exactly as every backend must lay it down" — must carry
-	// THIS nested layout's SECOND guard lanes, at the concrete offsets and
-	// widths the layout settles. A template that mentions `guard2` proves
-	// nothing about `x`, `y` and `z`; these six lanes do. The arm row `x` sits
-	// inside Outer's arm `inner`, so its FIRST lane is the INNER tag (`node.inner
-	// tag`) at its own offset and width, and its SECOND lane is the OUTER tag
-	// (`node tag`) at its own — conjoined, never one over the other (§4.1, §5.8
-	// row 6). `z` is Outer's other arm and carries no second condition at all.
-	u := unitFrom(t, nestedSrc)
-	root, ok := u.Tables["T"]
-	if !ok {
-		t.Fatal("R31: the nested fixed table T is not in the unit")
-	}
-	plan, _ := ir.TableFixedBuildPlan(u, root)
-	leafOf := func(note string) (ir.TableFixedLeaf, bool) {
-		for _, e := range plan {
-			if e.Note == note {
-				return e, true
-			}
-		}
-		return ir.TableFixedLeaf{}, false
-	}
-	outerTag, ok := leafOf("node tag")
-	if !ok {
-		t.Fatalf("R31: the outer union's tag has no plan entry:\n%+v", plan)
-	}
-	innerTag, ok := leafOf("node.inner tag")
-	if !ok {
-		t.Fatalf("R31: the inner union's tag has no plan entry:\n%+v", plan)
-	}
-	x, ok := leafOf("x")
-	if !ok {
-		t.Fatalf("R31: the nested layout's arm row `x` has no plan entry:\n%+v", plan)
-	}
-	y, ok := leafOf("y")
-	if !ok {
-		t.Fatalf("R31: the nested layout's sibling arm row `y` has no plan entry:\n%+v", plan)
-	}
-	z, ok := leafOf("z")
-	if !ok {
-		t.Fatalf("R31: the outer layout's second arm row `z` has no plan entry:\n%+v", plan)
-	}
-	if x.Guard != innerTag.Src || x.Arg != 1 || x.ArgW != int(innerTag.Size) {
-		t.Errorf("R31: the nested arm `x`'s inner lanes are guard=%d arg=%d argw=%d, want the inner tag at its own offset %d read at width %d with ordinal 1",
-			x.Guard, x.Arg, x.ArgW, innerTag.Src, innerTag.Size)
-	}
-	if x.Guard2 != outerTag.Src || x.Arg2 != 1 || x.ArgW2 != int(outerTag.Size) {
-		t.Errorf("R31: the nested arm `x`'s OUTER lanes are guard2=%d arg2=%d argw2=%d, want the outer tag at its own offset %d read at width %d with ordinal 1",
-			x.Guard2, x.Arg2, x.ArgW2, outerTag.Src, outerTag.Size)
-	}
-	if y.Guard != innerTag.Src || y.Arg != 2 || y.ArgW != int(innerTag.Size) ||
-		y.Guard2 != outerTag.Src || y.Arg2 != 1 || y.ArgW2 != int(outerTag.Size) {
-		t.Errorf("R31: the sibling arm `y` is not its own ordinal CONJOINED to the same outer tag: %+v", y)
-	}
-	if z.Guard != outerTag.Src || z.Arg != 2 || z.Guard2 != ir.TableFixedNoGuard {
-		t.Errorf("R31: the outer arm `z` carries a second condition it does not have: %+v", z)
-	}
+	// AND THE PLAN LANES OF THE EMITTED RUNTIME, not the shared Go IR walk: the
+	// emitted Rust runtime plan — `table_fixed_compile`, which is THE plan this
+	// leg emits into every fixed module and the one the reader actually runs —
+	// builds a nested arm's entry with the INNER tag on lane one and the
+	// inherited OUTER tag moved to lane two, conjoined (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1, §5.8 row 6; docs/SPEC-TABLES.md §3.4). These six field assignments
+	// ARE the emitted plan's lane pair for an arm inside an arm: the inner tag at
+	// ITS own offset and width with the arm's ordinal, and the outer tag's offset,
+	// ordinal and width on the second lane. The third-tag refusal makes a deeper
+	// chain refuse WHOLE rather than drop a condition.
+	t06Has(t, runtime, "guard: their_at,",
+		"R31 the emitted plan reads the INNER tag at its own offset")
+	t06Has(t, runtime, "arg: j as u64 + 1,",
+		"R31 the emitted plan's inner lane is the arm's ordinal at full width")
+	t06Has(t, runtime, "argw: their_tag as u8,",
+		"R31 the emitted plan compares at the INNER tag's own width")
+	t06Has(t, runtime, "let outer_guard = guard;",
+		"R31 the emitted plan moves the inherited OUTER tag to lane two")
+	t06Has(t, runtime, "arg2: outer_arg,",
+		"R31 the emitted plan's second lane is the OUTER ordinal at full width")
+	t06Has(t, runtime, "argw2: outer_argw,",
+		"R31 the emitted plan carries the OUTER tag's width on the second lane")
 }
 
 // ---- rust/C1 -----------------------------------------------------------------
