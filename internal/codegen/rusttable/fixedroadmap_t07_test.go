@@ -225,6 +225,133 @@ fixed table Lineage
 	}
 }
 
+// ---- rust/W1 -----------------------------------------------------------------
+
+// t07W1 holds rust/W1 to §3.1's template: "The template is a compile-time
+// constant — the hash, then zero everywhere a value lands — which zero-fills
+// every byte of declared slack without the writer touching it", and "the slack
+// rule is one rule: write the live extent onto the zeroed template and stop".
+// The save zeroes each record body, the writer's own comment says it touches no
+// slack, and the live extents are the count and the used length.
+func t07W1(t *testing.T) {
+	text := t07Fixed(t, t07gen(t, liveWriteSrc))
+	save := t07Fn(text, "probe_fixed_save")
+	write := t07Fn(text, "probe_fixed_write_body")
+	if save == "" || write == "" {
+		t.Fatal("W1: probe_fixed_save or probe_fixed_write_body is not emitted")
+	}
+	t07Has(t, save, "body.fill(0); // the template's zeros, and every byte of declared slack with them", "W1 the body is the zeroed template")
+	t07Has(t, text, "declared slack without this function touching it", "W1 the writer touches no slack")
+	t07Has(t, write, "for i in 0..value.marks_count.clamp(0, 4) as usize {", "W1 a counted array writes the live count")
+	t07Has(t, write, "let n = value.label_length.clamp(0, 8) as usize;", "W1 text writes the used length")
+	if strings.Contains(write, "value.label[..8]") {
+		t.Error("W1: the writer dumps the declared span, so the caller's slack reaches the wire")
+	}
+}
+
+// ---- rust/W3 -----------------------------------------------------------------
+
+// t07W3 holds rust/W3 to §3.1's union: "A union writes the tag and the taken
+// arm only, zero behind a narrower one." The tags are of different widths, so
+// the bytes past the narrower arm are the template's zeros: the writer stores
+// the tag then exactly the taken arm inside its `match`, and the save's
+// `body.fill(0)` is what makes the rest zero.
+func t07W3(t *testing.T) {
+	text := t07Fixed(t, t07gen(t, `package probe
+
+union Pick
+{
+    alpha int32
+    beta int64
+}
+
+fixed table Lineage
+{
+    g Pick
+}
+`))
+	write := t07Fn(text, "pick_fixed_write_body")
+	if write == "" {
+		t.Fatal("W3: pick_fixed_write_body is not emitted")
+	}
+	t07Has(t, write, "b[0] = value.tag;", "W3 the tag is written first")
+	t07Has(t, write, "match value.tag {", "W3 only the taken arm is written")
+	t07Has(t, write, "b[at..at + 4].copy_from_slice(&(arm as u32).to_le_bytes());", "W3 the narrower arm writes four bytes")
+	t07Has(t, text, "they stay the template's zeros", "W3 the bytes behind a narrower arm are the template's zeros")
+	if strings.Contains(write, ".fill(") {
+		t.Error("W3: the union writer clears bytes itself instead of leaving them to the template")
+	}
+	// the save is what zeroes the bytes behind the narrower arm
+	t07Has(t, t07Fn(text, "lineage_fixed_save"), "body.fill(0);", "W3 the template behind the narrower arm is zero")
+}
+
+// ---- rust/W5 -----------------------------------------------------------------
+
+// t07W5 holds rust/W5 to §3.1: "Write-side bound checks are DEBUG ONLY, by
+// rule. `count <= Max` and `length <= N` are a caller contract; a release build
+// removes them exactly as it removes `assert`, pays nothing, and clamps
+// nothing." The writer's every bound check is a `debug_assert!` and there is no
+// `assert!` or `panic!` beside it.
+func t07W5(t *testing.T) {
+	text := t07Fixed(t, t07gen(t, liveWriteSrc))
+	write := t07Fn(text, "probe_fixed_write_body")
+	if write == "" {
+		t.Fatal("W5: probe_fixed_write_body is not emitted")
+	}
+	debug := strings.Count(write, "debug_assert!(")
+	if debug == 0 {
+		t.Fatal("W5: the writer carries no bound check at all")
+	}
+	if all := strings.Count(write, "assert!("); all != debug {
+		t.Errorf("W5: the writer carries %d bound checks and only %d are DEBUG — a release build still pays", all, debug)
+	}
+	if strings.Contains(write, "panic!") {
+		t.Error("W5: the writer can panic; the write-side check is DEBUG only by rule")
+	}
+}
+
+// ---- rust/W8 -----------------------------------------------------------------
+
+// t07W8 holds rust/W8 to §4.1: "A `bytes(N)` takes the ARRAY's row, not a text
+// field's". On this wire that row is kind 14 with one synthetic u8 child at
+// kind 6, size 1 — the same walk `[..N]int32` takes — where a `string(N)` takes
+// the text row, kind 12 with the same u8 child.
+func t07W8(t *testing.T) {
+	text := t07Fixed(t, t07gen(t, `package probe
+
+fixed table Lineage
+{
+    c string(8)
+    d bytes(8)
+}
+`))
+	entries := t07Block(t, text, "LINEAGE_FIXED_BLOCK")
+	if len(entries) != 4 {
+		t.Fatalf("W8: the block carries %d entries, want the root, the string, the bytes and one u8 child", len(entries))
+	}
+	if entries[0].kind != 13 {
+		t.Fatalf("W8: the root's kind is %d, want 13 (the table)", entries[0].kind)
+	}
+	// entries[1] is the string: the TEXT row, kind 12 with NO child;
+	// entries[2] is the bytes: the ARRAY row, kind 14 with one u8 child;
+	// entries[3] is that child.
+	if entries[1].kind != 12 || entries[1].children != 0 {
+		t.Errorf("W8: the string is kind %d with %d children, want the text row 12 with none", entries[1].kind, entries[1].children)
+	}
+	if entries[2].kind != 14 || entries[2].children != 1 {
+		t.Errorf("W8: the bytes field is kind %d with %d children, want the array row 14 with one", entries[2].kind, entries[2].children)
+	}
+	if entries[3].kind != 6 || entries[3].size != 1 {
+		t.Errorf("W8: the bytes element is kind %d size %d, want a u8 (kind 6) at size 1", entries[3].kind, entries[3].size)
+	}
+	// THE WIRE SIZE IS THE ARRAY'S TOO: a count word then N bytes.
+	if got := t02IntConst(t, text, "LINEAGE_FIXED_BODY_BYTES"); got != 12+12 {
+		t.Errorf("W8: the body is %d, want 4 + 8 for the string and 4 + 8 for the bytes", got)
+	}
+	t07Has(t, string(fixedRuntimeBody), "12 | 33 => {", "W8 text is the string/wstring row")
+	t07Has(t, string(fixedRuntimeBody), "14 => {", "W8 the array row, which bytes(N) rides")
+}
+
 // t07gen is a fixture's emitted module of files.
 func t07gen(t *testing.T, src string) map[string][]byte {
 	t.Helper()
@@ -246,6 +373,10 @@ func TestFixedRoadmapRustT07Writes(t *testing.T) {
 		{id: "rust/C14", check: t07C14},
 		{id: "rust/W4", check: t07W4},
 		{id: "rust/W9", check: t07W9},
+		{id: "rust/W1", check: t07W1},
+		{id: "rust/W3", check: t07W3},
+		{id: "rust/W5", check: t07W5},
+		{id: "rust/W8", check: t07W8},
 	}
 	for _, task := range tasks {
 		t.Run(task.id, func(t *testing.T) {
