@@ -218,10 +218,14 @@ export class TableFixedPlan {
     this.remap = new Int32Array((remapCapacity | 0) || 1024);
     this.remapUsed = 0;
     this.recordBytes = 0;
+    // the WRITER's declared body size, every compiled entry bounded by it
+    // (docs/FIXED-FORM-ALGORITHM.md §5.2, fix 3)
+    this.record = 0;
     this.hashLo = 0;
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
@@ -847,6 +851,21 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
   if (!TableFixedKeeping(plan, guard)) { return; }
+  // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD (docs/SPEC-TABLES.md
+  // §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2 fix 3): the plan's source offsets
+  // are arithmetic over sizes a STRANGER wrote, so a layout whose child sizes
+  // do not sum to its parent's could otherwise name a byte past the record. A
+  // layout that does is refused WHOLE and never partly compiled, under
+  // layout_record_too_large — not only for the 65536 bound and a zero root.
+  {
+    if (guard !== TableFixedNoGuard) {
+      let w = plan.argw | 0;
+      if (w === 0) { w = 1; }
+      if (guard >= plan.record || guard + w > plan.record) { plan.hostile = true; return; }
+    }
+    const reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    if (reach > plan.record) { plan.hostile = true; return; }
+  }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
   const b = plan.count * TableFixedLanes;
   const e = plan.entries;
@@ -1257,6 +1276,14 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
       const census = new TableFixedReport();
       const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
+      // AN ENTRY REACHING PAST THE WRITER'S DECLARED RECORD IS layout_record_too_large,
+      // never a retry: more room cannot mend arithmetic over a stranger's sizes
+      // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
+      if (made === -2) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.LayoutRecordTooLarge;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1283,7 +1310,11 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.count = 0;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.hostile = false;
   plan.argw = 1;
+  // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
+  // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
+  plan.record = TableFixedSize(theirs, 0);
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
   // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
   // must not count them twice.
@@ -1296,6 +1327,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
+  if (plan.hostile) { return -2; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
