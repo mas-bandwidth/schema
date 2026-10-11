@@ -66,6 +66,12 @@ func TestGoMessageFormGoldens(t *testing.T) {
 			var source string
 			if row.file == "" {
 				source = connectionProbe(u.Package, announcement)
+			} else if ir.VariableTables(u)[row.root] {
+				// §3.3: "a plain `table T` may not" ride the message form, so
+				// the Go leg answers this message row ABSENT and asserts
+				// nothing (the manifest row and the C++ reference stay as they
+				// are).
+				return
 			} else {
 				source = messageProbe(u.Package, u, row.root, announcement, filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}

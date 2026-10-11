@@ -48,4 +48,3 @@ func TestMessageWriter(t *testing.T) {
  }
   `, text, byteLiterals(expected)))
 }
-
