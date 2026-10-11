@@ -49,7 +49,7 @@ fn wrong_plan_goes_red() {
     let mut image = [0u8; FX_ROOT_FIXED_BODY_BYTES];
     image.copy_from_slice(&FX_ROOT_FIXED_DEFAULTS);
     let mut report = TableFixedReport::default();
-    table_fixed_run(&FX_ROOT_FIXED_PLAN, &[], &body, &mut image, &mut report);
+    table_fixed_run(&FX_ROOT_FIXED_PLAN, &[], &[], &body, &mut image, &mut report);
 
     let mut row = FxRootRow::default();
     fx_root_fixed_scatter(&image, &mut row, &mut report);
@@ -93,6 +93,7 @@ fn right_plan_goes_green() {
     let mut report = tblfx2::TableFixedReport::default();
     tblfx2::table_fixed_run(
         &tblfx2::FX_ROOT_FIXED_PLAN,
+        &[],
         &[],
         &body,
         &mut image,

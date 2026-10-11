@@ -87,6 +87,7 @@ fn lawful_file() -> Vec<u8> {
 fn an_entry_that_would_not_build_is_none_never_a_throw() {
     let block = TableFixedBlock::parse(&FX_ROOT_FIXED_BLOCK).expect("the build's own layout parses");
     let mut plan: [TableFixedEntry; 0] = [];
+    let mut guards: [TableFixedGuard; 0] = [];
     let mut remap: [u16; 0] = [];
     let mut report = TableFixedReport::default();
     let made = table_fixed_compile(
@@ -94,6 +95,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
         &block,
         &FX_ROOT_FIXED_COUNTED,
         &mut plan[..],
+        &mut guards[..],
         &mut remap[..],
         &mut report,
     );
@@ -105,6 +107,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
     // POSITIVE CONTROL: the same walk at a capacity that holds it returns a
     // plan, so the None above is the capacity's and not the fixture's.
     let mut big = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 1024];
     let mut remap = [0u16; 1024];
     let mut report = TableFixedReport::default();
     let made = table_fixed_compile(
@@ -112,6 +115,7 @@ fn an_entry_that_would_not_build_is_none_never_a_throw() {
         &block,
         &FX_ROOT_FIXED_COUNTED,
         &mut big[..],
+        &mut guards[..],
         &mut remap[..],
         &mut report,
     );

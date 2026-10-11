@@ -255,10 +255,9 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
     dst: 0,
     size: FIXED_TABLE_FIXED_BODY_BYTES as u32,
     aux: 0,
-    guard: TABLE_FIXED_NO_GUARD,
+    guard_off: 0,
+    guard_count: 0,
     op: TableFixedOp::Copy,
-    arg: 0,
-    argw: 1,
     dstsize: 0,
     sign: 0,
 }];
@@ -407,6 +406,7 @@ pub fn fixed_table_fixed_load(
     // identity plan is the only plan there is, and every other hash was
     // already refused by name above.
     let entries: &[TableFixedEntry] = &FIXED_TABLE_FIXED_PLAN;
+    let guards: &[TableFixedGuard] = &[];
     let table: &[u16] = &[];
     let census = (0u32, 0u32);
     // THE CALLER'S PLAN SLICE IS A CAPACITY DECLARATION and is no longer
@@ -446,7 +446,7 @@ pub fn fixed_table_fixed_load(
             let z = h.size as usize;
             image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
         }
-        table_fixed_run(entries, table, &record[8..], &mut image, report);
+        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
         // storage the scatter just wrote: the same pass for either plan,

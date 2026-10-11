@@ -98,6 +98,7 @@ fn c7_plan_run_alone_leaves_out_of_range_standing() {
     table_fixed_run(
         &FX_ROOT_FIXED_PLAN,
         &[],
+        &[],
         body,
         &mut image,
         &mut report,

@@ -124,7 +124,7 @@ fn wide_text_entry() -> TableFixedEntry {
 fn run_wide(entry: TableFixedEntry, record: &[u8]) -> (Vec<u8>, TableFixedReport) {
     let mut image = [0u8; 12];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[entry], &[], record, &mut image, &mut report);
+    table_fixed_run(&[entry], &[], &[], record, &mut image, &mut report);
     (image.to_vec(), report)
 }
 
