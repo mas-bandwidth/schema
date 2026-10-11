@@ -143,6 +143,15 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_putf32( b + 66, value->f32 );",
 			},
 		},
+		{
+			// "64-bit floating-point fields". §3.4: float64 is double storage
+			// written by the full 64-bit IEEE-754 wire move.
+			id: "float64-values/c/valid-data",
+			want: []string{
+				"double f64;",
+				"table_fixed_putf64( b + 70, value->f64 );",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
