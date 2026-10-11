@@ -9,6 +9,13 @@ package elixirtable
 // and the shared eligibility walk refuses it (ir/fixedform.go:258-260), which
 // the roadmap records as `:implementation :unsupported`; the empty-struct arm
 // this card used to assert was the union-values construct, not a bare name.
+// `union-field-arms/elixir/valid-data` is NOT here either: a union with a
+// direct/general arm is a table-closure construct the checker moves out of
+// u.Unions, so the elixir packet emitter emits no module for it and the fixed
+// emitter's `%Probe.Pick{}` does not compile; see its note below.
+// `utf16-values/elixir/valid-data` IS here but is `unknown`: the emitter carries
+// the fixed `wstring(8)` (asserted below) but the elixir target refuses a
+// table-closure wstring by name before reaching that emitter.
 //
 // A [capability] row is satisfied when the leg WRITES a value with non-default
 // and boundary field values through the fixed form's own writer and READS it
@@ -152,7 +159,6 @@ func TestFixedRoadmapElixirT09FloatsUnions(t *testing.T) {
 		{id: "flags-values/elixir/valid-data", run: t09Flags},
 		{id: "utf16-values/elixir/valid-data", run: t09UTF16},
 		{id: "union-values/elixir/valid-data", run: t09UnionValues},
-		{id: "union-field-arms/elixir/valid-data", run: t09UnionFieldArms},
 		{id: "union-arrays/elixir/valid-data", run: t09UnionArrays},
 	}
 	for _, task := range tasks {
@@ -296,7 +302,11 @@ fixed table T
 
 // t09UTF16 holds utf16-values to §3.4: a `wstring(N)` field is its UTF-16 code
 // units, and the write/read pair reproduces a non-default string and a string
-// filling the declared capacity exactly.
+// filling the declared capacity exactly. The verdict is `unknown`, not `done`:
+// this asserts the elixirtable emitter, and the elixir TARGET refuses a
+// table-closure wstring(N) by name (compiler/widetext.go:25-29, :63-65) before
+// a caller reaches that emitter, which the roadmap records as
+// `:implementation :unsupported` (docs/roadmap.sexp:5785-5790).
 func t09UTF16(t *testing.T) {
 	u := unitFrom(t, `package probe
 
@@ -378,33 +388,25 @@ fixed table T { s [3] Shape }
   check(e2.type == 2 and e2.box.w == -22 and e2.box.h == 33, "element 2 does not round-trip: #{inspect(e2)}")`)
 }
 
-// t09UnionFieldArms holds union-field-arms to §3.4: an arm whose type holds a
-// scalar, a text field or an array is stored behind the arm's tag with the same
-// widths the struct walk gives it, and the write/read pair reproduces a value
-// in each arm.
-func t09UnionFieldArms(t *testing.T) {
-	u := unitFrom(t, `package probe
-
-type Scal { n int32 = 7 }
-type Text { label string(8) = "b" }
-type Arr { xs [2] int32 }
-
-union Pick
-{
-    s Scal
-    t Text
-    r Arr
-}
-
-fixed table T { p Pick }
-`)
-	t09Probe(t, u, "T", `  s = %Probe.Pick{type: 1, s: %Probe.Scal{n: -12345}}
-  {:ok, [rs], _} = @@LOAD@@(@@SAVE@@([%Probe.T{p: s}]))
-  check(rs.p.type == 1 and rs.p.s.n == -12345, "the scalar arm does not round-trip: #{inspect(rs.p)}")
-  t = %Probe.Pick{type: 2, t: %Probe.Text{label: "hello"}}
-  {:ok, [rt], _} = @@LOAD@@(@@SAVE@@([%Probe.T{p: t}]))
-  check(rt.p.type == 2 and rt.p.t.label == "hello", "the text arm does not round-trip: #{inspect(rt.p)}")
-  r = %Probe.Pick{type: 3, r: %Probe.Arr{xs: [3, 4]}}
-  {:ok, [rr], _} = @@LOAD@@(@@SAVE@@([%Probe.T{p: r}]))
-  check(rr.p.type == 3 and rr.p.r.xs == [3, 4], "the array arm does not round-trip: #{inspect(rr.p)}")`)
-}
+// t09UnionFieldArms holds union-field-arms to §3.4 for the arm shape this leg
+// actually admits: a DIRECT scalar field declared in the union body
+// (docs/roadmap.sexp:6750, "Direct scalar arms emitted"). The row also names
+// direct text and array arms; those the shared eligibility walk refuses at
+// ir/fixedform.go:263-265, and the roadmap records the leg's row
+// :implementation :partial, so the done clause is not met and the verdict line
+// is unknown on them. Here the admitted direct scalar arm is written and read
+// at a non-default value and both int32 bounds.
+// union-field-arms/elixir/valid-data is NOT here. The row's construct is an arm
+// holding a scalar, text field or array DIRECTLY (docs/roadmap.sexp:6750-6751,
+// "Direct scalar arms emitted; direct text/bytes/array/optional arms refused").
+// A union with any direct/general arm is a table-closure construct and the
+// checker moves it out of u.Unions, so the elixir packet emitter emits no
+// module for it (u.Unions is empty, Probe.Pick is undefined) while the fixed
+// emitter still writes `defstruct p: %Probe.Pick{}` and `%Probe.Pick{type: 1,
+// n: ...}`; the generated fixed module does not compile and no value can be
+// written and read. The direct text and array arms the row also names are
+// refused by the shared eligibility walk at ir/fixedform.go:263-265, and the
+// roadmap records the row :implementation :partial. The verdict is unknown; the
+// construct is unproved on this leg. The nested type-payload shape this subtest
+// used to assert is the union-values construct, already held there, and the
+// roadmap calls it "a separate supported shape".
