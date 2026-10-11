@@ -14,7 +14,9 @@
 # preceded the id-table wire and was removed rather than carried; schema#515
 # brings the id-table wire to Elixir, and these surfaces with it. What this leg
 # drives is the two ACCELERATORS the backend does emit — the block (§19) and
-# the cook (§7), both read halves.
+# the cook (§7), both read halves — and the `message` surface, declared below
+# and answered per case as `<case>.absent`, because the backend emits no
+# message-form codec either (docs/SPEC-TABLES.md §3.3).
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -317,10 +319,14 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces and nothing else: Elixir emits no table
-  # wire, so wire, report and the three text surfaces are not on this list
-  # (schema#515 brings the id-table wire to Elixir)
-  @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # the two accelerators' surfaces and the DECLARED `message` surface: Elixir
+  # emits no table wire, so wire, report and the three text surfaces are not on
+  # this list (schema#515 brings the id-table wire to Elixir). `message` IS
+  # listed — the surface is not ABSENT — and answers a row at a time, every row
+  # `<case>.absent` until the backend emits the message-form verbs
+  # (docs/SPEC-TABLES.md §3.3), which the matrix counts rather than reading as
+  # a feature the leg lacks.
+  @surfaces ~w(message cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -400,6 +406,34 @@ defmodule Driver do
   end
 
   # ---- the surfaces ----
+
+  # THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) is a BATCH of bitpacked bodies
+  # under one announced vocabulary, and `message` IS THE ONE SURFACE THAT READS
+  # TWO FILES (test/conformance/README.md, "The surfaces"): a message's id table
+  # is somewhere else, the CONNECTION's announcement carries it, and the driver
+  # joins the two by key and never derives a vocabulary of its own. A message
+  # row is `message <name> <connection> <root> <file-form wire> <message-form
+  # wire>`, joined to its `connection <key> <unit> <hash> <announcement>` line.
+  #
+  # The Elixir backend emits no message-form codec — no AnnounceRead,
+  # LoadMessages or SaveMessages (docs/SPEC-TABLES.md §3.3, "WHERE THE FORM IS
+  # CARRIED") — so every row is answered `<case>.absent`, the per-case way of
+  # saying this leg cannot answer it, which the matrix counts rather than
+  # reading as a feature the leg lacks (test/conformance/README.md, "Exit
+  # codes"). The surface is still declared, so the matrix counts the ROWS
+  # rather than the feature.
+  defp run("message", rows, outdir) do
+    for [name, connection, _root, _wire, _message_wire] <- rows(rows, "message") do
+      case Enum.find(rows(rows, "connection"), fn [key, _unit, _hash, _ann] -> key == connection end) do
+        nil ->
+          raise "message row #{name} names connection #{connection}, " <>
+                  "which no connection line declares"
+
+        [_key, _unit, _hash, _announcement] ->
+          write(outdir, name <> ".absent", "")
+      end
+    end
+  end
 
   defp run("block", rows, outdir) do
     for [name, unit, image] <- rows(rows, "block") do
