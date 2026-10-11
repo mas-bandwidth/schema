@@ -22,10 +22,10 @@ package rusttable
 //
 // rust/W7  [owed] "arg and meta are two lanes" — asserted below.
 // rust/W16 [owed] "nested union answers outer tag" — asserted below.
-// rust/R28 [owed] "the guard chain ..." — unknown, not asserted: the runtime
-//   carries ONE guard lane (guard/arg/argw) and no second conjoin lane
-//   (guard2/arg2/argw2) nor an offset+count pool of (guard, arg, argw) links,
-//   so an arm inside an arm answers only the inner tag (§4.1).
+// rust/R28 [owed] "the guard chain ..." — asserted below: the runtime carries an
+//   offset+count guard chain into a pool of (guard, arg, argw) links, outermost
+//   first, bounded by the layout's 64, and a rustc-built probe RUNS a nested
+//   union's active and inactive arms to prove every link participates (§4.1).
 // rust/W6  [owed] "plan partition / split" — unknown, not asserted:
 //   table_fixed_compile coalesces but never partitions the plan
 //   unguarded-first, and no split index is stated (§4.1, §4.4).
@@ -44,6 +44,10 @@ package rusttable
 //   harness's the_negative_controls, which RUNS only against the corpus.
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -114,33 +118,34 @@ func t08W7(t *testing.T) {
 // over everything its arm produced — an arm inside an arm answers to the OUTER
 // tag — and a nested union's own arm selection must survive that stamp." On
 // this leg the plan compiler's union case lays the None const down with the
-// INHERITED guard (the OUTER tag, at the OUTER width) and each arm's tag const
-// with THIS union's own tag — the two are spelled differently in the emitted
-// runtime, and that difference is the clause. A nested union's None therefore
-// answers the outer tag, never the inner one.
+// INHERITED guard chain (the OUTER tag's links, the `goff`/`gcount` the caller
+// threaded down) and each arm's tag const with THIS union's own link CONJOINED
+// on top — the two are spelled differently in the emitted runtime, and that
+// difference is the clause. A nested union's None therefore answers the outer
+// tag, never the inner one.
 func t08W16(t *testing.T) {
 	rt := t08Runtime(t)
-	// the None const carries the INHERITED guard, at the outer tag and outer
-	// width, and the comment states the rule it implements
+	// the None const carries the INHERITED chain, at the outer tag, and the
+	// comment states the rule it implements
 	t08Has(t, rt, "None answers to the OUTER", "W16 the nested union's None answers the outer tag")
 	none := strings.Index(rt, "None answers to the OUTER")
 	if none < 0 {
 		return
 	}
 	rest := rt[none:]
-	if end := strings.Index(rest, "TableFixedOp::Const,"); end < 0 {
+	if end := strings.Index(rest, "op: TableFixedOp::Const,"); end < 0 {
 		t.Fatal("W16: the None const's shape moved")
 	} else {
 		rest = rest[:end]
 	}
-	// the None const's guard lane is the INHERITED guard (the bare `guard,` /
-	// `arg,` / `argw,` of the parameter), not this union's own tag offset
-	for _, inherited := range []string{"\n                guard,\n", "\n                arg,\n", "\n                argw,\n"} {
+	// the None const's guard chain is the INHERITED chain (the bare `goff` /
+	// `gcount` of the parameters), not this union's own conjoined arm link
+	for _, inherited := range []string{"guard_off: goff as u32,", "guard_count: gcount as u8,"} {
 		if !strings.Contains(rest, inherited) {
 			t.Errorf("W16: the None const does not answer the OUTER tag (missing %q):\n%s", inherited, rest)
 		}
 	}
-	if strings.Contains(rest, "guard: their_at,") {
+	if strings.Contains(rest, "n_off") || strings.Contains(rest, "n_count") {
 		t.Error("W16: the None const is stamped with this union's own tag, not the outer one")
 	}
 }
@@ -172,10 +177,212 @@ func t08P1(t *testing.T) {
 	if at := strings.Index(text, "pub fn lineage_fixed_load("); at >= 0 {
 		load = text[at:]
 	}
-	if n := strings.Count(load, "table_fixed_run(entries, table, &record[8..], &mut image, report);"); n != 1 {
+	if n := strings.Count(load, "table_fixed_run(entries, guards, table, &record[8..], &mut image, report);"); n != 1 {
 		t.Errorf("P1: the read loop's run call appears %d times, want exactly one shared by both plans", n)
 	}
 	t08Has(t, text, "SAME LOOP either way", "P1 one reader path, identity and compiled alike")
+}
+
+// ---- rust/R28 ----------------------------------------------------------------
+
+// t08R28Schema is one fixed table whose field is a nested union — a union arm
+// that is itself a union — so a plan compiled for it carries a TWO-LINK guard
+// chain (the OUTER tag first, the inner tag second) and the run loop must check
+// every link (§4.1's follow-on).
+const t08R28Schema = `package probe
+
+union Inner
+{
+    a int32
+    b int32
+}
+
+union Outer
+{
+    inner Inner
+    plain int32
+}
+
+// the checker admits a scalar arm only in a union some table's field names, so
+// Inner is held here as well as through Outer's arm (docs/SPEC-TABLES.md §2.6)
+table Twig
+{
+    inner Inner
+}
+
+fixed table Probe
+{
+    outer Outer
+}
+`
+
+// t08R28Probe is the Rust binary's crate root: the generated fixed modules, one
+// compile of the unit's own block against itself (which takes the union-arm
+// path, so every nested arm's entry grows a guard chain), an assertion on the
+// chain's shape, and three runs of the plan over hand-built bodies that select
+// the outer and inner arms together and apart. A task's line is `R28 <id> ok`
+// or `R28 <id> BAD <why>`.
+func t08R28Probe() string {
+	return `mod build_version;
+mod fixed_runtime;
+mod probe_fixed;
+mod probe_records;
+
+pub use build_version::*;
+pub use fixed_runtime::*;
+pub use probe_fixed::*;
+pub use probe_records::*;
+
+fn say(id: &str, ok: bool, why: &str) {
+    if ok {
+        println!("R28 {id} ok");
+    } else {
+        println!("R28 {id} BAD {why}");
+    }
+}
+
+fn run(body: &[u8], plan: &[TableFixedEntry], guards: &[TableFixedGuard], remap: &[u16]) -> Vec<u8> {
+    let mut image = vec![0u8; PROBE_FIXED_BODY_BYTES];
+    let mut report = TableFixedReport::default();
+    table_fixed_run(plan, guards, remap, body, &mut image, &mut report);
+    image
+}
+
+fn main() {
+    let mine = TableFixedBlock::parse(&PROBE_FIXED_BLOCK).expect("this build's own block parses");
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut guards = vec![TableFixedGuard::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = table_fixed_compile(&mine, &mine, &PROBE_FIXED_COUNTED, &mut plan, &mut guards, &mut remap, &mut report)
+        .expect("the own-against-own plan compiles");
+
+    // A nested union's inner-arm entries carry a TWO-LINK chain, OUTERMOST
+    // FIRST: link 0 is the OUTER tag (this union's own tag at body offset 0)
+    // and link 1 the inner tag, so an arm inside an arm answers the OUTER tag
+    // too and never the inner tag alone.
+    let mut two = None;
+    for i in 0..n {
+        if plan[i].guard_count == 2 {
+            two = Some(i);
+            break;
+        }
+    }
+    let Some(i) = two else {
+        say("chain", false, "no entry carried a two-link guard chain");
+        return;
+    };
+    let off = plan[i].guard_off as usize;
+    let outer = guards[off];
+    let inner = guards[off + 1];
+    let shape = outer.guard == 0 && inner.guard > outer.guard && outer.arg == 1 && inner.arg == 1;
+    if !shape {
+        say("chain", false, &format!("chain is not outermost-first: [{outer:?}, {inner:?}]"));
+        return;
+    }
+    say("chain", true, "");
+
+    // BODY: byte 0 is the outer tag, byte 1 the inner tag when the inner arm
+    // rode, bytes 2..6 the arm payload. The inner arm's payload lands only in
+    // bytes 2..6, so byte 5 is its own: the plain arm (4 bytes at 1..5) never
+    // writes it.
+    // outer active + inner active: the inner arm's payload lands.
+    let a = run(&[1, 1, 0, 0, 0, 42], &plan[..n], &guards, &remap);
+    say("active-active", a[5] == 42, "an active inner arm did not land its payload");
+    // outer inactive + inner tag present: the inner arm must NOT land, because
+    // it answers to the OUTER tag too.
+    let b = run(&[2, 1, 0, 0, 0, 42], &plan[..n], &guards, &remap);
+    say("outer-inactive", b[5] == 0, "an inner arm landed under an inactive outer arm");
+    // outer active + inner None: the inner arm must NOT land, because the
+    // inner tag is its own condition.
+    let c = run(&[1, 0, 0, 0, 0, 42], &plan[..n], &guards, &remap);
+    say("inner-none", c[5] == 0, "an inner arm landed under a None inner tag");
+}
+`
+}
+
+// t08R28Run generates the unit (with a two-entry lineage, so the plans struct,
+// the guard pool and the load path's compile and run call sites are all
+// emitted and compiled too), drops the probe crate, and runs it once with rustc
+// (the fixed runtime is self-contained, so no sibling checkout is needed).
+func t08R28Run(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("rustc"); err != nil {
+		t.Fatalf("rustc is not on PATH: %v", err)
+	}
+	u := unitFrom(t, t08R28Schema)
+	own, ok := FixedLineageOf(u, "Probe")
+	if !ok {
+		t.Fatalf("the nested-union schema grew no fixed root")
+	}
+	old := own
+	old.Wire ^= 0xffffffffffffffff // a different hash, the same layout bytes
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{"Probe": {old}})
+	if err != nil {
+		t.Fatalf("GenerateLineage: %v", err)
+	}
+	if _, ok := files["probe_fixed.rs"]; !ok {
+		t.Fatalf("the nested-union schema grew no fixed form; got %v", keysOf(files))
+	}
+	root := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(t08R28Probe()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "t08r28probe")
+	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd.Dir = root
+	cmd.Env = os.Environ()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the probe did not build: %v\n%s", err, out)
+	}
+	run := exec.Command(bin)
+	run.Dir = root
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the probe did not run: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+// t08R28 holds rust/R28 to §4.1's follow-on: "the guard chain: the plan entry
+// carries offset+count into a pool of (guard, arg, argw) links, outermost
+// first, the only bound the layout's 64; an arm inside an arm answers to the
+// OUTER tag". The runtime carries the offset+count pool (TableFixedGuard), and
+// the rustc-built probe proves the chain is laid outermost-first and that
+// EVERY link participates: the inner arm lands only when BOTH tags hold their
+// ordinal, not when the outer tag fails or the inner tag is None.
+func t08R28(t *testing.T) {
+	rt := t08Runtime(t)
+	// the pool and the entry's offset+count lanes exist, and the bound is 64
+	t08Has(t, rt, "pub struct TableFixedGuard {", "R28 the pool of (guard, arg, argw) links exists")
+	t08Has(t, rt, "pub guard_off: u32,", "R28 the entry carries the pool offset")
+	t08Has(t, rt, "pub guard_count: u8,", "R28 the entry carries the pool count")
+	t08Has(t, rt, "count + 1 > MAX_DEPTH as usize", "R28 the chain is bounded by the layout's 64")
+	out := t08R28Run(t)
+	for _, id := range []string{"chain", "active-active", "outer-inactive", "inner-none"} {
+		if line := t08R28Line(out, id); line != "R28 "+id+" ok" {
+			t.Errorf("R28: %s", line)
+		}
+	}
+}
+
+// t08R28Line is the probe's one line for an id.
+func t08R28Line(out, id string) string {
+	prefix := "R28 " + id + " "
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return l
+		}
+	}
+	return fmt.Sprintf("[no R28 line for %s in the probe's output: %s]", id, strings.TrimSpace(out))
 }
 
 // ---- the card's test --------------------------------------------------------
@@ -188,6 +395,7 @@ func TestFixedRoadmapRustT08WritesConformance(t *testing.T) {
 	}{
 		{id: "rust/W7", check: t08W7},
 		{id: "rust/W16", check: t08W16},
+		{id: "rust/R28", check: t08R28},
 		{id: "rust/P1", check: t08P1},
 	}
 	for _, task := range tasks {
