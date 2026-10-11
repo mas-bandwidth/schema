@@ -326,7 +326,7 @@ const cppHeldDamageInsideBody = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 1 )
         { printf( "damage: body 2's damage did not deliver one body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
-    if ( !r.malformed ) { printf( "damage: one malformed did not count: malformed=%d\n", (int) r.malformed ); return 1; }
+    if ( !r.malformed || r.refused ) { printf( "damage: one malformed did not count or it was refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
 `
 
 // "BYTES AFTER THE PAD ARE MALFORMED ... the batch ends at the pad to the byte
