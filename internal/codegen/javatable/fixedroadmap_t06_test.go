@@ -25,7 +25,7 @@ fixed table T
 }
 `
 
-// t06Bytes declares a bytes(N) field, the shape W8 names.
+// t06Bytes declares a bytes(N) field, the shape W1 and W8 name.
 const t06Bytes = `package probe
 
 fixed table T
@@ -71,6 +71,7 @@ func TestFixedRoadmapJavaT06Writes(t *testing.T) {
 		{"java/C14", t06C14},
 		{"java/W4", t06W4},
 		{"java/W9", t06W9},
+		{"java/W1", t06W1},
 		{"java/W3", t06W3},
 		{"java/W5", t06W5},
 		{"java/W8", t06W8},
@@ -137,60 +138,109 @@ func t06W4(t *testing.T) {
 	}
 }
 
-// t06W9: W9 "prefill unwritten ranges only". ALGORITHM §5.3: the prefill is the
-// bytes the chosen plan does not write, and no more than those.
+// t06W9: W9 "prefill unwritten ranges only". ALGORITHM §4.3: "Prefill the bytes
+// the plan does not write. The plan compiler computes the UNWRITTEN RANGES —
+// the destination bytes no entry covers — and only those take the declared
+// defaults before the loop". The emitted load prefills exactly the hole list
+// TableFixed.holes computes, copying each hole's OWN range, and never a
+// whole-record copy that would overwrite a range the plan lands.
 func t06W9(t *testing.T) {
-	src := string(t06Files(t, t06Flat)["TFixed.java"])
-	t06Has(t, src, "// THE PREFILL IS THE BYTES THIS PLAN DOES NOT WRITE", "W9 the prefill's own rule")
-	t06Has(t, src, "final int holeN = TableFixed.holes(entries, made, cover, hole);", "W9 the hole list is what is prefilled")
+	load := string(t06Files(t, t06Flat)["TFixed.java"])
+	t06Has(t, load, "final int holeN = TableFixed.holes(entries, made, cover, hole);",
+		"W9 the prefill covers the plan's hole list")
+	t06Has(t, load, "for (int h = 0; h < holeN; h++) {",
+		"W9 the prefill runs over the hole list")
+	t06Has(t, load, "System.arraycopy(defaults, off, image, off, hn);",
+		"W9 each hole's own range takes the defaults, so a range the plan lands is untouched")
+	if strings.Contains(load, "System.arraycopy(defaults, 0, image, 0,") {
+		t.Error("W9: the load still prefills the whole record, overwriting the ranges the plan writes")
+	}
 }
 
-// java/W1 ("write slack is template zeros") is already held behaviourally by the
-// running TestIdentityCompiledBytesN (fixedform_test.go), which fails by name
-// when a written slack byte is not zero; the card names that test in the verdict
-// rather than repeating a comment-presence check here.
+// t06W1: W1 "write slack is template zeros". ALGORITHM §3.1: "The template is a
+// compile-time constant — the hash, then zero everywhere a value lands — which
+// zero-fills every byte of declared slack without the writer touching it." This
+// leg's writer lays the zeros by storing the live extent and then zeroing the
+// slack behind it, so a stale byte in the buffer never reaches the wire. The
+// behavioural twin is TestIdentityCompiledBytesN.
+func t06W1(t *testing.T) {
+	src := string(t06Files(t, t06Bytes)["TFixed.java"])
+	t06Has(t, src, "System.arraycopy(v.blob, 0, b, at + 4, v.blobLength);",
+		"W1 the writer copies only the live bytes extent")
+	t06Has(t, src, "java.util.Arrays.fill(b, at + 4 + v.blobLength, at + 10, (byte) 0);",
+		"W1 the slack behind the live extent is the template's zeros")
+}
 
-// t06W3: W3 "zero behind a narrower arm". The union's writer stores the selected
-// arm and zeroes every byte it does not store.
+// t06W3: W3 "zero behind a narrower arm". ALGORITHM §3.1: "A union writes the
+// tag and the taken arm only, zero behind a narrower one." In FU1 the `plain`
+// arm is one int32 (four bytes) and the union body is the one-byte tag then the
+// wider `labelled` arm (twenty bytes): the emitted writer fills from the end of
+// the plain arm to the end of the body, so every byte the narrower arm does not
+// store is zero, and the `default` (None) arm zeroes the whole body.
 func t06W3(t *testing.T) {
 	files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatalf("W3: Generate: %v", err)
 	}
 	src := string(files["PickFixed.java"])
-	t06Has(t, src, "THE SLACK BEHIND IT IS ZEROED HERE", "W3 the arm's slack is zeroed")
-	t06Has(t, src, "java.util.Arrays.fill(b, at +", "W3 the zeroing store is emitted")
+	t06Has(t, src, "TableFixed.put8(b, at + 0, v.type);",
+		"W3 the tag is stored first")
+	t06Has(t, src, "java.util.Arrays.fill(b, at + 5, at + 21, (byte) 0);",
+		"W3 the slack behind the narrower plain arm (tag + four bytes) is zeroed")
+	t06Has(t, src, "java.util.Arrays.fill(b, at + 1, at + 21, (byte) 0);",
+		"W3 None zeroes the whole body")
 }
 
-// t06W5: W5 "write checks DEBUG only". writeBody calls checkWrite once through
-// `assert`; a release build compiles the checks out.
+// t06W5: W5 "write checks DEBUG only". ALGORITHM §3.1: "Write-side bound checks
+// are DEBUG ONLY, by rule. `count <= Max` and `length <= N` are a caller
+// contract; a release build removes them exactly as it removes `assert`, pays
+// nothing, and clamps nothing." The contract walk is reached through exactly
+// one `assert` and through nothing else, and the write path carries no counter.
 func t06W5(t *testing.T) {
 	src := string(t06Files(t, t06Flat)["TFixed.java"])
-	t06Has(t, src, "assert checkWrite(v);", "W5 the checks ride an assert")
-	t06Has(t, src, "private static boolean checkWrite(Value v) {", "W5 the contract walk is emitted")
-	t06Has(t, src, "THE WRITE-SIDE CHECKS ARE DEBUG ONLY", "W5 the checks are DEBUG only")
+	t06Has(t, src, "assert checkWrite(v);",
+		"W5 the checks ride the assert, which a release build removes")
+	if n := strings.Count(src, "checkWrite(v)"); n != 1 {
+		t.Errorf("W5: checkWrite is invoked %d times, want exactly the one `assert` call a release build removes", n)
+	}
+	for _, fn := range []string{"public static void writeBody(", "public static int save("} {
+		body := methodBody(src, fn)
+		if body == "" {
+			t.Fatalf("W5: no %s in TFixed.java", fn)
+		}
+		if strings.Contains(body, "report.") || strings.Contains(body, ".clamped") {
+			t.Errorf("W5: %s carries a write-side check or counter; write checks are DEBUG only and a release build clamps nothing", fn)
+		}
+	}
 }
 
-// t06W8: W8 "bytes(N) takes the array row". A bytes(N) destination row is an
-// ARRAY's — dest the buffer, aux the live length — so the write stores the
-// length then the bytes and zeroes the rest.
+// t06W8: W8 "bytes(N) takes the array row". SPEC-TABLES §3.4, the dest rows: a
+// bytes(N) destination row is the COUNTED ARRAY's — dest the element base
+// behind the u32 count, stride the element width, aux where the count lands,
+// counted, flavour bytes — and not the TEXT row (dest the length, aux the
+// buffer). The emitted row for the single bytes(6) field is dest=4, stride=1,
+// aux=0, counted=1, arg=bytes(3).
 func t06W8(t *testing.T) {
-	files := t06Files(t, t06Bytes)
-	t06Has(t, string(files["TableFixed.java"]), "A bytes(N) row is an ARRAY's.",
-		"W8 the compiled destination row is an array's")
-	src := string(files["TFixed.java"])
-	t06Has(t, src, "System.arraycopy(v.blob, 0, b,", "W8 the bytes ride as an array copy")
-	t06Has(t, src, "java.util.Arrays.fill(b,", "W8 the length's slack is zeroed")
+	src := string(t06Files(t, t06Bytes)["TFixed.java"])
+	t06Has(t, src, "4, 1, 0, 1, 3, // 1 blob",
+		"W8 the bytes(N) dst row: element base 4, stride 1, count aux 0, counted, bytes flavour")
 }
 
-// t06W7: W7 "arg and meta are two lanes". The arm ordinal a guard compares stays
-// in arg; an op's own byte — a text entry's flavour — rides in meta.
+// t06W7: W7 "arg and meta are two lanes". ALGORITHM §4.1: "`arg` is THE GUARD'S
+// ORDINAL and nothing else; `meta` is THE OP'S OWN ARGUMENT (a text flavour)."
+// The emitted guard compares the tag against arg, and the emitted text push
+// lands the flavour in meta while arg still carries the arm's ordinal, so a
+// text field under a union arm is guarded and flavoured at once.
 func t06W7(t *testing.T) {
 	runtime := string(t06Files(t, t06Flat)["TableFixed.java"])
 	t06Has(t, runtime, "public long arg;", "W7 arg is the arm ordinal lane")
 	t06Has(t, runtime, "public byte meta;", "W7 meta is the op's own lane")
-	t06Has(t, runtime, "THE FLAVOUR RIDES IN meta AND THE ARM ORDINAL STAYS IN arg.",
-		"W7 the two lanes are separate")
+	t06Has(t, runtime, "if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }",
+		"W7 the guard compares its ordinal in arg, never in meta")
+	t06Has(t, runtime, "final byte meta = flavour != 0 ? flavour : (myKind == 33 ? textWide : textUtf8);",
+		"W7 the text op computes its flavour into meta")
+	t06Has(t, runtime, "c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);",
+		"W7 the text push writes the flavour to meta and leaves arg the arm's ordinal")
 }
 
 // java/W16 ("nested union answers outer tag") and java/R28 ("the guard chain ...
