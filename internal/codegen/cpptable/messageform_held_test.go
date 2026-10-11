@@ -199,11 +199,61 @@ const cppHeldVocabularyTooLarge = `
 // present, exactly once, kind `14`, element kind `6` ... A FAILED STRICT CHECK
 // IS MALFORMED, not a refusal". (docs/SPEC-TABLES.md §3.3)
 const cppHeldStrictChecks = `
+    // Assemble a valid announcement around the given field bytes — form byte,
+    // fields, the ref-0 terminator, and the two-entry id table (build version
+    // at ref 1, vocabulary at ref 2, count 2) — the Go leg's announcement().
+    auto heldAnnounce = []( const std::vector<uint8_t> & fields )
+    {
+        std::vector<uint8_t> a;
+        a.push_back( 1 );
+        a.insert( a.end(), fields.begin(), fields.end() );
+        a.push_back( 0x00 );
+        const uint64_t tail[3] = { 0xFFFFFFFFFFFFFFFEull, 0xFFFFFFFFFFFFFFFDull, 2ull };
+        for ( int t = 0; t < 3; ++t )
+            for ( int i = 0; i < 8; ++i )
+                a.push_back( (uint8_t)( tail[t] >> ( 8 * i ) ) );
+        return a;
+    };
+    // The build version field (ref 1, kind 9, eight bytes) and the vocabulary
+    // field (ref 2, kind 14, an empty element-kind-6 run): the Go leg's
+    // versionField and vocabField(6, nil). Each build-version row plants one
+    // of the strict check's four facts — absent, twice, a kind other than 9,
+    // and fewer than eight bytes — and the reader must answer malformed, not a
+    // refusal, and set no vocabulary.
+    const uint8_t heldVersion[10] = { 1, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+    const uint8_t heldVocab[5] = { 2, 14, 2, 6, 0 };
+    const char * buildRowNames[4] = { "absent", "twice", "not kind 9", "fewer than eight bytes" };
+    std::vector<uint8_t> buildRows[4];
+    buildRows[0] = heldAnnounce( std::vector<uint8_t>( heldVocab, heldVocab + 5 ) );
+    {
+        std::vector<uint8_t> f( heldVersion, heldVersion + 10 );
+        f.insert( f.end(), heldVersion, heldVersion + 10 );
+        f.insert( f.end(), heldVocab, heldVocab + 5 );
+        buildRows[1] = heldAnnounce( f );
+    }
+    {
+        const uint8_t notKind9[10] = { 1, 5, 0, 0, 0, 0, 0, 0, 0, 0 };
+        std::vector<uint8_t> f( notKind9, notKind9 + 10 );
+        f.insert( f.end(), heldVocab, heldVocab + 5 );
+        buildRows[2] = heldAnnounce( f );
+    }
+    {
+        const uint8_t shortVersion[6] = { 1, 9, 0, 0, 0, 0 };
+        buildRows[3] = heldAnnounce( std::vector<uint8_t>( shortVersion, shortVersion + 6 ) );
+    }
+    for ( int i = 0; i < 4; ++i )
+    {
+        TableMessageEntry entries[kTableMessageEntriesHere];
+        TableVocabulary v( entries, kTableMessageEntriesHere );
+        TableReport r; memset( &r, 0, sizeof( r ) );
+        if ( AnnounceRead( v, buildRows[i].data(), (int64_t) buildRows[i].size(), &r ) || !r.malformed || r.refused || v.announced )
+            { printf( "strict: the build version %s was not malformed: refused=%d malformed=%d announced=%d\n", buildRowNames[i], (int) r.refused, (int) r.malformed, (int) v.announced ); return 1; }
+    }
+    // The vocabulary's element-kind row, over the announcement the leg itself
+    // wrote: find the vocabulary field (ref 2, kind 14), an LEB length, then
+    // the element kind, and corrupt 6 to 9.
     uint8_t ann[1 << 16];
     const int64_t bytes = Announce( ann, (int64_t) sizeof( ann ) );
-    // Find the vocabulary field's element-kind byte: the field is ref 2, kind
-    // 14, an LEB length, then the element kind. Corrupting 6 to 9 is the
-    // element-kind strict check's own row.
     uint8_t bad[1 << 16];
     memcpy( bad, ann, (size_t) bytes );
     int64_t at = -1;
