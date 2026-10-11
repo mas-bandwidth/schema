@@ -187,6 +187,15 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"value->ufx > 65536",
 			},
 		},
+		{
+			// "Flags masks". §3.4: a flags field is its named storage type,
+			// written as the full 64-bit mask word.
+			id: "flags-values/c/valid-data",
+			want: []string{
+				"Caps caps;",
+				"table_fixed_put64( b + 90, (uint64_t) value->caps );",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
