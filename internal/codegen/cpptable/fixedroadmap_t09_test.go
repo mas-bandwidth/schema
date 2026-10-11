@@ -138,6 +138,15 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 				"value.i128 > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 1000ull ) )",
 			},
 		},
+		{
+			// "Unsigned 128-bit integers". A raw uint128 keeps all 128 bits with
+			// no range, so it is written verbatim by TableFixedPut128.
+			id: "unsigned-128/cpp/valid-data",
+			want: []string{
+				"alignas( 16 ) serialize::uint128_t u128 = 0;",
+				"TableFixedPut128( b + 47, value.u128 );",
+			},
+		},
 		// t09-more-cases
 	}
 	for _, tc := range tests {
