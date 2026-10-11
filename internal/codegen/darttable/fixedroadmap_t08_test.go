@@ -351,36 +351,45 @@ fixed table Evil
 `)
 	})
 
-	// dart/W6 [weak] "plan partition / split" — §5.9 #42: the plan partitions
-	// its entries, every unguarded one first then every guarded one, and
+	// dart/W6 [weak] "plan partition / split" — SPEC-TABLES §3.4, §5.9 #42: the
+	// plan partitions its entries, every unguarded one first then every guarded
+	// one, the plan states where the second half starts (the split), and
 	// coalescing NEVER crosses the split, because a copy that merged a guarded
 	// entry into an unguarded run would land the arm's bytes unconditionally.
-	// The direct assertion is on the identity plan this backend bakes: two
-	// adjacent copy entries merge only when their guards (and arg width) are
-	// equal, so a guarded arm's bytes are never folded under an unguarded run.
 	t.Run("dart/W6", func(t *testing.T) {
 		t.Parallel()
-		// Two unguarded, adjacent, advancing copies coalesce into one.
-		one := fixedCoalesce([]fixedPlanEntry{
+		// Two unguarded, adjacent, advancing copies coalesce into one, and the
+		// split is the whole plan (there is no guarded half).
+		one, oneSplit := fixedCoalesce([]fixedPlanEntry{
 			{op: fixedOpCopy, src: 0, dst: 0, size: 4, guard: fixedNoGuard},
 			{op: fixedOpCopy, src: 4, dst: 4, size: 4, guard: fixedNoGuard},
 		})
 		if len(one) != 1 {
 			t.Fatalf("two unguarded advancing copies did not coalesce: %d entries", len(one))
 		}
+		if oneSplit != len(one) {
+			t.Fatalf("a plan with no guarded entry has its split at the END, not at zero (split=%d of %d)", oneSplit, len(one))
+		}
 		// An unguarded copy followed by a GUARDED one must NOT coalesce: that
 		// merge would land the arm's bytes unconditionally. The two differ in
 		// guard and nothing else, so the guard check is the only thing that
 		// can keep them apart.
-		two := fixedCoalesce([]fixedPlanEntry{
+		two, twoSplit := fixedCoalesce([]fixedPlanEntry{
 			{op: fixedOpCopy, src: 0, dst: 0, size: 4, guard: fixedNoGuard},
 			{op: fixedOpCopy, src: 4, dst: 4, size: 4, guard: 0},
 		})
 		if len(two) != 2 {
 			t.Fatal("a guarded copy coalesced across the split: an arm's bytes landed under an unguarded run")
 		}
-		// And a real union gives the identity plan guarded entries at all, so
-		// the partition the split describes is present in the baked plan.
+		if twoSplit != 1 {
+			t.Fatalf("the split is the number of unguarded entries (split=%d, want 1)", twoSplit)
+		}
+		// And a real union yields a plan that is PARTITIONED (SPEC-TABLES §3.4,
+		// FIXED-FORM-ALGORITHM §4.1/§4.4/§5.9 #42): every unguarded entry first,
+		// then every guarded one, and the plan states where the second half
+		// starts. `Rec` puts the unguarded `trail` AFTER the union, so a plan
+		// pushed in declared order is [unguarded, guarded, unguarded] — the
+		// exact shape the reference rejects.
 		u := unitFrom(t, `package probe
 
 type Alpha { m int32 }
@@ -398,15 +407,25 @@ fixed table Rec
 }
 `)
 		st := findTable(t, u, "Rec")
-		plan := fixedIdentityPlan(st)
-		guarded := 0
-		for _, e := range plan {
-			if e.guard != fixedNoGuard {
-				guarded++
+		plan, split := fixedIdentityPlan(st)
+		if split <= 0 || split >= len(plan) {
+			t.Fatalf("W6: Rec's identity plan really has a guarded half (split=%d of %d), so the case is not vacuous", split, len(plan))
+		}
+		for i, e := range plan {
+			guarded := e.guard != fixedNoGuard
+			if i < split && guarded {
+				t.Fatalf("W6: entry %d is below the split and carries a GUARD", i)
+			}
+			if i >= split && !guarded {
+				t.Fatalf("W6: entry %d is at/above the split and carries NO guard", i)
 			}
 		}
-		if guarded == 0 {
-			t.Fatal("the identity plan carries no guarded entry: the split has no second half")
+		// THE BOUNDARY PAIR: had the coalescer merged across the split, the
+		// entry below it and the entry at it would be one. They are two.
+		a, b := plan[split-1], plan[split]
+		if a.op == fixedOpCopy && b.op == fixedOpCopy && a.guard == b.guard && a.arg == b.arg &&
+			a.src+a.size == b.src && a.dst+a.size == b.dst {
+			t.Fatal("W6: the pair at the split was coalesced across it")
 		}
 	})
 }

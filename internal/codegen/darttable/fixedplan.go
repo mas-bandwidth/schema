@@ -76,8 +76,12 @@ func (p *fixedPlanBuild) push(e fixedPlanEntry) {
 }
 
 // fixedIdentityPlan is this type's leaf walk, coalesced — the same coalescer
-// the plan compiler runs, so the two are one array read by one loop.
-func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
+// the plan compiler runs, so the two are one array read by one loop. THE PLAN
+// IS PARTITIONED (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.1,
+// §4.4, §5.9 #42): every unguarded entry first, then every guarded one, and
+// the split is the index the second half starts at — the number of UNGUARDED
+// entries, not of guarded ones.
+func fixedIdentityPlan(st *ir.Struct) ([]fixedPlanEntry, int) {
 	p := &fixedPlanBuild{argw: 1}
 	var at int64
 	for _, f := range st.Fields {
@@ -266,21 +270,36 @@ func fixedFlatType(st *ir.Struct) bool {
 // fixedCoalesce is THE ONLY OPTIMIZATION A PLAN COMPILER PERFORMS: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It runs here on the identity plan and in the Dart runtime on
-// any other, so the two are the same array read by the same loop.
-func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
+// any other, so the two are the same array read by the same loop. THE PLAN IS
+// PARTITIONED (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.1,
+// §4.4, §5.9 #42): the walk runs TWICE — unguarded entries first, guarded ones
+// second — and coalescing runs inside each half, never across the split, because
+// a copy that merged a guarded entry into an unguarded run would land the arm's
+// bytes unconditionally. The returned split is the number of UNGUARDED entries,
+// the index the second half starts at.
+func fixedCoalesce(in []fixedPlanEntry) ([]fixedPlanEntry, int) {
 	out := make([]fixedPlanEntry, 0, len(in))
-	for _, e := range in {
-		if n := len(out); n > 0 {
-			p := &out[n-1]
-			if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-				p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
-				p.size += e.size
+	split := 0
+	for pass := range 2 {
+		for _, e := range in {
+			if (e.guard != fixedNoGuard) != (pass == 1) {
 				continue
 			}
+			if n := len(out); n > split {
+				p := &out[n-1]
+				if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
+					p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
+					p.size += e.size
+					continue
+				}
+			}
+			out = append(out, e)
 		}
-		out = append(out, e)
+		if pass == 0 {
+			split = len(out)
+		}
 	}
-	return out
+	return out, split
 }
 
 // fixedFill is one prefill range: the bytes a plan does not land. Packed as
