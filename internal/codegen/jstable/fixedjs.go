@@ -366,7 +366,9 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			g.pf("%sswitch (%s.Type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
-				g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				if v.F != nil {
+					g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
 			g.pf("%s  default: break;\n%s}\n", ind, ind)
@@ -587,7 +589,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			g.pf("%sswitch (%s.Type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
-				g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				if v.F != nil {
+					g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
 			g.pf("%s  default: break;\n%s}\n", ind, ind)
@@ -775,7 +779,7 @@ func fixedIsUnionType(t ir.FieldType) bool {
 // statement rather than printing it so a loop body can stay on one line.
 func (g *fixedGen) compositeReset(t ir.FieldType, path string) string {
 	if fixedIsUnionType(t) {
-		return path + ".Type = 0; // None; dormant arms keep their storage"
+		return path + ".Type = 0; /* None; dormant arms keep their storage */"
 	}
 	g.require(fixedElementClass(t), t.Name)
 	return fmt.Sprintf("Init%s(%s);", fixedElementClass(t), path)
