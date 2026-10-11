@@ -56,6 +56,10 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 			mine[st.Name] = true
 		}
 	}
+	localUnions := fixedLocalUnions(closure)
+	for _, un := range localUnions {
+		mine[un.Name] = true
+	}
 
 	homeWritten := false
 	for _, f := range u.Files {
@@ -204,11 +208,70 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
+// fixedLocalUnions finds declared unions with direct field-line arms. Their
+// packet target has no value class for those arms, so the fixed form emits the
+// storage it reads and writes (SPEC-TABLES §2.6, §3.4).
+func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
+	seen := map[string]bool{}
+	var out []*ir.Union
+	var visitUnion func(*ir.Union)
+	var visitStruct func(*ir.Struct)
+	visitUnion = func(un *ir.Union) {
+		if un == nil || seen[un.Name] {
+			return
+		}
+		local := false
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
+				local = true
+			}
+		}
+		if local {
+			seen[un.Name] = true
+			out = append(out, un)
+		}
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				visitStruct(r)
+			case *ir.Union:
+				visitUnion(r)
+			}
+		}
+	}
+	visitStruct = func(st *ir.Struct) {
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				visitStruct(r)
+			case *ir.Union:
+				visitUnion(r)
+			}
+		}
+	}
+	for _, st := range closure {
+		visitStruct(st)
+	}
+	return out
+}
+
 func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/dart, and is imported rather than emitted twice.
+		for _, un := range fixedLocalUnions(closure) {
+			g.gen.emitUnionStorageClass(un)
+		}
 		for _, st := range closure {
 			if st.IsTable {
 				g.gen.emitStorageClass(st)

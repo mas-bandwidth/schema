@@ -162,7 +162,7 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			saved := p.argw
 			p.argw = int(tag)
 			for i, v := range r.Variants {
-				fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
+				fixedPlanSub(p, v.F, src+tag, src, i+1)
 			}
 			p.argw = saved
 			return

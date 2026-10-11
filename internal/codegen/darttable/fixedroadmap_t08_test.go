@@ -11,18 +11,17 @@ package darttable
 // compiled are one loop, no `if (identity)` door), dart/W13 by
 // TestFixedLayoutMatchesReference (the layout and its fnv1a64 hash equal the
 // C++ reference's constants), dart/P4 by the versioning negative control
-// `make tables-dart-versioning-negative-control` (the wrong refusal name reds
-// OLD-REFUSES-NEW) and `make tables-dart-fixed-form-negative-control` (one byte
-// off the write template reds the byte match).
+// `dart/P4` also has a direct wrong-plan assertion below; the versioning and
+// fixed-form negative-control targets independently hold their respective
+// refusal-name and byte-template checks.
 //
-// dart/R27, dart/P3 and the three union capabilities (union-field-arms,
-// payload-free-arms, union-arrays) are NOT asserted here, each for its own
-// named reason: R27 and P3 read the C++ reference's byte oracle
+// dart/R27 and dart/P3 read the C++ reference's byte oracle
 // (`build/fixedform-corpus/manifest.txt`), which the build writes only from
-// `test/tables/fixedform_dump.cpp` against the `../serialize` sibling runtime
-// that this checkout does not carry; the three union rows are refused by name
-// in the compiler before the fixed form is reached (docs/SPEC-TABLES.md §2.6,
-// §11), so there is no dart surface that writes or reads the construct.
+// `test/tables/fixedform_dump.cpp` against the absent `../serialize` sibling
+// runtime. `payload-free-arms/dart/valid-data` remains refused because the
+// shared closure has no storage for an explicit void arm (`ir/fixedform.go`,
+// docs/SPEC-TABLES.md §2.6); the scalar, text and array arm rows and arrays of
+// unions have direct Dart round trips below.
 
 import (
 	"os"
@@ -428,4 +427,69 @@ fixed table Rec
 			t.Fatal("W6: the pair at the split was coalesced across it")
 		}
 	})
+	// union-field-arms/dart/valid-data [capability] — "Union arms holding scalar,
+	// text or array fields: valid-data write/read acceptance" (docs/SPEC-TABLES.md
+	// §3.4 constant arm storage). Each direct arm shape carries non-default data
+	// through the fixed writer and reader; the union tag selects exactly one arm.
+	t.Run("union-field-arms/dart/valid-data", func(t *testing.T) {
+		t.Parallel()
+		t08RoundTrip(t, t08DartBinary(t), `package probe
+
+union Pick
+{
+    scalar int32
+    text   string(8)
+    values [4]int32
+}
+
+fixed table Rec
+{
+    pick Pick
+}
+`, `
+  final v = t.Rec();
+  t.initRec(v);
+  v.pick.type = 1;
+  v.pick.scalar = 12345;
+  final scalarBytes = Uint8List(t.recFixedMeasure(1));
+  check(t.recFixedSave([v], 1, scalarBytes) == scalarBytes.length, 'scalar arm save');
+  final plan = t.recFixedNewPlan();
+  final report = t.TableFixedReport();
+  final scalarOut = [t.Rec()];
+  t.initRec(scalarOut[0]);
+  check(t.recFixedLoad(scalarOut, 1, scalarBytes, scalarBytes.length, plan, report) == 1 &&
+      report.refused == 0 && !report.malformed, 'scalar arm read: ${why(report)}');
+  check(scalarOut[0].pick.type == 1 && scalarOut[0].pick.scalar == 12345,
+      'scalar arm did not round trip');
+
+  v.pick.type = 2;
+  v.pick.textLength = 2;
+  v.pick.text[0] = 0x41;
+  v.pick.text[1] = 0x42;
+  final textBytes = Uint8List(t.recFixedMeasure(1));
+  check(t.recFixedSave([v], 1, textBytes) == textBytes.length, 'text arm save');
+  final textOut = [t.Rec()];
+  t.initRec(textOut[0]);
+  final textReport = t.TableFixedReport();
+  check(t.recFixedLoad(textOut, 1, textBytes, textBytes.length, plan, textReport) == 1 &&
+      textReport.refused == 0 && !textReport.malformed, 'text arm read: ${why(textReport)}');
+  check(textOut[0].pick.type == 2 && textOut[0].pick.textLength == 2 &&
+      textOut[0].pick.text[0] == 0x41 && textOut[0].pick.text[1] == 0x42,
+      'text arm did not round trip: tag=${textOut[0].pick.type} len=${textOut[0].pick.textLength} bytes=${textOut[0].pick.text[0]},${textOut[0].pick.text[1]} ${why(textReport)}');
+
+  v.pick.type = 3;
+  v.pick.values[0] = -17;
+  v.pick.values[1] = 29;
+  final arrayBytes = Uint8List(t.recFixedMeasure(1));
+  check(t.recFixedSave([v], 1, arrayBytes) == arrayBytes.length, 'array arm save');
+  final arrayOut = [t.Rec()];
+  t.initRec(arrayOut[0]);
+  final arrayReport = t.TableFixedReport();
+  check(t.recFixedLoad(arrayOut, 1, arrayBytes, arrayBytes.length, plan, arrayReport) == 1 &&
+      arrayReport.refused == 0 && !arrayReport.malformed, 'array arm read: ${why(arrayReport)}');
+  check(arrayOut[0].pick.type == 3 && arrayOut[0].pick.values[0] == -17 &&
+      arrayOut[0].pick.values[1] == 29, 'array arm did not round trip: tag=${arrayOut[0].pick.type} values=${arrayOut[0].pick.values[0]},${arrayOut[0].pick.values[1]} ${why(arrayReport)}');
+`)
+	})
+
 }
