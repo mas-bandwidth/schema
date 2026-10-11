@@ -114,6 +114,15 @@ func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 				"table_fixed_cmp128_i( value->i128, 0ull, 1000ull ) > 0",
 			},
 		},
+		{
+			// "Unsigned 128-bit integers". A raw uint128 keeps all 128 bits with
+			// no range, so it is written verbatim by the 128-bit move.
+			id: "unsigned-128/c/valid-data",
+			want: []string{
+				"SCHEMA_C_ALIGN16 serialize_uint128_t u128;",
+				"table_fixed_put128_u( b + 46, value->u128 );",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
