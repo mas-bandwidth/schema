@@ -59,6 +59,9 @@ func TestFixedRoadmapDartT06Bounds(t *testing.T) {
 		{"dart/C9", t06C9},
 		{"dart/C10", t06C10},
 		{"dart/R31", t06R31},
+		{"dart/C12", t06C12},
+		{"dart/C13", t06C13},
+		{"dart/R17", t06R17},
 	}
 	for _, tc := range tests {
 		t.Run(tc.id, func(t *testing.T) {
