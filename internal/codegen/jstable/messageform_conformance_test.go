@@ -291,14 +291,33 @@ func assertDriverAnswersMessages(t *testing.T) {
 	}
 
 	// ONE FILE PER ROW: the driver answers every manifest message row, with the
-	// bytes or `<case>.absent`, so its output names the row list exactly.
-	_, _, rows := parseMessageManifest(t)
+	// bytes or `<case>.absent`, so its output names the row list exactly. A row
+	// the emitted tree CARRIES the form-2 verb for MUST answer with the bytes —
+	// its absence would be the driver dropping a row it can reach, not the leg
+	// lacking a feature (test/conformance/README.md, "Exit codes": absence is a
+	// missing FEATURE, never a failing test). A row whose tree carries no verb
+	// (the form is fixed-class only, docs/SPEC-TABLES.md §3.3) is the one that
+	// may be `<case>.absent`.
+	_, connections, rows := parseMessageManifest(t)
+	tables := driverMessageTablePaths(t)
 	answered, absent := 0, 0
 	for _, row := range rows {
+		conn := connections[row.connection]
+		verb := "export function " + row.root + "LoadMessages"
+		carries := false
+		if data, err := os.ReadFile(filepath.Join(tree, tables[conn.unit+"/"+row.root])); err == nil {
+			carries = strings.Contains(string(data), verb)
+		}
 		path := filepath.Join(out, row.name)
 		if _, err := os.Stat(path + ".absent"); err == nil {
+			if carries {
+				t.Errorf("%s: the emitted tree exports %s, so the driver must answer the bytes, not `<case>.absent`", row.name, verb)
+			}
 			absent++
 			continue
+		}
+		if !carries {
+			t.Errorf("%s: the driver answered bytes for a row whose emitted tree exports no %s", row.name, verb)
 		}
 		got, err := os.ReadFile(path)
 		if err != nil {
@@ -317,6 +336,33 @@ func assertDriverAnswersMessages(t *testing.T) {
 		t.Fatalf("the JavaScript leg's generated tree carries no form-2 verbs: the driver answered all %d row(s) absent", absent)
 	}
 	t.Logf("the driver answered %d message row(s), %d absent", answered, absent)
+}
+
+// driverMessageTablePaths is the driver's messageRows table keyed by
+// `<unit>/<root>`, the generated table module each row's form-2 verbs live in
+// (test/conformance/js/main.mjs), so an assertion about what the emitted tree
+// carries reads the module the driver loads and not a copy of its layout.
+func driverMessageTablePaths(t *testing.T) map[string]string {
+	t.Helper()
+	source := driverSource(t)
+	start := strings.Index(source, "const messageRows = [")
+	if start < 0 {
+		t.Fatalf("the JavaScript driver declares no messageRows table (test/conformance/js/main.mjs)")
+	}
+	end := strings.Index(source[start:], "];")
+	if end < 0 {
+		t.Fatal("the messageRows table is not closed: no `];` follows `const messageRows = [`")
+	}
+	block := source[start : start+end]
+	re := regexp.MustCompile(`\["([A-Za-z0-9_]+)", "([A-Za-z0-9_]+)", "[A-Za-z0-9_./]+", "([A-Za-z0-9_]+/[A-Za-z0-9_]+\.js)"\]`)
+	out := map[string]string{}
+	for _, m := range re.FindAllStringSubmatch(block, -1) {
+		out[m[1]+"/"+m[2]] = m[3]
+	}
+	if len(out) == 0 {
+		t.Fatal("the messageRows table carries no row with a table module (test/conformance/js/main.mjs)")
+	}
+	return out
 }
 
 // writeConformanceTree generates each named unit's whole JavaScript tree — the
