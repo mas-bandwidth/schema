@@ -3,6 +3,7 @@ package darttable
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -153,7 +154,7 @@ table LiveNested
 }
 `
 	u := unitFrom(t, src)
-	plan := fixedIdentityPlan(findTable(t, u, "LiveNested"))
+	plan, _ := fixedIdentityPlan(findTable(t, u, "LiveNested"))
 	texts, copies, counts := 0, 0, 0
 	for _, e := range plan {
 		switch e.op {
@@ -384,7 +385,7 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 func TestFixedIdentityCoverIsThePlanAndHolesAreEmpty(t *testing.T) {
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	st := findTable(t, u, "FixedTable")
-	plan := fixedIdentityPlan(st)
+	plan, _ := fixedIdentityPlan(st)
 	cover := fixedIdentityCover(plan)
 	if len(cover) == 0 {
 		t.Fatal("identity coverage of FixedTable is empty")
@@ -556,7 +557,7 @@ table Fx1
 func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	st := findTable(t, u, "FixedTable")
-	plan := fixedIdentityPlan(st)
+	plan, _ := fixedIdentityPlan(st)
 
 	counts, texts := 0, 0
 	for _, e := range plan {
@@ -579,15 +580,21 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 		t.Errorf("the identity plan carries %d text entries; the type declares 2 text fields", texts)
 	}
 
-	// AND IT COVERS THE BODY WITH NO GAP. The entries are in source order and
-	// each one starts where the last ended, so nothing of the record is left
-	// standing at the prefill where a value should have landed. THE ONE PLACE
-	// TWO ENTRIES SHARE A SOURCE is a UNION's arms: every arm is laid at the
-	// same offset under its own tag guard, and what the record spends there is
-	// the WIDEST of them, which is what the walk steps over.
+	// AND IT COVERS THE BODY WITH NO GAP. The identity plan is PARTITIONED
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9 #42) — unguarded entries
+	// first, then guarded ones — so its entries are no longer in source order;
+	// walk a copy sorted by source, where each entry starts where the last
+	// ended, so nothing of the record is left standing at the prefill where a
+	// value should have landed. THE ONE PLACE TWO ENTRIES SHARE A SOURCE is a
+	// UNION's arms: every arm is laid at the same offset under its own tag
+	// guard, and what the record spends there is the WIDEST of them, which is
+	// what the walk steps over.
 	body := fixedTypeBytes(st)
+	ordered := make([]fixedPlanEntry, len(plan))
+	copy(ordered, plan)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].src < ordered[j].src })
 	var at, widest int64
-	for i, e := range plan {
+	for i, e := range ordered {
 		if e.src != e.dst {
 			t.Fatalf("plan entry %d has src %d and dst %d; the identity plan's source IS its destination in this backend",
 				i, e.src, e.dst)
@@ -835,7 +842,7 @@ fixed table Holder
     s Shape
 }
 `)
-	plan := fixedIdentityPlan(u.Tables["Holder"])
+	plan, _ := fixedIdentityPlan(u.Tables["Holder"])
 	armed := 0
 	for _, e := range plan {
 		if e.guard == fixedNoGuard {

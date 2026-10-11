@@ -190,7 +190,8 @@ fixed table T
 	// slot, so a reader reads what the writer left there and nothing skips it.
 	// Field b's four bytes start at offset 4 and the plan lands them.
 	covered := false
-	for _, e := range fixedIdentityPlan(depTable) {
+	identity, _ := fixedIdentityPlan(depTable)
+	for _, e := range identity {
 		if e.dst <= 4 && e.dst+e.size > 4 {
 			covered = true
 		}
@@ -472,7 +473,7 @@ fixed table T
     blob   bytes(8)
 }
 `
-	plan := fixedIdentityPlan(findTable(t, unitFrom(t, src), "T"))
+	plan, _ := fixedIdentityPlan(findTable(t, unitFrom(t, src), "T"))
 	byNote := map[string]fixedPlanEntry{}
 	for _, e := range plan {
 		byNote[e.note] = e
@@ -546,7 +547,7 @@ func t05R24(t *testing.T) {
 	// the USED units (the clamped length), never `size` or the whole payload.
 	t05Has(t, runtime, "if (tableFixedTextIllFormed(\n          plan[b + TableFixedLane.meta],\n          used,",
 		"R24 the content check holds the used units and not the slack")
-	widePlan := fixedIdentityPlan(findTable(t, unitFrom(t, `package probe
+	widePlan, _ := fixedIdentityPlan(findTable(t, unitFrom(t, `package probe
 
 fixed table T
 {

@@ -267,7 +267,13 @@ reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
-a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`). The C codec uses
+a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`).
+Dart's registered target carries direct scalar, text, bounded-array and
+payload-free union arms in explicitly fixed table
+closures supported by its fixed emitter. A payload-free arm carries its tag
+and no member; kind `32` has zero payload bytes (§2.6, §3.4). Variable-table
+closures continue to name unsupported forms at generation.
+The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
