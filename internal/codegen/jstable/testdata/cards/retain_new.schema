@@ -1,0 +1,13 @@
+// retain_new.schema — the NEWER declaration of the retain-unknown pair
+// (docs/SPEC-TABLES.md §6.6): three fields the older build cannot name, a
+// nonempty scalar, string and *string. The *string rides as kind 17, a node
+// index, which §6.6 names as an excluded class and never retains silently.
+package cards
+
+table Entry
+{
+    id           string(16)
+    future       int64
+    future_text  string(32)
+    future_note  *string
+}

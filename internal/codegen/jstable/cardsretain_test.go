@@ -219,3 +219,178 @@ func matchVocab(tables []descTable, vocab []pinnedTable) bool {
 	}
 	return true
 }
+
+// variableModuleBytes generates a unit's variable module and returns its bytes.
+func variableModuleBytes(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	out, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatalf("generateVariableFiles: %v", err)
+	}
+	for _, content := range out {
+		return content
+	}
+	t.Fatal("no variable module generated")
+	return nil
+}
+
+// retainNodeProbe runs a node probe script from `dir`, where newer and older
+// modules were written as CardsVariable.js and OldVariable.js.
+func retainNodeProbe(t *testing.T, dir, script string) string {
+	t.Helper()
+	node := jsNode(t)
+	path := filepath.Join(dir, "probe.mjs")
+	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, path)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("retain probe failed: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+// TestCardConstructsRetainUnknownFields is the retain step (docs/SPEC-TABLES.md
+// §6.6): the older declaration's retained Load and Save keep a newer build's
+// unknown scalar and string fields and re-emit them in the canonical order, the
+// newer declaration rereads every retained value equal, and the *string — a
+// node index, §6.6's excluded class — is reported as a loss and never retained
+// silently.
+func TestCardConstructsRetainUnknownFields(t *testing.T) {
+	t.Parallel()
+	newer := loadUnit(t, "testdata/cards/retain_new.schema")
+	older := loadUnit(t, "testdata/cards/retain_old.schema")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "CardsVariable.js"), variableModuleBytes(t, newer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "OldVariable.js"), variableModuleBytes(t, older), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := `
+import * as newer from "./CardsVariable.js";
+import * as older from "./OldVariable.js";
+
+const input = new newer.Entry();
+input.id = "retain";
+input.future = 42n;
+input.future_text = "kept text";
+input.future_note = "lost note";
+const wire = newer.EntrySave(input);
+
+const retain = new older.TableVariableRetain(new Uint8Array(4096), new Array(64));
+const report = new older.TableVariableReport();
+const v = older.EntryLoadRetain(wire, retain, report);
+if (v === null || report.malformed || report.refused !== 0) {
+  console.log("load", JSON.stringify(report)); process.exit(1);
+}
+if (v.id !== "retain") { console.log("id", v.id); process.exit(1); }
+if (report.unknown !== 3 || report.retained !== 2 || report.retainLost !== 1) {
+  console.log("load report", JSON.stringify(report)); process.exit(1);
+}
+const saved = older.EntrySaveRetain(v, retain, report);
+if (saved === null) { console.log("save null"); process.exit(1); }
+if (report.retained !== 2 || report.retainLost !== 1) {
+  console.log("save report", JSON.stringify(report)); process.exit(1);
+}
+const back = newer.EntryLoad(saved, new newer.TableVariableReport());
+if (back === null || back.id !== "retain" || back.future !== 42n || back.future_text !== "kept text") {
+  console.log("reread values", JSON.stringify(back)); process.exit(1);
+}
+if (back.future_note !== null) { console.log("future_note not lost", back.future_note); process.exit(1); }
+// the second save is byte-identical to the first (idempotence, §6.6).
+const saved2 = older.EntrySaveRetain(v, retain, new older.TableVariableReport());
+if (saved2 === null || saved2.length !== saved.length) { console.log("second save drifted"); process.exit(1); }
+for (let i = 0; i < saved.length; i++) { if (saved[i] !== saved2[i]) { console.log("second save byte", i); process.exit(1); } }
+console.log("retained", saved.length, "bytes, unknown", report.unknown, "retained", report.retained, "lost", report.retainLost);
+`
+	retainNodeProbe(t, dir, script)
+}
+
+// TestRetentionCapacityIsALoss is the named-loss step (docs/SPEC-TABLES.md
+// §6.6): a retention store one byte or one id short reports RetainLost and
+// places nothing, an unknown enum variant in a known field is reported and
+// blocks a lossless claim, and the input bytes are unchanged in every case.
+func TestRetentionCapacityIsALoss(t *testing.T) {
+	t.Parallel()
+	newer := loadUnit(t, "testdata/cards/retain_new.schema")
+	older := loadUnit(t, "testdata/cards/retain_old.schema")
+	enumNew := loadUnit(t, "testdata/cards/retain_enum_new.schema")
+	enumOld := loadUnit(t, "testdata/cards/retain_enum_old.schema")
+	dir := t.TempDir()
+	write := func(name string, u *ir.Unit) {
+		if err := os.WriteFile(filepath.Join(dir, name), variableModuleBytes(t, u), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("CardsVariable.js", newer)
+	write("OldVariable.js", older)
+	write("EnumNew.js", enumNew)
+	write("EnumOld.js", enumOld)
+	script := `
+import * as newer from "./CardsVariable.js";
+import * as older from "./OldVariable.js";
+import * as enumNew from "./EnumNew.js";
+import * as enumOld from "./EnumOld.js";
+
+const input = new newer.Entry();
+input.id = "retain";
+input.future = 7n;
+input.future_text = "kept";
+input.future_note = "note";
+const wire = newer.EntrySave(input);
+const wireCopy = new Uint8Array(wire);
+
+// (a) the byte store one byte short of the first record places nothing.
+{
+  const retain = new older.TableVariableRetain(new Uint8Array(0), new Array(64));
+  const report = new older.TableVariableReport();
+  const v = older.EntryLoadRetain(wire, retain, report);
+  if (v === null || report.retained !== 0 || report.retainLost !== 3) {
+    console.log("zero bytes", JSON.stringify(report)); process.exit(1);
+  }
+  const saved = older.EntrySaveRetain(v, retain, report);
+  if (saved === null || report.retainLost !== 3) { console.log("zero save", JSON.stringify(report)); process.exit(1); }
+  // nothing retained, so the save is the plain save of the known field alone.
+  const plain = older.EntrySave(v);
+  if (saved.length !== plain.length) { console.log("plain length"); process.exit(1); }
+  for (let i = 0; i < plain.length; i++) { if (saved[i] !== plain[i]) { console.log("plain byte", i); process.exit(1); } }
+}
+
+// (b) the id store one short of the two retained ids drops at save.
+{
+  const retain = new older.TableVariableRetain(new Uint8Array(4096), new Array(1));
+  const report = new older.TableVariableReport();
+  const v = older.EntryLoadRetain(wire, retain, report);
+  if (v === null || report.retained !== 2 || report.retainLost !== 1) {
+    console.log("id load", JSON.stringify(report)); process.exit(1);
+  }
+  const saved = older.EntrySaveRetain(v, retain, report);
+  if (saved === null) { console.log("id save null"); process.exit(1); }
+  // exactly one record rides without its id, so retainLost grows by one.
+  if (report.retainLost !== 2) { console.log("id save report", JSON.stringify(report)); process.exit(1); }
+}
+
+// (c) an unknown enum variant in a known field is reported, never retained.
+{
+  const slot = new enumNew.Slot();
+  slot.tier = "c";
+  const ew = enumNew.SlotSave(slot);
+  const retain = new enumOld.TableVariableRetain(new Uint8Array(4096), new Array(16));
+  const report = new enumOld.TableVariableReport();
+  const v = enumOld.SlotLoadRetain(ew, retain, report);
+  if (v === null || report.unknown !== 1 || report.retainLost !== 1 || report.retained !== 0) {
+    console.log("enum report", JSON.stringify(report)); process.exit(1);
+  }
+  if (v.tier !== null) { console.log("enum tier", v.tier); process.exit(1); }
+}
+
+// (d) the input bytes are unchanged in every case.
+for (let i = 0; i < wire.length; i++) { if (wire[i] !== wireCopy[i]) { console.log("input changed", i); process.exit(1); } }
+console.log("loss is named: zero bytes, short ids and an unknown variant all report, input unchanged");
+`
+	retainNodeProbe(t, dir, script)
+}
+
