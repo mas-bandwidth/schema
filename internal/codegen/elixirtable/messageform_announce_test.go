@@ -177,7 +177,12 @@ func messageManifest(t *testing.T, path string) (map[string][]string, map[string
 				if _, err := fmt.Sscanf(fields[3], "0x%x", &version); err != nil {
 					t.Fatalf("manifest connection %q version %q: %v", fields[1], fields[3], err)
 				}
-				connections[fields[2]] = messageConnection{unit: fields[2], buildVersion: version, path: fields[4]}
+				conn := messageConnection{unit: fields[2], buildVersion: version, path: fields[4]}
+				// The `message` row names the connection by its KEY (fields[1]);
+				// the announce test names it by its UNIT (fields[2]). One entry,
+				// two names.
+				connections[fields[1]] = conn
+				connections[fields[2]] = conn
 			}
 		}
 	}
