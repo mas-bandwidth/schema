@@ -40,7 +40,8 @@ public final class TableVariable {
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
     // The report counters of §4: unknown, kind mismatch, clamp, malformed and
-    // widened. A refusal (an unknown form byte) moves none of them.
+    // widened. A refusal (an unknown form byte) moves none of them. Retained and
+    // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
 public int unknown;
         public int kindMismatch;
@@ -49,6 +50,8 @@ public int unknown;
         public int widened;
         public boolean refused;
         public String reason;
+        public int retained;
+        public int retainLost;
     }
 
     // A reader over a byte[] the caller owns. Nothing allocates on the read
@@ -422,7 +425,7 @@ public int unknown;
     // it reads null (§3.1, §4). Structural damage — a bad reference, a size
     // past the field, a declared count the scan does not match, or bytes left
     // over — is malformed for the whole table and answers null.
-    public static NodeRecord[] nodes(Reader r) {
+    public static NodeRecord[] nodes(Reader r, boolean retain) {
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
             r.report.malformed = true;
@@ -451,10 +454,13 @@ public int unknown;
         // Type resolution (§3.1), past the whole scan: a record whose type id
         // this reader cannot name keeps its index and counts unknown ONCE, and
         // a text blob whose content is not text counts malformed; in both the
-        // record resolves to null (its type id cleared).
+        // record resolves to null (its type id cleared). A NODE RECORD whose
+        // type id this reader cannot name is an excluded class (§6.6): the
+        // retaining read counts one retain_lost and never retains it.
         for (NodeRecord rec : list) {
             if (rec.typeId != STRING_ID) {
                 r.report.unknown++;
+                if (retain) { r.report.retainLost++; }
                 rec.typeId = 0;
             } else if (!textValid(rec.body, 0, rec.body.length)) {
                 r.report.malformed = true;
@@ -514,7 +520,7 @@ public int unknown;
     // is malformed for the whole table and marks the numbering bad (NodeTable.
     // bad), and the scan returns the body cursor to where it began for the
     // decode itself.
-    public static NodeTable readNodeTable(Reader r, Report report) {
+    public static NodeTable readNodeTable(Reader r, Report report, boolean retain) {
         int start = r.off;
         boolean startFail = r.fail;
         Reader payload = null;
@@ -550,7 +556,7 @@ public int unknown;
         NodeTable nt = new NodeTable();
         if (bad) { nt.bad = true; return nt; }
         if (payload == null) { return nt; }
-        nt.recs = nodes(payload);
+        nt.recs = nodes(payload, retain);
         if (nt.recs == null) { nt.bad = true; }
         return nt;
     }
@@ -1126,7 +1132,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            if (!r.has(1)) { report.malformed = true; return false; }\n")
 	b.WriteString("            int kind = r.get8();\n")
 	first := true
-	for _, f := range st.Fields {
+	for i, f := range st.Fields {
 		if !first {
 			b.WriteString("            } else ")
 		} else {
@@ -1134,7 +1140,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == F_%s) {\n", varMember(f))
-		writeFieldRead(&b, u, st, f)
+		writeFieldRead(&b, u, st, f, false, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
@@ -1219,7 +1225,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
-	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report);\n")
+	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 	fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
 	fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
 	fmt.Fprintf(&b, "        resolveNodes(v, nt, report);\n")
@@ -1486,8 +1492,12 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 }
 
-// writeFieldRead emits the tolerant read of one field into v.
-func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+// writeFieldRead emits the tolerant read of one field into v. retain selects the
+// retaining arm: a list field's elements then read through the element table's
+// own readFieldsRetain, so an unknown field inside a list element is captured
+// exactly as one in the root body is (docs/SPEC-TABLES.md §6.6). ordinal is the
+// field's declaration position, the first half of a retain path step.
+func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
@@ -1506,7 +1516,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 			fmt.Fprintf(b, "                if (kind == 30) { long vref = r.leb(); if (!r.fail) { if (vref == 0) { v.%s = 0; } else { long vid = r.resolve(vref); if (!r.fail) { v.%s = %sEnum(vid, report); } } } }\n", m, m, m)
 			b.WriteString("                else { r.skip(kind); report.kindMismatch++; }\n")
 		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
-			fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == 13) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL || n > (long) (ar.limit - ar.off) / 2) { report.refused = true; } else { v.%s.clear(); for (long i = 0; i < n; i++) { TableVariable.Reader er = ar.body(); if (er == null) { break; } %sVariable.Value e = new %sVariable.Value(); %sVariable.readFields(er, e, null, report); if (er.off != er.limit) { report.malformed = true; e = new %sVariable.Value(); } v.%s.add(e); } } } else { report.kindMismatch++; } } } }\n", m, elem.Name, elem.Name, elem.Name, elem.Name, m)
+			if retain {
+				fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == 13) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL || n > (long) (ar.limit - ar.off) / 2) { report.refused = true; } else { v.%s.clear(); for (long i = 0; i < n; i++) { TableVariable.Reader er = ar.body(); if (er == null) { break; } %sVariable.Value e = new %sVariable.Value(); path[2 * depth] = %d; path[2 * depth + 1] = (int) i; %sRetain.readFieldsRetain(er, e, null, retain, report, path, depth + 1); if (er.off != er.limit) { report.malformed = true; e = new %sVariable.Value(); } v.%s.add(e); } } } else { report.kindMismatch++; } } } }\n", m, elem.Name, elem.Name, ordinal, elem.Name, elem.Name, m)
+			} else {
+				fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek == 13) { long n = ar.leb(); if (ar.fail) { } else if (n < 0 || n > 0x7FFFFFFFL || n > (long) (ar.limit - ar.off) / 2) { report.refused = true; } else { v.%s.clear(); for (long i = 0; i < n; i++) { TableVariable.Reader er = ar.body(); if (er == null) { break; } %sVariable.Value e = new %sVariable.Value(); %sVariable.readFields(er, e, null, report); if (er.off != er.limit) { report.malformed = true; e = new %sVariable.Value(); } v.%s.add(e); } } } else { report.kindMismatch++; } } } }\n", m, elem.Name, elem.Name, elem.Name, elem.Name, m)
+			}
 			fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 		}
 	}

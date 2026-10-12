@@ -7,6 +7,9 @@
 // The Card root is the one codec this stream carries: form 1 (the variable
 // form, docs/SPEC-TABLES.md §3), read by cards.CardVariable.load, re-saved by
 // cards.CardVariable.save, sized by cards.CardVariable.loadMeasure (§6.5).
+// The roster's retain byte turns the same mutant through the RETAINING pair
+// (§6.6): cards.CardRetain.loadRetain and saveRetain over a caller-owned
+// TableRetain, whose two counters ride the reply beside the six.
 //
 // The stream is little-endian throughout (the harness's own convention).
 import java.io.EOFException;
@@ -24,13 +27,16 @@ public final class WireFuzz {
         long count = readU32(stdin);
         if (count > 4096) { System.exit(1); }
         boolean[] available = new boolean[(int) count];
+        boolean[] retain = new boolean[(int) count];
         for (int i = 0; i < count; i++) {
             String unit = readName(stdin);
             String root = readName(stdin);
             int form = stdin.read();
-            int retain = stdin.read();
-            // the Card root's variable form is the one codec this stream carries
-            available[i] = form == 1 && retain == 0 && "cards".equals(unit) && "Card".equals(root);
+            int retainByte = stdin.read();
+            // the Card root's variable form is the one codec this stream carries;
+            // the roster's retain byte (docs/SPEC-TABLES.md §6.6) selects the arm
+            retain[i] = retainByte != 0;
+            available[i] = form == 1 && "cards".equals(unit) && "Card".equals(root);
             stdout.write(available[i] ? 1 : 0);
         }
         stdout.flush();
@@ -60,6 +66,18 @@ public final class WireFuzz {
             if (!available[(int) index]) {
                 loaded = 0;
                 measure = -1;
+            } else if (retain[(int) index]) {
+                // THE RETAINING PAIR (docs/SPEC-TABLES.md §6.6): the same mutant
+                // read and re-saved through the caller-owned storage, with the two
+                // counters read after the save so they accumulate across the pair.
+                cards.TableRetain store = new cards.TableRetain(1 << 20, (1 << 20) / 8);
+                cards.CardVariable.Value v = cards.CardRetain.loadRetain(wire, store, report);
+                measure = cards.CardVariable.loadMeasure(wire);
+                loaded = v != null ? 1 : 0;
+                if (v != null) {
+                    savedBytes = cards.CardRetain.saveRetain(v, store, report);
+                    saved = savedBytes == null ? -1 : savedBytes.length;
+                }
             } else {
                 cards.CardVariable.Value v = cards.CardVariable.load(wire, report);
                 measure = cards.CardVariable.loadMeasure(wire);
@@ -80,8 +98,8 @@ public final class WireFuzz {
             out[n++] = (byte) (report.malformed ? 1 : 0);
             out[n++] = (byte) (report.refused ? 1 : 0);
             n = putI64(out, n, measure);
-            n = putI32(out, n, 0); // retained
-            n = putI32(out, n, 0); // retain_lost
+            n = putI32(out, n, report.retained);
+            n = putI32(out, n, report.retainLost);
             n = putI64(out, n, saved);
             stdout.write(out, 0, n);
             if (saved > 0) {
