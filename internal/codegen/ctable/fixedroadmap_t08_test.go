@@ -582,56 +582,126 @@ func cT08GuardChain(t *testing.T) {
 	}
 }
 
-// c/W6 [owed] — "plan partition / split". FIXED-FORM-ALGORITHM §5.4: the plan
-// is PARTITIONED, every unguarded entry first and every guarded one after, and
-// `guarded` is where the second half starts; neighbours are never merged across
-// the split. The test asserts the index is in range, that the halves hold
-// exactly the entries they claim, and that the coalescer did not merge an
-// unguarded copy into a guarded one.
+// c/W6 [owed] — "plan partition / split". FIXED-FORM-ALGORITHM §4.1: "The plan
+// is PARTITIONED: every unguarded entry first, then every guarded one, and the
+// plan states where the second half starts", and §4.2: "Coalesce inside each
+// half, never across the split." The test reads the PUBLISHED identity plan and
+// its split, and the plan the runtime COMPILES, and asserts on both that every
+// entry before the split is unguarded, every entry from it on is guarded, and
+// both halves are non-empty for a schema that has both.
 func cT08PlanPartitionSplit(t *testing.T) {
-	u := unitFrom(t, cT08NestedUnionSchema)
-	st := u.Tables["Root"]
-	plan, guarded := ir.TableFixedBuildPlan(u, st)
-	if guarded < 0 || guarded > len(plan) {
-		t.Fatalf("the guarded split index %d is out of range for %d entries", guarded, len(plan))
+	rows, guarded := cT08PlanRows(t, cT08Header(t, cT08NestedUnionSchema), "root")
+	if guarded <= 0 || guarded >= len(rows) {
+		t.Fatalf("the published partition has an empty half: guarded=%d of %d", guarded, len(rows))
 	}
-	for i := range plan {
-		unguarded := plan[i].Guard == ir.TableFixedNoGuard
-		if i < guarded && !unguarded {
-			t.Fatalf("entry %d before the split is guarded", i)
-		}
-		if i >= guarded && unguarded {
-			t.Fatalf("entry %d after the split is unguarded", i)
+	for i, r := range rows {
+		unguarded := r[4] == "SCHEMA_TABLE_FIXED_NO_GUARD"
+		if (i < guarded) != unguarded {
+			t.Fatalf("published entry %d is on the wrong side of the split %d: guard %s", i, guarded, r[4])
 		}
 	}
-	// the split is real: the nested schema carries both halves
-	if guarded == 0 || guarded == len(plan) {
-		t.Fatalf("the partition has an empty half: guarded=%d of %d", guarded, len(plan))
-	}
+	cT08Probe(t, cT08NestedUnionSchema, "Root", `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+int main(void)
+{
+    static TableFixedEntry compiled[4096];
+    TableFixedLayoutView parsed;
+    TableReport r;
+    int32_t made, guarded = -1, fill_count = 0, i;
+    uint32_t fill_at = 0;
+    int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+    CHECK(table_fixed_parse_layout(root_fixed_layout, root_fixed_layout_bytes, &parsed, &why));
+    memset(&r, 0, sizeof(r));
+    made = table_fixed_compile(&parsed, root_fixed_layout, (int32_t) root_fixed_layout_bytes, root_fixed_dst,
+                               root_fixed_cover, root_fixed_cover_count, compiled, 4096, &guarded, &fill_at, &fill_count, &r);
+    CHECK(made > 0);
+    CHECK(guarded > 0 && guarded < made);
+    for (i = 0; i < made; ++i)
+    {
+        if ((i < guarded) != (compiled[i].guard == SCHEMA_TABLE_FIXED_NO_GUARD))
+            { fprintf(stderr, "compiled entry %d is on the wrong side of the split %d\n", i, guarded); return 1; }
+    }
+    return 0;
+}
+`)
 }
 
-// c/P1 [owed] — "identity == compiled". SPEC-TABLES §3.4: the fixed form reads
-// and writes one body, so the identity plan and a plan compiled against the
-// reader's own layout are the same data walked by the same loop. The emitted C
-// proves it: the load is the one table_fixed_run loop with no separate identity
-// scatter and no whole-body memcpy.
+// c/P1 [owed] — "identity == compiled". FIXED-FORM-ALGORITHM §4.2: "For any
+// other hash the SAME loop runs over a plan compiled once from the writer's
+// layout"; SPEC-TABLES §3.4 holds the two plans to one answer. A plan compiled
+// from this build's OWN layout is the compiled path with nothing else moving,
+// so the identity read and the compiled read of the same record must leave the
+// destination byte for byte the same. The probe reads each value — both arms of
+// a union, a text field, and the three-union chain — through `_fixed_load` once
+// under this build's hash (the identity plan) and once under the lineage
+// entry's (the compiled plan), into destinations stained alike, and memcmps
+// them; the header shows the load is the one table_fixed_run loop.
 func cT08IdentityEqualsCompiled(t *testing.T) {
-	files := generate(t, cT08UnionSchema)
-	var header string
-	for name, data := range files {
-		if strings.HasSuffix(name, "Table.h") {
-			header += string(data)
-		}
+	header := cT08Header(t, cT08UnionSchema)
+	if !strings.Contains(header, "table_fixed_run( entries, entry_guards, entry_count, entry_guarded,") {
+		t.Fatal("the load is not the one loop over whichever plan the hash selected")
 	}
-	if !strings.Contains(header, "table_fixed_run") {
-		t.Fatal("the load is not the one loop: identity and compiled plans are not one path")
-	}
-	if strings.Contains(header, "fixed_scatter") {
-		t.Fatal("a scatter function survives: identity is a second path")
-	}
-	if strings.Contains(header, "memcpy( (void *) ( values + k ), at + 8") {
-		t.Fatal("the load memcpys the whole body: identity is not the plan")
-	}
+	same := `    for (k = 0; k < cases; ++k)
+    {
+        uint8_t first[1024], second[1024];
+        Root a, b;
+        memset(&value, 0, sizeof(value));
+        set(&value, k);
+        need = root_fixed_measure(1);
+        CHECK(need > 0 && need <= (int64_t) sizeof(first));
+        CHECK(root_fixed_save(&value, 1, first, (int64_t) sizeof(first)) == need);
+        memcpy(second, first, (size_t) need);
+        T08_REHASH(second);
+        memset(&a, 0x5A, sizeof(a));
+        memset(&b, 0x5A, sizeof(b));
+        memset(&r, 0, sizeof(r));
+        CHECK(root_fixed_load(&a, 1, first, need, plan, 4096, NULL, &r) == 1 && !r.refused);
+        memset(&r, 0, sizeof(r));
+        CHECK(root_fixed_load(&b, 1, second, need, plan, 4096, NULL, &r) == 1 && !r.refused);
+        if (memcmp(&a, &b, sizeof(a)) != 0)
+            { fprintf(stderr, "case %d: the compiled plan's read differs from the identity plan's\n", k); return 1; }
+    }
+    return 0;
+}
+`
+	cT08Probe(t, cT08UnionSchema, "Root", `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+static void set(Root * v, int k)
+{
+    if (k == 0) { v->pick.type = 1; v->pick.as.q.n = -7; }
+    if (k == 1) { v->pick.type = 2; memcpy(v->pick.as.p.label, "eightch", 8); v->pick.as.p.label_length = 7; }
+}
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    TableReport r;
+    Root value;
+    int64_t need;
+    int k, cases = 2;
+`+same)
+	cT08Probe(t, cT08TripleUnionSchema, "Root", `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+static void set(Root * v, int k)
+{
+    if (k == 0) { v->oo.type = 1; v->oo.as.o.mm.type = 1; v->oo.as.o.mm.as.m.i.type = 1; v->oo.as.o.mm.as.m.i.as.a.x = 42; }
+    if (k == 1) { v->oo.type = 1; v->oo.as.o.mm.type = 1; v->oo.as.o.mm.as.m.i.type = 2; v->oo.as.o.mm.as.m.i.as.b.y = -3; }
+    if (k == 2) { v->oo.type = 1; v->oo.as.o.mm.type = 2; v->oo.as.o.mm.as.n.z = 77; }
+    if (k == 3) { v->oo.type = 2; v->oo.as.p.w = 99; }
+}
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    TableReport r;
+    Root value;
+    int64_t need;
+    int k, cases = 4;
+`+same)
 }
 
 // cT08LayoutSchema is W13's probe: a ranged scalar so the layout is non-trivial
