@@ -410,9 +410,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 // unit (<Package>Variable.js). A unit with no such root gets nothing; a root
 // holding a construct outside the card set is refused by name
 // (refuseCardUnsupportedVariableConstructs, docs/SPEC-TABLES.md §11) and
-// carries no codec — unless the unit's closure already holds a table the fixed
-// form serves (closureHoldsFixedTable), in which case the fixed form's codec
-// stands and the variable form's boundary does not bind the unit.
+// carries no codec — unless the unit's closure declares a `fixed table`
+// (closureHoldsFixedTable), in which case the fixed form's codec stands and the
+// variable form's boundary does not bind the unit.
 func generateVariableFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 	_ = wide
 	closure := ir.TableClosure(u)

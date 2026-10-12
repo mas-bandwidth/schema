@@ -31,17 +31,29 @@ import (
 // the generated module.
 func jsId(id uint64) string { return fmt.Sprintf("0x%016xn", id) }
 
-// closureHoldsFixedTable reports whether the unit's table closure holds a table
-// the FIXED FORM serves (fixedRefusal == "", docs/SPEC-TABLES.md §3.4). Such a
-// unit is served by the fixed form (and its block and cook surfaces), so
+// closureHoldsFixedTable reports whether the unit's table closure declares a
+// `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the fixed
+// form (and its block and cook surfaces), so
 // refuseCardUnsupportedVariableConstructs — the variable form's own boundary —
-// does not bind it (§11): a variable table beside a fixed-served one is not
+// does not bind it (§11): a variable table beside a declared fixed one is not
 // mis-encoded by anything this leg writes, and refusing the whole unit would
 // take the fixed form's surfaces down with it. In such a unit the rest of the
 // variable class stays absent and unclaimed.
+//
+// THE PREDICATE IS THE DECLARATION, NOT THE SERVICE. A plain `table` is the
+// VARIABLE wire whatever its fields happen to be (§2.2), so a `?T`, a `[E]T`
+// or a union arm it holds is a variable-class construct this leg does not
+// carry — but fixedRefusal(st) == "" names a table the fixed form COULD serve
+// (a scalar-and-string body, §3.4), not a table the DECLARATION serves, so
+// that predicate is true for almost every plain table and would swallow the
+// refusal. The predicate scopes on !ir.VariableTables(u)[name], the same
+// predicate the Elixir leg holds (internal/codegen/elixirtable/
+// variablerefusal.go), so only a unit whose closure declares a `fixed table`
+// is the unit the boundary does not bind.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
+	variable := ir.VariableTables(u)
 	for name := range closure {
-		if st := u.Tables[name]; st != nil && st.IsTable && !st.IsMapEntry() && fixedRefusal(st) == "" {
+		if st := u.Tables[name]; st != nil && !variable[name] {
 			return true
 		}
 	}

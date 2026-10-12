@@ -971,7 +971,7 @@ var _ = binary.LittleEndian
 // is #8's second half and why `TableFixedLineagePlans` still carries the name.
 func TestJSFixedLineageLockBugFailsTheBuild(t *testing.T) {
 	const src = `package probe
-table Row {
+fixed table Row {
     keep uint32 = 0
     label string(8) = "fx"
 }

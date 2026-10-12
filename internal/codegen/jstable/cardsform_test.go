@@ -86,17 +86,12 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			t.Errorf("refusal %q does not name the construct %q", got[0], tc.want)
 		}
 		// THE BOUNDARY IS THE BACKEND'S, not only the helper's: the variable
-		// form's own generation entry point refuses a table NEITHER form
-		// serves, so a hook that was never wired is a green helper over a
-		// backend that still silently drops the construct (docs/SPEC-TABLES.md
-		// §11). A table the FIXED FORM serves (fixedRefusal == "", §3.4) is not
-		// refused whole: its codec stands and the variable form's boundary does
-		// not bind it.
-		if fixedRefusal(st) == "" {
-			if _, err := generateVariableFiles(unitWith(st), nil); err != nil {
-				t.Errorf("generateVariableFiles refused Probe.%s, which the fixed form serves: %v", tc.field.Name, err)
-			}
-		} else if _, err := generateVariableFiles(unitWith(st), nil); err == nil {
+		// form's own generation entry point refuses the unit REGARDLESS of
+		// whether the fixed form could also serve the table (docs/SPEC-TABLES.md
+		// §11). A plain `table` is the VARIABLE wire by declaration (§2.2), so
+		// a hook gated on the fixed form's service (fixedRefusal == "") is a
+		// green helper over a backend that still silently drops the construct.
+		if _, err := generateVariableFiles(unitWith(st), nil); err == nil {
 			t.Errorf("generateVariableFiles accepted Probe.%s, a construct outside the card slice", tc.field.Name)
 		} else if !strings.Contains(err.Error(), "Probe."+tc.field.Name) {
 			t.Errorf("refusal %q does not name the field Probe.%s", err.Error(), tc.field.Name)
@@ -136,6 +131,33 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no emitted module carries the Card Save codec for the card constructs")
+	}
+}
+
+// TestFixedUnitWithRefusedVariableConstructStillGenerates pins the SCOPE of the
+// boundary (docs/SPEC-TABLES.md §11): a unit whose closure declares a `fixed
+// table` (§2.2) that also declares a variable table carrying a construct outside
+// the card slice still generates — the refusal binds a unit the variable form
+// OWNS, not one whose block, cook and fixed surfaces this leg emits. Red if the
+// refusal is applied unit-wide again: tables/pointers (graphdemo) is exactly
+// this shape, and its generation is what the leg's table gate reads.
+func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
+	t.Parallel()
+
+	unit := &ir.Unit{
+		Package: "cards",
+		Tables: map[string]*ir.Struct{
+			"Probe": {Name: "Probe", IsTable: true, Fields: []*ir.Field{
+				{Name: "opt", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}},
+			}},
+			"Stamp": {Name: "Stamp", IsTable: true, FixedDeclared: true, Fields: []*ir.Field{
+				{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}},
+			}},
+		},
+	}
+
+	if _, err := generateVariableFiles(unit, nil); err != nil {
+		t.Fatalf("a fixed unit with a refused variable table was refused whole: %v", err)
 	}
 }
 
