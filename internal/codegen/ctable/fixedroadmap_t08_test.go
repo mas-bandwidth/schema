@@ -1,26 +1,38 @@
 package ctable
 
 // TestFixedRoadmapCT08WritesConformance is the c leg's card
-// fixed-c-t08-writes-conformance, rows union-guards, plan-execution,
+// schema-c-t08-writes-conformance, rows union-guards, plan-execution,
 // interoperability and hostile-input of docs/roadmap.sexp's node
-// `fixed-tables`. One subtest per task this card proves, named for the task id.
+// `fixed-tables`. One subtest per task, named for the task id.
 //
-// The laws are docs/FIXED-FORM-ALGORITHM.md §4.1 (guards answer to the outer
-// tag), §5.4 (the plan's partition and split), §5.8 row 6 (the guard chain and
-// the layout's 64), §5.9 #12 (the hash is the shared function's) and
-// docs/SPEC-TABLES.md §3.4 (the fixed message form). The identity==compiled and
-// write-read-write clauses are SPEC-TABLES §3.4's "the fixed form reads and
-// writes the same body".
+// The laws are docs/FIXED-FORM-ALGORITHM.md §4.1 (the plan entry, its guard
+// lanes and the partition), §4.2 (identity and compiled plans run by one loop),
+// §5.9 #12 (the hash is the shared function's), §5.9 #32/#37 (the manifest is
+// the value oracle), §7 items 4 and 5 (the wrong plan goes red; the byte-flip
+// fuzz under a sanitizer) and docs/SPEC-TABLES.md §3.4 (the fixed form).
+//
+// EVERY READ-SIDE CLAUSE IS ASSERTED ON BOTH PLANS AT THE PRODUCTION SITE. The
+// probe generates the unit with a lineage entry that is the unit's OWN layout
+// under another hash (cT08Probe), so `<snake>_fixed_load` over a file stamped
+// with that hash runs the plan the generated lineage build COMPILED from the
+// lock's bytes — the compiled path, with nothing else moving — and over the
+// file as saved runs the baked identity plan.
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -49,9 +61,132 @@ func TestFixedRoadmapCT08WritesConformance(t *testing.T) {
 	}
 }
 
-// cT08UnionSchema is a union whose first arm carries a text field, so a leaf
-// under that arm carries BOTH a guard's tag (Arg) and the text op's flavour
-// (Meta) at once.
+// cT08OtherHash is the mask a probe's second lineage entry is stamped with: the
+// unit's own layout bytes under a hash that is not this build's, so a file
+// carrying it selects the lineage entry and its COMPILED plan (§4.2: "For any
+// other hash the SAME loop runs over a plan compiled once from the writer's
+// layout").
+const cT08OtherHash = 0x00ff00ff00ff00ff
+
+// cT08Probe generates the C for one schema — the type headers, the table
+// header with a lineage of two (this build's layout under its own hash, and the
+// SAME layout under another hash) — compiles `source` beside it and runs it. The
+// source sees T08_OTHER_HASH, T08_REHASH(file) (stamp record 0's file with the
+// other hash) and T08_BODY(file) (record 0's body), all for table `root`.
+func cT08Probe(t *testing.T, schema, root, source string, extraCC ...string) {
+	t.Helper()
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = "cc"
+	}
+	if _, err := exec.LookPath(cc); err != nil {
+		t.Fatalf("the generated C needs a compiler: %v", err)
+	}
+	u := unitFrom(t, schema)
+	self, ok := FixedLineageOf(u, root)
+	if !ok {
+		t.Fatalf("no lineage entry for %s", root)
+	}
+	other := self.Wire ^ cT08OtherHash
+	lineage := map[string][]FixedLineageEntry{root: {{Wire: other, Layout: self.Layout, Record: self.Record}}}
+	files, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateLineage(u, lineage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snake := ir.RustSnake(root)
+	prelude := fmt.Sprintf(`#define T08_OTHER_HASH 0x%016xull
+#define T08_BODY( F ) ( (F) + kTableFixedHeaderBytes + 4 + %[2]s_fixed_layout_bytes + 8 )
+#define T08_REHASH( F ) do { table_fixed_put64( (F) + kTableFixedHashAt, T08_OTHER_HASH ); \
+    table_fixed_put64( (F) + kTableFixedHeaderBytes + 4 + %[2]s_fixed_layout_bytes, T08_OTHER_HASH ); } while ( 0 )
+`, other, snake)
+	at := strings.Index(source, "\nint main")
+	if at < 0 {
+		t.Fatal("the probe source has no main")
+	}
+	source = source[:at+1] + prelude + source[at+1:]
+	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2"}
+	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, extraCC...)
+	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
+	for name := range files {
+		if strings.HasSuffix(name, ".c") && !strings.Contains(name, "/") {
+			args = append(args, filepath.Join(dir, name))
+		}
+	}
+	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
+	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile: %v\n%s", err, output)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+		t.Fatalf("execute: %v\n%s", err, output)
+	}
+}
+
+// cT08Header is the one <Base>Table.h the C leg emits for a schema.
+func cT08Header(t *testing.T, schema string) string {
+	t.Helper()
+	return t03Header(t, unitFrom(t, schema))
+}
+
+// cT08PlanRows reads the identity plan `<snake>_fixed_plan[]` the C header
+// PUBLISHES, one slice of comma-separated fields per entry, and its split
+// `<snake>_fixed_plan_guarded`.
+func cT08PlanRows(t *testing.T, header, snake string) (rows [][]string, guarded int) {
+	t.Helper()
+	marker := "TableFixedEntry " + snake + "_fixed_plan[] = {\n"
+	at := strings.Index(header, marker)
+	if at < 0 {
+		t.Fatalf("the header publishes no %s_fixed_plan", snake)
+	}
+	body := header[at+len(marker):]
+	body = body[:strings.Index(body, "};")]
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		line = line[strings.Index(line, "{")+1 : strings.Index(line, "}")]
+		fields := strings.Split(line, ",")
+		for i := range fields {
+			fields[i] = strings.TrimSpace(fields[i])
+		}
+		rows = append(rows, fields)
+	}
+	gm := snake + "_fixed_plan_guarded = "
+	g := strings.Index(header, gm)
+	if g < 0 {
+		t.Fatalf("the header publishes no %s_fixed_plan_guarded", snake)
+	}
+	rest := header[g+len(gm):]
+	n, err := strconv.Atoi(rest[:strings.Index(rest, ";")])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows, n
+}
+
+// cT08UnionSchema is a union whose second arm carries a text field, so a leaf
+// under that arm carries BOTH a guard's tag (arg) and the text op's flavour
+// (meta) at once.
 const cT08UnionSchema = `package probe
 type Payload { label string(8) = "" }
 type Other { n int32 = 0 }
@@ -62,35 +197,89 @@ union Pick {
 fixed table Root { pick Pick }
 `
 
-// c/W7 — "arg and meta are two lanes". FIXED-FORM-ALGORITHM §4.1: the guard's
-// tag rides in the plan entry's arg lane; SPEC-TABLES §3.4: a text field's
-// flavour is the op's own meta lane. A text field under a union arm is the one
-// entry where both lanes are live, so the test builds exactly that and asserts
-// each lane carries its own fact: Arg is the arm's ordinal and Meta the text
-// flavour. A port that stamped the flavour over the tag (or the reverse) fails.
+// c/W7 — "arg and meta are two lanes". FIXED-FORM-ALGORITHM §4.1: "`arg` and
+// `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one. A
+// `string(N)` under a union arm needs both, and one lane gives whichever was
+// stamped last: a byte string under arm `2` read as WIDE, or an entry that runs
+// only when the tag equals the flavour — under the wrong arm." The text field
+// under arm 2 is the one entry where both lanes are live. The test asserts the
+// PUBLISHED identity row carries arg 2 and meta 1 (utf8), the plan COMPILED by
+// the runtime carries the same two, and the text lands whole on both plans.
 func cT08ArgAndMetaTwoLanes(t *testing.T) {
-	u := unitFrom(t, cT08UnionSchema)
-	st := u.Tables["Root"]
-	plan, _ := ir.TableFixedBuildPlan(u, st)
-	var leaf *ir.TableFixedLeaf
-	for i := range plan {
-		if plan[i].Op == ir.TableFixedOpText {
-			leaf = &plan[i]
-			break
+	header := cT08Header(t, cT08UnionSchema)
+	rows, _ := cT08PlanRows(t, header, "root")
+	var text []string
+	for _, r := range rows {
+		if r[5] == "kTableFixedText" {
+			text = r
 		}
 	}
-	if leaf == nil {
-		t.Fatal("the plan lost the arm's text op")
+	if text == nil {
+		t.Fatal("the published identity plan lost the arm's text op")
 	}
-	if leaf.Guard == ir.TableFixedNoGuard {
+	if text[4] == "SCHEMA_TABLE_FIXED_NO_GUARD" {
 		t.Fatal("the text field under a union arm is unguarded: the guard lane was dropped")
 	}
-	if leaf.Arg != 2 {
-		t.Fatalf("arg is the guard's tag and nothing else: want second arm ordinal 2, got %d", leaf.Arg)
+	if text[6] != "2" {
+		t.Fatalf("arg is the guard's tag and nothing else: want the second arm's ordinal 2, the published row says %s", text[6])
 	}
-	if leaf.Meta != 1 {
-		t.Fatalf("meta is the op's own argument: want utf8 flavour 1, got %d", leaf.Meta)
+	if text[7] != "1" {
+		t.Fatalf("meta is the op's own flavour: want utf8 1, the published row says %s", text[7])
 	}
+	cT08Probe(t, cT08UnionSchema, "Root", `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    static TableFixedEntry compiled[4096];
+    TableFixedLayoutView parsed;
+    TableReport r;
+    Root value, back;
+    uint8_t wire[512], file[512];
+    int64_t need;
+    int32_t made, guarded = 0, fill_count = 0, i, texts = 0;
+    uint32_t fill_at = 0;
+    int why = SCHEMA_TABLE_LAYOUT_MALFORMED, path;
+    /* THE COMPILED PLAN carries the same two facts on the same two lanes. */
+    CHECK(table_fixed_parse_layout(root_fixed_layout, root_fixed_layout_bytes, &parsed, &why));
+    memset(&r, 0, sizeof(r));
+    made = table_fixed_compile(&parsed, root_fixed_layout, (int32_t) root_fixed_layout_bytes, root_fixed_dst,
+                               root_fixed_cover, root_fixed_cover_count, compiled, 4096, &guarded, &fill_at, &fill_count, &r);
+    CHECK(made > 0);
+    for (i = 0; i < made; ++i)
+    {
+        if (compiled[i].op == kTableFixedText)
+        {
+            ++texts;
+            if (compiled[i].arg != 2 || compiled[i].meta != kTableFixedTextUtf8)
+                { fprintf(stderr, "the compiled text entry shares a lane: arg=%d meta=%d\n", (int) compiled[i].arg, (int) compiled[i].meta); return 1; }
+        }
+    }
+    CHECK(texts == 1);
+    /* AND THE TEXT LANDS WHOLE UNDER ARM 2 on both plans. */
+    memset(&value, 0, sizeof(value));
+    value.pick.type = 2;
+    memcpy(value.pick.as.p.label, "arm2", 5);
+    value.pick.as.p.label_length = 4;
+    need = root_fixed_measure(1);
+    CHECK(need > 0 && need <= (int64_t) sizeof(wire));
+    CHECK(root_fixed_save(&value, 1, wire, (int64_t) sizeof(wire)) == need);
+    for (path = 0; path < 2; ++path)
+    {
+        memcpy(file, wire, (size_t) need);
+        if (path == 1) { T08_REHASH(file); }
+        memset(&back, 0x5A, sizeof(back));
+        memset(&r, 0, sizeof(r));
+        CHECK(root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
+        CHECK(!r.refused && !r.malformed && r.clamped == 0);
+        CHECK(back.pick.type == 2);
+        CHECK(back.pick.as.p.label_length == 4 && memcmp(back.pick.as.p.label, "arm2", 5) == 0);
+    }
+    return 0;
+}
+`)
 }
 
 // cT08NestedUnionSchema nests a union inside an arm of an outer union, so the
@@ -112,16 +301,17 @@ union Outer {
 fixed table Root { o Outer }
 `
 
-// c/W16 [owed] — "nested union answers outer tag". FIXED-FORM-ALGORITHM §4.1
-// and §5.8 row 6: an arm inside an arm answers to the OUTER tag as well as its
-// own, on a second lane that is a CONJUNCTION, not a replacement. The inner
-// arm's leaf therefore carries guard/arg for the inner tag and guard2/arg2 for
-// the outer. A port that stamped the outer tag over the inner one (so every
-// inner arm fired the moment the outer rode) leaves guard2 unset.
+// c/W16 [owed] — "nested union answers outer tag". FIXED-FORM-ALGORITHM §4.1:
+// "`guard2` / `arg2` / `argw2` ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+// ANSWERS TO, CONJOINED with `guard`/`arg`: the entry runs when BOTH tags hold
+// their ordinal. ... the inner tag alone landed an inner arm's bytes beneath an
+// outer arm that never rode." The identity entry carries both lanes at their
+// own offsets; then a record whose OUTER tag names the other arm — the inner
+// tag's byte still saying arm 1 — must land the outer arm and never the inner
+// one, on the identity plan and on the compiled one.
 func cT08NestedUnionAnswersOuterTag(t *testing.T) {
 	u := unitFrom(t, cT08NestedUnionSchema)
-	st := u.Tables["Root"]
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, _ := ir.TableFixedBuildPlanNormalisedWithPool(u, u.Tables["Root"])
 	var nested *ir.TableFixedLeaf
 	for i := range plan {
 		if plan[i].Guard != ir.TableFixedNoGuard && plan[i].Guard2 != ir.TableFixedNoGuard {
@@ -132,21 +322,65 @@ func cT08NestedUnionAnswersOuterTag(t *testing.T) {
 	if nested == nil {
 		t.Fatal("no entry answers to two tags: the outer tag was stamped over the inner one")
 	}
-	if nested.Arg != 1 || nested.Arg2 != 1 {
-		t.Fatalf("the inner arm's own ordinal and the outer arm's ordinal must both be 1: arg=%d arg2=%d", nested.Arg, nested.Arg2)
+	if nested.Arg != 1 || nested.Arg2 != 1 || nested.ArgW == 0 || nested.ArgW2 == 0 {
+		t.Fatalf("each tag holds its own ordinal at its own width: arg=%d/%d arg2=%d/%d", nested.Arg, nested.ArgW, nested.Arg2, nested.ArgW2)
 	}
-	if nested.ArgW == 0 || nested.ArgW2 == 0 {
-		t.Fatalf("each tag is compared at its own width: argw=%d argw2=%d", nested.ArgW, nested.ArgW2)
+	if nested.Guard2 >= nested.Guard {
+		t.Fatalf("the outer tag sits before the inner one in the record: guard2=%d guard=%d", nested.Guard2, nested.Guard)
 	}
-	if nested.Guard == nested.Guard2 {
-		t.Fatal("the outer tag was stamped at the inner tag's offset: the two conditions are not independent")
-	}
+	cT08Probe(t, cT08NestedUnionSchema, "Root", fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
+#define OUTER_AT %d
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    TableReport r;
+    Root value, back;
+    uint8_t wire[512], file[512];
+    int64_t need;
+    int path, poison;
+    memset(&value, 0, sizeof(value));
+    value.o.type = 1;
+    value.o.as.oa.inner.type = 1;
+    value.o.as.oa.inner.as.ia.x = 42;
+    need = root_fixed_measure(1);
+    CHECK(need > 0 && need <= (int64_t) sizeof(wire));
+    CHECK(root_fixed_save(&value, 1, wire, (int64_t) sizeof(wire)) == need);
+    CHECK(T08_BODY(wire)[OUTER_AT] == 1); /* the WRITER puts the outer tag there */
+    for (path = 0; path < 2; ++path)
+    {
+        for (poison = 0; poison < 2; ++poison)
+        {
+            memcpy(file, wire, (size_t) need);
+            if (path == 1) { T08_REHASH(file); }
+            if (poison == 1) { T08_BODY(file)[OUTER_AT] = 2; }
+            memset(&back, 0xAA, sizeof(back));
+            memset(&r, 0, sizeof(r));
+            CHECK(root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
+            CHECK(!r.refused && !r.malformed);
+            if (poison == 0)
+            {
+                CHECK(back.o.type == 1 && back.o.as.oa.inner.type == 1 && back.o.as.oa.inner.as.ia.x == 42);
+            }
+            else
+            {
+                CHECK(back.o.type == 2);
+                if (back.o.as.oa.inner.as.ia.x == 42)
+                    { fprintf(stderr, "path %%d: the inner arm landed beneath an outer arm that never rode\n", path); return 1; }
+            }
+        }
+    }
+    return 0;
+}
+`, nested.Guard2))
 }
 
 // cT08TripleUnionSchema nests THREE unions on one path to a leaf: an arm of
 // OuterMost holds Out, whose arm holds Mid, whose arm holds LeafA. The deepest
 // leaf answers to all three tags, which two inline lanes cannot carry — the
-// guard chain (§5.8 row 6) carries it as offset+count into a pool of links.
+// guard chain carries it as offset+count into a pool of links.
 const cT08TripleUnionSchema = `package probe
 type LeafA { x int32 = 0 }
 type LeafB { y int32 = 0 }
@@ -170,40 +404,101 @@ fixed table Root { oo OuterMost }
 `
 
 // cT08DeepUnionSchema lays N unions on one path to a leaf: S0's x sits under
-// U0's arm a, which sits under U1's arm a, and so on out to U{N-1}. The leaf
-// therefore carries N guard links, and each union adds two levels to the
-// layout's depth, so N = 31 is the deepest chain the layout's 64-entry depth
-// bound carries and N = 32 is past it.
+// U0's arm a, which sits under U1's arm a, and so on out to U{N-1}; every union
+// has a second arm b, so a tag can name the other arm. Each union adds two
+// levels to the layout's depth, so N = 31 is the deepest chain the layout's
+// 64-entry depth bound carries and N = 32 is past it.
 func cT08DeepUnionSchema(n int) string {
 	var b strings.Builder
 	b.WriteString("package probe\n")
 	b.WriteString("type S0 { x int32 = 0 }\n")
+	b.WriteString("type Sb { y int32 = 0 }\n")
 	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, "union U%d { a S%d }\n", i, i)
+		fmt.Fprintf(&b, "union U%d {\n    a S%d\n    b Sb\n}\n", i, i)
 		fmt.Fprintf(&b, "type S%d { u U%d }\n", i+1, i)
 	}
 	fmt.Fprintf(&b, "fixed table Root { u U%d }\n", n-1)
 	return b.String()
 }
 
+// cT08ChainProbe is the C that proves a chain on both plans: the record as
+// written lands the deepest leaf; with the OUTERMOST tag naming the other arm
+// (a condition only the chain's first link carries) and with the next tag in
+// naming the other arm, the leaf must NOT land. `set` writes the value, `leaf`
+// is the deepest leaf's lvalue, `outer2` the outermost tag's lvalue.
+func cT08ChainProbe(set, leaf, outerTag, nextTag string, outerAt, nextAt int64) string {
+	return fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
+#define OUTER_AT %d
+#define NEXT_AT %d
+static Root value, back;
+static uint8_t wire[1 << 16], file[1 << 16];
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    TableReport r;
+    int64_t need;
+    int path, poison;
+    memset(&value, 0, sizeof(value));
+%s
+    need = root_fixed_measure(1);
+    CHECK(need > 0 && need <= (int64_t) sizeof(wire));
+    CHECK(root_fixed_save(&value, 1, wire, (int64_t) sizeof(wire)) == need);
+    /* THE WRITER puts the two tags where the chain's links say they are. */
+    CHECK(T08_BODY(wire)[OUTER_AT] == 1 && T08_BODY(wire)[NEXT_AT] == 1);
+    for (path = 0; path < 2; ++path)
+    {
+        for (poison = 0; poison < 3; ++poison)
+        {
+            memcpy(file, wire, (size_t) need);
+            if (path == 1) { T08_REHASH(file); }
+            if (poison == 1) { T08_BODY(file)[OUTER_AT] = 2; }
+            if (poison == 2) { T08_BODY(file)[NEXT_AT] = 2; }
+            memset(&back, 0xAA, sizeof(back));
+            memset(&r, 0, sizeof(r));
+            if (root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) != 1)
+                { fprintf(stderr, "path %%d poison %%d: the read refused (reason %%d): the chain is bounded by something other than the layout's 64\n", path, poison, (int) r.reason); return 1; }
+            CHECK(!r.refused && !r.malformed);
+            if (poison == 0)
+            {
+                if (%s != 42)
+                    { fprintf(stderr, "path %%d: the record as written did not land its deepest leaf\n", path); return 1; }
+            }
+            else
+            {
+                if (poison == 1) { CHECK(%s == 2); }
+                if (poison == 2) { CHECK(%s == 1 && %s == 2); }
+                if (%s == 42)
+                    { fprintf(stderr, "path %%d poison %%d: the deepest leaf landed while %%s tag names another arm: the chain's link was not executed\n", path, poison, poison == 1 ? "the OUTERMOST" : "the next"); return 1; }
+            }
+        }
+    }
+    return 0;
+}
+`, outerAt, nextAt, set, leaf, outerTag, outerTag, nextTag, leaf)
+}
+
 // c/R28 [owed] — "the guard chain: the plan entry carries offset+count into a
 // pool of (guard, arg, argw) links, outermost first, the only bound the
-// layout's 64; an arm inside an arm answers to the OUTER tag". The entry's
-// GuardCount/GuardIndex point into the pool [ir.TableFixedGuardPool] lays down,
-// OUTERMOST FIRST, and the deepest leaf of a THREE-union chain carries three
-// links where the old two inline lanes refused by name. The subtest asserts the
-// shape (three links, outermost first), that the emitted C header spells the
-// same pool, that the generated C reads and writes the three-armed value whole,
-// and that depth 64 is the only bound: 64 nested unions build, 65 is refused by
-// the depth bound and not by the chain.
+// layout's 64; an arm inside an arm answers to the OUTER tag" (docs/roadmap.sexp
+// c/R28, FIXED-FORM-ALGORITHM §4.1: "A union's guard is stamped over everything
+// its arm produced — an arm inside an arm answers to the OUTER tag").
+//
+// The subtest asserts, in order: the deepest leaf of a THREE-union chain
+// carries three links OUTERMOST FIRST at offset+count into the pool; the C
+// header publishes that pool; the generated C reads the three-armed value whole
+// on the identity AND the compiled plan, and on BOTH refuses to land the leaf
+// when the outermost tag (a condition only the chain carries) or the next one
+// names another arm. Then the layout's 64 as the ONLY bound: 31 nested unions
+// (the deepest inside the 64-entry depth bound) build a 31-link chain and the
+// generated C runs it on both plans with the same three outcomes, and 32 are
+// refused BY THE DEPTH BOUND — the fixed form is not emitted and the compiler
+// names the table — and not by the chain.
 func cT08GuardChain(t *testing.T) {
 	u := unitFrom(t, cT08TripleUnionSchema)
-	st := u.Tables["Root"]
-	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(u, st)
-	if guarded < 0 || guarded > len(plan) {
-		t.Fatalf("the split index %d is out of range for %d entries", guarded, len(plan))
-	}
-	// THE DEEPEST LEAF ANSWERS TO THREE TAGS.
+	plan, _, pool := ir.TableFixedBuildPlanNormalisedWithPool(u, u.Tables["Root"])
 	var leaf *ir.TableFixedLeaf
 	for i := range plan {
 		if plan[i].GuardCount == 3 {
@@ -217,123 +512,73 @@ func cT08GuardChain(t *testing.T) {
 	if leaf.GuardIndex < 0 || leaf.GuardIndex+leaf.GuardCount > len(pool) {
 		t.Fatalf("the entry's offset+count point outside the pool: index=%d count=%d pool=%d", leaf.GuardIndex, leaf.GuardCount, len(pool))
 	}
-	// OFFSET+COUNT INTO A POOL OF (guard, arg, argw) LINKS, OUTERMOST FIRST.
 	links := pool[leaf.GuardIndex : leaf.GuardIndex+leaf.GuardCount]
-	for i, l := range links {
-		if l.ArgW < 1 || l.Arg < 1 {
-			t.Fatalf("link %d carries (guard, arg, argw): arg=%d argw=%d", i, l.Arg, l.ArgW)
-		}
-	}
 	if !(links[0].Guard < links[1].Guard && links[1].Guard < links[2].Guard) {
 		t.Fatalf("the links are not OUTERMOST FIRST: guards %d, %d, %d", links[0].Guard, links[1].Guard, links[2].Guard)
 	}
-	if links[0].Arg != 1 || links[1].Arg != 1 || links[2].Arg != 1 {
-		t.Fatalf("each link holds its arm's ordinal 1: %d, %d, %d", links[0].Arg, links[1].Arg, links[2].Arg)
-	}
-	// THE TWO INLINE LANES ARE THE INNERMOST AND THE NEXT ONE IN.
-	if leaf.Guard != links[2].Guard || leaf.Guard2 != links[1].Guard {
-		t.Fatalf("the inline lanes are not the innermost and the next: guard=%d guard2=%d links=%d,%d", leaf.Guard, leaf.Guard2, links[2].Guard, links[1].Guard)
-	}
-	// THE EMITTED C SPELLS THE SAME POOL AND THE SAME OFFSET+COUNT.
-	files := generate(t, cT08TripleUnionSchema)
-	var header string
-	for name, data := range files {
-		if strings.HasSuffix(name, "Table.h") {
-			header += string(data)
+	for i, l := range links {
+		if l.Arg != 1 || l.ArgW != 1 {
+			t.Fatalf("link %d is (guard, arg 1, argw 1) for arm 1 of a two-arm union: arg=%d argw=%d", i, l.Arg, l.ArgW)
 		}
 	}
-	if !strings.Contains(header, "root_fixed_guards[]") {
-		t.Fatal("the emitted header carries no guard pool")
+	header := cT08Header(t, cT08TripleUnionSchema)
+	if !strings.Contains(header, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
+		!strings.Contains(header, "root_fixed_guards[] = {") {
+		t.Fatal("the header does not publish the pool with the outermost link")
 	}
-	if !strings.Contains(header, fmt.Sprintf("{ %du, %du, %d },", links[0].Guard, links[0].Arg, links[0].ArgW)) {
-		t.Fatalf("the emitted pool does not spell the outermost link { %d, %d, %d }", links[0].Guard, links[0].Arg, links[0].ArgW)
+	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) {
+		t.Fatal("no published plan entry carries count 3 at the chain's offset")
 	}
-	// THE GENERATED C READS AND WRITES THE THREE-ARMED VALUE WHOLE.
-	runCGenerated(t, cT08TripleUnionSchema, `#include "ProbeTable.h"
-#include <stdio.h>
-#include <string.h>
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
-int main(void)
-{
-    Root value, back;
-    TableReport r;
-    TableFixedEntry plan[64];
-    uint8_t wire[512];
-    int64_t need, n;
-    memset(&value, 0, sizeof(value));
-    value.oo.type = 1;                    /* OuterMost arm o */
-    value.oo.as.o.mm.type = 1;            /* Middle arm m */
-    value.oo.as.o.mm.as.m.i.type = 1;     /* Inner arm a */
-    value.oo.as.o.mm.as.m.i.as.a.x = 42;
-    need = root_fixed_measure(1);
-    CHECK(need > 0 && need <= (int64_t)sizeof(wire));
-    CHECK(root_fixed_save(&value, 1, wire, (int64_t)sizeof(wire)) == need);
-    memset(&back, 0xAA, sizeof(back));
-    memset(&r, 0, sizeof(r));
-    n = root_fixed_load(&back, 1, wire, need, plan, 64, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.malformed && !r.refused && r.clamped == 0);
-    CHECK(back.oo.type == 1);
-    CHECK(back.oo.as.o.mm.as.m.i.type == 1);
-    CHECK(back.oo.as.o.mm.as.m.i.as.a.x == 42);
+	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
+    value.oo.as.o.mm.type = 1;
+    value.oo.as.o.mm.as.m.i.type = 1;
+    value.oo.as.o.mm.as.m.i.as.a.x = 42;`,
+		"back.oo.as.o.mm.as.m.i.as.a.x", "back.oo.type", "back.oo.as.o.mm.type", links[0].Guard, links[1].Guard))
 
-    /* THE COMPILED PATH CARRIES THE SAME CHAIN (§5.8 row 6). My OWN layout
-       compiled against itself is the compiled path with nothing else moving,
-       and a THREE-union chain must build a three-link pool there, not refuse
-       the third inline lane. The plan's pool is laid in the plan's own
-       storage, so table_fixed_run reads it from the plan's base. */
-    {
-        TableFixedLayoutView parsed;
-        TableReport cr;
-        TableFixedEntry compiled[256];
-        int32_t guarded = 0;
-        uint32_t fill_at = 0;
-        int32_t fill_count = 0;
-        int32_t made;
-        int32_t clamped = 0, widened = 0;
-        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
-        const uint8_t * body = wire + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( root_fixed_layout ) + 8;
-        Root held;
-        memset(&cr, 0, sizeof(cr));
-        CHECK(table_fixed_parse_layout(root_fixed_layout, (int64_t) sizeof( root_fixed_layout ), &parsed, &why));
-        made = table_fixed_compile(&parsed, root_fixed_layout, (int32_t) sizeof( root_fixed_layout ),
-                                   root_fixed_dst, root_fixed_cover, root_fixed_cover_count,
-                                   compiled, 256, &guarded, &fill_at, &fill_count, &cr);
-        CHECK(made > 0);
-        memset(&held, 0xAA, sizeof(held));
-        table_fixed_run(compiled, (const TableFixedGuardLink *) (const void *) compiled, made, guarded,
-                        body, (uint8_t *) &held, &clamped, &widened);
-        CHECK(held.oo.as.o.mm.as.m.i.as.a.x == 42);
-        CHECK(held.oo.as.o.mm.as.m.i.type == 1);
-    }
-    return 0;
-}
-`, identityCCFlags()...)
-	// DEPTH 64 IS THE ONLY BOUND: 31 NESTED UNIONS BUILD (a 31-link chain, the
-	// deepest that fits the layout's 64-entry depth bound), 32 ARE REFUSED BY THE
-	// DEPTH BOUND AND NOT BY THE CHAIN.
-	deep := unitFrom(t, cT08DeepUnionSchema(31))
-	deepRoot := deep.Tables["Root"]
-	deepPlan, _, deepPool := ir.TableFixedBuildPlanNormalisedWithPool(deep, deepRoot)
-	var deepest *ir.TableFixedLeaf
+	// THE ONLY BOUND IS THE LAYOUT'S 64.
+	const deepest = 31
+	deep := unitFrom(t, cT08DeepUnionSchema(deepest))
+	if !ir.TableFixedWithinDepth(deep.Tables["Root"]) {
+		t.Fatalf("%d nested unions are inside the 64-entry depth bound", deepest)
+	}
+	deepPlan, _, deepPool := ir.TableFixedBuildPlanNormalisedWithPool(deep, deep.Tables["Root"])
+	var chain *ir.TableFixedLeaf
 	for i := range deepPlan {
-		if deepPlan[i].GuardCount == 31 {
-			deepest = &deepPlan[i]
+		if deepPlan[i].GuardCount == deepest {
+			chain = &deepPlan[i]
 			break
 		}
 	}
-	if deepest == nil {
-		t.Fatal("31 nested unions do not build a 31-link chain")
+	if chain == nil || chain.GuardIndex+chain.GuardCount > len(deepPool) {
+		t.Fatalf("%d nested unions do not build a %d-link chain inside its pool", deepest, deepest)
 	}
-	if deepest.GuardIndex+deepest.GuardCount > len(deepPool) {
-		t.Fatal("the 31-link chain points past its pool")
+	deepLinks := deepPool[chain.GuardIndex : chain.GuardIndex+chain.GuardCount]
+	var set strings.Builder
+	path := "value.u"
+	for i := 0; i < deepest; i++ {
+		fmt.Fprintf(&set, "    %s.type = 1;\n", path)
+		path += ".as.a"
+		if i < deepest-1 {
+			path += ".u"
+		}
 	}
-	if !ir.TableFixedWithinDepth(deepRoot) {
-		t.Fatal("31 nested unions are inside the depth bound and must build")
+	fmt.Fprintf(&set, "    %s.x = 42;", path)
+	cT08Probe(t, cT08DeepUnionSchema(deepest), "Root", cT08ChainProbe(set.String(),
+		"back"+strings.TrimPrefix(path, "value")+".x", "back.u.type", "back.u.as.a.u.type", deepLinks[0].Guard, deepLinks[1].Guard))
+
+	past := unitFrom(t, cT08DeepUnionSchema(deepest+1))
+	if ir.TableFixedWithinDepth(past.Tables["Root"]) {
+		t.Fatalf("%d nested unions are past the 64-entry depth bound", deepest+1)
 	}
-	tooDeep := unitFrom(t, cT08DeepUnionSchema(32))
-	if ir.TableFixedWithinDepth(tooDeep.Tables["Root"]) {
-		t.Fatal("32 nested unions are past the depth bound and must be refused by it, not carried")
+	if strings.Contains(t03Header(t, past), "root_fixed_load(") {
+		t.Fatalf("%d nested unions: the fixed form is emitted past the depth bound", deepest+1)
+	}
+	named := false
+	for _, w := range ir.TableFixedDepthBounds(past) {
+		named = named || strings.Contains(w, "table Root:")
+	}
+	if !named {
+		t.Fatalf("%d nested unions: the depth bound turned the table away without naming it", deepest+1)
 	}
 }
 

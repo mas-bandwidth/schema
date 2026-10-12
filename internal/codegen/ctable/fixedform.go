@@ -507,6 +507,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	if older > 0 {
 		stride := ir.TableFixedLeafCount(g.unit, st)*2 + len(entries)*2 + 128
+		// THE GUARD CHAINS RIDE THE SAME STORAGE (§5.8 row 6): a compiled
+		// plan lays each path's chain once per union on it, growing by one
+		// link a level, so a chain of k links costs at most k(k+1)/2 links
+		// (each no wider than an entry) and one alignment step. Counting it
+		// here keeps the layout's 64 the only bound on a chain: the declared
+		// capacity is never the one that refuses it.
+		seen := map[[2]int]bool{}
+		for _, e := range plan {
+			if e.GuardCount > 2 && !seen[[2]int{e.GuardIndex, e.GuardCount}] {
+				seen[[2]int{e.GuardIndex, e.GuardCount}] = true
+				stride += e.GuardCount*(e.GuardCount+1)/2 + 1
+			}
+		}
 		g.pf("/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and\n")
 		g.pf("   never from a file's (§5.9 #3). The storage is STATIC — this codec\n")
 		g.pf("   allocates nothing — and the walk runs ONCE PER PROCESS, off the record\n")
