@@ -278,6 +278,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, message)
+	// THE MESSAGE FORM's BATCH SURFACE (docs/SPEC-TABLES.md §3.3), form byte 2:
+	// the batch verbs measureMessages/saveMessages/loadMessages over the
+	// announced vocabulary, emitted for a unit with a `fixed table` root.
+	batch, err := generateMessageBatchFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, batch)
 	return out, nil
 }
 
@@ -336,7 +344,7 @@ func runtimeFileNames() []string {
 		"TableBytes",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
-		"BuildVersion",
+		"BuildVersion", "TableMessage",
 	}
 }
 
