@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -324,8 +326,12 @@ func TestListBoundIsARefusal(t *testing.T) {
 	for i := range over {
 		over[i] = "p"
 	}
-	if err := SetPaths(rec, over); err == nil {
+	err = SetPaths(rec, over)
+	if err == nil {
 		t.Fatal("SetPaths(513) accepted")
+	}
+	if !strings.Contains(err.Error(), "paths") || !strings.Contains(err.Error(), strconv.Itoa(MaxListEntries)) {
+		t.Fatalf("SetPaths(513) refusal does not name the field and bound: %v", err)
 	}
 	if !bytes.Equal(rec.Wire(), origWire) {
 		t.Fatal("SetPaths(513) published a wire")
@@ -339,15 +345,39 @@ func TestListBoundIsARefusal(t *testing.T) {
 	if err := SetNeeds(needRec, needOk); err != nil {
 		t.Fatalf("SetNeeds(512) refused: %v", err)
 	}
+	needReload, _, err := Load(needRec.Wire())
+	if err != nil {
+		t.Fatalf("reload of 512 needs: %v", err)
+	}
+	if needReload.root.Needs.Count != MaxListEntries {
+		t.Fatalf("needs count after save/load = %d, want %d", needReload.root.Needs.Count, MaxListEntries)
+	}
 	needOver := make([]string, MaxListEntries+1)
 	for i := range needOver {
 		needOver[i] = "d"
 	}
 	origNeed := needRec.Wire()
-	if err := SetNeeds(needRec, needOver); err == nil {
+	needErr := SetNeeds(needRec, needOver)
+	if needErr == nil {
 		t.Fatal("SetNeeds(513) accepted")
+	}
+	if !strings.Contains(needErr.Error(), "needs") || !strings.Contains(needErr.Error(), strconv.Itoa(MaxListEntries)) {
+		t.Fatalf("SetNeeds(513) refusal does not name the field and bound: %v", needErr)
 	}
 	if !bytes.Equal(needRec.Wire(), origNeed) {
 		t.Fatal("SetNeeds(513) published a wire")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(`{"id":"x","test":"T","paths":[`)
+	for i := 0; i < MaxListEntries+1; i++ {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(`{"s":"p"}`)
+	}
+	sb.WriteString(`]}`)
+	if _, err := FromJSON([]byte(sb.String())); err == nil {
+		t.Fatal("FromJSON accepted 513 paths: the setter is not the sole bound")
 	}
 }
