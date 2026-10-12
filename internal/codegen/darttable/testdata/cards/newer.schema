@@ -1,0 +1,15 @@
+// cardpair — the NEWER declaration of the retain pair (see older.schema): it
+// adds a scalar (future_i), a string (extra) and a *string (blob) that the
+// older declaration cannot name. The older declaration's retained round trip
+// keeps the scalar and the string and reports the *string as loss
+// (docs/SPEC-TABLES.md §6.6).
+package cards
+
+table Card
+{
+    id       string(8)
+    n        int32
+    extra    string(16)
+    future_i int32
+    blob     *string
+}
