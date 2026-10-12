@@ -301,31 +301,62 @@ const declaredDefaultsDriver = batchDriverPrologue + `
 `
 
 const messageRefusalDriver = batchDriverPrologue + `
+    static LoginRequestFixed.Value[] values(int n) {
+        final LoginRequestFixed.Value[] out = new LoginRequestFixed.Value[n];
+        for (int i = 0; i < n; i++) out[i] = new LoginRequestFixed.Value();
+        return out;
+    }
+
     public static void main(String[] args) {
-        // M above 256 on the write side (docs/SPEC-TABLES.md §3.3).
-        final LoginRequestFixed.Value[] many = new LoginRequestFixed.Value[300];
-        final TableMessage.Report r = new TableMessage.Report();
-        if (LoginRequestMessage.measureMessages(many, r) != -1) { fail("write batch_too_large not refused"); }
-        if (!r.refused || !"batch_too_large".equals(r.reason)) { fail("write reason " + r.reason); }
+        // "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME. MeasureMessages
+        // and SaveMessages both refuse and return -1 ... with its refusal
+        // verdict set and the reason batch_too_large on it" (docs/SPEC-TABLES.md
+        // §3.3). 256 is the wire's own bound, so 256 bodies are a batch.
+        final TableMessage.Report atMax = new TableMessage.Report();
+        if (LoginRequestMessage.measureMessages(values(256), atMax) <= 0 || atMax.refused) { fail("256 bodies refused"); }
+        final LoginRequestFixed.Value[] many = values(257);
+        final TableMessage.Report wm = new TableMessage.Report();
+        if (LoginRequestMessage.measureMessages(many, wm) != -1 || !wm.refused || !"batch_too_large".equals(wm.reason)) {
+            fail("measure over 256 bodies: reason=" + wm.reason);
+        }
+        final TableMessage.Report ws = new TableMessage.Report();
+        if (LoginRequestMessage.saveMessages(many, new byte[65536], ws) != -1 || !ws.refused || !"batch_too_large".equals(ws.reason)) {
+            fail("save over 256 bodies: reason=" + ws.reason);
+        }
 
         final TableVocabulary vocab = mkVocab();
 
-        // M above the caller's capacity on the read side, count set to the
-        // wire's M before the refusal (docs/SPEC-TABLES.md §3.3).
-        final byte[] big = new byte[] { 2, 5 };
-        final LoginRequestFixed.Value[] three = { new LoginRequestFixed.Value(),
-                new LoginRequestFixed.Value(), new LoginRequestFixed.Value() };
+        // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
+        // ... refuses before it decodes anything. Nothing is decoded, no counter
+        // moves and malformed does not fire ... The reader sets the returned
+        // count to the wire's M before it returns the refusal" (§3.3). A valid
+        // batch of two bodies read into storage for one.
+        final LoginRequestFixed.Value[] two = values(2);
+        two[0].clientBuild = 5;
+        two[1].clientBuild = 6;
+        final byte[] twoWire = new byte[(int) LoginRequestMessage.measureMessages(two, new TableMessage.Report())];
+        if (LoginRequestMessage.saveMessages(two, twoWire, new TableMessage.Report()) != twoWire.length) { fail("save two"); }
+        final LoginRequestFixed.Value[] one = values(1);
+        one[0].clientBuild = 77;
         final TableMessage.Report r2 = new TableMessage.Report();
-        final long c = LoginRequestMessage.loadMessages(three, big, vocab, r2);
-        if (c != 6 || !r2.refused || !"batch_too_large".equals(r2.reason)) {
-            fail("read batch_too_large count=" + c + " reason=" + r2.reason);
+        final long c = LoginRequestMessage.loadMessages(one, twoWire, vocab, r2);
+        if (c != 2 || !r2.refused || !"batch_too_large".equals(r2.reason) || r2.malformed) {
+            fail("read over capacity: count=" + c + " reason=" + r2.reason + " malformed=" + r2.malformed);
         }
+        if (one[0].clientBuild != 77) { fail("read over capacity decoded a body"); }
 
-        // A body from a peer that never announced (docs/SPEC-TABLES.md §3.3).
+        // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing
+        // is decoded, no counter moves and malformed does not fire" (§3.3).
         final TableVocabulary nov = new TableVocabulary();
+        nov.reset(64);
+        final LoginRequestFixed.Value[] three = values(3);
+        three[0].clientBuild = 77;
         final TableMessage.Report r3 = new TableMessage.Report();
-        if (LoginRequestMessage.loadMessages(three, big, nov, r3) != -1) { fail("no_vocabulary not refused"); }
-        if (!r3.refused || !"no_vocabulary".equals(r3.reason)) { fail("no_vocabulary reason " + r3.reason); }
+        if (LoginRequestMessage.loadMessages(three, twoWire, nov, r3) != -1 || !r3.refused
+                || !"no_vocabulary".equals(r3.reason) || r3.malformed) {
+            fail("no_vocabulary: reason=" + r3.reason + " malformed=" + r3.malformed);
+        }
+        if (three[0].clientBuild != 77) { fail("no_vocabulary decoded a body"); }
         System.out.println("ok");
     }
 }
