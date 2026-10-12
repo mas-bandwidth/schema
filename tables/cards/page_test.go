@@ -70,7 +70,7 @@ func TestCardsPageNamesFacade(t *testing.T) {
 		}
 	}
 
-	block := fencedBlock(doc, "package cards")
+	block := fencedBlock(doc, "// Card.schema")
 	if block == "" {
 		t.Fatal("docs/CARDS.md has no fenced declaration block")
 	}
