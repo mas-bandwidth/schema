@@ -263,3 +263,25 @@ func TestUpgradeTinyCapacityRetainLost(t *testing.T) {
 		t.Fatalf("production limits should succeed: %v", err)
 	}
 }
+
+// TestUpgradeOwnsFreshOutput proves the published bytes are a caller-owned
+// fresh allocation that never aliases the input wire: overwriting every byte of
+// the output leaves the input byte-for-byte unchanged (docs/SPEC-TABLES.md §6.6).
+func TestUpgradeOwnsFreshOutput(t *testing.T) {
+	t.Parallel()
+	wire := buildFutureCard(t, false)
+	snapshot := append([]byte(nil), wire...)
+	out, report, err := Upgrade(wire)
+	if err != nil {
+		t.Fatalf("Upgrade failed: %v (report %+v)", err, report)
+	}
+	if out == nil {
+		t.Fatal("Upgrade returned nil output")
+	}
+	for i := range out {
+		out[i] ^= 0xff
+	}
+	if !bytes.Equal(wire, snapshot) {
+		t.Fatal("published output aliased the caller's input wire")
+	}
+}
