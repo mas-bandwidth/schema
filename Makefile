@@ -6051,6 +6051,15 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
 
+# THE SIBLING RUNTIME IS A STATED BENCH PREREQUISITE. The oracle dump links the
+# C++ reference, which includes serialize.h from the guard checkout $(SERIALIZE)
+# (a sibling of this repo, the same checkout the C++ targets are built against).
+# Refuse by name when it is absent instead of failing mid-generate with a
+# cryptic include error.
+.PHONY: tables-fixedform-corpus-check
+tables-fixedform-corpus-check:
+	@test -f $(SERIALIZE)/serialize.h || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; exit 1; }
+
 .PHONY: tables-fixedform-corpus
 
 # THE FIXED FORM'S BENCH CORPUS, also the C++ reference's (docs/SPEC-TABLES.md
