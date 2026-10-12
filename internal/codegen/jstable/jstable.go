@@ -248,9 +248,15 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		maps.Copy(out, cooks)
 	}
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1: tolerant
+	// wire reading and canonical byte layout for card constructs.
+	variable, err := generateVariableFiles(u, wide)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, variable)
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table wire. Form 1 is still deferred to #516 and nothing here
-	// reads or writes one.
+	// second table wire.
 	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err

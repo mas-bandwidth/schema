@@ -20,7 +20,7 @@
 // bytes into a fresh ArrayBuffer, and its residue modulo the form's alignment
 // is exactly the residue the C++ and C# legs place by hand.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, readSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -32,6 +32,13 @@ import { pathToFileURL } from "node:url";
 // repository root by contract.
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
+
+// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers before the surface
+// modules load: it needs only the cards unit, never the block or cook trees.
+if (process.argv[2] === "wire-fuzz") {
+  await wireFuzz();
+  process.exit(0);
+}
 
 const renderBlock = await load("block/RenderBlock.js");
 const paddedBlock = await load("block/PaddedBlock.js");
@@ -545,6 +552,106 @@ async function surfaceMessage(lines, outDir) {
 // ---- main
 
 const args = process.argv.slice(2);
+
+// ---- the WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2, test/conformance/harness/
+// wirefuzz.go). The harness owns the mutants and the oracle; this process only
+// binds a roster entry to the generated Card codec and answers the report, the
+// region measure and the saved bytes. The protocol is the twin of the Go and C
+// legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
+async function wireFuzz() {
+  const cards = await load("cards/CardsVariable.js");
+  const CardLoad = cards.CardLoad;
+  const CardLoadMeasure = cards.CardLoadMeasure;
+  const CardSave = cards.CardSave;
+  const TableVariableReport = cards.TableVariableReport;
+
+  const readExact = (n) => {
+    const buf = Buffer.alloc(n);
+    let off = 0;
+    while (off < n) {
+      const r = readSync(0, buf, off, n - off, null);
+      if (r === 0) { return null; }
+      off += r;
+    }
+    return buf;
+  };
+  const readU32 = () => { const b = readExact(4); return b === null ? null : b.readUInt32LE(0); };
+  const readU16 = () => { const b = readExact(2); return b === null ? null : b.readUInt16LE(0); };
+  const readU8 = () => { const b = readExact(1); return b === null ? null : b[0]; };
+
+  const count = readU32();
+  if (count === null) { process.exit(0); }
+  const roster = new Array(count).fill(null);
+  const known = Buffer.alloc(count);
+  for (let i = 0; i < count; i++) {
+    const uLen = readU16();
+    const unit = uLen === null ? "" : readExact(uLen).toString("utf8");
+    const rLen = readU16();
+    const root = rLen === null ? "" : readExact(rLen).toString("utf8");
+    const form = readU8();
+    const retain = readU8();
+    if (unit === "cards" && root === "Card" && form === 1 && retain === 0) {
+      roster[i] = { CardLoad, CardLoadMeasure, CardSave, TableVariableReport };
+      known[i] = 1;
+    } else {
+      known[i] = 0;
+    }
+  }
+  process.stdout.write(known);
+
+  for (;;) {
+    const head = readExact(8);
+    if (head === null) { break; }
+    const index = head.readUInt32LE(0);
+    const size = head.readUInt32LE(4);
+    const wireBuf = readExact(size);
+    if (wireBuf === null) { break; }
+    const wire = new Uint8Array(wireBuf.buffer, wireBuf.byteOffset, wireBuf.byteLength);
+    const codec = roster[index];
+
+    let loaded = false, measure = -1, saved = null;
+    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0 };
+    if (codec !== null) {
+      measure = codec.CardLoadMeasure(wire);
+      if (measure >= 0) {
+        const rep = new codec.TableVariableReport();
+        const card = codec.CardLoad(wire, rep);
+        report.unknown = rep.unknown;
+        report.kindMismatch = rep.kindMismatch;
+        report.widened = rep.widened;
+        report.clamped = rep.clamped;
+        report.duplicate = rep.duplicate;
+        report.malformed = rep.malformed;
+        report.refused = rep.refused;
+        loaded = card !== null;
+        if (loaded) { saved = codec.CardSave(card); }
+      }
+    }
+
+    const header = Buffer.alloc(47);
+    header[0] = loaded ? 1 : 0;
+    header.writeInt32LE(report.unknown | 0, 1);
+    header.writeInt32LE(report.kindMismatch | 0, 5);
+    header.writeInt32LE(report.widened | 0, 9);
+    header.writeInt32LE(report.clamped | 0, 13);
+    header.writeInt32LE(report.duplicate | 0, 17);
+    header[21] = report.malformed ? 1 : 0;
+    header[22] = report.refused ? 1 : 0;
+    header.writeBigInt64LE(BigInt(measure), 23);
+    header.writeInt32LE(0, 31);
+    header.writeInt32LE(0, 35);
+    if (saved === null) {
+      header.writeBigInt64LE(-1n, 39);
+      process.stdout.write(header);
+    } else {
+      header.writeBigInt64LE(BigInt(saved.length), 39);
+      process.stdout.write(header);
+      process.stdout.write(Buffer.from(saved));
+    }
+  }
+  process.exit(0);
+}
+
 if (args.length < 2) {
   process.stderr.write("usage: main.mjs <manifest> list\n       main.mjs <manifest> <surface> <outdir>\n");
   process.exit(2);

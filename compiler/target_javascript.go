@@ -50,7 +50,10 @@ func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	if err := refuseUnionArrays(u, "js"); err != nil {
 		return nil, err
 	}
-	if err := refuseBlobs(u, "js"); err != nil {
+	if err := refuseBytes(u, "js"); err != nil {
+		return nil, err
+	}
+	if err := refuseStrings(u, "js"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "js"); err != nil {
@@ -128,5 +131,10 @@ func init() {
 	valueDefaultTargets = append(valueDefaultTargets, "js")
 	registerPacketValueDefaultCarrier("js")
 	registerWideTextCarrier("js")
+	registerListCarrier("js")
+	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
+	// *bytes stays a named refusal (§11), so js registers as a string carrier
+	// alone and not as a byte-buffer carrier.
+	registerStringCarrier("js")
 	registerBuiltin(jsTarget{}, true, false, false, false)
 }

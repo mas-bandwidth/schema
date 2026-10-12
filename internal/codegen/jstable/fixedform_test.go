@@ -146,7 +146,7 @@ enum Grade
     Gold
 }
 
-table Root
+fixed table Root
 {
     n     int32 = 0 | min = 0, max = 1000
     grade Grade
@@ -266,7 +266,7 @@ func TestFixedBytesRowIsTheCountedArrayRow(t *testing.T) {
 // record loop — an empty list is what skips the work.
 func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	u := unitFrom(t, `package probe
-table Config {
+fixed table Config {
     scale float32 = 1.0
     extra int32 = 9
 }

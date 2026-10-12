@@ -649,6 +649,40 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 	@echo 'tables JS fixed optional negative control: one inverted present byte reds the reference byte match'
 
 
+# THE CARDS WIRE-FUZZ GATE, this leg's half (docs/SPEC-TABLES.md §4.2).
+# These targets mirror the Go leg's cards-generate and cards-wire-fuzz
+# (make/go.mk) against the same oracle harness and the same seed, so the
+# JavaScript Card codec is held to the identical byte-for-byte contract. They
+# live in make/js.mk (NOT a separate make/cards-js.mk) because the wide-scalar
+# refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
+# a live port, and a fragment named cards-js.mk would be refused there as a
+# phantom port (docs/SPEC-TABLES.md §11 names the port registry).
+.PHONY: cards-js-generate cards-js-wire-fuzz
+
+# cards-js-generate emits the JavaScript variable-form surface for tables/cards.
+cards-js-generate: bin/schema
+	@rm -rf build/tables-generated-js/cards
+	@mkdir -p build/tables-generated-js/cards
+	./bin/schema generate --lang js --out build/tables-generated-js/cards tables/cards
+
+# cards-js-wire-fuzz runs the conformance harness's wire fuzzer over the Card
+# root, comparing the JavaScript driver's reads and writes with the reference
+# leg's (docs/SPEC-TABLES.md §4.2). --vectors '' keeps the other units' pinned
+# vectors out of this Card-only manifest; the greps below hold the nonzero
+# seed/mutant claim, so a zero-coverage roster fails rather than passing.
+cards-js-wire-fuzz: build/conformance-harness cards-js-generate
+	@./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-js-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-js-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-js-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-js-wire-fuzz.log
+
+test-js: cards-js-wire-fuzz
+
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
 .PHONY: test-js
