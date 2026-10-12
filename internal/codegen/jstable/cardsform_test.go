@@ -17,6 +17,16 @@ import (
 // ?T, wide kinds) are refused by name at generation time (docs/SPEC-TABLES.md
 // §11).
 
+// unitWith builds a one-table unit holding the given table, so a test can ask
+// the VARIABLE FORM'S OWN generation entry point whether it accepts or refuses
+// exactly those constructs (docs/SPEC-TABLES.md §11).
+func unitWith(st *ir.Struct) *ir.Unit {
+	return &ir.Unit{
+		Package: "cards",
+		Tables:  map[string]*ir.Struct{st.Name: st},
+	}
+}
+
 // TestOtherVariableConstructsAreRefusedByName holds the BOUNDARY of the card
 // constructs: every variable-class construct the card set excludes is named as
 // refused with its table, its field and the construct, and a field set made
@@ -47,7 +57,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			want:  "an optional ?T (docs/SPEC-TABLES.md §2.3)",
 		},
 		{
-			field: &ir.Field{Name: "ships", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 8}, KeyEnum: "ShipType"},
+			field: &ir.Field{Name: "ships", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 8}, KeyEnum: "ShipType", KeyEnumRef: &ir.Enum{Name: "ShipType", Max: 4}},
 			want:  "an enum-keyed array (docs/SPEC-TABLES.md §2.4)",
 		},
 		{
@@ -75,6 +85,22 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		if !strings.Contains(got[0], tc.want) {
 			t.Errorf("refusal %q does not name the construct %q", got[0], tc.want)
 		}
+		// THE BOUNDARY IS THE BACKEND'S, not only the helper's: the variable
+		// form's own generation entry point refuses a table NEITHER form
+		// serves, so a hook that was never wired is a green helper over a
+		// backend that still silently drops the construct (docs/SPEC-TABLES.md
+		// §11). A table the FIXED FORM serves (fixedRefusal == "", §3.4) is not
+		// refused whole: its codec stands and the variable form's boundary does
+		// not bind it.
+		if fixedRefusal(st) == "" {
+			if _, err := generateVariableFiles(unitWith(st), nil); err != nil {
+				t.Errorf("generateVariableFiles refused Probe.%s, which the fixed form serves: %v", tc.field.Name, err)
+			}
+		} else if _, err := generateVariableFiles(unitWith(st), nil); err == nil {
+			t.Errorf("generateVariableFiles accepted Probe.%s, a construct outside the card slice", tc.field.Name)
+		} else if !strings.Contains(err.Error(), "Probe."+tc.field.Name) {
+			t.Errorf("refusal %q does not name the field Probe.%s", err.Error(), tc.field.Name)
+		}
 	}
 
 	cardish := &ir.Struct{Name: "Card", IsTable: true, Fields: []*ir.Field{
@@ -87,6 +113,9 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	}}
 	if got := tableVariableRefusals(cardish); len(got) != 0 {
 		t.Errorf("the card construct set must not be refused, got: %q", got)
+	}
+	if _, err := generateVariableFiles(unitWith(cardish), nil); err != nil {
+		t.Errorf("generateVariableFiles refused the card construct set: %v", err)
 	}
 
 	// The committed card corpus end to end: the card set generates its codec and

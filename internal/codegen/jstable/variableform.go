@@ -19,6 +19,7 @@ package jstable
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -29,6 +30,54 @@ import (
 // folding it. Ids are compile-time constants: fnv1a64 runs here, once, never in
 // the generated module.
 func jsId(id uint64) string { return fmt.Sprintf("0x%016xn", id) }
+
+// closureHoldsFixedTable reports whether the unit's table closure holds a table
+// the FIXED FORM serves (fixedRefusal == "", docs/SPEC-TABLES.md §3.4). Such a
+// unit is served by the fixed form (and its block and cook surfaces), so
+// refuseCardUnsupportedVariableConstructs — the variable form's own boundary —
+// does not bind it (§11): a variable table beside a fixed-served one is not
+// mis-encoded by anything this leg writes, and refusing the whole unit would
+// take the fixed form's surfaces down with it. In such a unit the rest of the
+// variable class stays absent and unclaimed.
+func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
+	for name := range closure {
+		if st := u.Tables[name]; st != nil && st.IsTable && !st.IsMapEntry() && fixedRefusal(st) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// refuseCardUnsupportedVariableConstructs is docs/SPEC-TABLES.md §11's refusal
+// at generation: it refuses, BY NAME, every variable-class construct this
+// backend does not carry on the table wire, while the card record's slice
+// passes. The rest of the class stays absent and is refused rather than
+// mis-encoded or silently dropped.
+//
+// A construct this backend does not carry is named as `<table>.<field>: <what>`
+// (variableFieldRefusal), so the message names the table, the field and the
+// construct together, which is what a refusal by name owes (§11).
+func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
+	variable := ir.VariableTables(u)
+	if len(variable) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(variable))
+	for name := range variable {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			continue
+		}
+		if refusals := tableVariableRefusals(st); len(refusals) != 0 {
+			return fmt.Errorf("js variable form: %s (docs/SPEC-TABLES.md §11)", refusals[0])
+		}
+	}
+	return nil
+}
 
 // variableEmit generates the WHOLE variable-form module for a unit: the shared
 // runtime, then one class and its Load/Measure/Save per variable root, plus the
