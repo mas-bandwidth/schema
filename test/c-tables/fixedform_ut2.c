@@ -13,6 +13,20 @@
 #define PlanCapacity 8192
 static TableFixedEntry g_plan[PlanCapacity];
 
+/* GCC -O2 can inline the fixed-copy unroll through this legacy-plan read into
+   the caller's 32-byte UtRoot object and combine a static destination offset
+   with a different entry's maximum copy width, reporting a false array bound.
+   Keep the typed read boundary opaque just as ctable/identity_test.go does for
+   its small stack destination; every plan entry still runs through the same
+   checked fixed loader. */
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static int64_t fixed_ut2_load( UtRoot * back, const uint8_t * data, int64_t bytes, TableReport * report )
+{
+    return ut_root_fixed_load( back, 1, data, bytes, g_plan, PlanCapacity, NULL, report );
+}
+
 int64_t fixed_ut2_bytes( void ) { return ut_root_fixed_measure( 1 ); }
 
 int64_t fixed_ut2_write( uint8_t * buffer, int64_t capacity )
@@ -30,10 +44,10 @@ int64_t fixed_ut2_write( uint8_t * buffer, int64_t capacity )
 
 void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
 {
-    UtRoot back;
+    UtRoot back = { 0 };
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( fixed_ut2_load( &back, data, bytes, &r ) == 1,
                  "C two lanes, compiled: the record reads" );
     fixed_check( back.pick.type == PICK_TYPE_B,
                  "C two lanes, compiled: the arm is remapped by NAME, not by ordinal" );

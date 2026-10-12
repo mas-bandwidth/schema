@@ -320,10 +320,11 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
 
 /* THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), the C twin of
    the reference's. A `string(N)`'s used bytes are well-formed UTF-8 with no
-   zero among them — the same rule SPEC.md §4.7 puts on the packet wire, where
-   the whole read refuses. HERE THE RECORD IS POSITIONAL, so the damage is one
-   field's: the field reads its DECLARED DEFAULT, one `malformed` counts, and
-   the rest of the record stands.
+   zero among them — the same rule SPEC.md §4.7 puts on the packet wire. A
+   payload that is not text refuses by name (docs/FIXED-FORM-ALGORITHM.md §4.5,
+   fix 11): the load answers -1, `refused` is set, `malformed` is not, the name
+   is `text_ill_formed`, and no counter moves. The damaged field does NOT read a
+   declared default; nothing past the refusal is decoded.
 
    The poison is written THROUGH THE WRITER, because it can be: the write side's
    bounds are the used length and the live count, both debug-only, and neither
@@ -343,7 +344,7 @@ void fixed_fx1_text_content( void )
 
     for ( k = 0; k < sizeof( cases ) / sizeof( cases[0] ); k++ )
     {
-        FxRoot v, back;
+        FxRoot v, back = { 0 };
         TableReport r;
 
         fx_root_reset( &v );
@@ -356,14 +357,13 @@ void fixed_fx1_text_content( void )
         fixed_check( n == fx_root_fixed_measure( 1 ), "C text content: the record saves" );
 
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
-                     "C text content: the record reads" );
-        fixed_check( r.malformed, cases[k].what );
-        fixed_check( back.label_length == 2 && strcmp( back.label, "fx" ) == 0,
-                     "C TEXT CONTENT: the damaged field reads its DECLARED DEFAULT" );
-        fixed_check( back.keep == 1234u && back.nested.a == 7,
-                     "C TEXT CONTENT: and the rest of the record stands" );
-        fixed_check( !r.refused, "C TEXT CONTENT: damage is not a refusal" );
+        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
+                     "C text content: ill-formed content refuses the read" );
+        fixed_check( r.refused && !r.malformed, cases[k].what );
+        fixed_check( r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED,
+                     "C TEXT CONTENT: the refusal carries the name text_ill_formed" );
+        fixed_check( r.clamped == 0 && r.widened == 0,
+                     "C TEXT CONTENT: a refusal moves no counter" );
 
         if ( k == 0 )
         {

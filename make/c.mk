@@ -937,7 +937,11 @@ C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx
 	test/c-tables/fixedform_layout.c \
 	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
 	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
-	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c
+	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c \
+	build/tables-generated-c-fixed/fx1/FX1Table.c build/tables-generated-c-fixed/fx2/FX2Table.c \
+	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c \
+	build/tables-generated-c-fixed/ut1/UT1Table.c build/tables-generated-c-fixed/ut2/UT2Table.c \
+	build/tables-generated-c-fixed/fu1/FU1Table.c build/tables-generated-c-fixed/fu2/FU2Table.c
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
 	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 \
 	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 \
@@ -1204,15 +1208,15 @@ build/runcopy-c/.stamp: bin/schema tables/scalars/Scalars.schema
 	./bin/schema generate --lang c --out build/runcopy-c tables/scalars
 	@touch $@
 
-build/schema_test_c_runcopy: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+build/schema_test_c_runcopy: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c build/runcopy-c/ScalarsTable.c
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
-		test/tables/fixedform_runcopy.c -o $@ -lm
+		test/tables/fixedform_runcopy.c build/runcopy-c/ScalarsTable.c -o $@ -lm
 
-build/schema_test_c_runcopy_asan: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+build/schema_test_c_runcopy_asan: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c build/runcopy-c/ScalarsTable.c
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
-		test/tables/fixedform_runcopy.c -o $@ -lm
+		test/tables/fixedform_runcopy.c build/runcopy-c/ScalarsTable.c -o $@ -lm
 
 .PHONY: tables-c-runcopy
 tables-c-runcopy: build/schema_test_c_runcopy build/schema_test_c_runcopy_asan
