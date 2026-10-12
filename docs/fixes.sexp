@@ -58,5 +58,14 @@
    (:red "the read gate is red: go test ./tools/fixedtwin (TestPairedHeadersAgree) fails with 25 leftovers because the committed paired C header was reverted to the base hand-assembled widenF and the =19 reason enum"
     :cause "the generator was fixed at internal/codegen/ctable/fixedruntime.go:552 (the WidenF arm is the hardware cast, const double d = (double) f) and tools/fixedtwin/canon.go:101 (reCReasons requires text_ill_formed = 20), but the w11 head reverted the regenerated paired headers that 209d0452 had committed, so generated/bench/paired/c/FixedTableTable.h:1159 still carries the base hand-assembled f32->f64 widen (0x7ff0000000000000ull << 29) and :783 still ends the reason enum at SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19. The bare go test ./tools/fixedtwin reads the committed header, so reCReasons no longer matches the C enum (13 leftover lines) and the widen body leaks (12 leftover lines) = 25 leftovers"
     :fix "regenerated the paired headers with the generator at this head (bin/schema generate --lang c --out generated/bench/paired/c and --lang cpp --out generated/bench/paired/cpp bench/corpus/Bench.schema bench/corpus/FixedTable.schema) and committed generated/bench/paired/c/FixedTableTable.h, generated/bench/paired/cpp/FixedTableTable.h, generated/bench/paired/c/BenchTable.h and generated/bench/paired/cpp/BenchTable.h; the committed C header now carries the hardware cast widenF and SCHEMA_TABLE_TEXT_ILL_FORMED = 20, so go test ./tools/fixedtwin and go run ./tools/fixedtwin both exit 0 (tables-fixed-twin: C and C++ fixed runtimes agree after the named twin map)")
-   ))
+    ))
+  (:card "the-schema-finish-base-gate-is-green.w13"
+   :branch "sprint/the-schema-finish-base-gate-is-green.w13.g1.e19"
+   :date "2026-10-12"
+   :fixes
+   (
+    (:red "the lander refused the w12 head (8656245e): it changed generated/bench/paired/c/BenchTable.h and generated/bench/paired/cpp/BenchTable.h, outside this card's PATHS (E12)"
+     :cause "w12 regenerated all four paired headers, but the card's PATHS name only the twin-tested FixedTableTable.h pair; BenchTable.h is emitted from the same shared C/C++ runtime template but is outside PATHS, so committing it trips the lander's path check"
+     :fix "reverted generated/bench/paired/c/BenchTable.h and generated/bench/paired/cpp/BenchTable.h to the base sprint/schema-finish version (git checkout e2818e7aa600 -- ...) and kept the in-PATHS regeneration (internal/codegen/ctable/fixedruntime.go hardware-cast widenF, tools/fixedtwin/canon.go text_ill_formed = 20, generated/bench/paired/c/FixedTableTable.h and generated/bench/paired/cpp/FixedTableTable.h), so the twin gate closes and the final head changes only PATHS files")
+    ))
 )
