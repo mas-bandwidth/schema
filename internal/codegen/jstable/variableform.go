@@ -136,6 +136,7 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// mismatch is reported (§4).\n")
 	g.pf("\n")
 	g.emitRuntime()
+	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)
 	}
@@ -469,6 +470,64 @@ function TableVariableJsonString(s) {
   return out + '"';
 }
 `)
+}
+
+// ---------------------------------------------------------------------------
+// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1) and the UNIT REGISTRY (§8.3)
+// ---------------------------------------------------------------------------
+
+// fieldShape is a field's STORAGE SHAPE (docs/SPEC-TABLES.md §8.1): "value"
+// for a scalar, a string or an enum; "list" for an unbounded array of tables
+// ([]T, §2.9); and "blob" for a *string byte buffer (§2.5). A walker reads the
+// shape beside the kind to know whether a field holds one value, a counted
+// sequence or a node-indexed blob, without a per-version struct.
+func fieldShape(f *ir.Field) string {
+	if f.IsList() {
+		return "list"
+	}
+	if f.Type.Pointer && f.Type.Blob() {
+		return "blob"
+	}
+	return "value"
+}
+
+// fieldBound is a field's DECLARED BOUND (docs/SPEC-TABLES.md §8.1): a
+// string(N) or bytes(N) declares N, and every other card construct is
+// unbounded or bounded by its own kind, so it declares 0.
+func fieldBound(f *ir.Field) int64 {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Blob() {
+			return f.Type.Size
+		}
+	}
+	return 0
+}
+
+// emitDescriptors emits one table type descriptor per table in the variable
+// closure (docs/SPEC-TABLES.md §8.1) — field name, wire kind, storage shape and
+// declared bound, in declaration order — then the unit registry (§8.3) that
+// lists them. Enough to walk a record by name and kind without a per-version
+// struct; nothing else of §8 is claimed.
+func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
+	for _, st := range closure {
+		g.pf("export const %sTableType = {\n", st.Name)
+		g.pf("  name: %q,\n", st.Name)
+		g.pf("  fields: [\n")
+		for _, f := range st.Fields {
+			g.pf("    { name: %q, kind: %d, shape: %q, bound: %d },\n",
+				f.Name, ir.TableWireFieldKind(f), fieldShape(f), fieldBound(f))
+		}
+		g.pf("  ],\n")
+		g.pf("};\n\n")
+	}
+	g.pf("export const %sUnitRegistry = {\n", capitalize(g.unit.Package))
+	g.pf("  package: %q,\n", g.unit.Package)
+	g.pf("  tables: [\n")
+	for _, st := range closure {
+		g.pf("    %sTableType,\n", st.Name)
+	}
+	g.pf("  ],\n")
+	g.pf("};\n\n")
 }
 
 // ---------------------------------------------------------------------------
