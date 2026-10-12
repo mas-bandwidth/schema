@@ -18,6 +18,17 @@ import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 
+// THE MESSAGE FORM (form byte 2, docs/SPEC-TABLES.md §3.3). A message case reads
+// TWO files: the CONNECTION's announcement carries the vocabulary, and the
+// message wire is the batch of bodies under it. Each unit's generated library
+// is imported twice: the home carries the shared runtime, the vocabulary class
+// and the storage classes, and the root library carries the per-root batch
+// verbs (test/conformance/README.md, "The surfaces").
+import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vHome;
+import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vRoot;
+import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as v9Home;
+import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as v9Root;
+
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
 final List<List<String>> lines = [];
@@ -646,13 +657,240 @@ int surfaceCook(String outDir) {
   return 0;
 }
 
+// ---- THE MESSAGE FORM, form byte 2 (docs/SPEC-TABLES.md §3.3) ----
+//
+// "AnnounceRead the connection's announcement, LoadMessages the message-form
+// batch against it, SaveMessages, the bytes" (test/conformance/README.md). The
+// announcement is read into the unit's TableVocabulary first, the batch then
+// resolves against it, and the saved bytes are the answer. A row this leg's
+// fixed-class form cannot reach — the pointered `Scene`, which carries no batch
+// verbs — is written `<case>.absent`, the finer-grained absence the README
+// names.
+//
+// THE ROW LIST IS THE DRIVER'S OWN, and TestMessageFormConformanceDart holds it
+// to the manifest's `message` rows (one (unit, root) pair each); a row named
+// here and not there is a claim with no corpus, and the reverse is a case that
+// silently reads ABSENT.
+
+final List<List<String>> messageRows = const [
+  ['backenddemo', 'LoginRequest'],
+  ['backenddemo', 'MatchResult'],
+  ['backenddemo', 'StorePurchase'],
+  ['graphdemo', 'Scene'],
+  ['vocabdemo', 'Wide00'],
+  ['vocabdemo', 'Wide09'],
+  ['vocab9demo', 'Wide00'],
+  ['vocab9demo', 'Wide19'],
+];
+
+Uint8List? messageRoundTrip(
+  String unit,
+  String root,
+  Uint8List announce,
+  Uint8List message,
+  StringBuffer why,
+) {
+  switch (unit) {
+    case 'vocabdemo':
+      return messageVocab(root, announce, message, why);
+    case 'vocab9demo':
+      return messageVocab9(root, announce, message, why);
+  }
+  // The `backend` unit's fixed home names a table-arm union the fixed form does
+  // not claim, so its library does not compile and this leg cannot import it
+  // (outside this card); its three rows are absent by name. The pointered
+  // `Scene` is not a fixed table, and the form is a fixed table's (§3.3).
+  why.write('no message codec for $unit/$root');
+  return null;
+}
+
+int surfaceMessage(String outDir) {
+  final unitOf = <String, String>{};
+  final announceOf = <String, String>{};
+  for (final c in kind('connection')) {
+    unitOf[c[1]] = c[2];
+    announceOf[c[1]] = c[4];
+  }
+  for (final f in kind('message')) {
+    final unit = unitOf[f[2]];
+    final announcePath = announceOf[f[2]];
+    if (unit == null || announcePath == null) {
+      stderr.writeln('driver: ${f[1]} names no connection ${f[2]}');
+      return 1;
+    }
+    final announce = File(announcePath).readAsBytesSync();
+    final message = File(f[5]).readAsBytesSync();
+    final why = StringBuffer();
+    final answer = messageRoundTrip(unit, f[3], announce, message, why);
+    if (answer == null) {
+      File('$outDir/${f[1]}.absent').writeAsStringSync(why.toString());
+    } else {
+      File('$outDir/${f[1]}').writeAsBytesSync(answer);
+    }
+  }
+  return 0;
+}
+
+// Each unit's round trip: announce into the vocabulary, LoadMessages the batch,
+// MeasureMessages its buffer, SaveMessages reproduce the bytes. The home
+// classes are the unit's own, so one helper per unit.
+Uint8List? vocabRoundTrip<T>(
+  Uint8List announce,
+  Uint8List message,
+  StringBuffer why,
+  T Function() fresh,
+  int Function(List<T>, Uint8List, vHome.TableVocabulary, vHome.TableReport) load,
+  int Function(List<T>, vHome.TableReport) measure,
+  int Function(List<T>, Uint8List, vHome.TableReport) save,
+) {
+  final vocab = vHome.TableVocabulary(
+    entries: List<vHome.TableMessageEntry>.generate(
+      4096,
+      (i) => vHome.TableMessageEntry(0, 0),
+    ),
+  );
+  final arep = vHome.TableReport();
+  if (!vHome.announceRead(vocab, announce, arep)) {
+    why.write('announce refused');
+    return null;
+  }
+  final values = List<T>.generate(256, (_) => fresh());
+  final rrep = vHome.TableReport();
+  final count = load(values, message, vocab, rrep);
+  if (count < 0) {
+    why.write('load refused');
+    return null;
+  }
+  final live = values.sublist(0, count);
+  final mrep = vHome.TableReport();
+  final n = measure(live, mrep);
+  if (n < 0) {
+    why.write('measure refused');
+    return null;
+  }
+  final out = Uint8List(n);
+  final srep = vHome.TableReport();
+  if (save(live, out, srep) != n) {
+    why.write('save refused');
+    return null;
+  }
+  return out;
+}
+
+Uint8List? vocab9RoundTrip<T>(
+  Uint8List announce,
+  Uint8List message,
+  StringBuffer why,
+  T Function() fresh,
+  int Function(List<T>, Uint8List, v9Home.TableVocabulary, v9Home.TableReport) load,
+  int Function(List<T>, v9Home.TableReport) measure,
+  int Function(List<T>, Uint8List, v9Home.TableReport) save,
+) {
+  final vocab = v9Home.TableVocabulary(
+    entries: List<v9Home.TableMessageEntry>.generate(
+      4096,
+      (i) => v9Home.TableMessageEntry(0, 0),
+    ),
+  );
+  final arep = v9Home.TableReport();
+  if (!v9Home.announceRead(vocab, announce, arep)) {
+    why.write('announce refused');
+    return null;
+  }
+  final values = List<T>.generate(256, (_) => fresh());
+  final rrep = v9Home.TableReport();
+  final count = load(values, message, vocab, rrep);
+  if (count < 0) {
+    why.write('load refused');
+    return null;
+  }
+  final live = values.sublist(0, count);
+  final mrep = v9Home.TableReport();
+  final n = measure(live, mrep);
+  if (n < 0) {
+    why.write('measure refused');
+    return null;
+  }
+  final out = Uint8List(n);
+  final srep = v9Home.TableReport();
+  if (save(live, out, srep) != n) {
+    why.write('save refused');
+    return null;
+  }
+  return out;
+}
+
+Uint8List? messageVocab(
+  String root,
+  Uint8List announce,
+  Uint8List message,
+  StringBuffer why,
+) {
+  switch (root) {
+    case 'Wide00':
+      return vocabRoundTrip(
+        announce,
+        message,
+        why,
+        () => vHome.Wide00(),
+        vRoot.wide00LoadMessages,
+        vRoot.wide00MeasureMessages,
+        vRoot.wide00SaveMessages,
+      );
+    case 'Wide09':
+      return vocabRoundTrip(
+        announce,
+        message,
+        why,
+        () => vHome.Wide09(),
+        vRoot.wide09LoadMessages,
+        vRoot.wide09MeasureMessages,
+        vRoot.wide09SaveMessages,
+      );
+  }
+  why.write('no vocab message root $root');
+  return null;
+}
+
+Uint8List? messageVocab9(
+  String root,
+  Uint8List announce,
+  Uint8List message,
+  StringBuffer why,
+) {
+  switch (root) {
+    case 'Wide00':
+      return vocab9RoundTrip(
+        announce,
+        message,
+        why,
+        () => v9Home.Wide00(),
+        v9Root.wide00LoadMessages,
+        v9Root.wide00MeasureMessages,
+        v9Root.wide00SaveMessages,
+      );
+    case 'Wide19':
+      return vocab9RoundTrip(
+        announce,
+        message,
+        why,
+        () => v9Home.Wide19(),
+        v9Root.wide19LoadMessages,
+        v9Root.wide19MeasureMessages,
+        v9Root.wide19SaveMessages,
+      );
+  }
+  why.write('no vocab9 message root $root');
+  return null;
+}
+
 const String surfaces =
     // the five WIRE-CARRYING surfaces are ABSENT: Dart emits no table wire
     // (the port that wrote the wire's previous form was removed; schema#514
     // brings the id-table form to Dart). The accelerators are current.
     ''
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\n';
+    'forgery\ncook-forgery\nmessage\n';
 
 void main(List<String> args) {
   exit(run(args));
@@ -692,6 +930,8 @@ int run(List<String> args) {
       return surfaceBlockDump(out);
     case 'forgery':
       return surfaceForgery(out);
+    case 'message':
+      return surfaceMessage(out);
   }
   return 2;
 }
