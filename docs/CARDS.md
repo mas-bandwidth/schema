@@ -188,7 +188,7 @@ does not inherit replace directives from module `cards`:
 
 ```go
 replace cards => <checkout>/build/tables-generated-go/cards
-replace github.com/mas-bandwidth/serialize.go => <checkout>/serialize.go
+replace github.com/mas-bandwidth/serialize.go => <checkout>/../serialize.go
 ```
 
 `make cards-example` is the runnable command. Its test runs the marked example
@@ -227,7 +227,7 @@ Existing targets:
 - `make cards-test` — check the declaration, vet and test the generated module.
 - `make cards-example` — stage and run the separate `cardsexample` customer module.
 - `make cards-corpus-check` — pin the current declaration and require every SHIPPED case.
-- `make cards-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
+- `make cards-corpus-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
 
 ## Later sprint integration
 
