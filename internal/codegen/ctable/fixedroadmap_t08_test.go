@@ -421,6 +421,36 @@ func cT08DeepUnionSchema(n int) string {
 	return b.String()
 }
 
+// cT08UnionChainSchema lays N unions on one path where each arm's type IS the
+// next union in (one level a union): U0's arm a holds S0's x, U{i}'s arm a is
+// U{i-1}, and the outermost union's arm b is a SECOND nested path (V1, whose
+// arm a is the union V0), so the outermost union restamps two paths at once.
+func cT08UnionChainSchema(n int) string {
+	var b strings.Builder
+	b.WriteString("package probe\n")
+	b.WriteString("type S0 { x int32 = 0 }\n")
+	b.WriteString("type Sb { y int32 = 0 }\n")
+	b.WriteString("type Sc { z int32 = 0 }\n")
+	b.WriteString("union V0 {\n    a Sb\n    b Sc\n}\n")
+	b.WriteString("union V1 {\n    a V0\n    b Sc\n}\n")
+	b.WriteString("union U0 {\n    a S0\n    b Sb\n}\n")
+	for i := 1; i < n; i++ {
+		second := "Sb"
+		if i == n-1 {
+			second = "V1"
+		}
+		fmt.Fprintf(&b, "union U%d {\n    a U%d\n    b %s\n}\n", i, i-1, second)
+	}
+	// A UNION WHOSE ARM IS A UNION IS A TABLE-CLOSURE CONSTRUCT (SPEC-TABLES
+	// §2.6): every union on the path is held in the table's body too.
+	fmt.Fprintf(&b, "fixed table Root {\n    u U%d\n", n-1)
+	for i := 0; i < n-1; i++ {
+		fmt.Fprintf(&b, "    r%d U%d\n", i, i)
+	}
+	b.WriteString("    s V1\n}\n")
+	return b.String()
+}
+
 // cT08ChainProbe is the C that proves a chain on both plans: the record as
 // written lands the deepest leaf; with the OUTERMOST tag naming the other arm
 // (a condition only the chain's first link carries) and with the next tag in
@@ -434,10 +464,10 @@ func cT08ChainProbe(set, leaf, outerTag, nextTag string, outerAt, nextAt int64) 
 #define OUTER_AT %d
 #define NEXT_AT %d
 static Root value, back;
-static uint8_t wire[1 << 16], file[1 << 16];
+static uint8_t wire[1 << 22], file[1 << 22];
 int main(void)
 {
-    static TableFixedEntry plan[4096];
+    static TableFixedEntry plan[1 << 16];
     TableReport r;
     int64_t need;
     int path, poison;
@@ -458,7 +488,7 @@ int main(void)
             if (poison == 2) { T08_BODY(file)[NEXT_AT] = 2; }
             memset(&back, 0xAA, sizeof(back));
             memset(&r, 0, sizeof(r));
-            if (root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) != 1)
+            if (root_fixed_load(&back, 1, file, need, plan, 1 << 16, NULL, &r) != 1)
                 { fprintf(stderr, "path %%d poison %%d: the read refused (reason %%d): the chain is bounded by something other than the layout's 64\n", path, poison, (int) r.reason); return 1; }
             CHECK(!r.refused && !r.malformed);
             if (poison == 0)
@@ -529,6 +559,24 @@ func cT08GuardChain(t *testing.T) {
 	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) {
 		t.Fatal("no published plan entry carries count 3 at the chain's offset")
 	}
+	// THE TWO-LANE CONSUMERS REFUSE THE CHAIN BY NAME. The C++ reference reads
+	// only the two inline lanes of ir.TableFixedBuildPlanNormalised, so the
+	// deepest leaf of a three-union chain would reach it without the OUTERMOST
+	// link — and a record whose outermost tag names another arm, its inner tags
+	// intact, would land that leaf. The page's answer for a consumer without the
+	// chain is the refusal by name (§4.1, §5.8 row 6), never a dropped condition.
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("the C++ reference emitted a three-union table on two guard lanes: its deepest leaf has lost the OUTERMOST tag, so a false outer tag with the inner tags intact lands it")
+			}
+			if !strings.Contains(fmt.Sprint(r), "a backend without the guard chain refuses a third nested union") {
+				t.Fatalf("the C++ reference refused for another reason: %v", r)
+			}
+		}()
+		_, _ = cpptable.Generate(unitFrom(t, cT08TripleUnionSchema))
+	}()
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
     value.oo.as.o.mm.type = 1;
     value.oo.as.o.mm.as.m.i.type = 1;
@@ -565,6 +613,47 @@ func cT08GuardChain(t *testing.T) {
 	fmt.Fprintf(&set, "    %s.x = 42;", path)
 	cT08Probe(t, cT08DeepUnionSchema(deepest), "Root", cT08ChainProbe(set.String(),
 		"back"+strings.TrimPrefix(path, "value")+".x", "back.u.type", "back.u.as.a.u.type", deepLinks[0].Guard, deepLinks[1].Guard))
+
+	// THE EDGE: an arm whose type is a union costs one level a union, so the
+	// longest chain the fixed form emits is found by walking N down from past
+	// the bound, and its outermost union carries a SECOND nested path, so the
+	// outermost restamp reads an already-restamped chain of full length while it
+	// lays the second (the case the restamp's link buffers are sized for). Run
+	// on both plans under the sanitizer.
+	edge := 0
+	for n := ir.TableFixedMaxDepth + 4; n >= 3; n-- {
+		eu := unitFrom(t, cT08UnionChainSchema(n))
+		if ir.TableFixedEmitted(eu, eu.Tables["Root"]) {
+			edge = n
+			break
+		}
+	}
+	if edge < 3 {
+		t.Fatal("no union-of-union chain emits the fixed form")
+	}
+	eu := unitFrom(t, cT08UnionChainSchema(edge))
+	edgePlan, _, edgePool := ir.TableFixedBuildPlanNormalisedWithPool(eu, eu.Tables["Root"])
+	var edgeLeaf *ir.TableFixedLeaf
+	for i := range edgePlan {
+		if edgePlan[i].GuardCount == edge {
+			edgeLeaf = &edgePlan[i]
+		}
+	}
+	if edgeLeaf == nil {
+		t.Fatalf("the %d-union chain does not build a %d-link chain", edge, edge)
+	}
+	t.Logf("the longest union-of-union chain the fixed form emits is %d links (the layout's bound is %d)", edge, ir.TableFixedMaxDepth)
+	edgeLinks := edgePool[edgeLeaf.GuardIndex : edgeLeaf.GuardIndex+edgeLeaf.GuardCount]
+	var edgeSet strings.Builder
+	edgePath := "value.u"
+	for i := 0; i < edge; i++ {
+		fmt.Fprintf(&edgeSet, "    %s.type = 1;\n", edgePath)
+		edgePath += ".as.a"
+	}
+	fmt.Fprintf(&edgeSet, "    %s.x = 42;", edgePath)
+	cT08Probe(t, cT08UnionChainSchema(edge), "Root", cT08ChainProbe(edgeSet.String(),
+		"back"+strings.TrimPrefix(edgePath, "value")+".x", "back.u.type", "back.u.as.a.type", edgeLinks[0].Guard, edgeLinks[1].Guard),
+		"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g")
 
 	past := unitFrom(t, cT08DeepUnionSchema(deepest+1))
 	if ir.TableFixedWithinDepth(past.Tables["Root"]) {
@@ -704,7 +793,7 @@ int main(void)
 `+same)
 }
 
-// cT08LayoutSchema is W13's second probe beside test/tables/FX1.schema: a
+// cT08LayoutSchema is W13's probe beside test/tables/FX1.schema: a
 // ranged scalar so the hash folds the definitions digest, beside two plain
 // scalars.
 const cT08LayoutSchema = `package probe
@@ -758,13 +847,18 @@ func cT08Hex(t *testing.T, text, marker string) uint64 {
 // #12: "THE HASH IS THE SHARED FUNCTION'S: ir.TableFixedLayoutHash, whose
 // signature has no digest argument for a leg to omit." The reference is the C++
 // emitter's OWN OUTPUT (internal/codegen/cpptable): for test/tables/FX1.schema —
-// the schema test/conformance/c/rows/W13.c names — and the two probe schemas,
+// the schema test/conformance/c/rows/W13.c names — and the probe schema,
 // every fixed table's `<Name>FixedHash` and `<Name>FixedLayout[]` the C++ header
 // publishes are read back and asserted equal to the `<snake>_fixed_hash` and
 // `<snake>_fixed_layout[]` the C header publishes, byte for byte. Two emitters'
 // published constants are compared, not a shared helper's answer with itself.
+//
+// THE CLAUSE IS THE LAYOUT AND THE HASH, AND ONLY THEM: equal constants say
+// nothing about the predicates either runtime applies to a record. The C++
+// leg's refusal of a guard chain it cannot carry is asserted under c/R28, and a
+// three-union schema is not a row here because the C++ reference refuses it.
 func cT08LayoutHashEqualsReference(t *testing.T) {
-	sources := []string{cReadSchema(t, "FX1"), cT08LayoutSchema, cT08TripleUnionSchema}
+	sources := []string{cReadSchema(t, "FX1"), cT08LayoutSchema}
 	tables := 0
 	for _, src := range sources {
 		u := unitFrom(t, src)
@@ -795,7 +889,7 @@ func cT08LayoutHashEqualsReference(t *testing.T) {
 			tables++
 		}
 	}
-	if tables < 4 {
+	if tables < 3 {
 		t.Fatalf("only %d tables compared: the rows are not all here", tables)
 	}
 }

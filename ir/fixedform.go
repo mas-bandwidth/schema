@@ -1181,9 +1181,30 @@ func tableFixedContainsBoolField(f *Field, seen map[string]bool) bool {
 // PARTITIONED — every unguarded entry first, then every guarded one — and
 // adjacent COPY entries whose source and destination both advance together are
 // one entry. Neighbours are never merged across the split.
+//
+// IT IS THE TWO-LANE PLAN: a consumer of it reads Guard/Arg/ArgW and
+// Guard2/Arg2/ArgW2 and nothing else, so a chain past two links has no place in
+// it and is REFUSED BY NAME ([tableFixedTwoLanes]) rather than handed over with
+// its outer links dropped (§4.1, §5.8 row 6). A backend that carries the chain
+// reads [TableFixedBuildPlanNormalisedWithPool] instead.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
 	plan, guarded, _ = tableFixedBuildPlan(u, st, false)
+	tableFixedTwoLanes(st, plan)
 	return plan, guarded
+}
+
+// tableFixedTwoLanes is THE TWO-LANE PLAN'S REFUSAL (§4.1, §5.8 row 6): an
+// entry whose guard chain has more links than the two inline lanes carry would
+// lose its OUTER conditions in a consumer that reads only those lanes — an arm
+// inside an arm inside an arm would then run under a false outer tag. A THIRD
+// nested union is refused by name for such a consumer, never dropped; this walk
+// is the build's own type, so it is a compiler error and not a wire event.
+func tableFixedTwoLanes(st *Struct, plan []TableFixedLeaf) {
+	for _, e := range plan {
+		if e.GuardCount > 2 {
+			panic(fmt.Sprintf("fixed form: table %s: an entry answers to %d nested union tags and this plan carries two lanes; a backend without the guard chain refuses a third nested union (§5.8 row 6)", st.Name, e.GuardCount))
+		}
+	}
 }
 
 // TableFixedBuildPlanNormalised is TableFixedBuildPlan with a bool field and a
@@ -1192,8 +1213,12 @@ func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded in
 // normalised plan and one that reads the plain one cannot disagree about byte
 // positions; only the op on the two bool bytes differs. The C++ reference is
 // the consumer today (fix 2); a copy into a C++ bool is the UB it clears.
+//
+// It is the two-lane plan too, and refuses a chain past two links by name the
+// same way ([tableFixedTwoLanes]).
 func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
 	plan, guarded, _ = tableFixedBuildPlan(u, st, true)
+	tableFixedTwoLanes(st, plan)
 	return plan, guarded
 }
 
@@ -1794,7 +1819,9 @@ func TableFixedHasWriteBound(u *Unit) bool {
 // or one text length, does not. A backend that sees that plan may read a record
 // with ONE memcpy into the caller's own struct and emit no scatter at all.
 func TableFixedIdentityFlat(u *Unit, st *Struct) bool {
-	plan, guarded := TableFixedBuildPlan(u, st)
+	// Offsets and the unguarded half only: the guard chain does not enter
+	// the answer, so the walk is read without the two-lane refusal.
+	plan, guarded, _ := tableFixedBuildPlan(u, st, false)
 	if len(plan) != 1 || guarded != 1 {
 		return false
 	}
@@ -1826,7 +1853,9 @@ type TableFixedRange struct {
 // nothing reads it and nothing needs to default it — which is also why the set
 // is derived from the plan's leaves rather than from sizeof.
 func TableFixedIdentityCoverage(u *Unit, st *Struct) []TableFixedRange {
-	plan, _ := TableFixedBuildPlan(u, st)
+	// Destinations only: the guard chain does not enter the coverage, so the
+	// walk is read without the two-lane refusal.
+	plan, _, _ := tableFixedBuildPlan(u, st, false)
 	var raw []TableFixedRange
 	for _, e := range plan {
 		switch e.Op {

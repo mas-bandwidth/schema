@@ -1331,8 +1331,11 @@ static SCHEMA_UNUSED int table_fixed_chain_prefix( const TableFixedGuardLink * w
 static SCHEMA_UNUSED void table_fixed_restamp_outer( TableFixedCompiler * c, int32_t from,
                                                      uint32_t guard, uint64_t arg, uint8_t argw )
 {
-    TableFixedGuardLink longest[kTableFixedMaxDepth];
-    TableFixedGuardLink links[kTableFixedMaxDepth];
+    /* ONE SLOT PAST THE BOUND: the outer link goes at [0] and a chain of up to
+       kTableFixedMaxDepth links is read in behind it at [1] — a chain already
+       restamped this pass included — before the bound is asked of it. */
+    TableFixedGuardLink longest[kTableFixedMaxDepth + 1];
+    TableFixedGuardLink links[kTableFixedMaxDepth + 1];
     int32_t q;
     /* ONE CONDITION: the outer tag rides the second inline lane. */
     for ( q = from; q < c->count; ++q )
