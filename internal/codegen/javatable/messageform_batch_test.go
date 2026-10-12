@@ -374,33 +374,54 @@ const messageDamageDriver = batchDriverPrologue + `
         final TableVocabulary vocab = mkVocab();
         final LoginRequestFixed.Value[] got = { new LoginRequestFixed.Value() };
 
-        // DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1: a batch of one cut
-        // to its header alone reads no body, counts one malformed, and returns
-        // k - 1 = 0 (docs/SPEC-TABLES.md §3.3).
+        // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1. The returned count
+        // states k - 1, ONE malformed counts, and nothing at or after body k
+        // is read" (docs/SPEC-TABLES.md §3.3). Three bodies: body 1 is its
+        // terminator alone, body 2 opens with player_id's reference and its
+        // 64 payload bits, body 3 is a terminator. The wire is cut eight bits
+        // into body 2's payload, so the bits run out inside body 2 (k = 2).
+        final LoginRequestFixed.Value mid = new LoginRequestFixed.Value();
+        mid.playerId = 0x0123456789ABCDEFL;
+        final LoginRequestFixed.Value[] three = { new LoginRequestFixed.Value(), mid, new LoginRequestFixed.Value() };
+        final byte[] whole = new byte[(int) LoginRequestMessage.measureMessages(three, new TableMessage.Report())];
+        if (LoginRequestMessage.saveMessages(three, whole, new TableMessage.Report()) != whole.length) { fail("save three"); }
+        final int cutBits = 16 + TableMessage.refBits + TableMessage.refBits + 8;
+        final byte[] cut2 = java.util.Arrays.copyOf(whole, (cutBits + 7) / 8);
+        final LoginRequestFixed.Value[] into = { new LoginRequestFixed.Value(), new LoginRequestFixed.Value(), new LoginRequestFixed.Value() };
+        into[2].clientBuild = 77;
+        final TableMessage.Report r0 = new TableMessage.Report();
+        final long n0 = LoginRequestMessage.loadMessages(into, cut2, vocab, r0);
+        if (n0 != 1 || !r0.malformed || r0.refused) { fail("damage in body 2: count=" + n0 + " malformed=" + r0.malformed); }
+        if (into[2].clientBuild != 77) { fail("a body after the damage was read"); }
+
+        // The same rule at k = 1: a batch of one cut to its header alone
+        // reads no body and counts one malformed (§3.3).
         final byte[] cut = new byte[] { 2, 0 };
         final TableMessage.Report r1 = new TableMessage.Report();
         final long n1 = LoginRequestMessage.loadMessages(got, cut, vocab, r1);
-        if (n1 != 0 || !r1.malformed) { fail("damage n=" + n1 + " malformed=" + r1.malformed); }
+        if (n1 != 0 || !r1.malformed || r1.refused) { fail("damage n=" + n1 + " malformed=" + r1.malformed); }
 
-        // BYTES AFTER THE PAD ARE MALFORMED (docs/SPEC-TABLES.md §3.3).
+        // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left
+        // over describes no batch this reader can name" (§3.3).
         final byte[] trailing = java.util.Arrays.copyOf(buf, buf.length + 1);
         final TableMessage.Report r2 = new TableMessage.Report();
         LoginRequestMessage.loadMessages(got, trailing, vocab, r2);
-        if (!r2.malformed) { fail("trailing byte not malformed"); }
+        if (!r2.malformed || r2.refused) { fail("trailing byte not malformed"); }
 
-        // A form byte this reader does not know is a refusal by name (§3.3).
+        // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader
+        // does not know is a REFUSAL by name and never damage" (§3.3).
         final byte[] nf = new byte[] { 3, 0 };
         final TableMessage.Report r3 = new TableMessage.Report();
         if (LoginRequestMessage.loadMessages(got, nf, vocab, r3) != -1) { fail("newer_form not refused"); }
-        if (!r3.refused || !"newer_form".equals(r3.reason)) { fail("newer_form reason " + r3.reason); }
+        if (!r3.refused || !"newer_form".equals(r3.reason) || r3.malformed) { fail("newer_form reason " + r3.reason); }
 
-        // A message handed to the FILE reader is refused message_form_as_file
-        // (docs/SPEC-TABLES.md §3.3).
+        // "a reader handed a form-2 wire where a file was expected refuses by
+        // name" (§3.3): message_form_as_file, from the file reader.
         final byte[] mf = new byte[] { 2, 0 };
         final TableVocabulary fresh = new TableVocabulary();
         fresh.reset(64);
         final TableVocabulary.Report r4 = new TableVocabulary.Report();
-        if (TableVocabulary.announceRead(fresh, mf, r4) || !r4.refused || !"message_form_as_file".equals(r4.reason)) {
+        if (TableVocabulary.announceRead(fresh, mf, r4) || !r4.refused || !"message_form_as_file".equals(r4.reason) || r4.malformed) {
             fail("message_form_as_file reason " + r4.reason);
         }
         System.out.println("ok");
