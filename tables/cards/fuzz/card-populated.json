@@ -1,0 +1,48 @@
+{
+  "id": "populated",
+  "sha": "0123456789012345678901234567890123456789",
+  "tier": "flash",
+  "repo": "repo",
+  "_base": "base",
+  "kind": "kind",
+  "priority": "critical",
+  "stream": "stream",
+  "paths": [
+    {
+      "s": "path/one"
+    },
+    {
+      "s": "path/two"
+    }
+  ],
+  "_new": [
+    {
+      "s": "new/path"
+    }
+  ],
+  "shared": [
+    {
+      "s": "shared/path"
+    }
+  ],
+  "needs": [
+    {
+      "s": "need-one"
+    },
+    {
+      "s": "need-two"
+    }
+  ],
+  "test": "fixture test",
+  "done_when": "done when",
+  "deadline_minutes": 45,
+  "source": "source résumé→世界",
+  "epoch": 7,
+  "column": "review",
+  "holder": "holder",
+  "attempt": 1,
+  "head": "0123456789012345678901234567890123456789",
+  "branch": "branch/name",
+  "body": "body with multibyte →世界 and \"escapes\"\nand tabs\t",
+  "extra": []
+}

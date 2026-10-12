@@ -236,6 +236,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -387,7 +390,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
-				g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.%s", expr, v.Name), indent+8)
+				g.emitFixedWriteArm(v, off+tag, buf, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
@@ -416,6 +419,62 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		}
 		g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
+}
+
+// emitFixedWriteArm is one union arm's fixed-form store, the twin of
+// [emitFixedWritePayload] with the arm's storage spellings: an arm's value and
+// companion live inside the arm's own unnamed struct — `value` beside
+// `value_length` or `value_count` (§2.6) — and the writer reads those, not the
+// sibling-field spellings. A payload-free arm has no storage (§2.6), so it
+// writes nothing under the tag. "A union writes the tag and the taken arm only"
+// (docs/FIXED-FORM-ALGORITHM.md §3.1).
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val string, indent int) {
+	if v.Void() {
+		return // a payload-free arm: the tag alone is its whole storage (§2.6)
+	}
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Type.Kind == ir.TWString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 2)
+	case f.Type.Kind == ir.TBytes:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedWriteArmLoop(v, off, strconv.FormatInt(f.ArrayBound, 10), buf, armValue(val, v), indent)
+	case f.Array == ir.ArrayCounted:
+		g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
+		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, off, armCount(val, v))
+		g.emitFixedWriteArmLoop(v, off+ir.TableFixedCountBytes, armCount(val, v), buf, armValue(val, v), indent)
+	default:
+		g.emitFixedWriteElement(f, off, buf, armValue(val, v), indent)
+	}
+}
+
+// emitFixedWriteTextArm is a text or bytes arm's store: the used LENGTH, then
+// that many UNITS onto the template's zeros — the same [emitFixedWriteText]
+// store with the arm's companion spellings. The slack behind the used length is
+// the prefill's zero (§3.4).
+func (g *tableGen) emitFixedWriteTextArm(v ir.UnionVariant, base int64, buf, val, ind string, unit int64) {
+	f := v.F
+	g.fixedWriteBound(armCount(val, v), f.Type.Size, "length", ind)
+	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, base, armCount(val, v))
+	scale := ""
+	if unit != 1 {
+		scale = fmt.Sprintf("%d * ", unit)
+	}
+	g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, base+4, armValue(val, v), scale, armCount(val, v))
+}
+
+// emitFixedWriteArmLoop is an array arm's element loop: `count` elements from
+// the arm's value member onto the wire, one element store each.
+func (g *tableGen) emitFixedWriteArmLoop(v ir.UnionVariant, base int64, count string, buf, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elem := ir.TableFixedElementBytes(v.F)
+	g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s; ++i )\n%s{\n", ind, count, ind)
+	g.emitFixedWriteElement(v.F, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+4)
+	g.pf("%s}\n", ind)
 }
 
 // ---- the root's surface ----------------------------------------------------
@@ -633,11 +692,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
+	if ir.TableFixedClampNeeded(st) {
+		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
+		g.pf("        // §5.8): the counters this record's plan and ranges have moved are put\n")
+		g.pf("        // back before the refusal returns, so the refusing record moves none.\n")
+		g.pf("        const int32_t rec_clamped = report->clamped;\n")
+		g.pf("        const int32_t rec_widened = report->widened;\n")
+	}
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
-		g.pf("        %sFixedClamp( values[k], report );\n", st.Name)
+		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
+		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 }
@@ -744,6 +811,9 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 			g.pf("static_assert( sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n", f.Type.Name, size, f.Type.Name)
 			g.pf("static_assert( %s == 0, \"%s: the tag leads the union storage\" );\n", offOf(f.Type.Name, "type"), f.Type.Name)
 			for _, v := range un.Variants {
+				if v.Void() {
+					continue // a payload-free arm has no member to offset (§2.6)
+				}
 				g.pf("static_assert( %s == %d, \"%s.%s: every arm is overlaid here\" );\n", offOf(f.Type.Name, v.Name), arms, f.Type.Name, v.Name)
 			}
 		}
@@ -823,7 +893,9 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
-// one place the count reaches the report.
+// one place the count reaches the report. It answers false on an ill-formed
+// text refusal, so the load can leave the refusing record's counters where they
+// stood — REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.8).
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	if !ir.TableFixedClampNeeded(st) {
 		return
@@ -833,16 +905,17 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// count, an enum ordinal past the enum's top value. Straight-line, after\n")
 	g.pf("// the copy, over STORAGE, so the identity plan and a plan compiled from a\n")
 	g.pf("// stranger's layout are held to the same numbers by the same pass. Every\n")
-	g.pf("// clamp COUNTS.\n")
-	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("// clamp COUNTS, and a content rule REFUSES BY NAME.\n")
+	g.pf("inline bool %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
 	g.pf("    int32_t damaged = 0;\n")
 	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	g.pf("    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md\n")
+	g.pf("    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag\n")
+	g.pf("    // that carries the verdict is `refused` + the name, never `malformed`.\n")
+	g.pf("    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }\n")
 	g.pf("    report->clamped += clamped;\n")
-	g.pf("    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
-	g.pf("    // one flag and not on a counter: the field read its declared default\n")
-	g.pf("    // and the rest of the record stands.\n")
-	g.pf("    if ( damaged != 0 ) { report->malformed = true; }\n}\n\n")
+	g.pf("    return true;\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -894,12 +967,12 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // slack carries no meaning and reading it would be the cost this form exists to
 // avoid.
 //
-// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and it is the same
-// verdict every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
-// `malformed` counts, and the rest of the record stands. It is what SPEC.md
-// §4.7 and §4.12 put on the packet wire, where the whole read refuses — here
-// the record is positional, so the damage is one field's and the reader does
-// not lose the others to it.
+// A PAYLOAD THAT IS NOT TEXT IS A REFUSAL BY NAME AND NOT DAMAGE: the
+// `damaged` flag the root's clamp turns into `refused` + `text_ill_formed`,
+// nothing decoded and no counter moved. It is the verdict the packet reader
+// gives (SPEC.md §4.7), where the whole read refuses; the clamp this file emits
+// is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md
+// §4.5, fix 11). The slack is unspecified on read and never judged.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	if f.Type.Kind == ir.TWString {
@@ -909,13 +982,6 @@ func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
-	g.pf("%s    memset( %s.%s, 0, sizeof( %s.%s ) );\n", ind, val, f.Name, val, f.Name)
-	if f.Type.Kind == ir.TString && hasByteDefault(f) {
-		g.pf("%s    memcpy( %s.%s, %s, %d ); // the declared default\n", ind, val, f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
-		g.pf("%s    %s.%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
-	} else {
-		g.pf("%s    %s.%s_length = 0;\n", ind, val, f.Name)
-	}
 	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 

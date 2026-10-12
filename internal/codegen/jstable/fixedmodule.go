@@ -108,6 +108,10 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 		// unit with a fixed root. A plain `table` unit emits none of it.
 		if len(jsFixedUnitRoots(g.unit)) > 0 {
 			g.pf("%s", messageAnnouncementRuntime(g.unit))
+			// THE MESSAGE FORM'S BATCH BODY CODEC (§3.3): the bit writer and
+			// reader and the scalar/skip walk, beside the announcement surface,
+			// for the plural verbs the roots below emit.
+			g.pf("%s", messageBatchRuntime())
 		}
 		g.gen.unit = g.unit
 		// A TABLE gets its storage class here; a `type` already has one, from
@@ -148,6 +152,15 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitDecodeBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
+		// THE MESSAGE FORM'S BODY VERBS RIDE THE WHOLE CLOSURE, not just the
+		// roots (docs/SPEC-TABLES.md §3.3): a root's body may hold a `type` by
+		// value, whose own body verbs ride beside it. Only the batch verbs are a
+		// root's, emitted in its own module below.
+		if len(jsFixedUnitRoots(g.unit)) > 0 {
+			for _, st := range closure {
+				g.emitMessageBody(st)
+			}
+		}
 	}
 	for _, st := range tables {
 		if reason := fixedRefusal(st); reason != "" {
@@ -158,6 +171,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 	}
 	for _, st := range roots {
 		g.emitRoot(st)
+		g.emitMessageBatch(st)
 	}
 }
 
@@ -417,7 +431,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);\n")
+	g.pf("    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the\n")
+	g.pf("    // projection: refuse is total, no counter moves and no record lands.\n")
+	g.pf("    if (report.refused !== 0) { return -1; }\n")
 	g.pf("    %sFixedDecode(values[k], imageView, 0, report);\n", st.Name)
+	g.pf("    // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is\n")
+	g.pf("    // one COPY, so no text op ran, and the decode is where a byte string or\n")
+	g.pf("    // a wide string refuses by name.\n")
+	g.pf("    if (report.refused !== 0) { return -1; }\n")
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n")
 	g.pf("  // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns\n")

@@ -56,6 +56,10 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 			mine[st.Name] = true
 		}
 	}
+	localUnions := fixedLocalUnions(closure)
+	for _, un := range localUnions {
+		mine[un.Name] = true
+	}
 
 	homeWritten := false
 	for _, f := range u.Files {
@@ -204,11 +208,78 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
+// fixedLocalUnions finds unions with direct field-line or payload-free arms.
+// Their fixed form owns its storage, including a tag-only union with no arm
+// members (SPEC-TABLES §2.6, §3.4).
+func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
+	seen := map[string]bool{}
+	var out []*ir.Union
+	var visitUnion func(*ir.Union)
+	var visitStruct func(*ir.Struct)
+	visitUnion = func(un *ir.Union) {
+		if un == nil || seen[un.Name] {
+			return
+		}
+		local := false
+		for _, v := range un.Variants {
+			if v.F == nil {
+				local = true // §2.6: fixed storage owns the tag-only arm, with no member.
+				continue
+			}
+			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
+				local = true
+			}
+		}
+		if local {
+			seen[un.Name] = true
+			out = append(out, un)
+		}
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				visitStruct(r)
+			case *ir.Union:
+				visitUnion(r)
+			}
+		}
+	}
+	visitStruct = func(st *ir.Struct) {
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				visitStruct(r)
+			case *ir.Union:
+				visitUnion(r)
+			}
+		}
+	}
+	for _, st := range closure {
+		visitStruct(st)
+	}
+	return out
+}
+
 func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		// THE MESSAGE FORM'S ANNOUNCEMENT (§3.3) rides the runtime home beside
+		// the fixed runtime: the form is a fixed table's, so a unit that has a
+		// fixed root is exactly the unit whose announcement is emitted.
+		g.emitMessageAnnouncement()
+		// AND ITS BATCH SURFACE (§3.3), the same home rule: the bit codec and
+		// the per-body read/write ride once, beside the fixed runtime.
+		g.emitMessageBatchRuntime()
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/dart, and is imported rather than emitted twice.
+		for _, un := range fixedLocalUnions(closure) {
+			g.gen.emitUnionStorageClass(un)
+		}
 		for _, st := range closure {
 			if st.IsTable {
 				g.gen.emitStorageClass(st)
@@ -219,6 +290,9 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
+		}
+		for _, st := range closure {
+			g.emitMessageBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
 	}
@@ -244,7 +318,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
 	prefill := fixedPrefillBytes(st)
-	plan := fixedIdentityPlan(st)
+	plan, split := fixedIdentityPlan(st)
 	lower := lowerFirst(st.Name)
 
 	// exactly the names the surface below spells, and no more: the analyzer
@@ -346,6 +420,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedIdentityCount = %d;\n\n", lower, len(plan))
+	g.pf("/// THE SPLIT: the index the identity plan's GUARDED half starts at — the\n")
+	g.pf("/// number of unguarded entries (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,\n")
+	g.pf("/// §5.9 #42). Every entry below it carries no guard and every entry at or\n")
+	g.pf("/// above it carries one; the run loop tests the guard per entry, which #42\n")
+	g.pf("/// allows, but the plan is still partitioned and states its split.\n")
+	g.pf("const int %sFixedIdentitySplit = %d;\n\n", lower, split)
 
 	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
 	//
@@ -611,6 +691,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.kindMismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
+
+	// THE MESSAGE FORM'S BATCH SURFACE (§3.3), beside the fixed form's: a
+	// fixed root's is the unit whose batch verbs are emitted.
+	g.emitMessageBatch(st)
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

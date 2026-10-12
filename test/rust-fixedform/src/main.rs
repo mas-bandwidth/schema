@@ -242,11 +242,13 @@ macro_rules! compiled_self_plan {
             concat!($file, ": the block parses on both sides"),
         );
         let mut report = $krate::TableFixedReport::default();
+        let mut guards = [$krate::TableFixedGuard::default(); 2048];
         let compiled = $krate::table_fixed_compile(
             &theirs.expect("their block"),
             &mine.expect("my block"),
             &$krate::$counted,
             &mut plan,
+            &mut guards,
             &mut remap,
             &mut report,
         );
@@ -268,6 +270,7 @@ macro_rules! compiled_self_plan {
             image.copy_from_slice(&$krate::$defaults);
             $krate::table_fixed_run(
                 &plan[..compiled],
+                &guards[..],
                 &remap,
                 &rest[k * record + 8..(k + 1) * record],
                 &mut image,
@@ -413,7 +416,7 @@ fn the_negative_controls(dir: &str) {
         let mut wrong = [0u8; tblfx1::FX_ROOT_FIXED_BODY_BYTES];
         wrong.copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS);
         let mut report = tblfx1::TableFixedReport::default();
-        tblfx1::table_fixed_run(&tblfx1::FX_ROOT_FIXED_PLAN, &[], body, &mut wrong, &mut report);
+        tblfx1::table_fixed_run(&tblfx1::FX_ROOT_FIXED_PLAN, &[], &[], body, &mut wrong, &mut report);
         let mut wrongly = tblfx1::FxRootRow::default();
         tblfx1::fx_root_fixed_scatter(&wrong, &mut wrongly, &mut report);
         check(
@@ -1174,6 +1177,7 @@ fn the_record_bound() {
         );
         let theirs = theirs.expect("the hostile layout parses");
         let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut guards = [tblfx1::TableFixedGuard::default(); 1024];
         let mut remap = [0u16; 1024];
         let mut report = tblfx1::TableFixedReport::default();
         let made = tblfx1::table_fixed_compile(
@@ -1181,6 +1185,7 @@ fn the_record_bound() {
             &mine,
             &tblfx1::FX_ROOT_FIXED_COUNTED,
             &mut plan,
+            &mut guards,
             &mut remap,
             &mut report,
         );
@@ -1234,6 +1239,7 @@ fn the_record_bound() {
         );
         let theirs = theirs.expect("the boundary layout parses");
         let mut plan = [tblfx1::TableFixedEntry::default(); 1024];
+        let mut guards = [tblfx1::TableFixedGuard::default(); 1024];
         let mut remap = [0u16; 1024];
         let mut report = tblfx1::TableFixedReport::default();
         let made = tblfx1::table_fixed_compile(
@@ -1241,6 +1247,7 @@ fn the_record_bound() {
             &mine,
             &tblfx1::FX_ROOT_FIXED_COUNTED,
             &mut plan,
+            &mut guards,
             &mut remap,
             &mut report,
         );
@@ -1938,20 +1945,26 @@ fn the_guard_is_the_whole_tag() {
     // and four bytes of payload behind it
     let body: [u8; 6] = [0x01, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
 
-    let arm_one = |argw: u8| tblfu1::TableFixedEntry {
+    // ONE ENTRY behind one guard link in the plan's pool: guard_off/guard_count
+    // name the link, and the link carries the tag's offset, ordinal and width.
+    let entry = tblfu1::TableFixedEntry {
         src: 2,
         dst: 0,
         size: 4,
+        guard_off: 0,
+        guard_count: 1,
+        op: tblfu1::TableFixedOp::Copy,
+        ..tblfu1::TableFixedEntry::default()
+    };
+    let guard_at = |argw: u8| tblfu1::TableFixedGuard {
         guard: 0,
         arg: 1, // arm 1, in the writer's declared order
         argw,
-        op: tblfu1::TableFixedOp::Copy,
-        ..tblfu1::TableFixedEntry::default()
     };
 
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[arm_one(2)], &[], &body, &mut image, &mut report);
+    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &body, &mut image, &mut report);
     check(
         image == [0u8; 4] && !report.malformed,
         "the guard: a two-byte tag of 0x0101 is NOT arm 1, so the arm's entry does not fire",
@@ -1961,7 +1974,7 @@ fn the_guard_is_the_whole_tag() {
     let named: [u8; 6] = [0x01, 0x00, 0xAA, 0xBB, 0xCC, 0xDD];
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[arm_one(2)], &[], &named, &mut image, &mut report);
+    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &named, &mut image, &mut report);
     check(
         image == [0xAA, 0xBB, 0xCC, 0xDD] && !report.malformed,
         "the guard: 0x0001 at two bytes IS arm 1, and the entry fires",
@@ -1971,7 +1984,7 @@ fn the_guard_is_the_whole_tag() {
     // the behaviour the fix removed, watched doing the wrong thing.
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[arm_one(1)], &[], &body, &mut image, &mut report);
+    tblfu1::table_fixed_run(&[entry], &[guard_at(1)], &[], &body, &mut image, &mut report);
     check(
         image == [0xAA, 0xBB, 0xCC, 0xDD],
         "NEGATIVE CONTROL: comparing one byte of a two-byte tag DOES fire arm 1 on 0x0101",
@@ -1980,13 +1993,12 @@ fn the_guard_is_the_whole_tag() {
     // and a guard past the end of the record is framing damage, not a panic
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    let past = tblfu1::TableFixedEntry {
+    let past = tblfu1::TableFixedGuard {
         guard: 5,
         argw: 4,
         arg: 1,
-        ..arm_one(4)
     };
-    tblfu1::table_fixed_run(&[past], &[], &body, &mut image, &mut report);
+    tblfu1::table_fixed_run(&[entry], &[past], &[], &body, &mut image, &mut report);
     check(
         report.malformed && image == [0u8; 4],
         "the guard: a tag whose width runs past the record is malformed and lands nothing",
@@ -2021,7 +2033,7 @@ fn the_width8_ordinal_read_whole() {
     let src: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
     let mut dst = [0xABu8; 8];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[entry], &remap, &src, &mut dst, &mut report);
+    tblfu1::table_fixed_run(&[entry], &[], &remap, &src, &mut dst, &mut report);
     let landed = u64::from_le_bytes(dst);
     check(
         landed == 0,
@@ -2509,7 +2521,7 @@ fn the_prefill_holes(dir: &str) {
             image[o..o + z].copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS[o..o + z]);
         }
         let mut report = tblfx1::TableFixedReport::default();
-        tblfx1::table_fixed_run(&sab, &[], body, &mut image, &mut report);
+        tblfx1::table_fixed_run(&sab, &[], &[], body, &mut image, &mut report);
         check(
             image[BODY - 4..] == tblfx1::FX_ROOT_FIXED_DEFAULTS[BODY - 4..],
             "NEGATIVE CONTROL: the hole takes the declared default, not the dirty dest and not the record",

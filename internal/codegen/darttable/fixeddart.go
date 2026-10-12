@@ -327,6 +327,20 @@ func (g *fixedGen) emitStorageClass(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
+// emitUnionStorageClass owns value storage only for union arms that are
+// ordinary field lines rather than pre-emitted named values (SPEC-TABLES §2.6,
+// §3.4). Unselected arms remain undefined; zeroing resets only the tag (§4.8).
+func (g *fixedGen) emitUnionStorageClass(un *ir.Union) {
+	g.pf("/// %s's fixed-form arm storage (SPEC-TABLES §2.6, §3.4).\n", un.Name)
+	g.pf("final class %s {\n  int type = 0;\n", un.Name)
+	for _, v := range un.Variants {
+		if v.F != nil {
+			g.emitFieldStorage(v.F, "  ")
+		}
+	}
+	g.pf("}\n\nvoid zero%s(%s value) {\n  value.type = 0;\n}\n\n", capitalize(un.Name), un.Name)
+}
+
 // fixedZeroFor is a leaf's construction value, with a declared default folded
 // in where one overrides SPEC §5's zero.
 func (g *fixedGen) fixedZeroFor(f *ir.Field) string {
@@ -607,56 +621,66 @@ func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind s
 
 // emitWritePayload is the field's own stores, past any present flag.
 func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, name, ind string) {
+	g.emitWriteValue(f, base, at, val+"."+name, ind)
+}
+
+// emitWriteValue writes an ordinary field value, including a union arm's field
+// line (SPEC-TABLES §2.6, §3.4).
+func (g *fixedGen) emitWriteValue(f *ir.Field, base string, at int64, expr, ind string) {
 	switch {
 	case f.KeyEnum != "":
-		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), val+"."+name, ind)
+		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), expr, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), val+"."+name, ind)
+		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), expr, ind)
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
-		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put unused
-		// slots' STORAGE on the wire, which for an array of a type with
-		// declared defaults is the element's default image and not zero —
-		// a value nobody wrote, riding as if somebody had. Decode walks
-		// Count, so those slots are never filled from the record.
-		g.pf("%sassert(%s.%sCount >= 0);\n", ind, val, name)
-		g.pf("%sassert(%s.%sCount <= %d);\n", ind, val, name, f.ArrayBound)
+		count := fixedDartSibling(expr, "Count")
+		g.pf("%sassert(%s >= 0);\n", ind, count)
+		g.pf("%sassert(%s <= %d);\n", ind, count, f.ArrayBound)
 		g.call(ind, "", "view.setInt32",
-			[]string{fixedOff(base, at), val + "." + name + "Count", "Endian.little"}, ";")
-		g.emitWriteLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
+			[]string{fixedOff(base, at), count, "Endian.little"}, ";")
+		g.emitWriteLoop(f, base, at+fixedCountBytes, count, expr, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.pf("%sassert(%s.%sLength >= 0);\n", ind, val, name)
-		g.pf("%sassert(%s.%sLength <= %d);\n", ind, val, name, f.Type.Size)
+		length := fixedDartSibling(expr, "Length")
+		g.pf("%sassert(%s >= 0);\n", ind, length)
+		g.pf("%sassert(%s <= %d);\n", ind, length, f.Type.Size)
 		g.call(ind, "", "view.setInt32",
-			[]string{fixedOff(base, at), val + "." + name + "Length", "Endian.little"}, ";")
+			[]string{fixedOff(base, at), length, "Endian.little"}, ";")
 		g.call(ind, "", "bytes.setRange", []string{
 			fixedOff(base, at+fixedCountBytes),
-			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length",
-			val + "." + name,
+			fixedOff(base, at+fixedCountBytes) + " + " + length,
+			expr,
 		}, ";")
 		g.call(ind, "", "bytes.fillRange", []string{
-			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length",
+			fixedOff(base, at+fixedCountBytes) + " + " + length,
 			fixedOff(base, at+fixedCountBytes+f.Type.Size),
 			"0",
 		}, ";")
 	case f.Type.Kind == ir.TWString:
-		// the length in CODE UNITS, then 2N bytes
-		g.pf("%sassert(%s.%sLength >= 0);\n", ind, val, name)
-		g.pf("%sassert(%s.%sLength <= %d);\n", ind, val, name, f.Type.Size)
+		length := fixedDartSibling(expr, "Length")
+		g.pf("%sassert(%s >= 0);\n", ind, length)
+		g.pf("%sassert(%s <= %d);\n", ind, length, f.Type.Size)
 		g.call(ind, "", "view.setInt32",
-			[]string{fixedOff(base, at), val + "." + name + "Length", "Endian.little"}, ";")
-		g.pf("%sfor (var i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
+			[]string{fixedOff(base, at), length, "Endian.little"}, ";")
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, length)
 		g.call(ind+"  ", "", "view.setUint16",
-			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", val + "." + name + "[i]", "Endian.little"}, ";")
+			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", expr + "[i]", "Endian.little"}, ";")
 		g.pf("%s}\n", ind)
 		g.call(ind, "", "bytes.fillRange", []string{
-			fixedOff(base, at+fixedCountBytes) + " + " + val + "." + name + "Length * 2",
+			fixedOff(base, at+fixedCountBytes) + " + " + length + " * 2",
 			fixedOff(base, at+fixedCountBytes+2*f.Type.Size),
 			"0",
 		}, ";")
 	default:
-		g.emitWriteElement(f, base, at, val+"."+name, ind)
+		g.emitWriteElement(f, base, at, expr, ind)
 	}
+}
+
+// fixedDartSibling names a field count/length member beside its value (SPEC-TABLES §3.4).
+func fixedDartSibling(expr, suffix string) string {
+	if i := strings.LastIndexByte(expr, '.'); i >= 0 {
+		return expr[:i+1] + expr[i+1:] + suffix
+	}
+	return expr + suffix
 }
 
 func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
@@ -684,7 +708,9 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
-				g.emitWriteElement(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				if v.F != nil { // §3.4: a payload-free arm writes only its tag.
+					g.emitWriteValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n", ind)
 			}
 			g.pf("%s  default:\n%s    break;\n%s}\n", ind, ind, ind)
@@ -739,34 +765,40 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 		g.call(ind, val+"."+name+"Present = ", "view.getUint8", []string{fixedOff(base, at)}, " != 0;")
 		at += fixedPresentBytes
 	}
+	g.emitDecodeValue(f, base, at, val+"."+name, ind)
+}
+
+// emitDecodeValue projects one field's bytes into its value, including a union
+// arm's field line (SPEC-TABLES §2.6, §3.4).
+func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind string) {
 	switch {
 	case f.KeyEnum != "":
-		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), expr, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), expr, ind)
 	case f.Array == ir.ArrayCounted:
-		g.call(ind, val+"."+name+"Count = ", "view.getInt32",
+		count := fixedDartSibling(expr, "Count")
+		g.call(ind, count+" = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
-		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
-		// live count, never the slack behind it. Identity copies the whole
-		// array into the image; this loop is the pass both paths share.
-		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at+fixedCountBytes, count, expr, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
+		length := fixedDartSibling(expr, "Length")
+		g.call(ind, length+" = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
-		g.emitTextLengthClamp(val+"."+name+"Length", f.Type.Size, ind)
-		g.call(ind, "", val+"."+name+".setRange",
+		g.emitTextLengthClamp(length, f.Type.Size, ind)
+		g.call(ind, "", expr+".setRange",
 			[]string{"0", fmt.Sprintf("%d", f.Type.Size), "image", fixedOff(base, at+fixedCountBytes)}, ";")
 	case f.Type.Kind == ir.TWString:
-		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
+		length := fixedDartSibling(expr, "Length")
+		g.call(ind, length+" = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
-		g.emitTextLengthClamp(val+"."+name+"Length", f.Type.Size, ind)
+		g.emitTextLengthClamp(length, f.Type.Size, ind)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, f.Type.Size)
-		g.call(ind+"  ", val+"."+name+"[i] = ", "view.getUint16",
+		g.call(ind+"  ", expr+"[i] = ", "view.getUint16",
 			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", "Endian.little"}, ";")
 		g.pf("%s}\n", ind)
 	default:
-		g.emitDecodeElement(f, base, at, val+"."+name, ind)
+		g.emitDecodeElement(f, base, at, expr, ind)
 	}
 }
 
@@ -812,7 +844,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
-				g.emitDecodeElement(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				if v.F != nil { // §3.4: a payload-free arm reads only its tag.
+					g.emitDecodeValue(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n", ind)
 			}
 			// A TAG PAST THE LAST ARM IS None (§3.4): the arms run from 1 and

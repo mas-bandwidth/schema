@@ -1,0 +1,63 @@
+// Card.schema — the CARDS corpus (docs/SPEC-TABLES.md §2): a typed work card
+// plus one opaque body. Every bounded scalar and string field is declared at
+// its exact bound; the four collections ride as lists of table elements, and
+// the body is an optional unbounded string, deliberately outside the declared
+// bounds (docs/SPEC-TABLES.md §2.9). Customer policy — the body byte ceiling
+// and the collection-entry ceiling — lives in the owning facade, not here.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+enum Priority { normal, high, critical, blocker }
+
+enum Column { waiting, ready, working, review, merging, landed }
+
+// PathText and CardID are the table-element spelling for a bounded string
+// element: this compiler refuses a direct []string(N), so a list's element is
+// a table holding the string (docs/SPEC-TABLES.md §2.9).
+table PathText
+{
+    s string(192)
+}
+
+table CardID
+{
+    s string(64)
+}
+
+// KeyValue is the extra-header entry: an unrecognized header key rides here in
+// arrival order, its optional value an unbounded string like done_when and
+// source (docs/SPEC-TABLES.md §2.5).
+table KeyValue
+{
+    key   string(32)
+    value *string
+}
+
+table Card
+{
+    id               string(64)
+    sha              string(40)
+    tier             Tier
+    repo             string(96)
+    _base            string(96)
+    kind             string(24)
+    priority         Priority
+    stream           string(32)
+    paths            []PathText
+    _new             []PathText
+    shared           []PathText
+    needs            []CardID
+    test             string(192)
+    done_when        *string
+    deadline_minutes int32       | min = 0, max = 100000
+    source           *string
+    epoch            int32
+    column           Column
+    holder           string(32)
+    attempt          int32
+    head             string(40)
+    branch           string(128)
+    body             *string
+    extra            []KeyValue
+}

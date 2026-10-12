@@ -230,17 +230,13 @@ func (g *cookGen) blockHasRecord(name string) bool {
 	return g.blocks != nil && blockHome(g.unit, g.blocks) != "" && g.blocks.Layout(name) != nil
 }
 
-// blockOwnsRuntime reports whether the unit's BLOCK form already emits the
-// shared constants — BuildVersion above all. The two accelerators share one
-// package, so exactly one of them defines each name.
-func (g *cookGen) blockOwnsRuntime() bool {
-	return g.blocks != nil && blockHome(g.unit, g.blocks) != ""
-}
-
 func (g *cookGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
-		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), !g.blockOwnsRuntime()))
+		// BuildVersion lives in the TABLE source for every table-bearing unit,
+		// so the cook never spells it: one package, exactly one definition
+		// (docs/SPEC-TABLES.md §20.7).
+		g.rf("%s", cookRuntime(ir.BuildVersion(g.unit), false))
 		for _, name := range g.cook.order {
 			if g.blockHasRecord(name) {
 				continue
@@ -710,9 +706,10 @@ func cookStorageKind(f *ir.Field) string {
 // ---- the shared runtime ----
 
 // cookRuntime is the unit's shared cook runtime, emitted once into the cook
-// home's <Base>Cook.go. `withBuildVersion` is set only when the unit has no
-// BLOCK form to carry it: one package, so exactly one accelerator defines each
-// name (docs/SPEC-TABLES.md §20.7).
+// home's <Base>Cook.go. BuildVersion is no longer a name it can spell: the
+// TABLE source carries it for every unit that carries Announce, so
+// `withBuildVersion` is false at every call site and one package holds exactly
+// one definition (docs/SPEC-TABLES.md §20.7).
 func cookRuntime(buildVersion uint64, withBuildVersion bool) string {
 	var b strings.Builder
 	if withBuildVersion {

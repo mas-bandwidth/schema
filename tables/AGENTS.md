@@ -9,6 +9,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `blobs/` | byte-buffer corpus | `make check` | `bin/schema check tables/blobs` |
 | `block/` | block-form corpus | `make check` | `bin/schema check tables/block` |
 | `blockhome/` | block-home corpus | `make check` | `bin/schema check tables/blockhome` |
+| `cards/` | work-card corpus | `make cards-test` | `make cards-test` |
 | `examples/` | table examples corpus | `make check` | `bin/schema check tables/examples` |
 | `lists/` | unbounded-array corpus | `make check` | `bin/schema check tables/lists` |
 | `maps/` | map corpus | `make check` | `bin/schema check tables/maps` |

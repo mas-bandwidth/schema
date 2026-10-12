@@ -291,15 +291,62 @@ func identitySlotCover(plan []fixedPlanEntry, slotN int) []fixedFillRange {
 }
 
 type fixedPlanEntry struct {
-	src   int64
-	dst   int
-	size  int64
-	aux   int
-	guard int64
-	op    byte
-	arg   byte
-	meta  byte
-	argw  byte // THE GUARD'S WIDTH IN BYTES. Zero is read as one at emit.
+	src    int64
+	dst    int
+	size   int64
+	aux    int
+	guard  int64
+	op     byte
+	arg    uint64
+	meta   byte
+	argw   byte // THE GUARD'S WIDTH IN BYTES. Zero is read as one at emit.
+	guard2 int64
+	arg2   uint64
+	argw2  byte
+}
+
+// fixedPartitionPlan stable-partitions the built plan into every UNGUARDED
+// entry first and then every guarded one, and coalesces adjacent COPY entries
+// inside each half, never across the split (docs/FIXED-FORM-ALGORITHM.md §5.9
+// #42). It returns the partition and the split: the number of unguarded
+// entries, the index the guarded half starts at — a plan with no guarded entry
+// has its split at the END, not at zero. The run loop still tests the guard per
+// entry, which #42 allows outright; what a leg may not do is skip the
+// partition. A field past a union otherwise lands its unguarded entry behind
+// the union's guarded arms, and the coalescer would then face the two halves
+// interleaved.
+//
+// The destination is a SLOT index, not a byte offset, so two adjacent scalar
+// copies never merge: each scalar slot has its own setter and one entry cannot
+// write two slots. The coalesce condition therefore demands the SAME slot and a
+// contiguous source, which only a span-setter run satisfies — and a span-setter
+// run is already one Flat or Text entry. The pass still exists, and its
+// guard-equality and never-across-the-split checks are what §5.9 #42 pins.
+func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
+	out := make([]fixedPlanEntry, 0, len(plan))
+	split := 0
+	for pass := 0; pass < 2; pass++ {
+		for _, e := range plan {
+			if (e.guard != kFixedNoGuard) != (pass == 1) {
+				continue
+			}
+			if len(out) > split {
+				last := &out[len(out)-1]
+				if last.op == e.op && e.op == 0 &&
+					last.guard == e.guard && last.arg == e.arg &&
+					last.argw == e.argw && last.meta == e.meta &&
+					last.src+last.size == e.src && last.dst == e.dst {
+					last.size += e.size
+					continue
+				}
+			}
+			out = append(out, e)
+		}
+		if pass == 0 {
+			split = len(out)
+		}
+	}
+	return out, split
 }
 
 type fixedRootBuild struct {
@@ -389,7 +436,31 @@ func (b *fixedRootBuild) addPlan(e fixedPlanEntry) {
 		}
 		e.argw = w
 	}
+	// NO SECOND CONDITION IS NoGuard, and a plan entry never sets guard2 itself:
+	// stampGuard stamps it after the entry is in the plan. Its zero value would
+	// otherwise read as a real outer guard at offset 0 (§4.1).
+	if e.guard2 == 0 {
+		e.guard2 = kFixedNoGuard
+	}
 	b.plan = append(b.plan, e)
+}
+
+// stampGuard stamps an arm's tag over everything the arm added since at: an
+// entry with no guard yet takes the tag on the first lane, and an entry an
+// inner union already guarded takes it on the second lane, so BOTH tags must
+// hold (§4.1 "the entry runs when BOTH tags hold their ordinal").
+func (b *fixedRootBuild) stampGuard(at int, guard int64, arg uint64, argw byte) {
+	for q := at; q < len(b.plan); q++ {
+		if b.plan[q].guard == kFixedNoGuard {
+			b.plan[q].guard = guard
+			b.plan[q].arg = arg
+			b.plan[q].argw = argw
+			continue
+		}
+		b.plan[q].guard2 = guard
+		b.plan[q].arg2 = arg
+		b.plan[q].argw2 = argw
+	}
 }
 
 func (b *fixedRootBuild) scalarReset(f *ir.Field, expr string) string {
@@ -598,7 +669,7 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 	}
 }
 
-func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	id := ir.TableFieldWireId(f)
@@ -635,7 +706,7 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 	b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, id uint64, size int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, id uint64, size int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -859,7 +930,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 	}
 }
 
-func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id uint64, note string, guard int64, arg byte, wireOff *int64) {
+func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id uint64, note string, guard int64, arg uint64, wireOff *int64) {
 	wireBase := *wireOff
 	elemSize := fixedElementBytes(f)
 
@@ -913,7 +984,9 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				armProp := ir.GoExportName(v.Name)
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
-				b.buildElement(v.F, armExpr, armBase, armID, v.Name, wireBase, byte(j+1), wireOff)
+				at := len(b.plan)
+				b.buildElement(v.F, armExpr, armBase, armID, v.Name, kFixedNoGuard, 0, wireOff)
+				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
 			*wireOff = wireBase + elemSize
@@ -1004,7 +1077,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 	*wireOff += w
 }
 
-func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, baseSlot int, guard int64, arg byte, wireOff *int64) {
+func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, baseSlot int, guard int64, arg uint64, wireOff *int64) {
 	wireBase := *wireOff
 	elemSize := fixedElementBytes(f)
 
@@ -1038,7 +1111,9 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				armProp := ir.GoExportName(v.Name)
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
-				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, wireBase, byte(j+1), wireOff)
+				at := len(b.plan)
+				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
 			*wireOff = wireBase + elemSize
@@ -1093,7 +1168,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 	*wireOff += w
 }
 
-func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -1121,7 +1196,7 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 	b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64, guard int64, arg byte) {
+func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64, guard int64, arg uint64) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -1551,6 +1626,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	for _, f := range st.Fields {
 		b.buildField(st, f, "t", 0, &wireOff, kFixedNoGuard, 0)
 	}
+	// THE PLAN IS PARTITIONED, unguarded entries first (§5.9 #42): the walk
+	// lays entries down in field order, so a field past a union would land its
+	// unguarded entry behind the union's guarded arms. The split is the number
+	// of unguarded entries, carried beside the plan as metadata and never
+	// consulted by the run loop, which tests the guard per entry (allowed).
+	plan, planSplit := fixedPartitionPlan(b.plan)
+	b.plan = plan
 
 	block := fixedBlockBytes(b.entries)
 	hash := ir.TableFixedLayoutHash(block, st)
@@ -1611,6 +1693,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
+	// THE SPLIT (§5.9 #42): the number of unguarded entries, the index the
+	// guarded half starts at. It is metadata beside the plan, exactly the shape
+	// the C++ reference carries as FixedPlanGuarded: the run loop does not read
+	// it, but the partition it names is what a plan-execution test holds this
+	// leg to.
+	g.pf("public const int %sFixedPlanSplit = %d;\n\n", name, planSplit)
 	g.pf("public static readonly TableFixedPlan %sFixedPlan = new TableFixedPlan(new TableFixedEntry[] {\n", name)
 	for _, p := range b.plan {
 		guardStr := "TableFixedWire.NoGuard"
@@ -1630,8 +1718,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d),\n",
-			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw)
+		if p.guard2 == kFixedNoGuard {
+			g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d),\n",
+				p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw)
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
+		// carries the second condition on the Guard2/Arg2/ArgW2 lanes, full
+		// width and in their own lanes, never over Arg.
+		argw2 := p.argw2
+		if argw2 == 0 {
+			argw2 = 1
+		}
+		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d),\n",
+			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2)
 	}
 	g.pf("});\n\n")
 

@@ -30,7 +30,7 @@
 #[path = "../../../../build/tables-generated-rust/tblfu1/src/fixed_runtime.rs"]
 mod tblfu1;
 
-use tblfu1::{TableFixedEntry, TableFixedOp, TableFixedReport, table_fixed_run};
+use tblfu1::{TableFixedEntry, TableFixedGuard, TableFixedOp, TableFixedReport, table_fixed_run};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -60,18 +60,19 @@ fn arg_and_meta_are_two_lanes() {
     //   [5..13] "hello\0\0\0"  <- the declared 8-byte span (slack zeroed)
     let record: [u8; 13] = [2u8, 5, 0, 0, 0, b'h', b'e', b'l', b'l', b'o', 0, 0, 0];
 
-    // THE TWO FACTS, TWO LANES. `arg` = 2 is the arm ordinal and nothing else;
-    // the utf8 flavour is the unit the compiler baked into `size` (the 8-byte
+    // THE TWO FACTS, TWO LANES. The guard link's `arg` = 2 is the arm ordinal
+    // and nothing else (it lives in the guard POOL now, §4.1's follow-on); the
+    // utf8 flavour is the unit the compiler baked into `size` (the 8-byte
     // span) and `aux` (8 units). They are different fields, so neither can
     // overwrite the other.
+    let guard = TableFixedGuard { guard: 0, arg: 2, argw: 1 }; // the tag lives at offset 0, ordinal arm 2
     let text_utf8 = TableFixedEntry {
         src: 1,    // the length word, past the one-byte tag
         dst: 0,    // image: length at 0, content at 4
         size: 8,   // FLAVOUR lane, byte half: the payload's 8-byte span
         aux: 8,    // FLAVOUR lane, unit half: 8 units, because utf8 unit == 1
-        guard: 0,  // the tag lives at offset 0
-        arg: 2,    // the ORDINAL lane: arm 2, and nothing else
-        argw: 1,   // a one-byte tag
+        guard_off: 0,  // the entry's chain is one link, the guard above
+        guard_count: 1,
         op: TableFixedOp::Text,
         ..TableFixedEntry::default()
     };
@@ -80,7 +81,7 @@ fn arg_and_meta_are_two_lanes() {
     // runs — and it lands the utf8 BYTES, not a wide re-read of the same span.
     let mut image = [0u8; 12];
     let mut report = TableFixedReport::default();
-    table_fixed_run(&[text_utf8], &[], &record, &mut image, &mut report);
+    table_fixed_run(&[text_utf8], &[guard], &[], &record, &mut image, &mut report);
     check(
         image[0..4] == 5u32.to_le_bytes(),
         "arg-v-meta: the used length 5 lands",
@@ -110,6 +111,7 @@ fn arg_and_meta_are_two_lanes() {
     let mut wide_report = TableFixedReport::default();
     table_fixed_run(
         &[text_wide],
+        &[guard],
         &[],
         &wide_record,
         &mut wide_image,
@@ -124,21 +126,22 @@ fn arg_and_meta_are_two_lanes() {
         "arg-v-meta: the first wide units land, flavour settled by `aux` alone",
     );
     check(
-        text_wide.arg == 2 && text_wide.aux == 4 && text_utf8.arg == 2 && text_utf8.aux == 8,
-        "arg-v-meta: arg is the ordinal and nothing else; the flavour rides in aux",
+        guard.arg == 2 && text_wide.aux == 4 && text_utf8.aux == 8,
+        "arg-v-meta: the guard's arg is the ordinal and nothing else; the flavour rides in aux",
     );
 
     // NEGATIVE CONTROL — the OLD one-lane encoding, planted: stamp the utf8
-    // flavour OVER the ordinal in the arg lane (arg := flavour's value, 1).
-    // The record is still arm 2 (tag == 2), but the guard now compares the tag
-    // against the FLAVOUR, and arm 2 is not the flavour — the entry no longer
-    // fires, so the string under arm 2 DROPS. If the two facts still shared
-    // one lane this would stay green; it is the stain a folded lane leaves.
-    let mut old = text_utf8;
-    old.arg = 1; // the flavour, stamped over the arm ordinal
+    // flavour OVER the ordinal in the guard link's arg lane (arg := flavour's
+    // value, 1). The record is still arm 2 (tag == 2), but the guard now
+    // compares the tag against the FLAVOUR, and arm 2 is not the flavour — the
+    // entry no longer fires, so the string under arm 2 DROPS. If the two facts
+    // still shared one lane this would stay green; it is the stain a folded
+    // lane leaves.
+    let mut old_guard = guard;
+    old_guard.arg = 1; // the flavour, stamped over the arm ordinal
     let mut lost = [0u8; 12];
     let mut lost_report = TableFixedReport::default();
-    table_fixed_run(&[old], &[], &record, &mut lost, &mut lost_report);
+    table_fixed_run(&[text_utf8], &[old_guard], &[], &record, &mut lost, &mut lost_report);
     check(
         lost == [0u8; 12],
         "NEGATIVE CONTROL: flavour in the arg lane does NOT land the string under arm 2",

@@ -189,18 +189,41 @@ func (g *fixedGen) module(roots, closure []*ir.Struct) []byte {
 	return []byte(b.String())
 }
 
-// unionsIn is every union the closure reaches that this file declares.
+// unionsIn is every union the closure reaches that this file declares. A union
+// arm that is ITSELF A UNION is descended into too, so a nested union's own
+// helper is emitted beside the caller whose dispatch names it
+// (docs/FIXED-FORM-ALGORITHM.md §4.1 "an arm inside an arm answers to the OUTER
+// tag"). The descent crosses a FILE BOUNDARY: an outer union declared in
+// another file is not emitted here, but its arm still names the nested union,
+// so the walk descends through it and only the emission is gated on mine.
 func (g *fixedGen) unionsIn(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
+	var addUnion func(u *ir.Union)
+	addUnion = func(u *ir.Union) {
+		if seen[u.Name] {
+			return
+		}
+		seen[u.Name] = true
+		if g.mine(u.Name) {
+			out = append(out, u)
+		}
+		for _, v := range u.Variants {
+			if v.F == nil {
+				continue
+			}
+			if inner, ok := v.F.Type.Ref.(*ir.Union); ok {
+				addUnion(inner)
+			}
+		}
+	}
 	for _, st := range closure {
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if u, ok := f.Type.Ref.(*ir.Union); ok && !seen[u.Name] && g.mine(u.Name) {
-				seen[u.Name] = true
-				out = append(out, u)
+			if u, ok := f.Type.Ref.(*ir.Union); ok {
+				addUnion(u)
 			}
 		}
 	}
@@ -1423,6 +1446,18 @@ func (g *fixedGen) armWriter(f *ir.Field, name string, slack int64) node {
 			}
 			return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
 		}
+		// AN ARM THAT IS ITSELF A UNION IS A CALL TO THAT UNION'S OWN WRITER and
+		// not a leaf: the nested union answers the OUTER tag's dispatch (the arm
+		// is only reached when the outer tag names it) and its own arm selection
+		// survives inside the call (§4.1 "an arm inside an arm answers to the
+		// OUTER tag").
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			into := fmt.Sprintf("%s%s_fixed_write_into(%s, acc)", g.unionModule(r), ir.RustSnake(r.Name), name)
+			if slack == 0 {
+				return raw(into)
+			}
+			return binNode{segs: []string{into + "::binary", fmt.Sprintf("0::size(%d)-unit(8)", slack)}}
+		}
 	}
 	segs := []string{"acc::binary", g.leafSegment(f, name)}
 	if slack > 0 {
@@ -1439,6 +1474,16 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s(arm, c, m)", g.decodeName(r)),
+				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+			}
+		}
+		// AN ARM THAT IS ITSELF A UNION DECODES THROUGH THAT UNION'S OWN
+		// PROJECTION, reached only when the OUTER tag names this arm — the inner
+		// union's arm selection is its own nested match, never the outer tag's
+		// (§4.1 "an arm inside an arm answers to the OUTER tag").
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
+			return []string{
+				fmt.Sprintf("{v, c, m} = %s%s_fixed_decode(arm, c, m)", g.unionModule(r), ir.RustSnake(r.Name)),
 				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
 			}
 		}

@@ -287,6 +287,16 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !ir.TableFixedSupported(st, 0) {
 		return false
 	}
+	// AND THE RECORD CEILING, the same 65536 TableFixedFormRoots applies
+	// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2): a body past
+	// it is one no conforming reader decodes, so emitting a form-3 writer here
+	// would produce bytes nobody can read. This leg does not build its roots
+	// from ir.TableFixedFormRoots, so the bound is named here too, or a bounded
+	// `blob bytes(70000)` — one leaf, inside the leaf cap — rides form 3 out of
+	// this leg alone. ir.TableFixedRecordBounds names the table; it keeps form 1.
+	if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+		return false
+	}
 	// AND THE WALK'S DEPTH BOUND, asked where the answer lives
 	// (ir.TableFixedWithinDepth). This leg does not build its roots from
 	// ir.TableFixedFormRoots, so the bound has to be named here or it is not
@@ -843,6 +853,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
+	// AND THE FORGED ORDINAL, in the BOUNDS pass and not in the `ordinal`/`const`
+	// op (§5.4, fix 27): the op lands None and moves nothing, and this pass reads
+	// the writer's count the plan carries — the remap table's length word, or an
+	// unguarded const's DstSize — which the storage clamp cannot see. Silent for
+	// the identity plan, whose entries are `copy`.
+	g.pf("\t\ttableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4).\n")

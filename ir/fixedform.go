@@ -214,7 +214,7 @@ func TableFixedUnionBytes(un *Union) int64 {
 	widest := int64(0)
 	for _, v := range un.Variants {
 		if v.F == nil {
-			continue // a void arm has no storage; TableFixedSupported refuses one anyway
+			continue // a payload-free arm has no storage: it adds nothing to the widest arm (§2.6)
 		}
 		if n := TableFixedFieldBytes(v.F); n > widest {
 			widest = n
@@ -232,9 +232,13 @@ func TableFixedUnionTagBytes(un *Union) int64 {
 
 // TableFixedSupported reports whether a type's whole closure is one this form
 // carries. A pointer, a map and an unbounded array make their holder VARIABLE
-// and never reach here; what this adds is the two shapes the reference does
-// not yet lay out — a union arm carrying text or an array, and a guarded
-// branch, which §3.4 refuses outright.
+// and never reach here; what remains refused is a guarded branch (§3.4) and,
+// on a union arm, the shapes whose arm position already spends what they buy
+// (§2.6): a pointer, a map, an unbounded array, a keyed array and an optional.
+// A direct scalar, text, bytes or array arm rides as its own field type under
+// the arm's position — "an arm's type is any type a field's is" (§2.6) — and a
+// payload-free arm has no storage at all: "it is a value of the tag enum, with
+// no storage in the overlay" (§2.6).
 func TableFixedSupported(st *Struct, depth int) bool {
 	// THE STRUCT NESTING, AT THE LAYOUT'S OWN BOUND ([TableFixedMaxDepth]). A
 	// by-value cycle is refused upstream (§2), so this is a bound and not a
@@ -258,11 +262,10 @@ func TableFixedSupported(st *Struct, depth int) bool {
 			case *Union:
 				for _, v := range r.Variants {
 					if v.F == nil {
-						return false // a void arm has no storage this walk can name
+						continue // a payload-free arm: the tag alone is its whole storage (§2.6)
 					}
 					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == TString || a.Type.Kind == TWString || a.Type.Kind == TBytes || a.Type.Optional {
+					if a.Type.Pointer || a.IsMap() || a.IsList() || a.KeyEnum != "" || a.Type.Optional {
 						return false
 					}
 					if s, ok := a.Type.Ref.(*Struct); ok && a.Type.Kind == TNamed && !TableFixedSupported(s, depth+1) {
@@ -547,18 +550,7 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 			w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindUnion, Size: size, Children: len(r.Variants), Note: note},
 				TableFixedDstSpec{Dst: dst, Aux: tableFixedTerm1(f.Type.Name, "type"), AuxExtendsDst: true})
 			for _, v := range r.Variants {
-				armID := TableWireId(v.WireName())
-				if v.F == nil {
-					// A PAYLOAD-FREE ARM HAS AN ENTRY AND NO BYTES (kind 32,
-					// §3): the tag names it and there is nothing to land, the
-					// same shape an enum's variants take in this walk. It is an
-					// entry rather than nothing because the layout is what the
-					// arm list is COMPARED by — an arm appended after a
-					// payload-free one must move the hash.
-					w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindNoPayload, Size: 0, Children: 0, Note: v.Name}, TableFixedDstSpec{})
-					continue
-				}
-				tableFixedWalkElement(w, v.F, armID, v.Name, tableFixedTerm1(f.Type.Name, v.Name))
+				tableFixedWalkArm(w, f.Type.Name, v, TableWireId(v.WireName()))
 			}
 			return
 		case *Enum:
@@ -567,6 +559,50 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 		}
 	}
 	w.push(TableFixedLayoutEntry{ID: id, Kind: TableWireScalarKind(f), Size: size, Children: 0, Note: note}, TableFixedDstSpec{Dst: dst})
+}
+
+// tableFixedWalkArm is one union arm's layout entry, the twin of
+// [tableFixedWalkPayload] with the arm's storage spellings: an arm's value and
+// companion live inside the arm's own unnamed struct — `value` beside
+// `value_length` or `value_count` (§2.6) — so its destination terms name the
+// arm member and the companion member under it, not the field spellings a
+// sibling field uses. A payload-free arm has an entry and no bytes (kind 32,
+// §3): the tag names it and there is nothing to land, the same shape an enum's
+// variants take in this walk — an entry rather than nothing because the layout
+// is what the arm list is COMPARED by, and an arm appended after a
+// payload-free one must move the hash.
+func tableFixedWalkArm(w *tableFixedWalk, unionName string, v UnionVariant, armID uint64) {
+	if v.F == nil {
+		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindNoPayload, Size: 0, Children: 0, Note: v.Name}, TableFixedDstSpec{})
+		return
+	}
+	f := v.F
+	term := func(member string) []TableFixedTerm {
+		return tableFixedTerm1(unionName, member)
+	}
+	size := TableFixedFieldBytes(f)
+	switch {
+	case f.Array != ArrayNone:
+		spec := TableFixedDstSpec{Dst: term(v.Name + ".value"), Stride: f}
+		if f.Array == ArrayCounted {
+			spec.Counted = 1
+			spec.Aux = term(v.Name + ".value_count")
+		}
+		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindArray, Size: size, Children: 1, Note: v.Name}, spec)
+		tableFixedWalkElement(w, f, 0, "element", nil)
+	case f.Type.Kind == TBytes:
+		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindArray, Size: size, Children: 1, Note: v.Name},
+			TableFixedDstSpec{Dst: term(v.Name + ".value"), Stride1: true, Aux: term(v.Name + ".value_length"), Counted: 1, Meta: 3})
+		w.push(TableFixedLayoutEntry{ID: 0, Kind: TableKindU8, Size: 1, Children: 0, Note: "u8"}, TableFixedDstSpec{})
+	case f.Type.Kind == TString:
+		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindString, Size: size, Children: 0, Note: v.Name},
+			TableFixedDstSpec{Dst: term(v.Name + ".value_length"), Aux: term(v.Name + ".value"), Meta: 1})
+	case f.Type.Kind == TWString:
+		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindWstring, Size: size, Children: 0, Note: v.Name},
+			TableFixedDstSpec{Dst: term(v.Name + ".value_length"), Aux: term(v.Name + ".value"), Meta: 2})
+	default:
+		tableFixedWalkElement(w, f, armID, v.Name, term(v.Name))
+	}
 }
 
 func tableFixedWalkEnum(w *tableFixedWalk, e *Enum, id uint64, note string, dst []TableFixedTerm) {
@@ -986,8 +1022,15 @@ func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, fl
 }
 
 func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
+	tableFixedElementLoopAt(u, f, src, dst+TableFixedMemberOffset(u, st, f.Name), count, normaliseBool, out)
+}
+
+// tableFixedElementLoopAt is the loop body of [tableFixedElementLoop] with the
+// element destination base already computed, so an ARM — whose value member is
+// at a computed offset inside its own unnamed struct, not a sibling field
+// offset — reaches the same walk a field does.
+func tableFixedElementLoopAt(u *Unit, f *Field, src, at, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
 	elem := TableFixedElementBytes(f)
-	at := dst + TableFixedMemberOffset(u, st, f.Name)
 	if normaliseBool && f.Type.Kind == TBool {
 		// [N]bool is ONE normalised run: a flat copy of N bytes would land a
 		// 0x02 as 2. The coalescer folds adjacent bool bytes, never a bool
@@ -1010,6 +1053,57 @@ func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64,
 	for i := range count {
 		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", normaliseBool, out)
 	}
+}
+
+// tableFixedArmLeaves is one union arm's payload leaves, the twin of
+// [tableFixedFieldLeaves] with the arm's storage spellings. A payload-free arm
+// spends no leaf: the tag is the whole of it (§2.6). A direct text, bytes or
+// array arm rides as its own field type under the arm's position — a text
+// leaf, a count plus elements, or the element walk — landing in the arm's
+// unnamed struct at the offsets [ArmLayout] lays out.
+func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, normaliseBool bool, out *[]TableFixedLeaf) {
+	f := v.F
+	if f == nil {
+		return // a payload-free arm: the tag alone is its whole storage (§2.6)
+	}
+	valueOff, companionOff := fixedArmPieceOffsets(u, f)
+	switch {
+	case f.Array == ArrayFixed:
+		tableFixedElementLoopAt(u, f, src, dst+valueOff, f.ArrayBound, normaliseBool, out)
+	case f.Array == ArrayCounted:
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Size: f.ArrayBound,
+			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: note + " count"})
+		tableFixedElementLoopAt(u, f, src+TableFixedCountBytes, dst+valueOff, f.ArrayBound, normaliseBool, out)
+	case f.Type.Kind == TString:
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
+			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 1, Note: note})
+	case f.Type.Kind == TWString:
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
+			Size: 2 * f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 2, Note: note})
+	case f.Type.Kind == TBytes:
+		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
+			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 3, Note: note})
+	default:
+		tableFixedElementLeavesAt(u, f, src, dst+valueOff, note, normaliseBool, out)
+	}
+}
+
+// fixedArmPieceOffsets is where an arm's value member and its companion member
+// — a string's or bytes' length, a counted array's count — sit inside the
+// arm's own unnamed struct, the same [ArmLayout] walk a field's pieces take.
+func fixedArmPieceOffsets(u *Unit, f *Field) (valueOff, companionOff int64) {
+	at := int64(0)
+	for i, p := range fieldPieces(u, f, false) {
+		at = alignUp(at, p.align)
+		switch i {
+		case 0:
+			valueOff = at
+		case 1:
+			companionOff = at
+		}
+		at = addSize(at, p.size)
+	}
+	return valueOff, companionOff
 }
 
 // tableFixedElementLeavesAt is ONE element's leaves at the bases given.
@@ -1037,7 +1131,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, n
 				// past two is not an error: it rides the pool whole, and the
 				// only bound is the layout's 64 ([TableFixedMaxDepth]).
 				at := len(*out)
-				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
+				tableFixedArmLeaves(u, v, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
 				for q := at; q < len(*out); q++ {
 					(*out)[q].GuardLinks = append((*out)[q].GuardLinks, TableFixedGuardLink{Guard: src, Arg: i + 1, ArgW: int(tag)})
 				}
@@ -1650,6 +1744,16 @@ func TableFixedHasWriteBound(u *Unit) bool {
 				for _, v := range r.Variants {
 					if v.F == nil {
 						continue
+					}
+					// A DIRECT TEXT, BYTES OR COUNTED-ARRAY ARM carries the same
+					// write-side bound its field type does — a used length or
+					// live count checked debug-only (§3.4) — so the arm's own
+					// field type is asked, not only a struct arm's closure.
+					switch {
+					case v.F.Array == ArrayCounted:
+						return true
+					case v.F.Type.Kind == TString, v.F.Type.Kind == TWString, v.F.Type.Kind == TBytes:
+						return true
 					}
 					if s2, ok := v.F.Type.Ref.(*Struct); ok && v.F.Type.Kind == TNamed && has(s2) {
 						return true

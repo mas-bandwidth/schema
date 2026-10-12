@@ -89,3 +89,6 @@ require tblw2 v0.0.0
 replace tblw2 => ../../../build/tables-generated-go/w2
 require tblg1 v0.0.0
 replace tblg1 => ../../../build/tables-generated-go/g1
+
+require cards v0.0.0
+replace cards => ../../../build/tables-generated-go/cards

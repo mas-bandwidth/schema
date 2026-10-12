@@ -55,6 +55,15 @@ import (
 // runtime, so the only include path is the generated directory.
 func cppRunCapability(t *testing.T, schema, pkg, body string) ([]byte, error) {
 	t.Helper()
+	return cppRunUnit(t, schema, pkg, body, nil)
+}
+
+// cppRunUnit is cppRunCapability with EXTRA include directories: a unit whose
+// generated header names serialize.h's 128-bit storage type (cpptable.go's
+// unitHas128) takes the sibling serialize checkout's include path, the same
+// directory cppRunVersionProbe passes. Every other step is identical.
+func cppRunUnit(t *testing.T, schema, pkg, body string, includes []string) ([]byte, error) {
+	t.Helper()
 	dir := t.TempDir()
 	base := filepath.Base(schema)
 	data, err := os.ReadFile(schema)
@@ -123,11 +132,23 @@ int main( void )
 	if cxx == "" {
 		cxx = "c++"
 	}
-	build := exec.Command(cxx, "-std=c++17", "-O1", "-I"+outDir, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
+	args := []string{"-std=c++17", "-O1", "-I" + outDir}
+	args = append(args, includeArgs(includes)...)
+	args = append(args, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
+	build := exec.Command(cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
 	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+}
+
+// includeArgs is one `-I<dir>` per extra include directory, in the order given.
+func includeArgs(dirs []string) []string {
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		out = append(out, "-I"+d)
+	}
+	return out
 }
 
 // THE ENUM ROW'S PROBE: docs/roadmap.sexp:5480. Four records carry the enum's

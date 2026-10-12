@@ -366,7 +366,9 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			g.pf("%sswitch (%s.Type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
-				g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				if v.F != nil {
+					g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
 			g.pf("%s  default: break;\n%s}\n", ind, ind)
@@ -497,12 +499,25 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		// live count, never the slack behind it. Identity copies the whole
 		// array into the image; this loop is the pass both paths share.
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString:
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
+		// validity over the stated length, never over N; a violation refuses by
+		// name, writing nothing past it.
+		g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, view, %s, %s.%sLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes), val, name)
+		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
+			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+	case f.Type.Kind == ir.TBytes:
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	case f.Type.Kind == ir.TWString:
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
+		// UTF-16 with no zero unit over the stated length, never over 2N.
+		g.pf("%sif (!TableFixedTextOk(TableFixedTextWide, view, %s, %s.%sLength * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes), val, name)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	default:
@@ -574,7 +589,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			g.pf("%sswitch (%s.Type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
-				g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				if v.F != nil {
+					g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
 			g.pf("%s  default: break;\n%s}\n", ind, ind)
@@ -762,7 +779,7 @@ func fixedIsUnionType(t ir.FieldType) bool {
 // statement rather than printing it so a loop body can stay on one line.
 func (g *fixedGen) compositeReset(t ir.FieldType, path string) string {
 	if fixedIsUnionType(t) {
-		return path + ".Type = 0; // None; dormant arms keep their storage"
+		return path + ".Type = 0; /* None; dormant arms keep their storage */"
 	}
 	g.require(fixedElementClass(t), t.Name)
 	return fmt.Sprintf("Init%s(%s);", fixedElementClass(t), path)

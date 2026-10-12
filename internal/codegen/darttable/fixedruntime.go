@@ -1156,12 +1156,7 @@ int tableFixedRun(
 /// code units for wstring(N). bytes(N) carries no content rule at all, and
 /// the SLACK past the used units is unspecified and never a refusal. used is
 /// the clamped length in the flavour's own units; at is the first unit byte.
-bool tableFixedTextIllFormed(
-  int meta,
-  int used,
-  Uint8List source,
-  int at,
-) {
+bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
     return false;
   }
@@ -1212,7 +1207,8 @@ bool tableFixedTextIllFormed(
       if (i + 2 >= used || !cont(i + 1) || !cont(i + 2)) {
         return true;
       }
-      final point = ((c & 0x0F) << 12) |
+      final point =
+          ((c & 0x0F) << 12) |
           ((source[at + i + 1] & 0x3F) << 6) |
           (source[at + i + 2] & 0x3F);
       if (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF)) {
@@ -1223,7 +1219,8 @@ bool tableFixedTextIllFormed(
       if (i + 3 >= used || !cont(i + 1) || !cont(i + 2) || !cont(i + 3)) {
         return true;
       }
-      final point = ((c & 0x07) << 18) |
+      final point =
+          ((c & 0x07) << 18) |
           ((source[at + i + 1] & 0x3F) << 12) |
           ((source[at + i + 2] & 0x3F) << 6) |
           (source[at + i + 3] & 0x3F);
