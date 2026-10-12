@@ -68,6 +68,33 @@ func TestViewWalksEveryField(t *testing.T) {
 			t.Fatalf("field %s range flag = %v, want %v", f.Name, f.HasRange, w.hasRange)
 		}
 	}
+	uv := UnitView()
+	if uv.Package != "cards" {
+		t.Fatalf("registry package = %q, want cards", uv.Package)
+	}
+	if uv.NumTables != int32(len(uv.Tables)) {
+		t.Fatalf("registry NumTables = %d, want %d", uv.NumTables, len(uv.Tables))
+	}
+	var cardType *TableTypeInfo
+	for i := range uv.Tables {
+		if uv.Tables[i].Name == "Card" {
+			cardType = uv.Tables[i].Type
+		}
+	}
+	if cardType != info {
+		t.Fatal("unit registry does not name the Card table the walk reads")
+	}
+	enumMax := map[string]int64{"Tier": int64(TierMax), "Priority": int64(PriorityMax), "Column": int64(ColumnMax)}
+	for i := range uv.Enums {
+		e := &uv.Enums[i]
+		want, ok := enumMax[e.Name]
+		if !ok {
+			t.Fatalf("registry names an undeclared enum %q", e.Name)
+		}
+		if e.Max != want {
+			t.Fatalf("registry enum %s max = %d, want %d", e.Name, e.Max, want)
+		}
+	}
 }
 
 func TestViewWalksRecordValues(t *testing.T) {
