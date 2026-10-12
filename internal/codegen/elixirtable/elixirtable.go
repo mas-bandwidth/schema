@@ -75,6 +75,22 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
+	// this backend carries is admitted; every other variable-class construct is
+	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
+	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
+	// those forms as it did before — none of them reads or writes a form-`1`
+	// byte, so a variable table beside them is not mis-encoded by anything this
+	// leg writes, and refusing the whole unit would take the block and cook
+	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
+	// therefore binds a unit the variable form OWNS: one whose closure holds no
+	// fixed table, which is where the wire this card teaches is the only answer.
+	if !closureHoldsFixedTable(u, closure) {
+		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
+			return nil, err
+		}
+	}
+
 	// A DECLARATION LOWERS TO A MODULE under the unit's namespace, so one named
 	// for a generated file's module would merge two unrelated modules. The
 	// unit-level runtime names are the CHECKER's claim (internal/tablenames,
@@ -124,6 +140,15 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
+
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
+	// wire the card constructs read and write byte for byte as the Go, C, C++
+	// and C# backends do. It is emitted for the unit the variable form OWNS —
+	// one whose closure holds no fixed table, which is where the card's slice
+	// is the only answer — and not for a unit the fixed form already serves.
+	if !closureHoldsFixedTable(u, closure) {
+		maps.Copy(out, generateVariableForm(u, ns))
+	}
 
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
 
