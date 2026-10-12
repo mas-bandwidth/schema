@@ -40,7 +40,8 @@ public final class TableVariable {
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
     // The report counters of §4: unknown, kind mismatch, clamp, malformed and
-    // widened. A refusal (an unknown form byte) moves none of them.
+    // widened. A refusal (an unknown form byte) moves none of them. Retained and
+    // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
 public int unknown;
         public int kindMismatch;
@@ -49,6 +50,8 @@ public int unknown;
         public int widened;
         public boolean refused;
         public String reason;
+        public int retained;
+        public int retainLost;
     }
 
     // A reader over a byte[] the caller owns. Nothing allocates on the read

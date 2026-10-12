@@ -1,11 +1,16 @@
 // The NEWER declaration of the cross-read pair: `renamed` keeps the wire id of
-// `old_name` through `was`, and `extra` is a field the older build cannot name
-// (docs/SPEC-TABLES.md §4, §5).
+// `old_name` through `was`, and `extra`, `extra_num`, `extra_str` and
+// `extra_ptr` are fields the older build cannot name — an unknown string, an
+// unknown int32 scalar, an unknown string and an unknown *string pointer
+// (docs/SPEC-TABLES.md §4, §5, §6.6).
 package newpkg
 
 table Card
 {
-    id      string(16)
-    renamed int32      | was = "old_name"
-    extra   string(16)
+    id         string(16)
+    renamed    int32       | was = "old_name"
+    extra      string(16)
+    extra_num  int32
+    extra_str  string(16)
+    extra_ptr  *string
 }
