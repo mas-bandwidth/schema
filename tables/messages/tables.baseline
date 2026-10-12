@@ -81,6 +81,7 @@ union Origin
 union ToolBody
     arm open id=0xf84f97b4633670e9 payload=OpenDocument
     arm save id=0x096a5e18bf857c28 payload=SaveDocument
+    arm transact id=0xed96bbf4dc6ff587 payload=Transaction
     arm ping id=0xbf30e00dc53307a9 payload=Ping
     arm caps id=0xb55a6b90e87557f8 kind=9 flags=Capabilities
     arm spans id=0x437dfc8ab2566816 kind=14 elem=4 array=fixed bound=2
