@@ -757,10 +757,12 @@ build/cards-java-wire-fuzz/.stamp: cards-java-generate test/conformance/java/src
 
 CARDS_JAVA_FUZZ_TIME ?= 30s
 # The seeds the gate holds the Java Card codec to: the long-standing reference
-# seed and the three the oracle fuzzer found this port's node-table unknown
-# census on (§3.1) — mutant #104 of seed 777 counted three unknowns where the
-# oracle counts one, so that seed and its neighbours ride here as a regression.
-CARDS_JAVA_FUZZ_SEEDS := 24845619678 100 777 200 3 100 42 1000
+# seed and the four the oracle fuzzer found this port's node-table census on
+# (§3.1) — mutant #104 of seed 777 counted three unknowns where the oracle
+# counts one, and mutant #748 of seed 2 counted one kind mismatch from a
+# *string pointer against a numbering that failed to read whole, so each seed
+# and its neighbours ride here as a regression.
+CARDS_JAVA_FUZZ_SEEDS := 24845619678 100 777 200 3 100 42 1000 2 1000
 cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stamp
 	@rm -f build/cards-java-wire-fuzz.log
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \

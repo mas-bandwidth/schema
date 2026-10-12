@@ -511,9 +511,10 @@ public int unknown;
     // because a reader that broke at the first would read the good numbering a
     // damaged repeat was planted to hide. A field under a kind other than 12,
     // a length the body cannot cover, or a payload whose records do not scan
-    // is malformed for the whole table and answers null, and the scan returns
-    // the body cursor to where it began for the decode itself.
-    public static NodeRecord[] readNodeTable(Reader r, Report report) {
+    // is malformed for the whole table and marks the numbering bad (NodeTable.
+    // bad), and the scan returns the body cursor to where it began for the
+    // decode itself.
+    public static NodeTable readNodeTable(Reader r, Report report) {
         int start = r.off;
         boolean startFail = r.fail;
         Reader payload = null;
@@ -541,8 +542,17 @@ public int unknown;
         }
         r.off = start;
         r.fail = startFail;
-        if (bad || payload == null) { return null; }
-        return nodes(payload);
+        // A node-table field that is PRESENT but could not be read whole leaves
+        // the numbering not-good (§3.1): every pointer resolves null and moves
+        // no counter, exactly as the oracle's decodeState.good=false does
+        // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
+        // valid numbering, and a whole read carries the records.
+        NodeTable nt = new NodeTable();
+        if (bad) { nt.bad = true; return nt; }
+        if (payload == null) { return nt; }
+        nt.recs = nodes(payload);
+        if (nt.recs == null) { nt.bad = true; }
+        return nt;
     }
 
     // resolveString resolves one *string pointer index against the numbering
@@ -562,6 +572,11 @@ public int unknown;
     // pointer index afterward (§3.1).
     public static final class NodeTable {
         public NodeRecord[] recs;
+        // bad is true when a node-table field was PRESENT but could not be read
+        // whole: the numbering failed, so every pointer resolves null and moves
+        // no counter (§3.1). It is false when the field is absent — an empty
+        // but valid numbering — or was read whole.
+        public boolean bad;
     }
 
     // NodeList is a save-side numbering: each non-null *string interned here in
@@ -1135,13 +1150,17 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// resolveNodes: turn every deferred *string index into its bytes, counting a
 	// root index as a kind mismatch and an out-of-range index as malformed (§3.1).
-	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeRecord[] recs, TableVariable.Report report) {\n")
+	// A numbering that failed (nt.bad) resolves nothing: every pointer stays null
+	// and no counter moves, exactly as the oracle's resolveCell returns before
+	// its switch when decodeState.good is false (internal/tablewire/decodenodes.go).
+	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
+	b.WriteString("        if (nt.bad) { return; }\n")
 	for _, f := range st.Fields {
 		if f.Type.Kind == ir.TString && f.Type.Blob() {
-			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
+			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
 		} else if f.Array == ir.ArrayList {
 			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
-				fmt.Fprintf(&b, "        for (%sVariable.Value e : v.%s) { %sVariable.resolveNodes(e, recs, report); }\n", elem.Name, varMember(f), elem.Name)
+				fmt.Fprintf(&b, "        for (%sVariable.Value e : v.%s) { %sVariable.resolveNodes(e, nt, report); }\n", elem.Name, varMember(f), elem.Name)
 			}
 		}
 	}
@@ -1200,11 +1219,10 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
-	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = new TableVariable.NodeTable();\n")
-	fmt.Fprintf(&b, "        nt.recs = TableVariable.readNodeTable(r, report);\n")
+	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report);\n")
 	fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
 	fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
-	fmt.Fprintf(&b, "        resolveNodes(v, nt.recs, report);\n")
+	fmt.Fprintf(&b, "        resolveNodes(v, nt, report);\n")
 	fmt.Fprintf(&b, "        return v;\n")
 	fmt.Fprintf(&b, "    }\n\n")
 
