@@ -1,5 +1,7 @@
 /bin/
 /build/
+# scratch gate-output files from a previous run — never repo content
+/tmp/
 /generated/rust/target/
 /generated/rust/Cargo.lock
 /generated/rust-ludicrous/target/

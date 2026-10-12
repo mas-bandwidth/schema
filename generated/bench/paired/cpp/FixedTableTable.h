@@ -102,7 +102,13 @@ enum TableMessageReason
     // floor is layout_unsupported. Both carry the file's hash and nothing else
     // (bill §12.4).
     layout_newer,
-    layout_unsupported
+    layout_unsupported,
+    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
+    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
+    // used units that are not paired UTF-16 — refuses the read BY NAME, the
+    // verdict the packet reader gives, this form having no L to continue past.
+    // Nothing is decoded and no counter moves.
+    text_ill_formed
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -2258,6 +2264,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2297,6 +2315,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2559,7 +2584,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2573,8 +2598,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -4261,17 +4304,18 @@ inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped, int
 // count, an enum ordinal past the enum's top value. Straight-line, after
 // the copy, over STORAGE, so the identity plan and a plan compiled from a
 // stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS.
-inline void FixedTableFixedClamp( FixedTable & value, TableReport * report )
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool FixedTableFixedClamp( FixedTable & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
     FixedTableFixedClampBody( value, clamped, damaged );
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
     report->clamped += clamped;
-    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
-    // one flag and not on a counter: the field read its declared default
-    // and the rest of the record stands.
-    if ( damaged != 0 ) { report->malformed = true; }
+    return true;
 }
 
 // ---- FixedTable, the fixed form ----
@@ -4374,29 +4418,29 @@ constexpr int64_t FixedTableFixedLayoutBytes = (int64_t) sizeof( FixedTableFixed
 // layout lands values through.
 constexpr TableFixedDst FixedTableFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // FixedTable
-    { (uint32_t) __builtin_offsetof( FixedTable, value ), 0, 0, 0, 0 }, // value
-    { (uint32_t) __builtin_offsetof( BenchMixed, sequence ), 0, 0, 0, 0 }, // sequence
-    { (uint32_t) __builtin_offsetof( BenchMixed, ack_sequence ), 0, 0, 0, 0 }, // ack_sequence
-    { (uint32_t) __builtin_offsetof( BenchMixed, ack_bits ), 0, 0, 0, 0 }, // ack_bits
-    { (uint32_t) __builtin_offsetof( BenchMixed, session_id ), 0, 0, 0, 0 }, // session_id
-    { (uint32_t) __builtin_offsetof( BenchMixed, client_id ), 0, 0, 0, 0 }, // client_id
-    { (uint32_t) __builtin_offsetof( BenchMixed, nonce ), 0, 0, 0, 0 }, // nonce
-    { (uint32_t) __builtin_offsetof( BenchMixed, world_time ), 0, 0, 0, 0 }, // world_time
-    { (uint32_t) __builtin_offsetof( BenchMixed, frame_tick ), 0, 0, 0, 0 }, // frame_tick
-    { (uint32_t) __builtin_offsetof( BenchMixed, server_time ), 0, 0, 0, 0 }, // server_time
-    { (uint32_t) __builtin_offsetof( BenchMixed, entities ), (uint32_t) sizeof( MixedEntity ), (uint32_t) __builtin_offsetof( BenchMixed, entities_count ), 1, 0 }, // entities
+    { 0, 0, 0, 0, 0 }, // value
+    { 0, 0, 0, 0, 0 }, // sequence
+    { 4, 0, 0, 0, 0 }, // ack_sequence
+    { 8, 0, 0, 0, 0 }, // ack_bits
+    { 16, 0, 0, 0, 0 }, // session_id
+    { 24, 0, 0, 0, 0 }, // client_id
+    { 32, 0, 0, 0, 0 }, // nonce
+    { 40, 0, 0, 0, 0 }, // world_time
+    { 48, 0, 0, 0, 0 }, // frame_tick
+    { 56, 0, 0, 0, 0 }, // server_time
+    { 64, 64, 576, 1, 0 }, // entities
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( MixedEntity, entity_id ), 0, 0, 0, 0 }, // entity_id
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_x ), 0, 0, 0, 0 }, // pos_x
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_y ), 0, 0, 0, 0 }, // pos_y
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_z ), 0, 0, 0, 0 }, // pos_z
-    { (uint32_t) __builtin_offsetof( MixedEntity, yaw ), 0, 0, 0, 0 }, // yaw
-    { (uint32_t) __builtin_offsetof( MixedEntity, pitch ), 0, 0, 0, 0 }, // pitch
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_x ), 0, 0, 0, 0 }, // vel_x
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_y ), 0, 0, 0, 0 }, // vel_y
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_z ), 0, 0, 0, 0 }, // vel_z
-    { (uint32_t) __builtin_offsetof( MixedEntity, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( MixedEntity, weapon ), 0, 0, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0 }, // entity_id
+    { 4, 0, 0, 0, 0 }, // pos_x
+    { 8, 0, 0, 0, 0 }, // pos_y
+    { 12, 0, 0, 0, 0 }, // pos_z
+    { 16, 0, 0, 0, 0 }, // yaw
+    { 20, 0, 0, 0, 0 }, // pitch
+    { 24, 0, 0, 0, 0 }, // vel_x
+    { 28, 0, 0, 0, 0 }, // vel_y
+    { 32, 0, 0, 0, 0 }, // vel_z
+    { 36, 0, 0, 0, 0 }, // health
+    { 40, 0, 0, 0, 0 }, // weapon
     { 0, 0, 0, 0, 0 }, // Fists
     { 0, 0, 0, 0, 0 }, // Pistol
     { 0, 0, 0, 0, 0 }, // Shotgun
@@ -4412,42 +4456,42 @@ constexpr TableFixedDst FixedTableFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // Turret
     { 0, 0, 0, 0, 0 }, // Drone
     { 0, 0, 0, 0, 0 }, // Repair
-    { (uint32_t) __builtin_offsetof( MixedEntity, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( MixedEntity, moving ), 0, 0, 0, 0 }, // moving
-    { (uint32_t) __builtin_offsetof( MixedEntity, firing ), 0, 0, 0, 0 }, // firing
-    { (uint32_t) __builtin_offsetof( BenchMixed, stats ), (uint32_t) sizeof( MixedStat ), (uint32_t) __builtin_offsetof( BenchMixed, stats_count ), 1, 0 }, // stats
+    { 48, 0, 0, 0, 0 }, // damage
+    { 56, 0, 0, 0, 0 }, // moving
+    { 57, 0, 0, 0, 0 }, // firing
+    { 580, 8, 1220, 1, 0 }, // stats
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( MixedStat, stat_id ), 0, 0, 0, 0 }, // stat_id
-    { (uint32_t) __builtin_offsetof( MixedStat, delta ), 0, 0, 0, 0 }, // delta
-    { (uint32_t) __builtin_offsetof( BenchMixed, game_event ), 0, (uint32_t) __builtin_offsetof( BenchMixed, game_event ) + (uint32_t) __builtin_offsetof( MixedEvent, type ), 0, 0 }, // game_event
-    { (uint32_t) __builtin_offsetof( MixedEvent, hit ), 0, 0, 0, 0 }, // hit
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, target_id ), 0, 0, 0, 0 }, // target_id
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, hit_kind ), 0, 0, 0, 0 }, // hit_kind
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, crit ), 0, 0, 0, 0 }, // crit
-    { (uint32_t) __builtin_offsetof( MixedEvent, chat ), 0, 0, 0, 0 }, // chat
-    { (uint32_t) __builtin_offsetof( MixedChatEvent, channel ), 0, 0, 0, 0 }, // channel
-    { (uint32_t) __builtin_offsetof( MixedChatEvent, speaker ), 0, 0, 0, 0 }, // speaker
-    { (uint32_t) __builtin_offsetof( MixedEvent, pickup ), 0, 0, 0, 0 }, // pickup
-    { (uint32_t) __builtin_offsetof( MixedPickupEvent, item_id ), 0, 0, 0, 0 }, // item_id
-    { (uint32_t) __builtin_offsetof( MixedPickupEvent, amount ), 0, 0, 0, 0 }, // amount
-    { (uint32_t) __builtin_offsetof( BenchMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0 }, // loadout
+    { 0, 0, 0, 0, 0 }, // stat_id
+    { 4, 0, 0, 0, 0 }, // delta
+    { 1224, 0, 1224, 0, 0 }, // game_event
+    { 4, 0, 0, 0, 0 }, // hit
+    { 0, 0, 0, 0, 0 }, // target_id
+    { 4, 0, 0, 0, 0 }, // damage
+    { 8, 0, 0, 0, 0 }, // hit_kind
+    { 12, 0, 0, 0, 0 }, // crit
+    { 4, 0, 0, 0, 0 }, // chat
+    { 0, 0, 0, 0, 0 }, // channel
+    { 4, 0, 0, 0, 0 }, // speaker
+    { 4, 0, 0, 0, 0 }, // pickup
+    { 0, 0, 0, 0, 0 }, // item_id
+    { 4, 0, 0, 0, 0 }, // amount
+    { 1244, 1, 0, 0, 0 }, // loadout
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( BenchMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( BenchMixed, player_name ), 0, 1 }, // player_name
-    { (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, 3 }, // payload
+    { 1264, 0, 1248, 0, 1 }, // player_name
+    { 1268, 1, 1284, 1, 3 }, // payload
     { 0, 0, 0, 0, 0 }, // u8
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_x ), 0, 0, 0, 0 }, // aim_x
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_y ), 0, 0, 0, 0 }, // aim_y
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_z ), 0, 0, 0, 0 }, // aim_z
-    { (uint32_t) __builtin_offsetof( BenchMixed, recoil ), 0, 0, 0, 0 }, // recoil
-    { (uint32_t) __builtin_offsetof( BenchMixed, drift ), 0, 0, 0, 0 }, // drift
-    { (uint32_t) __builtin_offsetof( BenchMixed, wide_key ), 0, 0, 0, 0 }, // wide_key
-    { (uint32_t) __builtin_offsetof( BenchMixed, flux ), 0, 0, 0, 0 }, // flux
-    { (uint32_t) __builtin_offsetof( BenchMixed, ping ), 0, 0, 0, 0 }, // ping
-    { (uint32_t) __builtin_offsetof( BenchMixed, crc_hint ), 0, 0, 0, 0 }, // crc_hint
-    { (uint32_t) __builtin_offsetof( BenchMixed, has_extra ), 0, 0, 0, 0 }, // has_extra
-    { (uint32_t) __builtin_offsetof( BenchMixed, extra ), 0, 0, 0, 0 }, // extra
-    { (uint32_t) __builtin_offsetof( BenchMixed, idle_ticks ), 0, 0, 0, 0 }, // idle_ticks
+    { 1288, 0, 0, 0, 0 }, // aim_x
+    { 1292, 0, 0, 0, 0 }, // aim_y
+    { 1296, 0, 0, 0, 0 }, // aim_z
+    { 1300, 0, 0, 0, 0 }, // recoil
+    { 1304, 0, 0, 0, 0 }, // drift
+    { 1312, 0, 0, 0, 0 }, // wide_key
+    { 1328, 0, 0, 0, 0 }, // flux
+    { 1344, 0, 0, 0, 0 }, // ping
+    { 1348, 0, 0, 0, 0 }, // crc_hint
+    { 1352, 0, 0, 0, 0 }, // has_extra
+    { 1356, 0, 0, 0, 0 }, // extra
+    { 1360, 0, 0, 0, 0 }, // idle_ticks
 };
 
 // THE IDENTITY PLAN, coalesced out of 148 leaves by the schema compiler —
@@ -4459,51 +4503,59 @@ constexpr TableFixedDst FixedTableFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry FixedTableFixedPlan[] = {
-    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // sequence
-    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // session_id
-    { 24u, 32u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // nonce
-    { 52u, 576u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entities count
-    { 56u, 64u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 97u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 105u, 120u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 107u, 128u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 148u, 176u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 156u, 184u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 158u, 192u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 199u, 240u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 207u, 248u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 209u, 256u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 250u, 304u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 258u, 312u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 260u, 320u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 301u, 368u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 309u, 376u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 311u, 384u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 352u, 432u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 360u, 440u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 362u, 448u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 403u, 496u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 411u, 504u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 413u, 512u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // entity_id
-    { 454u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
-    { 462u, 568u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // moving
-    { 464u, 1220u, 80u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // stats count
-    { 468u, 580u, 640u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // stats, whole
-    { 1108u, 1224u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // game_event tag
-    { 1122u, 1244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // loadout, whole
-    { 1126u, 1264u, 15u, 1248u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // player_name
-    { 1145u, 1284u, 16u, 1268u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // payload
-    { 1165u, 1288u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // aim_x
-    { 1223u, 1348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // crc_hint
-    { 1227u, 1352u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // has_extra
-    { 1228u, 1356u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // extra
-    { 1109u, 1228u, 12u, 0u, 1108u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // target_id
-    { 1121u, 1240u, 1u, 0u, 1108u, kTableFixedBool, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // crit
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // channel
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // item_id
+    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // sequence
+    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // session_id
+    { 24u, 32u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // nonce
+    { 52u, 576u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entities count
+    { 56u, 64u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 97u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 105u, 120u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 107u, 128u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 148u, 176u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 156u, 184u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 158u, 192u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 199u, 240u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 207u, 248u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 209u, 256u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 250u, 304u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 258u, 312u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 260u, 320u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 301u, 368u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 309u, 376u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 311u, 384u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 352u, 432u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 360u, 440u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 362u, 448u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 403u, 496u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 411u, 504u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 413u, 512u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entity_id
+    { 454u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
+    { 462u, 568u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // moving
+    { 464u, 1220u, 80u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // stats count
+    { 468u, 580u, 640u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // stats, whole
+    { 1108u, 1224u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // game_event tag
+    { 1122u, 1244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // loadout, whole
+    { 1126u, 1264u, 15u, 1248u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // player_name
+    { 1145u, 1284u, 16u, 1268u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // payload
+    { 1165u, 1288u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // aim_x
+    { 1223u, 1348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // crc_hint
+    { 1227u, 1352u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_extra
+    { 1228u, 1356u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // extra
+    { 1109u, 1228u, 12u, 0u, 1108u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // target_id
+    { 1121u, 1240u, 1u, 0u, 1108u, kTableFixedBool, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // crit
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // channel
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // item_id
 };
 constexpr int32_t FixedTableFixedPlanCount = 42;
 constexpr int32_t FixedTableFixedPlanGuarded = 38;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink FixedTableFixedGuards[] = {
+    { 1108u, 1u, 1 },
+    { 1108u, 2u, 1 },
+    { 1108u, 3u, 1 },
+};
+constexpr int32_t FixedTableFixedGuardCount = 3;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -4806,10 +4858,20 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): the counters this record's plan and ranges have moved are put
+        // back before the refusal returns, so the refusing record moves none.
+        const int32_t rec_clamped = report->clamped;
+        const int32_t rec_widened = report->widened;
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, FixedTableFixedGuards );
         TableFixedClampKnownRanges( FixedTableFixedKnownRanges[lineage_at], FixedTableFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
-        FixedTableFixedClamp( values[k], report );
+        if ( !FixedTableFixedClamp( values[k], report ) )
+        {
+            report->clamped = rec_clamped;
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;

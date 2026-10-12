@@ -34,6 +34,7 @@ var identMap = []token{
 	{"SCHEMA_TABLE_NO_VOCABULARY", "no_vocabulary"},
 	{"SCHEMA_TABLE_NEWER_FORM", "newer_form"},
 	{"SCHEMA_TABLE_NO_LAYOUT", "no_layout"},
+	{"SCHEMA_TABLE_TEXT_ILL_FORMED", "text_ill_formed"},
 	{"static SCHEMA_UNUSED", "inline"},
 	{"TABLE_FIXED_INLINE", "inline"},
 }
@@ -97,7 +98,7 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?layout_unsupported\s*=\s*19\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?text_ill_formed\s*=\s*20\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
 	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
 	// older plan down off the load path, and the reference still compiles one at
@@ -383,6 +384,8 @@ func normalizeSyntax(s string) string {
 		{"const TableFixedEntry & p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry * e", "const TableFixedEntry REF e"},
 		{"const TableFixedEntry & e", "const TableFixedEntry REF e"},
+		{"const TableFixedGuardLink * l", "const TableFixedGuardLink REF l"},
+		{"const TableFixedGuardLink & l", "const TableFixedGuardLink REF l"},
 		{"int32_t * clamped, int32_t * widened", "int32_t REF clamped, int32_t REF widened"},
 		{"int32_t & clamped, int32_t & widened", "int32_t REF clamped, int32_t REF widened"},
 		{"const TableFixedLayoutView * ", "const TableFixedLayoutView REF "},
@@ -478,6 +481,8 @@ func normalizeSyntax(s string) string {
 		{"(uint32_t) table[0]", "table[0]"},
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
 		{"const TableFixedEntry REF p = &plan[i];", "const TableFixedEntry REF p = plan[i];"},
+		{"guard_pool = nullptr", "guard_pool"},
+		{"const TableFixedGuardLink REF l = * ( const TableFixedGuardLink * )", "const TableFixedGuardLink REF l = ( const TableFixedGuardLink * )"},
 		{"TableFixedFail( TableFixedCheck REF c, int why )", "TableFixedFail( TableFixedCheck REF c, TableMessageReason why )"},
 		{"int kids_are_variants = true;", "bool kids_are_variants = true;"},
 		{"int is_leaf = false;", "bool is_leaf = false;"},
@@ -493,6 +498,8 @@ func normalizeSyntax(s string) string {
 		s = strings.ReplaceAll(s, t.from, t.to)
 	}
 	s = normalizeLocals(s)
+	s = strings.ReplaceAll(s, "matches = 0", "matches = false")
+	s = strings.ReplaceAll(s, "matches = 1", "matches = true")
 	s = rewriteLayBounds(s)
 	s = reUint8Lit.ReplaceAllString(s, "${1}u")
 	s = reSkipBraceOpen.ReplaceAllString(s, "n = their_n < my_n ? their_n : my_n;")

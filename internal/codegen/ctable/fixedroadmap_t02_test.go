@@ -361,12 +361,14 @@ func t02R25(t *testing.T) {
 }
 
 // t02R26: R26 "a known hash whose lineage entry would not build →
-// layout_malformed / plan_too_large by that entry's own lane, never a throw".
-// §5.2's PLAN: an entry that will not parse is refused "at GENERATE ... the
-// emitted entry is a LANE carrying that name, never a throw a first load
-// discovers (§5.9 #36)". §5.9 #4: "an entry whose plan exceeds [the declared
-// capacity] records plan_too_large ON THAT ENTRY"; §5.9 #8: a lock bug carries
-// layout_malformed "by its name".
+// layout_malformed / plan_too_large / layout_record_too_large by that entry's
+// own lane, never a throw". §5.2's PLAN: an entry that will not parse is
+// refused "at GENERATE ... the emitted entry is a LANE carrying that name,
+// never a throw a first load discovers (§5.9 #36)". §5.9 #4: "an entry whose
+// plan exceeds [the declared capacity] records plan_too_large ON THAT ENTRY";
+// §5.9 #8: a lock bug carries layout_malformed "by its name"; a hostile layout
+// (a third nested union the two-lane compiled walk refuses, past the depth
+// bound) carries layout_record_too_large, the reference's name (§5.8 row 6).
 func t02R26(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
@@ -374,8 +376,8 @@ func t02R26(t *testing.T) {
 	if !strings.Contains(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED; continue;") {
 		t.Errorf("R26: a lineage entry that does not parse carries no layout_malformed lane of its own")
 	}
-	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE") {
-		t.Errorf("R26: a lineage entry that will not build does not pick its own lane (layout_malformed vs plan_too_large)")
+	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLE_PLAN_TOO_LARGE") {
+		t.Errorf("R26: a lineage entry that will not build does not pick its own lane (layout_record_too_large vs plan_too_large)")
 	}
 	// AND LOAD REFUSES BY THAT ENTRY'S OWN LANE.
 	if !strings.Contains(text, snake+"_fixed_lineage[pick].reason != 0") {

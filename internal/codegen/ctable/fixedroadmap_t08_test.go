@@ -488,6 +488,17 @@ int main(void)
             if (poison == 2) { T08_BODY(file)[NEXT_AT] = 2; }
             memset(&back, 0xAA, sizeof(back));
             memset(&r, 0, sizeof(r));
+            if (path == 1)
+            {
+                /* THE COMPILED PLAN REFUSES A THIRD NESTED UNION BY NAME: the
+                   identity plan carries the chain, a stranger's two-lane plan
+                   does not, and the reference's name for it is
+                   layout_record_too_large (§5.8 row 6). */
+                if (root_fixed_load(&back, 1, file, need, plan, 1 << 16, NULL, &r) != -1 ||
+                    !r.refused || r.malformed || r.reason != SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE)
+                    { fprintf(stderr, "path %%d poison %%d: the compiled plan did not refuse the third nested union by name (refused=%%d reason=%%d)\n", path, poison, (int) r.refused, (int) r.reason); return 1; }
+                continue;
+            }
             if (root_fixed_load(&back, 1, file, need, plan, 1 << 16, NULL, &r) != 1)
                 { fprintf(stderr, "path %%d poison %%d: the read refused (reason %%d): the chain is bounded by something other than the layout's 64\n", path, poison, (int) r.reason); return 1; }
             CHECK(!r.refused && !r.malformed);
@@ -519,13 +530,14 @@ int main(void)
 // The subtest asserts, in order: the deepest leaf of a THREE-union chain
 // carries three links OUTERMOST FIRST at offset+count into the pool; the C
 // header publishes that pool; the generated C reads the three-armed value whole
-// on the identity AND the compiled plan, and on BOTH refuses to land the leaf
-// when the outermost tag (a condition only the chain carries) or the next one
-// names another arm. Then the layout's 64 as the ONLY bound: 31 nested unions
-// (the deepest inside the 64-entry depth bound) build a 31-link chain and the
-// generated C runs it on both plans with the same three outcomes, and 32 are
-// refused BY THE DEPTH BOUND — the fixed form is not emitted and the compiler
-// names the table — and not by the chain.
+// on the IDENTITY plan and refuses to land the leaf when the outermost tag (a
+// condition only the chain carries) or the next one names another arm; and the
+// COMPILED plan — a stranger's layout, walked two lanes at a time — refuses the
+// third nested union by name (layout_record_too_large, the reference's name).
+// Then the layout's 64 as the ONLY bound: 31 nested unions (the deepest inside
+// the 64-entry depth bound) build a 31-link chain the identity plan runs, and
+// 32 are refused BY THE DEPTH BOUND — the fixed form is not emitted and the
+// compiler names the table — and not by the chain.
 func cT08GuardChain(t *testing.T) {
 	u := unitFrom(t, cT08TripleUnionSchema)
 	plan, _, pool := ir.TableFixedBuildPlanNormalisedWithPool(u, u.Tables["Root"])
@@ -719,13 +731,14 @@ int main(void)
 // from this build's OWN layout is the compiled path with nothing else moving,
 // so the identity read and the compiled read of the same record must leave the
 // destination byte for byte the same. The probe reads each value — both arms of
-// a union, a text field, and the three-union chain — through `_fixed_load` once
-// under this build's hash (the identity plan) and once under the lineage
-// entry's (the compiled plan), into destinations stained alike, and memcmps
-// them; the header shows the load is the one table_fixed_run loop.
+// a union and a text field — through `_fixed_load` once under this build's hash
+// (the identity plan) and once under the lineage entry's (the compiled plan),
+// into destinations stained alike, and memcmps them; the header shows the load
+// is the one table_fixed_run loop. (The three-union chain is out of this row's
+// reach: a stranger's compiled plan refuses it by name, which c/R28 asserts.)
 func cT08IdentityEqualsCompiled(t *testing.T) {
 	header := cT08Header(t, cT08UnionSchema)
-	if !strings.Contains(header, "table_fixed_run( entries, entry_guards, entry_count, entry_guarded,") {
+	if !strings.Contains(header, "table_fixed_run( entries, entry_count, entry_guarded,") {
 		t.Fatal("the load is not the one loop over whichever plan the hash selected")
 	}
 	same := `    for (k = 0; k < cases; ++k)
@@ -767,25 +780,6 @@ int main(void)
     Root value;
     int64_t need;
     int k, cases = 2;
-`+same)
-	cT08Probe(t, cT08TripleUnionSchema, "Root", `#include "ProbeTable.h"
-#include <stdio.h>
-#include <string.h>
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
-static void set(Root * v, int k)
-{
-    if (k == 0) { v->oo.type = 1; v->oo.as.o.mm.type = 1; v->oo.as.o.mm.as.m.i.type = 1; v->oo.as.o.mm.as.m.i.as.a.x = 42; }
-    if (k == 1) { v->oo.type = 1; v->oo.as.o.mm.type = 1; v->oo.as.o.mm.as.m.i.type = 2; v->oo.as.o.mm.as.m.i.as.b.y = -3; }
-    if (k == 2) { v->oo.type = 1; v->oo.as.o.mm.type = 2; v->oo.as.o.mm.as.n.z = 77; }
-    if (k == 3) { v->oo.type = 2; v->oo.as.p.w = 99; }
-}
-int main(void)
-{
-    static TableFixedEntry plan[4096];
-    TableReport r;
-    Root value;
-    int64_t need;
-    int k, cases = 4;
 `+same)
 }
 
@@ -1152,7 +1146,6 @@ int main(void)
     TableFixedEntry plan[1024];
     uint8_t w2[4096], w1[4096];
     int64_t need;
-    int32_t clamped = 0, widened = 0;
     const uint8_t * body;
     memset(&two, 0, sizeof(two));
     two.keep = 5150;
@@ -1173,7 +1166,7 @@ int main(void)
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */
     body = w2 + need - fxnew_fixed_body_bytes;
     memset(&wrong, 0x5A, sizeof(wrong));
-    table_fixed_run(fxold_fixed_plan, fxold_fixed_guards, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &clamped, &widened);
+    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards);
     if (wrong.renamed == 808)
         { fprintf(stderr, "NEGATIVE CONTROL FAILED: Fxold's identity plan reproduced an Fxnew record (renamed=%d)\n", (int)wrong.renamed); return 1; }
 
