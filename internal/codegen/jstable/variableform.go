@@ -409,7 +409,7 @@ function TableVariableSkip(r, kind, report) {
 // reads null (§3.1). A *string blob's bytes are validated here too, one
 // malformed per bad record. The table is whole or it is nothing: a scan that
 // cannot frame the records leaves them empty and every pointer null.
-function TableVariableNodeTableScan(bytes, table, end, report) {
+function TableVariableNodeTableScan(bytes, table, end, report, retain) {
   const records = [];
   const w = new TableVariableReader(bytes, 1, end);
   let payload = null, present = false, bad = false;
@@ -451,7 +451,7 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
   if (!good) { report.malformed = true; return records; }
   for (const r of raw) {
     const tid = table[r.ref - 1];
-    if (tid !== TableStringBlobId) { report.unknown++; records.push(null); continue; }
+    if (tid !== TableStringBlobId) { report.unknown++; if (retain !== null) { report.retainLost++; } records.push(null); continue; }
     const dec = TableVariableUtf8Decode(r.body);
     if (!dec.ok) { report.malformed = true; records.push(null); continue; }
     records.push(dec.s);
@@ -723,9 +723,9 @@ func (g *variableGen) emitBodyRead(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if (!named) {\n")
 	g.pf("      report.unknown++;\n")
-	g.pf("      if (!TableVariableRetainCapture(r, id, kind, table, retain, path, report)) {\n")
-	g.pf("        if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
-	g.pf("      }\n")
+	g.pf("      const rstart = r.at;\n")
+	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
+	g.pf("      if (retain !== null) { TableVariableRetainCapture(r.b, rstart, r.at, id, kind, table, retain, path, report); }\n")
 	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  return true;\n}\n\n")
@@ -1100,7 +1100,7 @@ func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("  const pending = [];\n")
 	// the node table is read FIRST, before any value decode (docs/SPEC-TABLES.md
 	// §3.1): a body that stops on damage still has its pointer slots' records.
-	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report);\n")
+	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report, null);\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
 	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false, null, []);\n", st.Name)
 	g.pf("  for (const p of pending) {\n")

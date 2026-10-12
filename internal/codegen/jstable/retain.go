@@ -67,7 +67,7 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  const ids = new TableVariableIds();\n")
 	g.pf("  const pending = [];\n")
-	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report);\n")
+	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report, retain);\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
 	g.pf("  const path = [];\n")
 	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false, retain, path);\n", st.Name)
@@ -259,18 +259,17 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   }
 }
 
-// Capture one unknown field (id, kind) at the reader's payload start into the
-// caller's buffer. On success the reader is advanced past the payload and the
-// record is committed; on failure the reader is untouched and one retainLost is
-// counted, never 'malformed' (§6.6).
-function TableVariableRetainCapture(r, id, kind, table, retain, path, report) {
-  if (retain === null || retain.bytes === null) { return false; }
-  const src = new TableVariableReader(r.b, r.at, r.end);
+// Capture one unknown field (id, kind) whose payload the plain read has already
+// skipped (bytes[start:end]). The framing was validated by that skip, so the
+// resolving walk here can only fail on inner damage or an excluded class, which
+// is one retainLost and never 'malformed' (§6.6).
+function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
+  const src = new TableVariableReader(bytes, start, end);
   const out = new TableVariableWriter();
-  if (!TableVariableRetainResolve(src, table, kind, out, 0)) { report.retainLost++; return false; }
+  if (!TableVariableRetainResolve(src, table, kind, out, 0) || src.at !== end) { report.retainLost++; return; }
   const depth = path.length;
   const total = 4 + 1 + 8 * depth + 8 + 1 + 1 + 4 + out.len;
-  if (retain.used + total > retain.bytes.length) { report.retainLost++; return false; }
+  if (retain.used + total > retain.bytes.length) { report.retainLost++; return; }
   const rec = new TableVariableWriter();
   rec.u32(total); rec.u8(depth);
   for (const s of path) { rec.u32(s.o); rec.u32(s.i); }
@@ -279,8 +278,6 @@ function TableVariableRetainCapture(r, id, kind, table, retain, path, report) {
   retain.used += total;
   retain.count++;
   report.retained++;
-  r.at = src.at;
-  return true;
 }
 
 // THE RESOLVING WALK, save half (§6.6): read a record's resolved payload and

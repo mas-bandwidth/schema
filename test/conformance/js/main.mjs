@@ -563,7 +563,11 @@ async function wireFuzz() {
   const CardLoad = cards.CardLoad;
   const CardLoadMeasure = cards.CardLoadMeasure;
   const CardSave = cards.CardSave;
+  const CardLoadRetain = cards.CardLoadRetain;
+  const CardSaveRetain = cards.CardSaveRetain;
   const TableVariableReport = cards.TableVariableReport;
+  const TableVariableRetain = cards.TableVariableRetain;
+  const retainBytes = 1 << 20;
 
   const readExact = (n) => {
     const buf = Buffer.alloc(n);
@@ -590,8 +594,8 @@ async function wireFuzz() {
     const root = rLen === null ? "" : readExact(rLen).toString("utf8");
     const form = readU8();
     const retain = readU8();
-    if (unit === "cards" && root === "Card" && form === 1 && retain === 0) {
-      roster[i] = { CardLoad, CardLoadMeasure, CardSave, TableVariableReport };
+    if (unit === "cards" && root === "Card" && form === 1) {
+      roster[i] = { CardLoad, CardLoadMeasure, CardSave, CardLoadRetain, CardSaveRetain, TableVariableReport, TableVariableRetain, retain: retain === 1 };
       known[i] = 1;
     } else {
       known[i] = 0;
@@ -610,12 +614,24 @@ async function wireFuzz() {
     const codec = roster[index];
 
     let loaded = false, measure = -1, saved = null;
-    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0 };
+    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
       measure = codec.CardLoadMeasure(wire);
       if (measure >= 0) {
         const rep = new codec.TableVariableReport();
-        const card = codec.CardLoad(wire, rep);
+        let card = null;
+        if (codec.retain) {
+          const retainStore = new codec.TableVariableRetain(new Uint8Array(retainBytes), new Array(retainBytes / 8));
+          card = codec.CardLoadRetain(wire, retainStore, rep);
+          loaded = card !== null;
+          if (loaded) {
+            saved = codec.CardSaveRetain(card, retainStore, rep);
+          }
+        } else {
+          card = codec.CardLoad(wire, rep);
+          loaded = card !== null;
+          if (loaded) { saved = codec.CardSave(card); }
+        }
         report.unknown = rep.unknown;
         report.kindMismatch = rep.kindMismatch;
         report.widened = rep.widened;
@@ -623,8 +639,8 @@ async function wireFuzz() {
         report.duplicate = rep.duplicate;
         report.malformed = rep.malformed;
         report.refused = rep.refused;
-        loaded = card !== null;
-        if (loaded) { saved = codec.CardSave(card); }
+        report.retained = rep.retained;
+        report.retainLost = rep.retainLost;
       }
     }
 
@@ -638,8 +654,8 @@ async function wireFuzz() {
     header[21] = report.malformed ? 1 : 0;
     header[22] = report.refused ? 1 : 0;
     header.writeBigInt64LE(BigInt(measure), 23);
-    header.writeInt32LE(0, 31);
-    header.writeInt32LE(0, 35);
+    header.writeInt32LE(report.retained | 0, 31);
+    header.writeInt32LE(report.retainLost | 0, 35);
     if (saved === null) {
       header.writeBigInt64LE(-1n, 39);
       process.stdout.write(header);
