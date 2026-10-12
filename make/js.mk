@@ -657,7 +657,7 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 # refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
 # a live port, and a fragment named cards-js.mk would be refused there as a
 # phantom port (docs/SPEC-TABLES.md §11 names the port registry).
-.PHONY: cards-js-generate cards-js-wire-fuzz
+.PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz
 
 # cards-js-generate emits the JavaScript variable-form surface for tables/cards.
 cards-js-generate: bin/schema
@@ -681,7 +681,24 @@ cards-js-wire-fuzz: build/conformance-harness cards-js-generate
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-js-wire-fuzz.log
 
+# cards-js-retain-fuzz is cards-js-wire-fuzz under the oracle's --retain arm
+# (docs/SPEC-TABLES.md §6.6): the same manifest, seed and coverage greps, so the
+# JavaScript Card codec's retaining Load and Save are held to the identical
+# byte-for-byte contract the C and C# drivers' retain fuzzers reproduce.
+cards-js-retain-fuzz: build/conformance-harness cards-js-generate
+	@./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--retain \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-js-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-js-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-js-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-js-retain-fuzz.log
+
 test-js: cards-js-wire-fuzz
+test-js: cards-js-retain-fuzz
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.

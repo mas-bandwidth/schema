@@ -136,6 +136,8 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// mismatch is reported (§4).\n")
 	g.pf("\n")
 	g.emitRuntime()
+	g.emitRetainRuntime()
+	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)
 	}
@@ -150,6 +152,7 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	}
 	for _, r := range roots {
 		g.emitRootCodec(r)
+		g.emitRetainMember(r)
 	}
 	return map[string][]byte{runtimeHome(u) + "Variable.js": []byte(g.body.String())}
 }
@@ -228,20 +231,28 @@ export class TableVariableReport {
     this.clamped = 0;
     this.widened = 0;
     this.duplicate = 0;
+    this.retained = 0;
+    this.retainLost = 0;
   }
 }
 
 // Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3), each a
 // BigInt, returning the 1-based reference. First-use order follows the write
 // order, so byte-identical output against the reference requires the same walk.
+// With a retention store attached, a NON-NAMEABLE id (docs/SPEC-TABLES.md §6.6)
+// first used here takes an entry from the caller's id list, and a full list
+// answers -1 rather than growing.
 class TableVariableIds {
-  constructor() { this.list = []; this.index = new Map(); }
-  ref(id) {
+  constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  ref(id, retained) {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
+    const isRetained = !!retained && !tableRetainNameable(id);
+    if (isRetained && this.retain !== null && this.retain.idUsed >= this.retain.ids.length) { return -1; }
     this.list.push(id);
     const n = this.list.length;
     this.index.set(id, n);
+    if (isRetained && this.retain !== null) { this.retain.ids[this.retain.idUsed++] = { id, slot: n }; }
     return n;
   }
 }
@@ -398,7 +409,7 @@ function TableVariableSkip(r, kind, report) {
 // reads null (§3.1). A *string blob's bytes are validated here too, one
 // malformed per bad record. The table is whole or it is nothing: a scan that
 // cannot frame the records leaves them empty and every pointer null.
-function TableVariableNodeTableScan(bytes, table, end, report) {
+function TableVariableNodeTableScan(bytes, table, end, report, retain) {
   const records = [];
   const w = new TableVariableReader(bytes, 1, end);
   let payload = null, present = false, bad = false;
@@ -440,7 +451,7 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
   if (!good) { report.malformed = true; return records; }
   for (const r of raw) {
     const tid = table[r.ref - 1];
-    if (tid !== TableStringBlobId) { report.unknown++; records.push(null); continue; }
+    if (tid !== TableStringBlobId) { report.unknown++; if (retain !== null) { report.retainLost++; } records.push(null); continue; }
     const dec = TableVariableUtf8Decode(r.body);
     if (!dec.ok) { report.malformed = true; records.push(null); continue; }
     records.push(dec.s);
@@ -469,6 +480,64 @@ function TableVariableJsonString(s) {
   return out + '"';
 }
 `)
+}
+
+// ---------------------------------------------------------------------------
+// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1) and the UNIT REGISTRY (§8.3)
+// ---------------------------------------------------------------------------
+
+// fieldShape is a field's STORAGE SHAPE (docs/SPEC-TABLES.md §8.1): "value"
+// for a scalar, a string or an enum; "list" for an unbounded array of tables
+// ([]T, §2.9); and "blob" for a *string byte buffer (§2.5). A walker reads the
+// shape beside the kind to know whether a field holds one value, a counted
+// sequence or a node-indexed blob, without a per-version struct.
+func fieldShape(f *ir.Field) string {
+	if f.IsList() {
+		return "list"
+	}
+	if f.Type.Pointer && f.Type.Blob() {
+		return "blob"
+	}
+	return "value"
+}
+
+// fieldBound is a field's DECLARED BOUND (docs/SPEC-TABLES.md §8.1): a
+// string(N) or bytes(N) declares N, and every other card construct is
+// unbounded or bounded by its own kind, so it declares 0.
+func fieldBound(f *ir.Field) int64 {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Blob() {
+			return f.Type.Size
+		}
+	}
+	return 0
+}
+
+// emitDescriptors emits one table type descriptor per table in the variable
+// closure (docs/SPEC-TABLES.md §8.1) — field name, wire kind, storage shape and
+// declared bound, in declaration order — then the unit registry (§8.3) that
+// lists them. Enough to walk a record by name and kind without a per-version
+// struct; nothing else of §8 is claimed.
+func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
+	for _, st := range closure {
+		g.pf("export const %sTableType = {\n", st.Name)
+		g.pf("  name: %q,\n", st.Name)
+		g.pf("  fields: [\n")
+		for _, f := range st.Fields {
+			g.pf("    { name: %q, kind: %d, shape: %q, bound: %d },\n",
+				f.Name, ir.TableWireFieldKind(f), fieldShape(f), fieldBound(f))
+		}
+		g.pf("  ],\n")
+		g.pf("};\n\n")
+	}
+	g.pf("export const %sUnitRegistry = {\n", capitalize(g.unit.Package))
+	g.pf("  package: %q,\n", g.unit.Package)
+	g.pf("  tables: [\n")
+	for _, st := range closure {
+		g.pf("    %sTableType,\n", st.Name)
+	}
+	g.pf("  ],\n")
+	g.pf("};\n\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -528,20 +597,23 @@ func (g *variableGen) emitBodyCodec(st *ir.Struct) {
 }
 
 func (g *variableGen) emitBodyWrite(st *ir.Struct) {
-	g.pf("function %sFieldsWrite(w, ids, nodes, v) {\n", st.Name)
-	for _, f := range st.Fields {
-		g.emitWriteField(st, f)
+	g.pf("function %sFieldsWrite(w, ids, nodes, v, retain, path, report) {\n", st.Name)
+	for i, f := range st.Fields {
+		g.emitWriteField(st, f, i)
 	}
 	g.pf("  return true;\n}\n\n")
-	g.pf("function %sBodyWrite(w, ids, nodes, v) {\n", st.Name)
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v)) { return false; }\n", st.Name)
+	g.pf("function %sBodyWrite(w, ids, nodes, v, retain, path, report) {\n", st.Name)
+	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, retain, path, report)) { return false; }\n", st.Name)
+	g.pf("  if (!TableVariableRetainTail(w, ids, retain, path, report)) { return false; }\n")
 	g.pf("  w.u8(0);\n")
 	g.pf("  return true;\n}\n\n")
 }
 
 // emitWriteField emits the header and payload of ONE field of a body's write
 // walk, eliding the field at its default (docs/SPEC-TABLES.md §3, §4).
-func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field) {
+// `ordinal` is the field's position in its body's declaration order, the first
+// half of the retain path step (§6.6).
+func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field, ordinal int) {
 	name := "v." + f.Name
 	kind := fieldKindName(f)
 	if e := enumOf(f); e != nil {
@@ -574,9 +646,12 @@ func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field) {
 		g.pf("    const sub = new TableVariableWriter();\n")
 		g.pf("    sub.u8(13);\n")
 		g.pf("    sub.leb(%s.length);\n", name)
-		g.pf("    for (const e of %s) {\n", name)
+		g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
+		g.pf("      const e = %s[i];\n", name)
 		g.pf("      const body = new TableVariableWriter();\n")
-		g.pf("      if (!%sBodyWrite(body, ids, nodes, e)) { return false; }\n", el.Name)
+		g.pf("      path.push({ o: %d, i: i });\n", ordinal)
+		g.pf("      if (!%sBodyWrite(body, ids, nodes, e, retain, path, report)) { return false; }\n", el.Name)
+		g.pf("      path.pop();\n")
 		g.pf("      sub.leb(body.len);\n")
 		g.pf("      sub.raw(body.b);\n")
 		g.pf("    }\n")
@@ -618,7 +693,7 @@ func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field) {
 }
 
 func (g *variableGen) emitBodyRead(st *ir.Struct) {
-	g.pf("function %sBodyRead(r, ids, table, v, report, pending, records, nested) {\n", st.Name)
+	g.pf("function %sBodyRead(r, ids, table, v, report, pending, records, nested, retain, path) {\n", st.Name)
 	g.pf("  while (true) {\n")
 	g.pf("    const ref = r.leb();\n")
 	g.pf("    if (r.bad) { report.malformed = true; break; }\n")
@@ -633,8 +708,8 @@ func (g *variableGen) emitBodyRead(st *ir.Struct) {
 	// there and no field after it is read, never an unknown (§3.1).
 	g.pf("    if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.malformed = true; break; }\n")
 	g.pf("    let named = false;\n")
-	for _, f := range st.Fields {
-		g.emitReadField(st, f)
+	for i, f := range st.Fields {
+		g.emitReadField(st, f, i)
 	}
 	// the reserved node-table field (docs/SPEC-TABLES.md §3.1): it rides in a
 	// VARIABLE root body and nowhere else — a nested body naming it is damage.
@@ -648,7 +723,9 @@ func (g *variableGen) emitBodyRead(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if (!named) {\n")
 	g.pf("      report.unknown++;\n")
+	g.pf("      const rstart = r.at;\n")
 	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
+	g.pf("      if (retain !== null) { TableVariableRetainCapture(r.b, rstart, r.at, id, kind, table, retain, path, report); }\n")
 	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  return true;\n}\n\n")
@@ -656,8 +733,9 @@ func (g *variableGen) emitBodyRead(st *ir.Struct) {
 
 // emitReadField emits the decode of ONE field of a body's read walk, matching
 // the id resolved from the id table against the field's compile-time id
-// (docs/SPEC-TABLES.md §3, §4).
-func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field) {
+// (docs/SPEC-TABLES.md §3, §4). `ordinal` is the field's position in its body's
+// declaration order (docs/SPEC-TABLES.md §6.6).
+func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
 	name := "v." + f.Name
 	kind := fieldKindName(f)
 	g.pf("    if (id === %s) {\n", jsId(ir.TableFieldWireId(f)))
@@ -674,7 +752,7 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field) {
 		for i := range e.Variants {
 			g.pf("        if (eid === %s) { %s = %q; }\n", jsId(ir.TableWireId(e.VariantWireName(i))), name, e.Variants[i])
 		}
-		g.pf("        if (%s === null) { report.unknown++; }\n", name)
+		g.pf("        if (%s === null) { report.unknown++; if (retain !== null) { report.retainLost++; } }\n", name)
 		g.pf("      }\n")
 		g.pf("      continue;\n")
 		g.pf("    }\n")
@@ -707,7 +785,9 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field) {
 		g.pf("        let e = new %s();\n", el.Name)
 		g.pf("        const er = new TableVariableReader(r.b, sub.at, sub.at + elen);\n")
 		g.pf("        const pstart = pending.length;\n")
-		g.pf("        %sBodyRead(er, ids, table, e, report, pending, records, true);\n", el.Name)
+		g.pf("        path.push({ o: %d, i: i });\n", ordinal)
+		g.pf("        %sBodyRead(er, ids, table, e, report, pending, records, true, retain, path);\n", el.Name)
+		g.pf("        path.pop();\n")
 		g.pf("        if (er.at !== er.end) { report.malformed = true; e = new %s(); pending.length = pstart; }\n", el.Name)
 		g.pf("        sub.at += elen;\n")
 		g.pf("        %s.push(e);\n", name)
@@ -937,7 +1017,7 @@ func (g *variableGen) emitRootSave(st *ir.Struct) {
 	g.pf("  w.u8(TableVariableForm);\n")
 	g.pf("  const ids = new TableVariableIds();\n")
 	g.pf("  const nodes = new TableVariableNodes();\n")
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v)) { return -1; }\n", st.Name)
+	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, null, [], null)) { return -1; }\n", st.Name)
 	g.pf("  if (nodes.list.length > 0) {\n")
 	g.pf("    const ref = ids.ref(TableNodeTableId);\n")
 	g.pf("    w.leb(ref); w.u8(12);\n")
@@ -961,7 +1041,7 @@ func (g *variableGen) emitRootSave(st *ir.Struct) {
 	g.pf("  w.u8(TableVariableForm);\n")
 	g.pf("  const ids = new TableVariableIds();\n")
 	g.pf("  const nodes = new TableVariableNodes();\n")
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v)) { return null; }\n", st.Name)
+	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, null, [], null)) { return null; }\n", st.Name)
 	g.pf("  if (nodes.list.length > 0) {\n")
 	g.pf("    const ref = ids.ref(TableNodeTableId);\n")
 	g.pf("    w.leb(ref); w.u8(12);\n")
@@ -1020,9 +1100,9 @@ func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("  const pending = [];\n")
 	// the node table is read FIRST, before any value decode (docs/SPEC-TABLES.md
 	// §3.1): a body that stops on damage still has its pointer slots' records.
-	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report);\n")
+	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report, null);\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
-	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false);\n", st.Name)
+	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false, null, []);\n", st.Name)
 	g.pf("  for (const p of pending) {\n")
 	g.pf("    const [obj, slot, index] = p;\n")
 	g.pf("    if (index === 0) { continue; }\n")
