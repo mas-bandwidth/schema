@@ -1,0 +1,13 @@
+package cards
+
+enum Tier { bronze, silver, flash }
+
+table Card
+{
+    id       string(8)
+    n        int32
+    extra    string(16)
+    future_i int32
+    tier     Tier
+    blob     *string
+}

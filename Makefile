@@ -5641,6 +5641,9 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # conformance matrix holds it to the corpus — or stops with the diagnostic that
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
+# A card fragment (make/cards-*.mk, e.g. make/cards-rust-retain.mk) is not a
+# port: it holds a card's extra fuzz arm on the port's own make/<lang>.mk and is
+# filtered out below so it is not refused here as a phantom port.
 # Nothing here lists a language.
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
@@ -5648,7 +5651,7 @@ tables-ports-refuse-wide-scalars: bin/schema
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(patsubst make/%.mk,%,$(filter-out make/cards-%.mk,$(wildcard make/*.mk))); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \
