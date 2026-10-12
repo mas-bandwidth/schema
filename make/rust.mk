@@ -571,4 +571,25 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-wire-fuzz.log
 
-test-rust: cards-rust-wire-fuzz
+# THE CARD WIRE-FUZZ GATE, RETAINED (docs/SPEC-TABLES.md §6.6): the same Card
+# root through both engines' RETAINING paths — the driver answers --retain with
+# card_load_retain and card_save_retain over the caller-owned stores — compared
+# against the oracle's own retention. The seed, count and coverage greps are the
+# wire-fuzz arm's above. Like cards-rust-wire-fuzz this lives in make/rust.mk
+# rather than a separate fragment: the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-rust-retain.mk would be refused there as a phantom
+# port.
+.PHONY: cards-rust-retain-fuzz
+cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
+		> build/cards-rust-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-rust-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-rust-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-retain-fuzz.log
+
+test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
