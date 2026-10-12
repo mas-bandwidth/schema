@@ -46,6 +46,7 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
+	out[VariableDescriptorModule+".rs"] = variableDescriptorModule(u)
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: ir.TableClosure(u)}
 		if body := g.variableModule(); body != nil {
@@ -82,6 +83,7 @@ func scopedVariableModules(u *ir.Unit) map[string][]byte {
 	}
 	out := map[string][]byte{}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
+	out[VariableDescriptorModule+".rs"] = variableDescriptorModule(u)
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: ir.TableClosure(u)}
 		if body := g.variableModule(); body != nil {
@@ -121,6 +123,14 @@ pub struct TableReport {
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
+    /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
+    /// counts the unknown fields whose bytes were kept, retain_lost counts
+    /// every unknown this load or save could not keep (capacity, an excluded
+    /// class, or a damaged resolving walk). Both are zero in every read that
+    /// did not opt in, and both ride the one report type for the reason
+    /// duplicate does (§4).
+    pub retained: u64,
+    pub retain_lost: u64,
 }
 
 /// Read one canonical LEB128 u64 from the cursor; None when it overruns, runs
@@ -270,7 +280,595 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         _ => false,
     }
 }
+
+/// THE RETAIN-UNKNOWN STORE (docs/SPEC-TABLES.md §6.6): the caller's two
+/// bounded stores threaded through the retaining load and save. 'bytes' holds
+/// the retained records, 'ids' the retained ids' own list; both are the
+/// caller's, neither grows on demand, and a whole record that does not fit is
+/// dropped and counted once in the report's 'retain_lost'.
+#[derive(Default)]
+pub struct TableRetain {
+    pub bytes: Vec<u8>,
+    pub ids: Vec<u64>,
+}
+
+/// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
+/// the one depth on this path a file can drive.
+pub const TABLE_RETAIN_DEPTH_CAP: usize = 64;
+
+/// THE RETAIN PATH (docs/SPEC-TABLES.md §6.6): the region's address for one
+/// body — depth steps, each the pair (field ordinal, element index). A step is
+/// computed locally as the walk descends, so one address is available on both
+/// sides of the round trip, and a body whose element count is data-driven is
+/// addressed by the same step a nested table takes.
+#[derive(Clone, Copy)]
+pub struct TableRetainPath {
+    pub depth: u32,
+    pub steps: [(u32, u32); TABLE_RETAIN_DEPTH_CAP],
+}
+
+impl Default for TableRetainPath {
+    fn default() -> Self {
+        TableRetainPath {
+            depth: 0,
+            steps: [(0, 0); TABLE_RETAIN_DEPTH_CAP],
+        }
+    }
+}
+
+impl TableRetainPath {
+    pub fn step(&self, ordinal: u32, index: u32) -> TableRetainPath {
+        let mut p = *self;
+        if (p.depth as usize) < TABLE_RETAIN_DEPTH_CAP {
+            p.steps[p.depth as usize] = (ordinal, index);
+            p.depth += 1;
+        }
+        p
+    }
+}
+
+/// ONE RETAINED RECORD is
+/// [u32 len][u32 depth][u64 field id][u8 kind][depth × (u32 ordinal, u32 index)][resolved payload],
+/// len = 17 + 8×depth + payload.len(). The payload is READER-PRIVATE (§6.6):
+/// every reference is the eight-byte id it names and every framed length is
+/// eight bytes, so a save re-interns references against a different id table.
+pub fn retain_record_len(rec: &[u8]) -> usize {
+    u32::from_le_bytes(rec[..4].try_into().unwrap()) as usize
+}
+
+/// The record's path depth (docs/SPEC-TABLES.md §6.6), read from the four bytes
+/// after the record length.
+fn retain_record_depth(rec: &[u8]) -> usize {
+    u32::from_le_bytes(rec[4..8].try_into().unwrap()) as usize
+}
+
+/// Does the record's path equal the save's current path? (docs/SPEC-TABLES.md
+/// §6.6): a retained record goes back at the end of the body it came from, so a
+/// save emits only the records whose steps name the body it is writing.
+fn retain_path_eq(rec: &[u8], depth: usize, path: &TableRetainPath) -> bool {
+    if depth != path.depth as usize {
+        return false;
+    }
+    for i in 0..depth {
+        let base = 17 + 8 * i;
+        let o = u32::from_le_bytes(rec[base..base + 4].try_into().unwrap());
+        let x = u32::from_le_bytes(rec[base + 4..base + 8].try_into().unwrap());
+        if o != path.steps[i].0 || x != path.steps[i].1 {
+            return false;
+        }
+    }
+    true
+}
+
+/// Does the record live UNDER the save's current path (docs/SPEC-TABLES.md
+/// §6.6), and, when 'field' is set, under the step whose ordinal is 'ordinal'?
+/// A known ancestor body reset by a later occurrence discards every record
+/// under it, so the discarded record dies with the body that carried it.
+fn retain_under(rec: &[u8], depth: usize, path: &TableRetainPath, field: bool, ordinal: u32) -> bool {
+    if depth <= path.depth as usize {
+        return false;
+    }
+    for i in 0..path.depth as usize {
+        let base = 17 + 8 * i;
+        let o = u32::from_le_bytes(rec[base..base + 4].try_into().unwrap());
+        let x = u32::from_le_bytes(rec[base + 4..base + 8].try_into().unwrap());
+        if o != path.steps[i].0 || x != path.steps[i].1 {
+            return false;
+        }
+    }
+    if !field {
+        return true;
+    }
+    let base = 17 + 8 * path.depth as usize;
+    let o = u32::from_le_bytes(rec[base..base + 4].try_into().unwrap());
+    o == ordinal
+}
+
+struct RetainCur<'a> {
+    buf: &'a [u8],
+    off: usize,
+}
+
+impl<'a> RetainCur<'a> {
+    fn leb(&mut self) -> Option<u64> {
+        let mut off = self.off;
+        let v = leb_read(self.buf, &mut off)?;
+        self.off = off;
+        Some(v)
+    }
+}
+
+/// THE WALK IS AN INTERPRETATION (docs/SPEC-TABLES.md §6.6): a reference above
+/// the entry count, at an entry of zero, or at one of the three reserved ids
+/// drops the record. It reads kind bytes, lengths and references and nothing
+/// else, so no value is decoded and no bound is checked.
+fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
+    if r == 0 || r as usize > ids.len() {
+        *bad = true;
+        return 0;
+    }
+    let id = ids[r as usize - 1];
+    if id == 0 || id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == VOCABULARY_ID {
+        *bad = true;
+        return 0;
+    }
+    id
+}
+
+/// Step one payload of 'kind' by §3's framing rules alone, over a retained
+/// cursor. Kinds 13, 14, 15, 16, 17 and 30 never come back this way: the walk
+/// resolves each, and a kind outside the closed set is framing damage (§3).
+fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
+    let w = |c: &mut RetainCur, n: usize| -> bool {
+        if c.off + n > c.buf.len() {
+            return false;
+        }
+        c.off += n;
+        true
+    };
+    match kind {
+        1 | 2 | 6 | 20 | 25 => w(c, 1),
+        3 | 7 | 21 | 26 => w(c, 2),
+        4 | 8 | 10 | 22 | 27 => w(c, 4),
+        5 | 9 | 11 | 23 | 28 => w(c, 8),
+        18 | 19 | 24 | 29 => w(c, 16),
+        12 | 31 | 32 | 33 => {
+            let Some(n) = c.leb() else { return false; };
+            let n = n as usize;
+            if c.off + n > c.buf.len() {
+                return false;
+            }
+            c.off += n;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// retain_capture resolves one unknown field's payload. None is the DROP — a
+/// kind 17 at any depth, a reference the walk cannot resolve, a length that
+/// runs past, or a depth past the cap — and the caller counts one retain_lost
+/// (docs/SPEC-TABLES.md §6.6).
+pub fn retain_capture(ids: &[u64], kind: u8, payload: &[u8]) -> Option<Vec<u8>> {
+    let mut c = RetainCur { buf: payload, off: 0 };
+    let mut out = Vec::new();
+    let mut bad = false;
+    retain_resolve(&mut c, ids, kind, 0, &mut out, &mut bad);
+    if bad || c.off != payload.len() {
+        return None;
+    }
+    Some(out)
+}
+
+fn retain_resolve(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
+        *bad = true;
+        return;
+    }
+    match kind {
+        17 => {
+            // THE NODE-INDEX CLASS met at the outer kind (§6.6)
+            *bad = true;
+        }
+        30 => {
+            // an enum variant reference; zero is None and names no id
+            let Some(r) = c.leb() else { *bad = true; return; };
+            if r == 0 {
+                out.extend_from_slice(&0u64.to_le_bytes());
+                return;
+            }
+            let id = retain_id(ids, r, bad);
+            out.extend_from_slice(&id.to_le_bytes());
+        }
+        15 => {
+            let Some(r) = c.leb() else { *bad = true; return; };
+            if r == 0 {
+                out.extend_from_slice(&0u64.to_le_bytes());
+                return;
+            }
+            let id = retain_id(ids, r, bad);
+            out.extend_from_slice(&id.to_le_bytes());
+            if c.off >= c.buf.len() {
+                *bad = true;
+                return;
+            }
+            let arm_kind = c.buf[c.off];
+            c.off += 1;
+            out.push(arm_kind);
+            retain_framed(c, ids, arm_kind, depth, out, bad);
+        }
+        13 | 14 | 16 => retain_framed(c, ids, kind, depth, out, bad),
+        _ => {
+            let from = c.off;
+            if !retain_skip(c, kind) {
+                *bad = true;
+                return;
+            }
+            out.extend_from_slice(&c.buf[from..c.off]);
+        }
+    }
+}
+
+fn retain_framed(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    let Some(n) = c.leb() else { *bad = true; return; };
+    let n = n as usize;
+    if c.off + n > c.buf.len() {
+        *bad = true;
+        return;
+    }
+    let mut sub = RetainCur { buf: &c.buf[c.off..c.off + n], off: 0 };
+    c.off += n;
+    let mark = out.len();
+    out.extend_from_slice(&[0u8; 8]);
+    retain_content(&mut sub, ids, kind, depth + 1, out, bad);
+    if *bad {
+        return;
+    }
+    let len = (out.len() - mark - 8) as u64;
+    out[mark..mark + 8].copy_from_slice(&len.to_le_bytes());
+}
+
+fn retain_content(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
+        *bad = true;
+        return;
+    }
+    match kind {
+        17 => {
+            *bad = true;
+            return;
+        }
+        13 => retain_body(c, ids, depth, out, bad),
+        14 | 16 => {
+            if c.off >= c.buf.len() {
+                *bad = true;
+                return;
+            }
+            let ek = c.buf[c.off];
+            c.off += 1;
+            if ek == 17 {
+                // an array whose element kind is 17 is the excluded class
+                *bad = true;
+                return;
+            }
+            out.push(ek);
+            let Some(count) = c.leb() else { *bad = true; return; };
+            out.extend_from_slice(&count.to_le_bytes());
+            for _ in 0..count {
+                if kind == 16 {
+                    retain_keyed(c, ids, ek, depth, out, bad);
+                } else {
+                    retain_resolve(c, ids, ek, depth, out, bad);
+                }
+                if *bad {
+                    return;
+                }
+            }
+        }
+        15 | 30 => retain_resolve(c, ids, kind, depth, out, bad),
+        _ => {
+            out.extend_from_slice(&c.buf[c.off..]);
+            c.off = c.buf.len();
+        }
+    }
+    if !*bad && c.off != c.buf.len() {
+        *bad = true;
+    }
+}
+
+fn retain_keyed(c: &mut RetainCur, ids: &[u64], ek: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    let Some(r) = c.leb() else { *bad = true; return; };
+    let id = retain_id(ids, r, bad);
+    out.extend_from_slice(&id.to_le_bytes());
+    retain_framed(c, ids, ek, depth, out, bad);
+}
+
+fn retain_body(c: &mut RetainCur, ids: &[u64], depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    loop {
+        let Some(r) = c.leb() else { *bad = true; return; };
+        if r == 0 {
+            out.extend_from_slice(&0u64.to_le_bytes());
+            return;
+        }
+        if c.off >= c.buf.len() {
+            *bad = true;
+            return;
+        }
+        let kind = c.buf[c.off];
+        c.off += 1;
+        let id = retain_id(ids, r, bad);
+        out.extend_from_slice(&id.to_le_bytes());
+        out.push(kind);
+        retain_resolve(c, ids, kind, depth, out, bad);
+        if *bad {
+            return;
+        }
+    }
+}
+
+/// THE FILE STILL CARRIES ONE ID TABLE (docs/SPEC-TABLES.md §6.6): an id this
+/// build can name takes its entry from the generated table (already interned by
+/// the plain save walk), a retained id takes its entry from the caller's list,
+/// and both are numbered into one trailer in first-use order. A retained id
+/// past the caller's capacity answers 0 and the caller drops the record.
+pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id: u64) -> u64 {
+    for (i, &e) in ids.entries.iter().enumerate() {
+        if e == id {
+            return i as u64 + 1;
+        }
+    }
+    if known.binary_search(&id).is_ok() {
+        ids.entries.push(id);
+        return ids.entries.len() as u64;
+    }
+    if retain.ids.len() >= retain.ids.capacity() {
+        return 0;
+    }
+    retain.ids.push(id);
+    ids.entries.push(id);
+    ids.entries.len() as u64
+}
+
+/// retain_emit_tail re-emits the retained records whose path names the body the
+/// save is writing right now — in the order retained (docs/SPEC-TABLES.md §6.6),
+/// interning every id the payload names through [retain_ref]. A record whose id
+/// cannot be interned is dropped and counted one retain_lost, and the save is
+/// never refused.
+pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], path: TableRetainPath, report: &mut TableReport) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]) as usize;
+        if len < 17 || at + len > retain.bytes.len() {
+            break;
+        }
+        let rec = &retain.bytes[at..at + len];
+        let depth = retain_record_depth(rec);
+        if depth > TABLE_RETAIN_DEPTH_CAP || 17 + 8 * depth > len {
+            break;
+        }
+        at += len;
+        if !retain_path_eq(rec, depth, &path) {
+            continue;
+        }
+        let field_id = u64::from_le_bytes(rec[8..16].try_into().unwrap());
+        let kind = rec[16];
+        let payload = rec[17 + 8 * depth..len].to_vec();
+        let mut bad = false;
+        let slot = retain_ref(ids, retain, known, field_id);
+        if slot == 0 {
+            report.retain_lost += 1;
+            continue;
+        }
+        let mut c = RetainCur { buf: &payload, off: 0 };
+        let mut body = Vec::new();
+        retain_emit_resolve(&mut c, ids, retain, known, kind, 0, &mut body, &mut bad);
+        if bad || c.off != payload.len() {
+            report.retain_lost += 1;
+            continue;
+        }
+        leb_write(out, slot);
+        out.push(kind);
+        out.extend_from_slice(&body);
+    }
+}
+
+/// retain_discard removes every retained record under the field at 'ordinal' in
+/// the save's current path's body (docs/SPEC-TABLES.md §6.6): a known ancestor
+/// body reset by a later legal occurrence dies with its records, and only the
+/// winning occurrence's records survive to the save. The discard moves neither
+/// retained nor retain_lost — both stay monotonic.
+pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: u32) {
+    let mut read = 0usize;
+    let mut write = 0usize;
+    while read + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[read..]) as usize;
+        if len < 17 || read + len > retain.bytes.len() {
+            break;
+        }
+        let rec = &retain.bytes[read..read + len];
+        let depth = retain_record_depth(rec);
+        let drop = depth <= TABLE_RETAIN_DEPTH_CAP
+            && 17 + 8 * depth <= len
+            && retain_under(rec, depth, &path, true, ordinal);
+        if !drop {
+            if write != read {
+                retain.bytes.copy_within(read..read + len, write);
+            }
+            write += len;
+        }
+        read += len;
+    }
+    retain.bytes.truncate(write);
+}
+
+fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {
+    if c.off + 8 > c.buf.len() {
+        *bad = true;
+        return 0;
+    }
+    let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
+    c.off += 8;
+    retain_ref(ids, retain, known, id)
+}
+
+fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
+        *bad = true;
+        return;
+    }
+    match kind {
+        17 => {
+            *bad = true;
+        }
+        30 => {
+            let slot = retain_emit_ref(c, ids, retain, known, bad);
+            leb_write(out, slot);
+        }
+        15 => {
+            let slot = retain_emit_ref(c, ids, retain, known, bad);
+            leb_write(out, slot);
+            if slot == 0 {
+                return;
+            }
+            if c.off >= c.buf.len() {
+                *bad = true;
+                return;
+            }
+            let arm_kind = c.buf[c.off];
+            c.off += 1;
+            out.push(arm_kind);
+            retain_emit_framed(c, ids, retain, known, arm_kind, depth, out, bad);
+        }
+        13 | 14 | 16 => retain_emit_framed(c, ids, retain, known, kind, depth, out, bad),
+        _ => {
+            let from = c.off;
+            if !retain_skip(c, kind) {
+                *bad = true;
+                return;
+            }
+            out.extend_from_slice(&c.buf[from..c.off]);
+        }
+    }
+}
+
+fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    if c.off + 8 > c.buf.len() {
+        *bad = true;
+        return;
+    }
+    let len = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap()) as usize;
+    c.off += 8;
+    if c.off + len > c.buf.len() {
+        *bad = true;
+        return;
+    }
+    let mut sub = RetainCur { buf: &c.buf[c.off..c.off + len], off: 0 };
+    c.off += len;
+    let mut content = Vec::new();
+    retain_emit_content(&mut sub, ids, retain, known, kind, depth + 1, &mut content, bad);
+    if *bad {
+        return;
+    }
+    leb_write(out, content.len() as u64);
+    out.extend_from_slice(&content);
+}
+
+fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
+        *bad = true;
+        return;
+    }
+    match kind {
+        17 => {
+            *bad = true;
+            return;
+        }
+        13 => retain_emit_body(c, ids, retain, known, depth, out, bad),
+        14 | 16 => {
+            if c.off >= c.buf.len() {
+                *bad = true;
+                return;
+            }
+            let ek = c.buf[c.off];
+            c.off += 1;
+            out.push(ek);
+            if c.off + 8 > c.buf.len() {
+                *bad = true;
+                return;
+            }
+            let count = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
+            c.off += 8;
+            leb_write(out, count);
+            for _ in 0..count {
+                if kind == 16 {
+                    retain_emit_keyed(c, ids, retain, known, ek, depth, out, bad);
+                } else {
+                    retain_emit_resolve(c, ids, retain, known, ek, depth, out, bad);
+                }
+                if *bad {
+                    return;
+                }
+            }
+        }
+        15 | 30 => retain_emit_resolve(c, ids, retain, known, kind, depth, out, bad),
+        _ => {
+            out.extend_from_slice(&c.buf[c.off..]);
+            c.off = c.buf.len();
+        }
+    }
+    if !*bad && c.off != c.buf.len() {
+        *bad = true;
+    }
+}
+
+fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], ek: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    let slot = retain_emit_ref(c, ids, retain, known, bad);
+    leb_write(out, slot);
+    retain_emit_framed(c, ids, retain, known, ek, depth, out, bad);
+}
+
+fn retain_emit_body(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
+    loop {
+        if c.off + 8 > c.buf.len() {
+            *bad = true;
+            return;
+        }
+        let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
+        c.off += 8;
+        if id == 0 {
+            leb_write(out, 0);
+            return;
+        }
+        if c.off >= c.buf.len() {
+            *bad = true;
+            return;
+        }
+        let kind = c.buf[c.off];
+        c.off += 1;
+        let slot = retain_ref(ids, retain, known, id);
+        if slot == 0 {
+            *bad = true;
+            return;
+        }
+        leb_write(out, slot);
+        out.push(kind);
+        retain_emit_resolve(c, ids, retain, known, kind, depth, out, bad);
+        if *bad {
+            return;
+        }
+    }
+}
+
+/// Every id this unit's closure can spell, ascending (docs/SPEC-TABLES.md
+/// §6.6): the set a save consults to decide which store an id inside a
+/// retained record takes — an id it can name takes the generated table's
+/// entry, any other takes one from the caller's list.
+pub static KNOWN_IDS: &[u64] = &[
 `)
+	for _, id := range ir.TableWireIds(u) {
+		fmt.Fprintf(&b, "    0x%016x,\n", id)
+	}
+	b.WriteString("];\n")
 	return b.String()
 }
 
