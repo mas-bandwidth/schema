@@ -67,7 +67,15 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @build_version_id 0x%016X\n", ir.TableBuildVersionWireId)
 	fmt.Fprintf(&b, "  @message_vocab_id 0x%016X\n", ir.TableMessageVocabularyWireId)
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
-	fmt.Fprintf(&b, "  @region_align %d\n\n", ir.TableRegionAlign(u))
+	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
+	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
+	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
+	b.WriteString("  # caller's list rather than the generated table.\n")
+	b.WriteString("  @known_ids MapSet.new([\n")
+	for _, id := range ir.TableWireIds(u) {
+		fmt.Fprintf(&b, "    0x%016X,\n", id)
+	}
+	b.WriteString("  ])\n\n")
 	b.WriteString("  @tables %{\n")
 	for _, name := range names {
 		st := u.Tables[name]
@@ -77,7 +85,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		b.WriteString(tableDescriptor(u, st))
 	}
 	b.WriteString("  }\n")
+	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
+	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
+	b.WriteString("  def descriptors, do: @tables\n\n")
 	b.WriteString(variableRuntimeSource)
+	b.WriteString(variableRetainSource)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
 }
@@ -246,7 +258,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:error, reason, empty_report()}
 
       {:ok, body, ids} ->
-        case entries(body, ids) do
+        case entries(body, ids, desc.string_blob) do
           {:error, _} ->
             {:error, :malformed, empty_report()}
 
@@ -336,13 +348,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
   # node table out into its records (docs/SPEC-TABLES.md §3.1).
-  defp entries(bin, ids), do: entries(bin, ids, [], [])
+  defp entries(bin, ids, string_blob), do: entries(bin, ids, string_blob, [], [])
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, acc, nodes) do
+  defp entries(bin, ids, string_blob, acc, nodes) do
     case leb(bin) do
       :error ->
         {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
@@ -373,16 +385,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                         # carries it under another kind steps over it, never
                         # counting it unknown
                         if kind == 12 do
-                          case node_table(payload, ids) do
-                            {:ok, ns} -> entries(rest3, ids, acc, nodes ++ ns)
+                          case node_table(payload, ids, string_blob) do
+                            {:ok, ns} -> entries(rest3, ids, string_blob, acc, nodes ++ ns)
                             :error -> {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                           end
                         else
-                          entries(rest3, ids, acc, nodes)
+                          entries(rest3, ids, string_blob, acc, nodes)
                         end
 
                       else
-                        entries(rest3, ids, [{id, kind, payload} | acc], nodes)
+                        entries(rest3, ids, string_blob, [{id, kind, payload} | acc], nodes)
                       end
 
                     :error ->
@@ -410,13 +422,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # the bytes. The whole table is read or it is nothing (§3.1): the scan reads
   # records until the payload is consumed, and a count that disagrees with the
   # scan makes the table malformed, so every pointer in the save reads null.
-  defp node_table(bin, ids) do
+  defp node_table(bin, ids, string_blob) do
     case leb(bin) do
       {l, rest} when byte_size(rest) >= l ->
         content = binary_part(rest, 0, l)
 
         case leb(content) do
-          {n, cr} -> node_records(cr, n, [], ids)
+          {n, cr} -> node_records(cr, n, [], ids, string_blob)
           :error -> :error
         end
 
@@ -425,11 +437,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp node_records(<<>>, n, acc, _ids) do
+  defp node_records(<<>>, n, acc, _ids, _string_blob) do
     if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
   end
 
-  defp node_records(rest, n, acc, ids) do
+  defp node_records(rest, n, acc, ids, string_blob) do
     with {sref, r1} <- leb(rest),
          true <- sref != 0 and sref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
@@ -437,18 +449,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       bytes = binary_part(r2, 0, len)
 
       node =
-        case resolve(ids, sref) do
-          @string_id ->
-            if utf8_valid?(bytes), do: bytes, else: :malformed
-
-          _ ->
-            # a record whose type id this reader cannot name keeps its index
-            # and every pointer naming it reads null; the unknown is counted
-            # once at the record, not once per pointer (§3.1)
-            :unknown
+        if string_blob and resolve(ids, sref) == @string_id do
+          if utf8_valid?(bytes), do: bytes, else: :malformed
+        else
+          # a record whose type id this reader cannot name keeps its index
+          # and every pointer naming it reads null; the unknown is counted
+          # once at the record, not once per pointer (§3.1)
+          :unknown
         end
 
-      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids)
+      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, string_blob)
     else
       _ -> :error
     end
@@ -653,7 +663,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if ends_early?(sub, ids) do
       {%{}, malformed_report()}
     else
-      case entries(sub, ids) do
+      case entries(sub, ids, false) do
         {:ok, fields, []} ->
           # a list element's report FOLDS into the enclosing one (§4): the
           # counters sum and malformed sticks, so an event inside an element
@@ -679,11 +689,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp malformed_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: true}
+  defp malformed_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: true, retained: 0, retain_lost: 0}
 
   # ---- the shared primitives ----
 
-  defp empty_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false}
+  defp empty_report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
 
   # defaults is a field's declared default: what an absent field reads (§4).
   defp defaults(desc) do
@@ -1024,7 +1034,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       kind_mismatch: a.kind_mismatch + b.kind_mismatch,
       widened: a.widened + b.widened,
       clamped: a.clamped + b.clamped,
-      malformed: a.malformed or b.malformed
+      malformed: a.malformed or b.malformed,
+      retained: a.retained + b.retained,
+      retain_lost: a.retain_lost + b.retain_lost
     }
   end
 
@@ -1334,6 +1346,644 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 `
 
+// variableRetainSource is the retained round trip (docs/SPEC-TABLES.md §6.6): a
+// load that keeps what this build cannot name in the caller's two bounded
+// stores, a measure and a save that re-emit it at the end of the body it came
+// from. The retained record is READER-PRIVATE, so its layout is this port's
+// own; only the re-emitted bytes must match the reference legs byte for byte.
+const variableRetainSource = `
+  # ---- retain-unknown (docs/SPEC-TABLES.md §6.6) ----
+  #
+  # TableRetain is the caller's two bounded stores, threaded through the three
+  # verbs and never grown by the codec:
+  #   %{records: [{path, id, kind, resolved}], used: bytes, cap: cap,
+  #     ids: [retained id], id_cap: cap}
+  # A path is a list of {field_ordinal, element_index} steps; the root body's is
+  # []. A record costs 9 + byte_size(resolved) + 8 * length(path) bytes, and a
+  # record the remaining capacity cannot hold whole is dropped and counted one
+  # retain_lost (§6.6).
+
+  def load_retain(table, data, retain, report) when is_binary(data) do
+    desc = Map.fetch!(@tables, table)
+    # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
+    # into it resets both stores, keeping only the caller's capacities.
+    retain = %{retain | records: [], used: 0, ids: []}
+
+    case open(data) do
+      {:error, _} ->
+        {:error, :malformed, report, retain}
+
+      {:ok, body, ids} ->
+        case entries(body, ids, desc.string_blob) do
+          {:ok, fields, nodes} ->
+            {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
+            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
+            # an unknown NODE RECORD whose type id this reader cannot name is an
+            # excluded class (§6.6): one retain_lost, counted once at the record
+            unknown = Enum.count(nodes, &(&1 == :unknown))
+            report = %{report | unknown: report.unknown + unknown, retain_lost: report.retain_lost + unknown}
+            {:ok, Map.merge(defaults(desc), value), report, retain}
+
+          _ ->
+            {:error, :malformed, report, retain}
+        end
+    end
+  end
+
+  def measure_retain(table, value, retain) when is_map(value) do
+    {:ok, bytes, _retain, _report} = save_retain_internal(table, value, retain, empty_report())
+    byte_size(bytes)
+  end
+
+  def save_retain(table, value, retain, report) when is_map(value) do
+    {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
+    {:ok, bytes, report, retain}
+  end
+
+  defp save_retain_internal(table, value, retain, report) do
+    desc = Map.fetch!(@tables, table)
+    nodes = collect_nodes(desc, value, []) |> Enum.reverse()
+    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {v, i} -> {v, i} end)
+    {_idx_map, ids, order, retain, report, body} =
+      save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
+
+    {body, ids, order} = save_node_table(nodes, ids, order, body)
+    ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+    {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]), retain, report}
+  end
+
+  defp save_fields_retain(desc, value, idx_map, ids, order, retain, report, path, acc) do
+    {idx_map, ids, order, retain, report, acc} =
+      Enum.reduce(desc.fields, {idx_map, ids, order, retain, report, acc}, fn f, {idx_map, ids, order, retain, report, acc} ->
+        emit_field_retain(f, value, idx_map, ids, order, retain, report, path, acc)
+      end)
+
+    {ids, order, retain, report, acc} = emit_retain_tail(retain, ids, order, report, path, acc)
+    {idx_map, ids, order, retain, report, acc}
+  end
+
+  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    case Map.get(value, f.name, []) do
+      [] ->
+        {idx_map, ids, order, retain, report, acc}
+
+      elements ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        elem_desc = Map.fetch!(@tables, f.elem)
+        {body, idx_map, ids, order, retain, report} =
+          save_elements_retain(elem_desc, elements, 0, idx_map, ids, order, retain, report, f.ordinal, path, [])
+
+        array = [<<13>>, leb_encode(length(elements)), body]
+        {idx_map, ids, order, retain, report, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  defp emit_field_retain(f, value, idx_map, ids, order, retain, report, _path, acc) do
+    {idx_map, ids, order, acc} = emit_field(f, value, idx_map, ids, order, acc)
+    {idx_map, ids, order, retain, report, acc}
+  end
+
+  defp save_elements_retain(_desc, [], _index, idx_map, ids, order, retain, report, _ordinal, _path, acc),
+    do: {acc, idx_map, ids, order, retain, report}
+
+  defp save_elements_retain(desc, [e | rest], index, idx_map, ids, order, retain, report, ordinal, path, acc) do
+    elem_path = path ++ [{ordinal, index}]
+    {idx_map, ids, order, retain, report, body} =
+      save_fields_retain(desc, e, idx_map, ids, order, retain, report, elem_path, [])
+
+    framed = [leb_encode(IO.iodata_length(body) + 1), body, <<0>>]
+    save_elements_retain(desc, rest, index + 1, idx_map, ids, order, retain, report, ordinal, path, [acc, framed])
+  end
+
+  # emit_retain_tail re-emits the records whose path names the body being
+  # written, in the order retained (§6.6).
+  defp emit_retain_tail(retain, ids, order, report, path, acc) do
+    Enum.reduce(retain.records, {ids, order, retain, report, acc}, fn rec, {ids, order, retain, report, acc} ->
+      case rec do
+        {^path, id, kind, resolved} ->
+          {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+
+          if ref == 0 do
+            {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
+          else
+            case retain_emit(ids, order, retain, kind, resolved) do
+              {:ok, body, <<>>, ids, order, retain} ->
+                {ids, order, retain, report, [acc, leb_encode(ref), <<kind>>, body]}
+
+              _ ->
+                {ids, order, retain, %{report | retain_lost: report.retain_lost + 1}, acc}
+            end
+          end
+
+        _ ->
+          {ids, order, retain, report, acc}
+      end
+    end)
+  end
+
+  # ---- the retaining read: decode with a caller-owned store (§6.6) ----
+
+  defp decode_retain(desc, fields, nodes, ids, retain, report, path) do
+    Enum.reduce_while(fields, {Map.new(), report, retain}, fn {id, kind, payload}, {value, report, retain} ->
+      case find_field(desc, id) do
+        nil ->
+          # an unknown FIELD id is the retained class (§6.6): the resolved walk
+          # decides, and the six excluded classes count one retain_lost.
+          if payload == <<>> do
+            # a field the plain read could not delimit — its slice failed — has
+            # no bytes to retain: §6.6's capture never runs, one unknown counts
+            # and the enclosing read's malformed does (§3, §4).
+            {:cont, {value, %{report | unknown: report.unknown + 1}, retain}}
+          else
+            case retain_capture(ids, kind, payload) do
+              {:ok, resolved} ->
+                if retain_room(retain, path, resolved) do
+                  retain = retain_put(retain, path, id, kind, resolved)
+                  {:cont, {value, %{report | unknown: report.unknown + 1, retained: report.retained + 1}, retain}}
+                else
+                  {:cont, {value, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}}
+                end
+
+              :error ->
+                {:cont, {value, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}}
+            end
+          end
+
+        f ->
+          cond do
+            kind == f.kind ->
+              case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
+                {:cont, v, report, retain} -> {:cont, {Map.put(value, f.name, v), report, retain}}
+                {:halt, v, report, retain} -> {:halt, {Map.put(value, f.name, v), report, retain}}
+              end
+
+            widens?(kind, f) ->
+              {v, report} = read_widened(f, kind, payload, report)
+              {:cont, {Map.put(value, f.name, v), report, retain}}
+
+            true ->
+              {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
+          end
+      end
+    end)
+  end
+
+  defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do
+    case leb(payload) do
+      {_len, arr} ->
+        elem_desc = Map.fetch!(@tables, f.elem)
+
+        case arr do
+          <<13, count_rest::binary>> ->
+            case leb(count_rest) do
+              {n, elems} ->
+                {value, report, retain} = read_elements_retain(elem_desc, elems, n, nodes, ids, [], report, retain, f.ordinal, path)
+                {:cont, value, report, retain}
+
+              :error ->
+                {:cont, [], %{report | malformed: true}, retain}
+            end
+
+          _ ->
+            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+        end
+
+      :error ->
+        {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_payload_retain(%{t: :enum} = f, payload, _nodes, ids, report, retain, _path) do
+    case leb(payload) do
+      {0, _} ->
+        {:cont, nil, report, retain}
+
+      {vref, _} ->
+        case resolve(ids, vref) do
+          :error ->
+            {:halt, nil, %{report | malformed: true}, retain}
+
+          variant_id ->
+            case Map.fetch(f.by_id, variant_id) do
+              {:ok, name} ->
+                {:cont, name, report, retain}
+
+              :error ->
+                # an unknown ENUM variant in a KNOWN field is excluded (§6.6):
+                # the field is the reader's, so it is reported as loss, never
+                # retained silently.
+                {:cont, nil, %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}, retain}
+            end
+        end
+    end
+  end
+
+  defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
+    case read_payload(f, payload, nodes, ids, report) do
+      {:cont, v, report} -> {:cont, v, report, retain}
+      {:halt, v, report} -> {:halt, v, report, retain}
+    end
+  end
+
+  defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
+    do: {Enum.reverse(acc), report, retain}
+
+  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        sub = binary_part(body, 0, len)
+        after_sub = binary_part(body, len, byte_size(body) - len)
+        {value, report, retain} = read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
+        read_elements_retain(desc, after_sub, n - 1, nodes, ids, [value | acc], report, retain, ordinal, path)
+
+      _ ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index) do
+    elem_path = path ++ [{ordinal, index}]
+
+    if ends_early?(sub, ids) do
+      {%{}, malformed_report(), retain}
+    else
+      case entries(sub, ids, false) do
+        {:ok, fields, []} ->
+          decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
+
+        {:stop, fields, [], 0} ->
+          {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
+          {value, %{report | malformed: true}, retain}
+
+        {:stop, fields, [], _remaining} ->
+          {_value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
+          {%{}, %{report | malformed: true}, retain}
+
+        _ ->
+          {%{}, malformed_report(), retain}
+      end
+    end
+  end
+
+  # ---- the resolving walk, capture side (docs/SPEC-TABLES.md §6.6) ----
+
+  defp retain_room(retain, path, resolved) do
+    retain.used + 9 + 8 * length(path) + byte_size(resolved) <= retain.cap
+  end
+
+  defp retain_put(retain, path, id, kind, resolved) do
+    cost = 9 + 8 * length(path) + byte_size(resolved)
+    %{retain | records: retain.records ++ [{path, id, kind, resolved}], used: retain.used + cost}
+  end
+
+  defp retain_capture(ids, kind, payload) do
+    case retain_resolve(ids, kind, payload, 0) do
+      {:ok, resolved, <<>>} -> {:ok, resolved}
+      _ -> :error
+    end
+  end
+
+  defp retain_id(ids, r) do
+    if r == 0 or r > div(byte_size(ids), 8) do
+      :error
+    else
+      id = :binary.decode_unsigned(binary_part(ids, (r - 1) * 8, 8), :little)
+
+      if id == 0 or id == @node_id or id == @build_version_id or id == @message_vocab_id do
+        :error
+      else
+        {:ok, id}
+      end
+    end
+  end
+
+  defp retain_skip(payload, kind) do
+    n =
+      case kind do
+        k when k in [1, 2, 6, 20, 25] -> 1
+        k when k in [3, 7, 21, 26] -> 2
+        k when k in [4, 8, 10, 22, 27] -> 4
+        k when k in [5, 9, 11, 23, 28] -> 8
+        k when k in [18, 19, 24, 29] -> 16
+        _ -> nil
+      end
+
+    cond do
+      n != nil and byte_size(payload) >= n ->
+        {:ok, n}
+
+      kind in [12, 31, 32, 33] ->
+        case leb(payload) do
+          {len, rest} when byte_size(rest) >= len -> {:ok, byte_size(payload) - byte_size(rest) + len}
+          _ -> :error
+        end
+
+      true ->
+        :error
+    end
+  end
+
+  defp retain_resolve(_ids, 17, _payload, _depth), do: :error
+
+  defp retain_resolve(ids, 30, payload, _depth) do
+    case leb(payload) do
+      {0, rest} -> {:ok, <<0::little-64>>, rest}
+      {r, rest} ->
+        case retain_id(ids, r) do
+          {:ok, id} -> {:ok, <<id::little-64>>, rest}
+          :error -> :error
+        end
+      :error -> :error
+    end
+  end
+
+  defp retain_resolve(ids, 15, payload, depth) do
+    case leb(payload) do
+      {0, rest} ->
+        {:ok, <<0::little-64>>, rest}
+
+      {r, rest} ->
+        with {:ok, id} <- retain_id(ids, r),
+             <<arm_kind, rest2::binary>> <- rest,
+             {:ok, framed, rest3} <- retain_framed(ids, arm_kind, rest2, depth) do
+          {:ok, <<id::little-64, arm_kind, framed::binary>>, rest3}
+        else
+          _ -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp retain_resolve(ids, kind, payload, depth) when kind in [13, 14, 16] do
+    retain_framed(ids, kind, payload, depth)
+  end
+
+  defp retain_resolve(_ids, kind, payload, _depth) do
+    case retain_skip(payload, kind) do
+      {:ok, n} -> {:ok, binary_part(payload, 0, n), binary_part(payload, n, byte_size(payload) - n)}
+      :error -> :error
+    end
+  end
+
+  defp retain_framed(ids, kind, payload, depth) do
+    case leb(payload) do
+      {n, rest} when byte_size(rest) >= n ->
+        sub = binary_part(rest, 0, n)
+        after_sub = binary_part(rest, n, byte_size(rest) - n)
+
+        case retain_content(ids, kind, sub, depth + 1) do
+          {:ok, content} -> {:ok, <<byte_size(content)::little-64, content::binary>>, after_sub}
+          :error -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp retain_content(_ids, _kind, _sub, depth) when depth > 64, do: :error
+  defp retain_content(_ids, 17, _sub, _depth), do: :error
+  defp retain_content(ids, 13, sub, depth), do: retain_body(ids, sub, depth)
+
+  defp retain_content(ids, kind, sub, depth) when kind in [14, 16] do
+    case sub do
+      <<ek, rest::binary>> ->
+        if ek == 17 do
+          :error
+        else
+          case leb(rest) do
+            {count, elems} -> retain_array(ids, kind, ek, count, elems, depth, <<ek, count::little-64>>)
+            :error -> :error
+          end
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp retain_content(ids, kind, sub, depth) when kind in [15, 30] do
+    case retain_resolve(ids, kind, sub, depth) do
+      {:ok, resolved, <<>>} -> {:ok, resolved}
+      _ -> :error
+    end
+  end
+
+  defp retain_content(_ids, _kind, sub, _depth), do: {:ok, sub}
+
+  defp retain_body(ids, sub, depth), do: retain_body_fields(ids, sub, depth, <<>>)
+
+  defp retain_body_fields(ids, sub, depth, acc) do
+    case leb(sub) do
+      {0, _} ->
+        {:ok, acc <> <<0::little-64>>}
+
+      {ref, rest} ->
+        with {:ok, id} <- retain_id(ids, ref),
+             <<kind, rest2::binary>> <- rest,
+             {:ok, resolved, rest3} <- retain_resolve(ids, kind, rest2, depth) do
+          retain_body_fields(ids, rest3, depth, acc <> <<id::little-64, kind, resolved::binary>>)
+        else
+          _ -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp retain_array(_ids, _kind, _ek, 0, _elems, _depth, acc), do: {:ok, acc}
+
+  defp retain_array(ids, kind, ek, count, elems, depth, acc) do
+    if kind == 16 do
+      case leb(elems) do
+        {r, rest} ->
+          with {:ok, id} <- retain_id(ids, r),
+               {:ok, framed, rest2} <- retain_framed(ids, ek, rest, depth) do
+            retain_array(ids, kind, ek, count - 1, rest2, depth, acc <> <<id::little-64, framed::binary>>)
+          else
+            _ -> :error
+          end
+
+        :error ->
+          :error
+      end
+    else
+      case retain_resolve(ids, ek, elems, depth) do
+        {:ok, resolved, rest} -> retain_array(ids, kind, ek, count - 1, rest, depth, acc <> resolved)
+        :error -> :error
+      end
+    end
+  end
+
+  # ---- the resolving walk, emit side (docs/SPEC-TABLES.md §6.6) ----
+
+  defp retain_ref(ids, order, retain, id) do
+    case ids do
+      %{^id => ref} ->
+        {ref, ids, order, retain}
+
+      _ ->
+        if MapSet.member?(@known_ids, id) or id in retain.ids do
+          ref = length(order) + 1
+          {ref, Map.put(ids, id, ref), [id | order], retain}
+        else
+          if length(retain.ids) >= retain.id_cap do
+            {0, ids, order, retain}
+          else
+            ref = length(order) + 1
+            {ref, Map.put(ids, id, ref), [id | order], %{retain | ids: [id | retain.ids]}}
+          end
+        end
+    end
+  end
+
+  defp retain_emit(_ids, _order, _retain, 17, _resolved), do: :error
+
+  defp retain_emit(ids, order, retain, 30, resolved) do
+    case resolved do
+      <<0::little-64, rest::binary>> -> {:ok, <<0>>, rest, ids, order, retain}
+      <<id::little-64, rest::binary>> ->
+        {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+        if ref == 0, do: :error, else: {:ok, leb_encode(ref), rest, ids, order, retain}
+      _ -> :error
+    end
+  end
+
+  defp retain_emit(ids, order, retain, 15, resolved) do
+    case resolved do
+      <<0::little-64, rest::binary>> ->
+        {:ok, <<0>>, rest, ids, order, retain}
+
+      <<id::little-64, arm_kind, rest::binary>> ->
+        {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+
+        if ref == 0 do
+          :error
+        else
+          case retain_emit_framed(ids, order, retain, arm_kind, rest) do
+            {:ok, framed, rest2, ids, order, retain} -> {:ok, leb_encode(ref) <> <<arm_kind>> <> framed, rest2, ids, order, retain}
+            :error -> :error
+          end
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp retain_emit(ids, order, retain, kind, resolved) when kind in [13, 14, 16] do
+    retain_emit_framed(ids, order, retain, kind, resolved)
+  end
+
+  defp retain_emit(ids, order, retain, kind, resolved) do
+    case retain_skip(resolved, kind) do
+      {:ok, n} -> {:ok, binary_part(resolved, 0, n), binary_part(resolved, n, byte_size(resolved) - n), ids, order, retain}
+      :error -> :error
+    end
+  end
+
+  defp retain_emit_framed(ids, order, retain, kind, resolved) do
+    case resolved do
+      <<len::little-64, sub::binary>> when byte_size(sub) >= len ->
+        content = binary_part(sub, 0, len)
+        rest = binary_part(sub, len, byte_size(sub) - len)
+
+        case retain_emit_content(ids, order, retain, kind, content) do
+          {:ok, emitted, ids, order, retain} -> {:ok, leb_encode(byte_size(emitted)) <> emitted, rest, ids, order, retain}
+          :error -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp retain_emit_content(_ids, _order, _retain, 17, _sub), do: :error
+  defp retain_emit_content(ids, order, retain, 13, sub), do: retain_emit_body(ids, order, retain, sub)
+
+  defp retain_emit_content(ids, order, retain, kind, sub) when kind in [14, 16] do
+    case sub do
+      <<ek, count::little-64, elems::binary>> ->
+        case retain_emit_array(ids, order, retain, kind, ek, count, elems, <<ek, leb_encode(count)::binary>>) do
+          {:ok, emitted, ids, order, retain} -> {:ok, emitted, ids, order, retain}
+          :error -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp retain_emit_content(ids, order, retain, kind, sub) when kind in [15, 30] do
+    case retain_emit(ids, order, retain, kind, sub) do
+      {:ok, emitted, <<>>, ids, order, retain} -> {:ok, emitted, ids, order, retain}
+      _ -> :error
+    end
+  end
+
+  defp retain_emit_content(ids, order, retain, _kind, sub), do: {:ok, sub, ids, order, retain}
+
+  defp retain_emit_body(ids, order, retain, <<0::little-64>>), do: {:ok, <<0>>, ids, order, retain}
+
+  defp retain_emit_body(ids, order, retain, <<id::little-64, kind, rest::binary>>) do
+    {ref, ids, order, retain} = retain_ref(ids, order, retain, id)
+
+    if ref == 0 do
+      :error
+    else
+      case retain_emit(ids, order, retain, kind, rest) do
+        {:ok, emitted, rest2, ids, order, retain} ->
+          case retain_emit_body(ids, order, retain, rest2) do
+            {:ok, more, ids, order, retain} -> {:ok, leb_encode(ref) <> <<kind>> <> emitted <> more, ids, order, retain}
+            :error -> :error
+          end
+
+        :error ->
+          :error
+      end
+    end
+  end
+
+  defp retain_emit_body(_ids, _order, _retain, _sub), do: :error
+
+  defp retain_emit_array(ids, order, retain, _kind, _ek, 0, _elems, acc), do: {:ok, acc, ids, order, retain}
+
+  defp retain_emit_array(ids, order, retain, kind, ek, count, elems, acc) do
+    if kind == 16 do
+      case elems do
+        <<key_id::little-64, rest::binary>> ->
+          {ref, ids, order, retain} = retain_ref(ids, order, retain, key_id)
+
+          if ref == 0 do
+            :error
+          else
+            case retain_emit_framed(ids, order, retain, ek, rest) do
+              {:ok, framed, rest2, ids, order, retain} ->
+                retain_emit_array(ids, order, retain, kind, ek, count - 1, rest2, acc <> leb_encode(ref) <> framed)
+
+              :error ->
+                :error
+            end
+          end
+
+        _ ->
+          :error
+      end
+    else
+      case retain_emit(ids, order, retain, ek, elems) do
+        {:ok, emitted, rest, ids, order, retain} ->
+          retain_emit_array(ids, order, retain, kind, ek, count - 1, rest, acc <> emitted)
+
+        :error ->
+          :error
+      end
+    end
+  end
+`
+
 // enumRef returns the enum a field's values come from, or nil.
 func enumRef(f *ir.Field) *ir.Enum {
 	if f.Type.Kind != ir.TNamed {
@@ -1350,19 +2000,20 @@ func enumRef(f *ir.Field) *ir.Enum {
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
-	fmt.Fprintf(&b, "    %q => %%{size: %d, fields: [\n", st.Name, ml.Size)
-	for _, f := range st.Fields {
-		b.WriteString("      " + fieldDescriptor(u, f))
+	_, str := ir.PointerReachableBlobs(st)
+	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, fields: [\n", st.Name, ml.Size, str)
+	for i, f := range st.Fields {
+		b.WriteString("      " + fieldDescriptor(u, f, i))
 	}
 	b.WriteString("    ]},\n")
 	return b.String()
 }
 
-func fieldDescriptor(u *ir.Unit, f *ir.Field) string {
+func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	var b strings.Builder
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireFieldKind(f)
-	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d", f.Name, ir.TableFieldJsonKey(f), id, kind)
+	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
 	case f.Type.Pointer && f.Type.Blob():
 		b.WriteString(", t: :blob")
@@ -1394,6 +2045,35 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field) string {
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
 	}
+	fmt.Fprintf(&b, ", shape: %s, bound: %s", cardShape(f), cardBound(f))
 	b.WriteString("},\n")
 	return b.String()
+}
+
+// cardShape is the descriptor's shape column (docs/SPEC-TABLES.md §8.1):
+// :value for a scalar or enum field, :list for an unbounded array, :blob for a
+// *string. It is the one column a tool keys a walk on without naming a type.
+func cardShape(f *ir.Field) string {
+	switch {
+	case f.Type.Pointer && f.Type.Blob():
+		return ":blob"
+	case f.IsList():
+		return ":list"
+	default:
+		return ":value"
+	}
+}
+
+// cardBound is the descriptor's declared-bound column (docs/SPEC-TABLES.md
+// §8.1): a string's size, an int's clamp range as a {min, max} tuple, and nil
+// for every field that declares no bound.
+func cardBound(f *ir.Field) string {
+	switch {
+	case f.Type.Kind == ir.TString && !f.Type.Pointer:
+		return fmt.Sprintf("%d", f.Type.Size)
+	case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
+		return "{" + f.IntMin.String() + ", " + f.IntMax.String() + "}"
+	default:
+		return "nil"
+	}
 }

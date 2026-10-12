@@ -781,7 +781,9 @@ end
 # One BEAM process for the whole run, on a pipe, that only reads. The harness
 # owns the mutants and the oracle; this module binds a roster entry to its
 # generated variable-form codec and answers each mutant's load measure, report
-# and saved bytes. It decides nothing about what a mutant means.
+# and saved bytes — through the retaining pair when the roster names it
+# (docs/SPEC-TABLES.md §6.6), with the two retention counters beside the six.
+# It decides nothing about what a mutant means.
 #
 # The stream is little-endian throughout, exactly as the harness's
 # test/conformance/harness/wirefuzz.go spells it: a u32 roster count, then per
@@ -849,32 +851,75 @@ defmodule WireFuzz do
     r = Enum.at(roster, index)
     mod = codec(r.unit, r.root)
 
+    if r.retain == 1 do
+      answer_retain(mod, r, wire)
+    else
+      answer_plain(mod, r, wire)
+    end
+  end
+
+  # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
+  defp answer_plain(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
 
     if measure < 0 do
       # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure, 0) <> <<-1::little-signed-64>>)
+      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
     else
       case mod.load(r.root, wire) do
         {:ok, value, report} ->
           case mod.save(r.root, value) do
             {:ok, bytes} ->
-              stdout_write(header(1, report, measure, 0) <> <<byte_size(bytes)::little-signed-64>>)
+              stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
               stdout_write(bytes)
 
             _ ->
-              stdout_write(header(1, report, measure, 0) <> <<-1::little-signed-64>>)
+              stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
           end
 
         _ ->
-          stdout_write(header(0, %{}, -1, 0) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+      end
+    end
+  end
+
+  # THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read and
+  # written back through the retaining pair, with the two caller-owned stores
+  # the arm declares — one MiB of bytes and one id per eight bytes, the same
+  # capacities the harness fixes (test/conformance/harness/wirefuzz.go). The
+  # report accumulates across load and save, so the two retention counters the
+  # header carries are the pair's whole answer.
+  defp answer_retain(mod, r, wire) do
+    measure = mod.load_measure(r.root, wire)
+    retain = %{records: [], used: 0, cap: 1048576, ids: [], id_cap: 131072}
+    report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+
+    if measure < 0 do
+      # LoadMeasure refused the framing: no root, an empty report, nothing saved
+      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+    else
+      case mod.load_retain(r.root, wire, retain, report) do
+        {:ok, value, report, retain} ->
+          case mod.save_retain(r.root, value, retain, report) do
+            {:ok, bytes, report, _retain} ->
+              stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
+              stdout_write(bytes)
+
+            _ ->
+              stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+          end
+
+        _ ->
+          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
       end
     end
   end
 
   # the reply header: loaded, the five counters, malformed, refused, the measure,
-  # the two retention counters (always zero here) and the saved length.
-  defp header(loaded, report, measure, _retain) do
+  # the two retention counters and the saved length. The two retention counters
+  # ride the report when the entry retains, and are zero on every other entry
+  # (docs/SPEC-TABLES.md §6.6).
+  defp header(loaded, report, measure) do
     unknown = Map.get(report, :unknown, 0)
     kind_mismatch = Map.get(report, :kind_mismatch, 0)
     widened = Map.get(report, :widened, 0)
@@ -882,11 +927,13 @@ defmodule WireFuzz do
     duplicate = Map.get(report, :duplicate, 0)
     malformed = if Map.get(report, :malformed, false), do: 1, else: 0
     refused = if Map.get(report, :refused, false), do: 1, else: 0
+    retained = Map.get(report, :retained, 0)
+    retain_lost = Map.get(report, :retain_lost, 0)
 
     <<loaded::8, unknown::little-signed-32, kind_mismatch::little-signed-32,
       widened::little-signed-32, clamped::little-signed-32, duplicate::little-signed-32,
-      malformed::8, refused::8, measure::little-signed-64, 0::little-signed-32,
-      0::little-signed-32>>
+      malformed::8, refused::8, measure::little-signed-64, retained::little-signed-32,
+      retain_lost::little-signed-32>>
   end
 
   defp read_u32 do
