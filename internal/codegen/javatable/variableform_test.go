@@ -109,7 +109,7 @@ public final class Probe {
         byte[] nodePay = new byte[] { 1, 2, 3, 'a', 'b', 'c' };
         TableVariable.Report rn = new TableVariable.Report();
         TableVariable.Reader rnr = new TableVariable.Reader(nodePay, nodeIds, rn);
-        TableVariable.NodeRecord[] recs = TableVariable.nodes(rnr);
+        TableVariable.NodeRecord[] recs = TableVariable.nodes(rnr, false);
         if (rn.malformed || recs == null || recs.length != 1) { throw new AssertionError("nodes"); }
         if (recs[0].typeId != 0x704be0d8faaffc58L) { throw new AssertionError("node typeId"); }
         if (!java.util.Arrays.equals(recs[0].body, new byte[] { 'a', 'b', 'c' })) { throw new AssertionError("node body"); }

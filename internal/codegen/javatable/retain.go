@@ -15,18 +15,22 @@ import (
 // field, ids interned in first-use order. The section's exclusions are
 // reported as loss, never retained silently.
 //
-// The card's unknown fields are SCALAR (bool, int8..int64) and STRING (kind 12)
-// values: both are copied VERBATIM by §6.6's resolving walk, because neither
-// carries a reference to resolve. The exclusions a card wire can reach — a node
-// index (kind 17, the *string pointer) and an unknown enum variant (kind 30) —
-// count one retain_lost each and are never retained.
+// THE WALK IS A PORT of the reference's resolving walk (internal/tablewire/
+// retain.go, "WHICH KINDS THE RESOLVING WALK TOUCHES"): the capture resolves
+// every reference to the sixty-four-bit id it names and recomputes every
+// framing length, and the save resolves them back, so re-emitting into an id
+// table ordered differently is still correct. Every field kind §6.6 retains —
+// the scalars, strings, tables, arrays, unions and enums — is captured and
+// re-emitted; every excluded class — a node index (kind 17) at any depth, an
+// unknown enum variant in a known field, the reserved ids — is one retain_lost
+// and never retained silently.
 func generateRetainFiles(u *ir.Unit) (map[string][]byte, error) {
 	tables := cardVariableTables(u)
 	if len(tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	out := map[string][]byte{
-		"TableRetain.java": javaFile(u, "the retain-unknown storage and walk (docs/SPEC-TABLES.md §6.6)", tableRetainRuntime),
+		"TableRetain.java": javaFile(u, "the retain-unknown storage and resolving walk (docs/SPEC-TABLES.md §6.6)", tableRetainRuntime(u)),
 	}
 	for _, st := range tables {
 		src, err := generateTableRetain(u, st)
@@ -41,10 +45,10 @@ func generateRetainFiles(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // generateTableRetain emits one <Type>Retain.java: a load that captures the
-// unknown scalar and string fields a read met, and a measure/save that re-emits
-// them as the body's retained tail. The known fields' read and write is the
-// variable codec's own (docs/SPEC-TABLES.md §3), reused unchanged; the retain
-// half adds only the unknown arm's capture and the tail's emit.
+// unknown fields a read met and a measure/save that re-emits them as the body's
+// retained tail. The known fields' read and write is the variable codec's own
+// (docs/SPEC-TABLES.md §3), reused unchanged; the retain half adds only the
+// unknown arm's capture and the tail's emit.
 func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n\n")
@@ -52,36 +56,42 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    private %sRetain() {}\n\n", st.Name)
 
 	// The enum readers the known-field read reuses (docs/SPEC-TABLES.md §3, §4):
-	// a variant reference the table cannot name reads None (0) and counts it.
+	// a variant reference the table cannot name reads None (0) and counts it —
+	// and in the retaining read that unknown variant is an excluded class, one
+	// retain_lost (§6.6: the field is the reader's, so a retained copy would be
+	// a second occurrence of an id the reader already wrote).
 	for _, f := range st.Fields {
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(&b, "    private static int %sEnum(long vid, TableVariable.Report report) {\n", varMember(f))
 			for i := range enum.Variants {
 				fmt.Fprintf(&b, "        if (vid == 0x%016xL) { return %d; }\n", ir.TableWireId(enum.VariantWireName(i)), i+1)
 			}
-			b.WriteString("        report.unknown++;\n        return 0;\n    }\n\n")
+			b.WriteString("        report.unknown++;\n        report.retainLost++;\n        return 0;\n    }\n\n")
 		}
 	}
 
 	// loadRetain: the variable codec's load, plus the unknown arm's capture.
 	fmt.Fprintf(&b, "    // loadRetain is %sVariable.load with the unknown arm capturing\n", st.Name)
-	b.WriteString("    // (§6.6): a scalar or string field this reader cannot name is copied\n")
-	b.WriteString("    // verbatim into the caller's retain storage, and a node index or enum\n")
-	b.WriteString("    // variant is reported as loss, never retained silently.\n")
+	b.WriteString("    // (§6.6): a field this reader cannot name is resolved and copied into\n")
+	b.WriteString("    // the caller's retain storage, and an excluded class is reported as\n")
+	b.WriteString("    // loss, never retained silently.\n")
 	fmt.Fprintf(&b, "    public static %sVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {\n", st.Name)
+	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
+	b.WriteString("        int[] path = new int[128];\n")
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	b.WriteString("        if (r == null) { return null; }\n")
-	b.WriteString("        if (retain != null) { retain.used = 0; retain.idUsed = 0; }\n")
+	b.WriteString("        retain.used = 0; retain.idUsed = 0;\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
-	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report);\n")
-	fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report);\n")
+	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
+	fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 	b.WriteString("        if (report.refused) { return null; }\n")
 	fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
 	b.WriteString("        return v;\n")
 	b.WriteString("    }\n\n")
 
-	// readFieldsRetain: the variable readFields, with capture in the unknown arm.
-	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report) {\n", st.Name)
+	// readFieldsRetain: the variable readFields, with capture in the unknown arm
+	// and the body's path threaded into list elements (§6.6).
+	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return; }\n")
@@ -91,7 +101,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            if (!r.has(1)) { report.malformed = true; return; }\n")
 	b.WriteString("            int kind = r.get8();\n")
 	first := true
-	for _, f := range st.Fields {
+	for i, f := range st.Fields {
 		if !first {
 			b.WriteString("            } else ")
 		} else {
@@ -99,7 +109,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
-		writeFieldRead(&b, u, st, f)
+		writeFieldRead(&b, u, st, f, true, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
@@ -107,31 +117,35 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return;\n")
 	b.WriteString("            } else {\n")
-	b.WriteString("                captureUnknown(r, id, kind, retain, report);\n")
+	b.WriteString("                captureUnknown(r, id, kind, retain, report, path, depth);\n")
 	b.WriteString("            }\n")
 	b.WriteString("            if (r.fail) { return; }\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	// captureUnknown: copy a scalar/string field's payload verbatim, or count
-	// the excluded classes as loss.
-	b.WriteString("    static void captureUnknown(TableVariable.Reader r, long id, int kind, TableRetain retain, TableVariable.Report report) {\n")
+	// captureUnknown: the plain read's skip delimits the payload, and the
+	// resolving walk in TableRetain turns it into the resolved record, or an
+	// excluded class into one retain_lost. The record carries the body's path so
+	// the save re-emits it into the body it came from (§6.6).
+	b.WriteString("    static void captureUnknown(TableVariable.Reader r, long id, int kind, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n")
 	b.WriteString("        int pStart = r.off;\n")
 	b.WriteString("        r.skip(kind);\n")
 	b.WriteString("        report.unknown++;\n")
 	b.WriteString("        if (r.fail) { return; }\n")
 	b.WriteString("        int pEnd = r.off;\n")
-	b.WriteString("        if (retain == null) { return; }\n")
-	b.WriteString("        if (!retainable(kind)) { report.retainLost++; return; }\n")
-	b.WriteString("        int len = pEnd - pStart;\n")
-	b.WriteString("        if (retain.used + 13 + len > retain.capacity) { report.retainLost++; return; }\n")
+	b.WriteString("        byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);\n")
+	b.WriteString("        if (resolved == null) { report.retainLost++; return; }\n")
+	b.WriteString("        int total = 14 + 8 * depth + resolved.length;\n")
+	b.WriteString("        if (retain.used + total > retain.capacity) { report.retainLost++; return; }\n")
 	b.WriteString("        byte[] b = retain.bytes;\n")
 	b.WriteString("        int at = retain.used;\n")
-	b.WriteString("        put32(b, at, 13 + len); at += 4;\n")
+	b.WriteString("        put32(b, at, total); at += 4;\n")
+	b.WriteString("        b[at++] = (byte) depth;\n")
+	b.WriteString("        for (int k = 0; k < depth; k++) { put32(b, at, path[2 * k]); at += 4; put32(b, at, path[2 * k + 1]); at += 4; }\n")
 	b.WriteString("        put64(b, at, id); at += 8;\n")
 	b.WriteString("        b[at++] = (byte) kind;\n")
-	b.WriteString("        System.arraycopy(r.buf, pStart, b, at, len);\n")
-	b.WriteString("        retain.used += 13 + len;\n")
+	b.WriteString("        System.arraycopy(resolved, 0, b, at, resolved.length);\n")
+	b.WriteString("        retain.used += total;\n")
 	b.WriteString("        report.retained++;\n")
 	b.WriteString("    }\n\n")
 
@@ -153,12 +167,13 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// saveInto: the variable save, with the retained tail appended at the end
 	// of the body, before the node table (§6.6), ids interned in first-use order.
 	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, TableVariable.Report report) {\n", st.Name)
+	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
 	b.WriteString("        TableVariable.NodeList nodes = new TableVariable.NodeList();\n")
 	b.WriteString("        w.put8(1);\n")
-	fmt.Fprintf(&b, "        %sVariable.writeFields(w, nodes, v);\n", st.Name)
-	b.WriteString("        emitTail(w, retain, report);\n")
+	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, 0);\n")
+	b.WriteString("        emitTail(w, retain, report, path, 0);\n")
 	b.WriteString("        if (nodes.size() > 0) {\n")
 	b.WriteString("            long nodeRef = w.ref(TableVariable.NODE_ID);\n")
 	b.WriteString("            TableVariable.Writer nw = w.sub(new byte[1 << 20]);\n")
@@ -179,27 +194,59 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        return w.overflow ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
-	// emitTail: re-emit each retained record in retention order, interning its
-	// id into the file's own id table in first-use order (§6.6); a record whose
-	// id has no entry in the caller's id list is dropped and counted once.
-	b.WriteString("    static void emitTail(TableVariable.Writer w, TableRetain retain, TableVariable.Report report) {\n")
+	// writeFieldsRetain: the canonical write, threading the path into list
+	// elements so each element's body carries its own retained tail (§6.6).
+	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeList nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	for i, f := range st.Fields {
+		writeFieldSaveRetain(&b, u, st, f, i)
+	}
+	b.WriteString("    }\n\n")
+
+	// writeBodyRetain: a body is its declared fields, then the retained tail for
+	// THIS body, then the terminator (§6.6: the tail at the END of its own body).
+	fmt.Fprintf(&b, "    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeList nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, depth);\n")
+	b.WriteString("        emitTail(w, retain, report, path, depth);\n")
+	b.WriteString("        w.put8(0);\n")
+	b.WriteString("    }\n\n")
+
+	// emitTail: re-emit each retained record of THIS body in retention order,
+	// resolving its payload back onto the wire. A record's path picks its body;
+	// one is built into scratch and committed whole, so a record that goes bad
+	// partway rolls its ids back and counts once, exactly as the reference's
+	// tail does (§6.6).
+	b.WriteString("    static void emitTail(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n")
 	b.WriteString("        if (retain == null) { return; }\n")
 	b.WriteString("        retain.idUsed = 0;\n")
 	b.WriteString("        int at = 0;\n")
 	b.WriteString("        while (at < retain.used) {\n")
 	b.WriteString("            int len = get32(retain.bytes, at);\n")
-	b.WriteString("            long id = get64(retain.bytes, at + 4);\n")
-	b.WriteString("            int kind = retain.bytes[at + 12] & 0xff;\n")
-	b.WriteString("            int pay = len - 13;\n")
-	b.WriteString("            boolean seen = false;\n")
-	b.WriteString("            for (int i = 0; i < retain.idUsed; i++) { if (retain.ids[i] == id) { seen = true; break; } }\n")
-	b.WriteString("            if (!seen && retain.idUsed >= retain.idCapacity) { if (report != null) { report.retainLost++; } at += len; continue; }\n")
-	b.WriteString("            if (!seen) { retain.ids[retain.idUsed++] = id; }\n")
-	b.WriteString("            long ref = w.ref(id);\n")
-	b.WriteString("            if (w.ids.overflow) { if (report != null) { report.retainLost++; } at += len; continue; }\n")
-	b.WriteString("            w.putLeb(ref);\n")
-	b.WriteString("            w.put8(kind);\n")
-	b.WriteString("            w.putBytes(retain.bytes, at + 13, pay);\n")
+	b.WriteString("            int d = retain.bytes[at + 4] & 0xff;\n")
+	b.WriteString("            boolean match = d == depth;\n")
+	b.WriteString("            for (int k = 0; match && k < d; k++) { if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k] || get32(retain.bytes, at + 9 + 8 * k) != path[2 * k + 1]) { match = false; } }\n")
+	b.WriteString("            if (match) {\n")
+	b.WriteString("                int hdr = 14 + 8 * d;\n")
+	b.WriteString("                long id = get64(retain.bytes, at + 5 + 8 * d);\n")
+	b.WriteString("                int kind = retain.bytes[at + 13 + 8 * d] & 0xff;\n")
+	b.WriteString("                int idsMark = w.ids.count;\n")
+	b.WriteString("                int listMark = retain.idUsed;\n")
+	b.WriteString("                TableVariable.Writer rec = w.sub(new byte[1 << 20]);\n")
+	b.WriteString("                int[] pat = new int[]{at + hdr};\n")
+	b.WriteString("                long ref = TableRetain.ref(rec, retain, id, report);\n")
+	b.WriteString("                boolean ok = ref != 0;\n")
+	b.WriteString("                if (ok) {\n")
+	b.WriteString("                    rec.putLeb(ref);\n")
+	b.WriteString("                    rec.put8(kind);\n")
+	b.WriteString("                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);\n")
+	b.WriteString("                }\n")
+	b.WriteString("                if (ok) { w.putBytes(rec.buf, 0, rec.off); }\n")
+	b.WriteString("                else {\n")
+	b.WriteString("                    w.ids.count = idsMark;\n")
+	b.WriteString("                    w.ids.overflow = false;\n")
+	b.WriteString("                    retain.idUsed = listMark;\n")
+	b.WriteString("                    if (report != null) { report.retainLost++; }\n")
+	b.WriteString("                }\n")
+	b.WriteString("            }\n")
 	b.WriteString("            at += len;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
@@ -209,25 +256,79 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    static void put64(byte[] b, int at, long v) { for (int i = 0; i < 8; i++) { b[at + i] = (byte) (v >>> (8 * i)); } }\n")
 	b.WriteString("    static int get32(byte[] b, int at) { return (b[at] & 0xff) | (b[at + 1] & 0xff) << 8 | (b[at + 2] & 0xff) << 16 | (b[at + 3] & 0xff) << 24; }\n")
 	b.WriteString("    static long get64(byte[] b, int at) { long v = 0; for (int i = 0; i < 8; i++) { v |= (long) (b[at + i] & 0xff) << (8 * i); } return v; }\n\n")
-
-	// retainable: the verbatim-copy kinds the card's walk retains.
-	b.WriteString("    static boolean retainable(int kind) {\n")
-	b.WriteString("        switch (kind) {\n")
-	b.WriteString("            case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8:\n")
-	b.WriteString("            case 9: case 10: case 11: case 12: case 18: case 19: case 20:\n")
-	b.WriteString("            case 21: case 22: case 23: case 24: case 25: case 26: case 27:\n")
-	b.WriteString("            case 28: case 29: return true;\n")
-	b.WriteString("            default: return false;\n")
-	b.WriteString("        }\n")
-	b.WriteString("    }\n")
 	b.WriteString("}\n")
 	return b.String(), nil
 }
 
-const tableRetainRuntime = `// The retain-unknown storage (docs/SPEC-TABLES.md §6.6): a caller-owned byte
-// buffer and a caller-owned id list, never grown on demand, plus a read cursor
-// the save walks. The report counters — retained and retain_lost — ride
-// TableVariable.Report and accumulate across the load and the save.
+// writeFieldSaveRetain emits the canonical write of one field for the retaining
+// save. It is writeFieldSave with the field's id spelled through the VARIABLE
+// class (the retain class defines no field-id constants of its own) and, for a
+// list field, the element bodies threaded with the retain path so each carries
+// its own retained tail (docs/SPEC-TABLES.md §6.6).
+func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, ordinal int) {
+	m := varMember(f)
+	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
+	switch {
+	case f.Type.Kind == ir.TString && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.ref(v.%s)); }\n", m, fieldRef, m)
+	case f.Type.Kind == ir.TString:
+		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, fieldRef)
+	case f.Type.Kind == ir.TBool:
+		fmt.Fprintf(b, "        if (v.%s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(1); }\n", m, fieldRef)
+	case f.Type.Kind == ir.TInt && f.Type.Width <= 32:
+		k := variableWireKind(f)
+		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put32(v.%s); }\n", m, fieldRef, k, m)
+	case f.Type.Kind == ir.TInt:
+		k := variableWireKind(f)
+		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
+	case f.Type.Kind == ir.TNamed:
+		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
+			fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(30); switch (v.%s) {\n", m, fieldRef, m)
+			for i := range enum.Variants {
+				fmt.Fprintf(b, "            case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
+			}
+			b.WriteString("            default: w.putLeb(0); break;\n")
+			b.WriteString("        } }\n")
+		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
+			fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
+			b.WriteString("            TableVariable.Writer aw = w.sub(new byte[1 << 20]);\n")
+			fmt.Fprintf(b, "            aw.put8(13); aw.putLeb(v.%s.size());\n", m)
+			fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
+			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", elem.Name, m)
+			b.WriteString("                TableVariable.Writer ew = aw.sub(new byte[1 << 20]);\n")
+			fmt.Fprintf(b, "                path[2 * depth] = %d; path[2 * depth + 1] = i;\n", ordinal)
+			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(ew, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
+			b.WriteString("                aw.putLeb(ew.off);\n")
+			b.WriteString("                aw.putBytes(ew.buf, 0, ew.off);\n")
+			b.WriteString("            }\n")
+			b.WriteString("            w.putLeb(aw.off);\n")
+			b.WriteString("            w.putBytes(aw.buf, 0, aw.off);\n")
+			b.WriteString("        }\n")
+		}
+	}
+}
+
+// tableRetainRuntime returns the shared retain runtime for one unit, with the
+// KNOWN id set the save-side interner uses to tell a nameable id from a
+// retained one (docs/SPEC-TABLES.md §6.6).
+func tableRetainRuntime(u *ir.Unit) string {
+	known := ir.TableWireIds(u)
+	var ids strings.Builder
+	for i, id := range known {
+		if i > 0 {
+			ids.WriteString(", ")
+		}
+		fmt.Fprintf(&ids, "0x%016xL", id)
+	}
+	return strings.ReplaceAll(tableRetainRuntimeBody, "/*KNOWN*/", ids.String())
+}
+
+const tableRetainRuntimeBody = `// The retain-unknown storage and resolving walk (docs/SPEC-TABLES.md §6.6): a
+// caller-owned byte buffer and a caller-owned id list, never grown on demand,
+// plus the two walks that move a field each way. The report counters —
+// retained and retain_lost — ride TableVariable.Report and accumulate across
+// the load and the save.
 public final class TableRetain {
     public byte[] bytes;
     public int capacity;
@@ -241,6 +342,383 @@ public final class TableRetain {
         this.capacity = byteCapacity;
         this.ids = new long[idCapacity];
         this.idCapacity = idCapacity;
+    }
+
+    // The ids this build can name (docs/SPEC-TABLES.md §6.6), ascending: every
+    // field id, enum variant id, union arm id and reserved id the unit's
+    // closure can spell. A resolved id inside a retained record takes its
+    // trailer entry from the generated table when it is here, and from the
+    // caller's list otherwise.
+    static final long[] KNOWN = { /*KNOWN*/ };
+
+    static boolean nameable(long id) {
+        int lo = 0, hi = KNOWN.length - 1;
+        while (lo <= hi) {
+            int m = (lo + hi) >>> 1;
+            long k = KNOWN[m];
+            if (k == id) { return true; }
+            if (k < id) { lo = m + 1; } else { hi = m - 1; }
+        }
+        return false;
+    }
+
+    // ref interns one resolved id into the save's one numbering (§6.6): a
+    // nameable id takes the generated table, any other takes the caller's list
+    // first, one retainLost past its capacity. Answers the reference, 0 when a
+    // store is full.
+    static long ref(TableVariable.Writer w, TableRetain retain, long id, TableVariable.Report report) {
+        if (!nameable(id)) {
+            boolean seen = false;
+            for (int i = 0; i < retain.idUsed; i++) { if (retain.ids[i] == id) { seen = true; break; } }
+            if (!seen) {
+                if (retain.idUsed >= retain.idCapacity) { if (report != null) { report.retainLost++; } return 0; }
+                retain.ids[retain.idUsed++] = id;
+            }
+        }
+        long r = w.ref(id);
+        if (w.ids.overflow) { if (report != null) { report.retainLost++; } return 0; }
+        return r;
+    }
+
+    // A resolving cursor over one self-framed payload (§6.6). The walk's own
+    // damage is a dropped record and never malformed, so it reads the bytes
+    // directly and touches no report; the outer framing was validated by the
+    // plain read's skip before the walk began.
+    static final class Resolver {
+        final byte[] buf;
+        final long[] ids;
+        int off;
+        final int limit;
+        boolean bad;
+
+        Resolver(byte[] buf, long[] ids, int off, int limit) {
+            this.buf = buf; this.ids = ids; this.off = off; this.limit = limit;
+        }
+
+        long leb() {
+            long v = 0;
+            int shift = 0;
+            for (int i = 0; i < 10; i++) {
+                if (off + i >= limit) { bad = true; return 0; }
+                int b = buf[off + i] & 0xff;
+                if (i == 9 && b > 1) { bad = true; return 0; }
+                v |= (long) (b & 0x7f) << shift;
+                if ((b & 0x80) == 0) {
+                    if (i > 0 && b == 0) { bad = true; return 0; }
+                    off += i + 1;
+                    return v;
+                }
+                shift += 7;
+            }
+            bad = true;
+            return 0;
+        }
+
+        int u8() { if (off >= limit) { bad = true; return 0; } return buf[off++] & 0xff; }
+
+        long id(long ref) {
+            if (ref <= 0 || ref > ids.length) { bad = true; return 0; }
+            long v = ids[(int) ref - 1];
+            if (v == 0 || v == TableVariable.NODE_ID || v == TableVariable.BUILD_ID || v == TableVariable.VOCAB_ID) { bad = true; return 0; }
+            return v;
+        }
+    }
+
+    // resolve reads one payload the plain read already delimited and writes its
+    // RESOLVED form — every reference widened to eight bytes, every framing
+    // length recomputed. null is an excluded class or a shape the walk cannot
+    // take (§6.6).
+    static byte[] resolve(byte[] buf, long[] ids, int off, int limit, int kind) {
+        Resolver r = new Resolver(buf, ids, off, limit);
+        byte[] out = new byte[1 << 20];
+        int[] o = new int[]{0};
+        if (!resolvePayload(r, kind, out, o, 0)) { return null; }
+        if (r.off != r.limit || r.bad) { return null; }
+        return java.util.Arrays.copyOf(out, o[0]);
+    }
+
+    static boolean resolvePayload(Resolver r, int kind, byte[] out, int[] o, int depth) {
+        if (depth > 64 || r.bad) { r.bad = true; return false; }
+        switch (kind) {
+            case 17: return false;
+            case 30: {
+                long ref = r.leb();
+                if (r.bad) { return false; }
+                if (ref == 0) { out64(out, o, 0L); return true; }
+                long id = r.id(ref);
+                if (r.bad) { return false; }
+                out64(out, o, id);
+                return true;
+            }
+            case 15: {
+                long arm = r.leb();
+                if (r.bad) { return false; }
+                if (arm == 0) { out64(out, o, 0L); return true; }
+                long id = r.id(arm);
+                if (r.bad) { return false; }
+                out64(out, o, id);
+                int armKind = r.u8();
+                if (r.bad) { return false; }
+                out8(out, o, armKind);
+                return resolveFramed(r, armKind, out, o, depth);
+            }
+            case 13: case 14: case 16:
+                return resolveFramed(r, kind, out, o, depth);
+            default: {
+                int from = r.off;
+                if (!skipPayload(r, kind)) { return false; }
+                int n = r.off - from;
+                if (o[0] + n > out.length) { r.bad = true; return false; }
+                System.arraycopy(r.buf, from, out, o[0], n);
+                o[0] += n;
+                return true;
+            }
+        }
+    }
+
+    static boolean resolveFramed(Resolver r, int kind, byte[] out, int[] o, int depth) {
+        long n = r.leb();
+        if (r.bad || n < 0 || n > r.limit - r.off) { r.bad = true; return false; }
+        int at = o[0];
+        out64(out, o, 0L);
+        Resolver sub = new Resolver(r.buf, r.ids, r.off, r.off + (int) n);
+        r.off += (int) n;
+        if (!resolveContent(sub, kind, out, o, depth + 1)) { return false; }
+        if (sub.off != sub.limit || sub.bad) { r.bad = true; return false; }
+        put64At(out, at, o[0] - at - 8);
+        return true;
+    }
+
+    static boolean resolveContent(Resolver c, int kind, byte[] out, int[] o, int depth) {
+        if (depth > 64 || c.bad) { c.bad = true; return false; }
+        switch (kind) {
+            case 17: return false;
+            case 13: return resolveBody(c, out, o, depth);
+            case 14: case 16: {
+                int ek = c.u8();
+                if (c.bad) { return false; }
+                if (ek == 17) { return false; }
+                out8(out, o, ek);
+                long count = c.leb();
+                if (c.bad) { return false; }
+                out64(out, o, count);
+                for (long i = 0; i < count; i++) {
+                    if (c.bad) { return false; }
+                    if (kind == 16) {
+                        long keyRef = c.leb();
+                        if (c.bad) { return false; }
+                        long keyId = c.id(keyRef);
+                        if (c.bad) { return false; }
+                        out64(out, o, keyId);
+                        if (!resolveFramed(c, ek, out, o, depth)) { return false; }
+                    } else if (!resolvePayload(c, ek, out, o, depth)) {
+                        return false;
+                    }
+                    if (c.off > c.limit) { c.bad = true; return false; }
+                }
+                return true;
+            }
+            case 15: case 30:
+                return resolvePayload(c, kind, out, o, depth);
+            default: {
+                int n = c.limit - c.off;
+                if (o[0] + n > out.length) { c.bad = true; return false; }
+                System.arraycopy(c.buf, c.off, out, o[0], n);
+                o[0] += n;
+                c.off = c.limit;
+                return true;
+            }
+        }
+    }
+
+    static boolean resolveBody(Resolver c, byte[] out, int[] o, int depth) {
+        while (true) {
+            if (c.bad) { return false; }
+            long ref = c.leb();
+            if (c.bad) { return false; }
+            if (ref == 0) { out64(out, o, 0L); return true; }
+            long id = c.id(ref);
+            if (c.bad) { return false; }
+            out64(out, o, id);
+            int kind = c.u8();
+            if (c.bad) { return false; }
+            out8(out, o, kind);
+            if (!resolvePayload(c, kind, out, o, depth)) { return false; }
+            if (c.off > c.limit) { c.bad = true; return false; }
+        }
+    }
+
+    // skipPayload steps one payload by its framing (§3), the same four rules the
+    // plain read's skip takes; false for a kind the walk does not copy.
+    static boolean skipPayload(Resolver r, int kind) {
+        switch (kind) {
+            case 1: case 2: case 6: case 20: case 25:
+                if (r.limit - r.off >= 1) { r.off += 1; return true; } break;
+            case 3: case 7: case 21: case 26:
+                if (r.limit - r.off >= 2) { r.off += 2; return true; } break;
+            case 4: case 8: case 10: case 22: case 27:
+                if (r.limit - r.off >= 4) { r.off += 4; return true; } break;
+            case 5: case 9: case 11: case 23: case 28:
+                if (r.limit - r.off >= 8) { r.off += 8; return true; } break;
+            case 18: case 19: case 24: case 29:
+                if (r.limit - r.off >= 16) { r.off += 16; return true; } break;
+            case 12: case 31: case 32: case 33: {
+                long n = r.leb();
+                if (!r.bad && n >= 0 && n <= r.limit - r.off) { r.off += (int) n; return true; }
+                break;
+            }
+        }
+        r.bad = true;
+        return false;
+    }
+
+    static void out64(byte[] out, int[] o, long v) {
+        for (int i = 0; i < 8; i++) { out[o[0] + i] = (byte) (v >>> (8 * i)); }
+        o[0] += 8;
+    }
+    static void out8(byte[] out, int[] o, int v) { out[o[0]++] = (byte) v; }
+    static void put64At(byte[] out, int at, long v) {
+        for (int i = 0; i < 8; i++) { out[at + i] = (byte) (v >>> (8 * i)); }
+    }
+
+    // THE RESOLVING WALK, emit half (§6.6): read one resolved payload and write
+    // its wire form, re-interning every id into this file's one table.
+    static boolean emit(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+        return emitPayload(w, retain, report, b, at, kind);
+    }
+
+    static boolean emitPayload(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+        switch (kind) {
+            case 30: {
+                long id = get64(b, at);
+                if (id == 0) { w.putLeb(0); return true; }
+                long ref = ref(w, retain, id, report);
+                if (ref == 0) { return false; }
+                w.putLeb(ref);
+                return true;
+            }
+            case 15: {
+                long arm = get64(b, at);
+                if (arm == 0) { w.putLeb(0); return true; }
+                long ref = ref(w, retain, arm, report);
+                if (ref == 0) { return false; }
+                w.putLeb(ref);
+                int armKind = get8(b, at);
+                w.put8(armKind);
+                return emitFramed(w, retain, report, b, at, armKind);
+            }
+            case 13: case 14: case 16:
+                return emitFramed(w, retain, report, b, at, kind);
+            default:
+                return emitVerbatim(w, b, at, kind);
+        }
+    }
+
+    static boolean emitFramed(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int kind) {
+        long contentLen = get64(b, at);
+        if (contentLen < 0 || contentLen > b.length - at[0]) { return false; }
+        int end = at[0] + (int) contentLen;
+        TableVariable.Writer sub = w.sub(new byte[1 << 20]);
+        if (!emitContent(sub, retain, report, b, at, end, kind)) { return false; }
+        if (at[0] != end) { return false; }
+        w.putLeb(sub.off);
+        w.putBytes(sub.buf, 0, sub.off);
+        return true;
+    }
+
+    static boolean emitContent(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int end, int kind) {
+        switch (kind) {
+            case 13: return emitBody(w, retain, report, b, at, end);
+            case 14: case 16: {
+                int ek = get8(b, at);
+                w.put8(ek);
+                long count = get64(b, at);
+                w.putLeb(count);
+                for (long i = 0; i < count; i++) {
+                    if (kind == 16) {
+                        long keyId = get64(b, at);
+                        long keyRef = ref(w, retain, keyId, report);
+                        if (keyRef == 0) { return false; }
+                        w.putLeb(keyRef);
+                        if (!emitFramed(w, retain, report, b, at, ek)) { return false; }
+                    } else if (!emitPayload(w, retain, report, b, at, ek)) {
+                        return false;
+                    }
+                    if (at[0] > end) { return false; }
+                }
+                return at[0] == end;
+            }
+            case 15: case 30:
+                return emitPayload(w, retain, report, b, at, kind);
+            default: {
+                w.putBytes(b, at[0], end - at[0]);
+                at[0] = end;
+                return true;
+            }
+        }
+    }
+
+    static boolean emitBody(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, byte[] b, int[] at, int end) {
+        while (true) {
+            long id = get64(b, at);
+            if (id == 0) { w.put8(0); return true; }
+            long ref = ref(w, retain, id, report);
+            if (ref == 0) { return false; }
+            w.putLeb(ref);
+            int kind = get8(b, at);
+            w.put8(kind);
+            if (!emitPayload(w, retain, report, b, at, kind)) { return false; }
+            if (at[0] > end) { return false; }
+        }
+    }
+
+    static boolean emitVerbatim(TableVariable.Writer w, byte[] b, int[] at, int kind) {
+        switch (kind) {
+            case 1: case 2: case 6: case 20: case 25:
+                w.putBytes(b, at[0], 1); at[0] += 1; return true;
+            case 3: case 7: case 21: case 26:
+                w.putBytes(b, at[0], 2); at[0] += 2; return true;
+            case 4: case 8: case 10: case 22: case 27:
+                w.putBytes(b, at[0], 4); at[0] += 4; return true;
+            case 5: case 9: case 11: case 23: case 28:
+                w.putBytes(b, at[0], 8); at[0] += 8; return true;
+            case 18: case 19: case 24: case 29:
+                w.putBytes(b, at[0], 16); at[0] += 16; return true;
+            case 12: case 31: case 32: case 33: {
+                long n = getLeb(b, at);
+                if (n < 0) { return false; }
+                w.putLeb(n);
+                w.putBytes(b, at[0], (int) n);
+                at[0] += (int) n;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static long get64(byte[] b, int[] at) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) { v |= (long) (b[at[0] + i] & 0xff) << (8 * i); }
+        at[0] += 8;
+        return v;
+    }
+    static int get8(byte[] b, int[] at) { return b[at[0]++] & 0xff; }
+    static long getLeb(byte[] b, int[] at) {
+        long v = 0;
+        int shift = 0;
+        for (int i = 0; i < 10; i++) {
+            if (at[0] + i >= b.length) { return -1; }
+            int x = b[at[0] + i] & 0xff;
+            if (i == 9 && x > 1) { return -1; }
+            v |= (long) (x & 0x7f) << shift;
+            if ((x & 0x80) == 0) {
+                if (i > 0 && x == 0) { return -1; }
+                at[0] += i + 1;
+                return v;
+            }
+            shift += 7;
+        }
+        return -1;
     }
 }
 `

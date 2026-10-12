@@ -184,6 +184,7 @@ const retainDriver = `public final class RetainDriver {
         v.extraNum = 7;
         v.extraStr = "hello";
         v.extraPtr = "ptr";
+        v.extraGrade = 2;
         byte[] wire = newpkg.CardVariable.save(v);
 
         oldpkg.TableRetain retain = new oldpkg.TableRetain(1 << 16, 16);
@@ -192,8 +193,8 @@ const retainDriver = `public final class RetainDriver {
         if (o == null) { fail("load returned null"); }
         if (!"hi".equals(o.id)) { fail("id=" + o.id); }
         if (o.oldName != 42) { fail("oldName=" + o.oldName); }
-        if (report.unknown != 4) { fail("unknown=" + report.unknown); }
-        if (report.retained != 3) { fail("retained=" + report.retained); }
+        if (report.unknown != 5) { fail("unknown=" + report.unknown); }
+        if (report.retained != 4) { fail("retained=" + report.retained); }
         if (report.retainLost != 1) { fail("retainLost=" + report.retainLost); }
 
         byte[] saved = oldpkg.CardRetain.saveRetain(o, retain, report);
@@ -208,6 +209,7 @@ const retainDriver = `public final class RetainDriver {
         if (n.extraNum != 7) { fail("reread extraNum=" + n.extraNum); }
         if (!"hello".equals(n.extraStr)) { fail("reread extraStr=" + n.extraStr); }
         if (n.extraPtr != null) { fail("reread extraPtr: a node index is never retained"); }
+        if (n.extraGrade != 2) { fail("reread extraGrade: the unknown enum field's variant was not retained"); }
 
         byte[] again = oldpkg.CardRetain.saveRetain(o, retain, report);
         if (!java.util.Arrays.equals(saved, again)) { fail("second retained save differs"); }
@@ -274,17 +276,18 @@ const lossDriver = `public final class LossDriver {
         v.extraNum = 7;
         v.extraStr = "hello";
         v.extraPtr = "ptr";
+        v.extraGrade = 2;
         byte[] wire = newpkg.CardVariable.save(v);
         byte[] copy = java.util.Arrays.copyOf(wire, wire.length);
 
         // A buffer one byte short of the first unknown field's record (the
-        // string "extra" is a 15-byte record): it is dropped whole and counted
+        // string "extra" is a 16-byte record): it is dropped whole and counted
         // once, nothing is retained, and the input is untouched (§6.6).
-        oldpkg.TableRetain shortRetain = new oldpkg.TableRetain(14, 16);
+        oldpkg.TableRetain shortRetain = new oldpkg.TableRetain(15, 16);
         oldpkg.TableVariable.Report sr = new oldpkg.TableVariable.Report();
         oldpkg.CardVariable.Value o = oldpkg.CardRetain.loadRetain(wire, shortRetain, sr);
         if (o == null) { fail("load returned null"); }
-        if (sr.retainLost != 4) { fail("one-byte-short buffer reported retainLost=" + sr.retainLost); }
+        if (sr.retainLost != 5) { fail("one-byte-short buffer reported retainLost=" + sr.retainLost); }
         if (sr.retained != 0) { fail("one-byte-short buffer retained a field"); }
 
         // The input bytes are unchanged by the retained load.
@@ -299,6 +302,7 @@ const lossDriver = `public final class LossDriver {
         newpkg.CardVariable.Value n = newpkg.CardVariable.load(saved, nr);
         if (n.extraNum != 7) { fail("full buffer lost extraNum=" + n.extraNum); }
         if (!"hello".equals(n.extraStr)) { fail("full buffer lost extraStr=" + n.extraStr); }
+        if (n.extraGrade != 2) { fail("full buffer lost extraGrade=" + n.extraGrade); }
 
         System.out.println("ok");
     }
