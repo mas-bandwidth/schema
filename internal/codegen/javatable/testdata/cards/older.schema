@@ -1,0 +1,11 @@
+// The OLDER declaration of the cross-read pair: `old_name` names the wire id the
+// newer build's `renamed` still writes, and `absent` is a field the newer build
+// does not carry, so it reads its default (docs/SPEC-TABLES.md §4, §5).
+package oldpkg
+
+table Card
+{
+    id       string(16)
+    old_name int32
+    absent   string(16)
+}

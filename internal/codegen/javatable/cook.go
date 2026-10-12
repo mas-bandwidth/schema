@@ -141,6 +141,14 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			return ""
 		}
 		for _, f := range m.Fields {
+			// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
+			// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
+			// cooked record's accessors cannot read one field at one offset
+			// (§7, §19). The card is the first such table this backend meets,
+			// and it is skipped here, not laid out.
+			if f.Array == ir.ArrayList {
+				return name + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}

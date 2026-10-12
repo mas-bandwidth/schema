@@ -723,3 +723,112 @@ packet-wide-java-negative-control: packet-wide-java
 	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
 
 test-java: packet-wide-java packet-wide-java-negative-control
+
+# ---------------------------------------------------------------------------
+# THE CARD WIRE-FUZZ GATE (docs/SPEC-TABLES.md §2, §3)
+# ---------------------------------------------------------------------------
+# These targets are the Java side of the cards wire-fuzz gate: they mirror the
+# Go leg's cards-generate and cards-wire-fuzz (make/go.mk) against the same
+# oracle harness and the same seed, so the Java Card codec is held to the
+# identical byte-for-byte contract. They live in make/java.mk (NOT a separate
+# make/cards-java.mk) because the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-java.mk would be refused there as a phantom port.
+.PHONY: cards-java-generate cards-java-wire-fuzz
+
+# cards-java-generate writes the cards unit's Java into build/ (test-only, never
+# part of the committed generated/ tree).
+cards-java-generate: bin/schema
+	@rm -rf build/tables-generated-java/cards
+	@mkdir -p build/tables-generated-java/cards
+	./bin/schema generate --lang java --out build/tables-generated-java/cards tables/cards
+
+# The wire-fuzz driver: the generated cards unit beside test/conformance/java/
+# src/WireFuzz.java, one class on one classpath, answering the harness's pipe
+# protocol for the Card root only.
+build/cards-java-wire-fuzz/.stamp: cards-java-generate test/conformance/java/src/WireFuzz.java make/java.mk
+	@rm -rf build/cards-java-wire-fuzz && mkdir -p build/cards-java-wire-fuzz
+	$(JAVAC) --release 17 -nowarn -d build/cards-java-wire-fuzz \
+		build/tables-generated-java/cards/*.java test/conformance/java/src/WireFuzz.java
+	@printf '#!/bin/sh\nexec %s -cp %s/build/cards-java-wire-fuzz WireFuzz "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)" > build/cards-java-wire-fuzz/driver
+	@chmod +x build/cards-java-wire-fuzz/driver
+	@touch $@
+
+CARDS_JAVA_FUZZ_TIME ?= 30s
+# The seeds the gate holds the Java Card codec to: the long-standing reference
+# seed and the three the oracle fuzzer found this port's node-table unknown
+# census on (§3.1) — mutant #104 of seed 777 counted three unknowns where the
+# oracle counts one, so that seed and its neighbours ride here as a regression.
+CARDS_JAVA_FUZZ_SEEDS := 24845619678 100 777 200 3 100 42 1000
+cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stamp
+	@rm -f build/cards-java-wire-fuzz.log
+	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
+		while [ "$$#" -ge 2 ]; do \
+			seed=$$1; n=$$2; shift 2; \
+			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
+				>> build/cards-java-wire-fuzz.log 2>&1; \
+			status=$$?; \
+			if [ $$status -ne 0 ]; then cat build/cards-java-wire-fuzz.log; exit $$status; fi; \
+		done
+	@cat build/cards-java-wire-fuzz.log
+	@grep -q '0 divergences' build/cards-java-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-java-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-java-wire-fuzz.log
+
+test-java: cards-java-wire-fuzz
+
+# ---------------------------------------------------------------------------
+# THE CARD CONSTRUCTS' BOUNDARY CONTROL (docs/SPEC-TABLES.md §2, §11)
+# ---------------------------------------------------------------------------
+#
+# internal/codegen/javatable/cardsform_test.go's
+# TestOtherVariableConstructsAreRefusedByName holds that every variable-class
+# construct outside the card's slice — a map (§2.8), a union arm (§2.6), a
+# *bytes buffer, a pointer to a table outside a list element (§2.1), an optional
+# ?T (§2.3), an enum-keyed array (§2.4) and the wide kinds (§15) — is refused by
+# name, naming the table, the field and the construct (§11), so a construct the
+# card does not carry is never mis-encoded and never silently dropped.
+#
+# A test for a REFUSAL passes trivially when the refusal never runs, so this
+# control proves the rule BITES: it neutralises the closure's guard on
+# variableFormRefusal (javatable.go:420) through a go build overlay and requires
+# the boundary test to go RED. Nothing in the tree changes; the overlay lives
+# under build/. Without the refusal the emitter walks a map/union field and
+# panics, so the red names the test and the panic: the boundary is load-bearing.
+#
+# THIS AND THE CARD FUZZ TARGETS BELOW SIT IN make/java.mk AND NOT IN A SEPARATE
+# make/cards-java.mk because the wide-scalar registry gate (Makefile,
+# tables-ports-refuse-wide-scalars) enumerates EVERY make/*.mk as a language
+# port and probes it with --lang <stem>; a fragment named cards-java.mk would be
+# probed as --lang cards-java and would red that gate as a phantom port (the
+# same reason the Elixir leg's card targets live in make/elixir.mk). The target
+# name carries no `negative-control` marker for the same reason: the marker
+# would put it in the CI matrix plan (make/negative-controls.json), outside this
+# card's paths.
+JAVA_CARDS_REFUSAL_SABOTAGE := build/java-cards-refusal-sabotage
+.PHONY: tables-java-cards-refusal-bites
+tables-java-cards-refusal-bites:
+	@rm -rf $(JAVA_CARDS_REFUSAL_SABOTAGE) && mkdir -p $(JAVA_CARDS_REFUSAL_SABOTAGE)
+	@sed 's|why != ""|why != why|' internal/codegen/javatable/javatable.go > $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt
+	@if cmp -s internal/codegen/javatable/javatable.go $(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the refusal sabotage did not apply"; exit 1; fi
+	@printf '{"Replace":{"%s/internal/codegen/javatable/javatable.go":"%s/$(JAVA_CARDS_REFUSAL_SABOTAGE)/javatable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json
+	@if nice -n 19 go test -overlay=$(JAVA_CARDS_REFUSAL_SABOTAGE)/overlay.json \
+			-count=1 -timeout 600s -run TestOtherVariableConstructsAreRefusedByName \
+			./internal/codegen/javatable/ > $(JAVA_CARDS_REFUSAL_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: removing the refusal left the boundary test green"; \
+		cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; fi
+	@grep -q "TestOtherVariableConstructsAreRefusedByName" $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not in the boundary test"; \
+		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
+	@grep -Eq "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the boundary test went red, but not because the refusal was gone"; \
+		  cat $(JAVA_CARDS_REFUSAL_SABOTAGE)/log; exit 1; }
+	@grep -Ehm1 "construct should be refused but was not|panic: " $(JAVA_CARDS_REFUSAL_SABOTAGE)/log
+	@echo "negative control: removing the variable-form refusal reds the card boundary test"
+
+test-java: tables-java-cards-refusal-bites

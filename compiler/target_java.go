@@ -123,5 +123,10 @@ func init() {
 	// target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
 	registerWideTextCarrier("java")
+	registerListCarrier("java")
+	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
+	// *bytes stays a named refusal (§11), so java registers as a string carrier
+	// alone and not as a byte-buffer carrier.
+	registerStringCarrier("java")
 	registerBuiltin(javaTarget{}, true, false, false, false)
 }

@@ -328,7 +328,12 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 		}
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		countOffset = pieces[1].Offset
+		// Only an INLINE string(N)/bytes(N) carries a count companion beside its
+		// bytes; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
+		// and has no companion, so its countOffset stays -1.
+		if !f.Type.Pointer {
+			countOffset = pieces[1].Offset
+		}
 	}
 	isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 	bound := int64(1)

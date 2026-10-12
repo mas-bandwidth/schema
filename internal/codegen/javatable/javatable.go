@@ -278,6 +278,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, message)
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the card's wire.
+	variable, err := generateVariableFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, variable)
 	return out, nil
 }
 
@@ -367,13 +373,133 @@ func checkNames(u *ir.Unit) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		for _, f := range u.Tables[name].Fields {
-			if javaReserved[javaName(f.Name)] {
+		st := u.Tables[name]
+		for _, f := range st.Fields {
+			// A reserved spelling is refused ONLY for a fixed table, whose raw
+			// member() the fixed/block/cook forms emit unchanged. A variable
+			// table's codec escapes it (varMember, the card's `_new` -> `new_`),
+			// so it is not refused here.
+			if st.FixedDeclared && javaReserved[javaName(f.Name)] {
 				return fmt.Errorf("field %s of table %s maps to the reserved Java identifier %q; rename it", f.Name, name, javaName(f.Name))
 			}
 		}
 	}
 	return nil
+}
+
+// refuseVariableForm refuses, by name, every variable-class construct the card
+// record does not use (docs/SPEC-TABLES.md §2, §11). The VARIABLE FORM (§3,
+// form byte 1) is taught for plain `table` roots and tables as list elements,
+// bool/int32/int64/enum fields, string(N), the *string byte buffer (§2.5) and
+// unbounded lists of tables ([]T, §2.9). Every other variable-class construct
+// — a map (§2.8), a union arm (§2.6), a *bytes buffer, a pointer to a table
+// outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed array
+// (§2.4) — is refused here, naming the table, the field and the construct, so
+// it is never mis-encoded and never silently dropped.
+//
+// The refusal is scoped to the VARIABLE tables. A DECLARED `fixed table`
+// ([ir.Struct.FixedDeclared]) keeps the fixed form's own answers for optional
+// and the other constructs it carries (docs/SPEC-TABLES.md §3.4), so it is not
+// walked here. A map-entry table is the map's own generated `{ key, value }`
+// struct (§2.8); its owner names it, so it is skipped.
+func refuseVariableForm(u *ir.Unit) error {
+	seen := map[string]bool{}
+	for _, st := range u.Tables {
+		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+			continue
+		}
+		if err := refuseVariableFormClosure(st, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// refuseVariableFormClosure walks one variable table and the table elements its
+// unbounded lists reach (§2.9), returning the first construct the variable form
+// does not carry. A pointer to a table outside a list element is a variable
+// construct (§2.1) and is refused on the field that spells it.
+func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
+	if seen[st.Name] {
+		return nil
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if why := variableFormRefusal(f); why != "" {
+			return fmt.Errorf("table %s field %s: %s is not carried by the Java variable form (docs/SPEC-TABLES.md §11)", st.Name, f.Name, why)
+		}
+		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayList {
+			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
+				if err := refuseVariableFormClosure(elem, seen); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// cardVariableTables returns the variable tables whose whole closure (the
+// tables their unbounded lists reach, §2.9) sits inside the card boundary: the
+// set the variable-form emitter writes codecs for. A variable table whose
+// closure holds a construct outside the card's slice is left ABSENT — the
+// generate path (generateVariableFiles) never emits its wire, so a pointered
+// variable table (tables/pointers) still emits its accelerators and fixed form
+// without being refused. The by-name refusal is [refuseVariableForm]'s own job,
+// on the card's path.
+func cardVariableTables(u *ir.Unit) []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range u.Tables {
+		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+			continue
+		}
+		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// variableFormRefusal names the variable-class construct a field spells that
+// the Java variable form does not carry, or "" when it carries it
+// (docs/SPEC-TABLES.md §2, §11). The *string byte buffer (§2.5) is the card
+// construct and is carried; a pointer to a table by value is not.
+func variableFormRefusal(f *ir.Field) string {
+	if f.IsMap() {
+		return "a map (docs/SPEC-TABLES.md §2.8)"
+	}
+	if f.Type.Optional {
+		return "an optional ?T (docs/SPEC-TABLES.md §2.3)"
+	}
+	if f.KeyEnum != "" {
+		return "an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
+	}
+	if f.Type.Pointer {
+		switch {
+		case f.Type.Kind == ir.TString && f.Type.Blob():
+			return "" // the *string byte buffer, the card's own construct (§2.5)
+		case f.Type.Kind == ir.TBytes && f.Type.Blob():
+			return "a *bytes byte buffer (docs/SPEC-TABLES.md §2.5)"
+		default:
+			return "a pointer to a table outside a list element (docs/SPEC-TABLES.md §2.1)"
+		}
+	}
+	if f.Type.Kind == ir.TNamed {
+		if _, ok := f.Type.Ref.(*ir.Union); ok {
+			return "a union (docs/SPEC-TABLES.md §2.6)"
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TFixed:
+		return "a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
+	case ir.TWString:
+		return "a wstring(N) kind (docs/SPEC-TABLES.md §15)"
+	case ir.TInt:
+		if f.Type.Width > 64 {
+			return "a wide int128 kind (docs/SPEC-TABLES.md §15)"
+		}
+	}
+	return ""
 }
 
 // javaReserved is Java's keyword set plus the literals, which are equally
