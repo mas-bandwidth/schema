@@ -183,6 +183,9 @@ cards-generate: bin/schema
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
 	cp tables/cards/render.go build/tables-generated-go/cards/render.go
 	cp tables/cards/parse_test.go build/tables-generated-go/cards/parse_test.go
+	cp tables/cards/edit.go build/tables-generated-go/cards/edit.go
+	cp tables/cards/edit_test.go build/tables-generated-go/cards/edit_test.go
+	cp tables/cards/view_test.go build/tables-generated-go/cards/view_test.go
 	cp tables/cards/upgrade.go build/tables-generated-go/cards/upgrade.go
 	cp tables/cards/corpus_test.go build/tables-generated-go/cards/corpus_test.go
 	cp tables/cards/upgrade_test.go build/tables-generated-go/cards/upgrade_test.go

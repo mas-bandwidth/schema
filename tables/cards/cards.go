@@ -38,6 +38,10 @@ type Record struct {
 	region []byte
 	root   *Card
 	report TableReport
+	// failEdit is the package-private failure-injection seam: a test sets it on
+	// a record to prove an interrupted rewrite leaves the original wire untouched
+	// (docs/SPEC-TABLES.md §6.2). nil runs no injection.
+	failEdit func() error
 }
 
 // Load reads wire into a Record using the generated measured/aligned temporary
