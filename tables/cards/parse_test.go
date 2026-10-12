@@ -406,6 +406,38 @@ func TestRenderRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDoneWhenTextRoundTrip proves the renamed done field keeps its DONE-WHEN
+// brief spelling (§16): Parse reads DONE-WHEN, Render emits DONE-WHEN (the wire
+// rename via `was` does not rename the brief header), and the value survives
+// Parse(Render(Parse(t))) byte for byte.
+func TestDoneWhenTextRoundTrip(t *testing.T) {
+	t.Parallel()
+	text := []byte("RESULT: done-round-trip sha=000000000000 tier: pro\n" +
+		"REPO: mas-bandwidth/schema\n" +
+		"KIND: feature\n" +
+		"TEST: test\n" +
+		"DONE-WHEN: make cards-test\n" +
+		"SOURCE: source\n")
+	rec, err := Parse(text)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	rendered, _, err := Render(rec)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Contains(rendered, []byte("DONE-WHEN: make cards-test")) {
+		t.Fatalf("Render lost the DONE-WHEN spelling:\n%s", rendered)
+	}
+	rec2, err := Parse(rendered)
+	if err != nil {
+		t.Fatalf("Parse(Render): %v", err)
+	}
+	if !bytes.Equal(rec2.Wire(), rec.Wire()) {
+		t.Fatal("Parse(Render(Parse(t))) changed the wire")
+	}
+}
+
 // TestExtrasCheckedWriteRefused proves the shared checked-write validation
 // refuses an extra whose key is not an admitted header key or whose key or
 // value carries a CR or LF, and an extra key duplicating a mapped header name,

@@ -177,7 +177,54 @@ func checkCard(root *Card, arena *TableArena) error {
 	if err := checkExtras(&root.Extra, arena); err != nil {
 		return err
 	}
+	if err := checkConsumers(&root.Consumers, arena); err != nil {
+		return err
+	}
 	return nil
+}
+
+// checkConsumers enforces the consumers collection ceiling and the
+// well-formedness of every consumer string, using the same rules as the other
+// collections (docs/SPEC-TABLES.md §2.9).
+func checkConsumers(list *TableList[ConsumerRow], arena *TableArena) error {
+	if list.Count < 0 || int64(list.Count) > MaxListEntries {
+		return fmt.Errorf("cards: consumers has %d entries, past the %d-entry ceiling (docs/SPEC-TABLES.md §2.9)", list.Count, MaxListEntries)
+	}
+	var elemErr error
+	visit := func(e *ConsumerRow) bool {
+		for _, f := range []struct {
+			name string
+			buf  []byte
+			n    int32
+		}{
+			{"kind", e.Kind[:], e.KindLength},
+			{"who", e.Who[:], e.WhoLength},
+			{"route", e.Route[:], e.RouteLength},
+			{"model", e.Model[:], e.ModelLength},
+			{"outcome", e.Outcome[:], e.OutcomeLength},
+			{"line", e.Line[:], e.LineLength},
+		} {
+			n := int32(len(f.buf))
+			if f.n < n {
+				n = f.n
+			}
+			if n < 0 {
+				n = 0
+			}
+			s := f.buf[:n]
+			if !utf8.Valid(s) || bytes.IndexByte(s, 0) >= 0 {
+				elemErr = fmt.Errorf("cards: consumers has a %s that is not well-formed UTF-8 without NUL", f.name)
+				return false
+			}
+		}
+		return true
+	}
+	if arena == nil {
+		CardConsumersEach(list, visit)
+	} else {
+		CardConsumersEach(list, visit, arena)
+	}
+	return elemErr
 }
 
 func stringData(slot *int64, arena *TableArena) []byte {

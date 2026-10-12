@@ -164,28 +164,75 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 # build/tables-generated-go/cards, cleaning that owned output first so a deleted
 # symbol cannot survive a regeneration. The source go.mod is NOT copied; the
 # handwritten facade and test are copied by name, never a recursive wildcard.
-.PHONY: cards-generate cards-test cards-fuzz-fixture cards-wire-fuzz cards-fuzz
+# c03 adds two test-only historical units (cards-initial, cards-future), each in
+# its own generated directory/module and imported under an alias: two
+# declarations whose package is cards are never compiled in one package.
+.PHONY: cards-generate cards-test cards-fuzz-fixture cards-wire-fuzz cards-fuzz cards-corpus-create cards-corpus-check
 CARDS_FUZZ_TIME ?= 30s
 cards-generate: bin/schema
-	@rm -rf build/tables-generated-go/cards
-	@mkdir -p build/tables-generated-go/cards
+	@rm -rf build/tables-generated-go/cards build/tables-generated-go/cards-initial build/tables-generated-go/cards-future
+	@mkdir -p build/tables-generated-go/cards build/tables-generated-go/cards-initial build/tables-generated-go/cards-future
 	./bin/schema generate --lang go --out build/tables-generated-go/cards tables/cards
-	$(call go_table_module,cards,cards)
+	./bin/schema generate --lang go --out build/tables-generated-go/cards-initial tables/cards/corpus/initial/DECLARATION.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/cards-future tables/cards/testdata/upgrade/future/DECLARATION.schema
+	$(call go_table_module,cards-initial,cardsinitial)
+	$(call go_table_module,cards-future,cardsfuture)
+	@printf 'module cards\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n\tcardsinitial v0.0.0\n\tcardsfuture v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
 	cp tables/cards/render.go build/tables-generated-go/cards/render.go
 	cp tables/cards/parse_test.go build/tables-generated-go/cards/parse_test.go
+	cp tables/cards/upgrade.go build/tables-generated-go/cards/upgrade.go
+	cp tables/cards/corpus_test.go build/tables-generated-go/cards/corpus_test.go
+	cp tables/cards/upgrade_test.go build/tables-generated-go/cards/upgrade_test.go
 	@mkdir -p build/tables-generated-go/cards/fuzz
 	@if [ -f tables/cards/fuzz/card-populated.wire ]; then cp tables/cards/fuzz/card-populated.wire build/tables-generated-go/cards/fuzz/card-populated.wire; fi
 	@if [ -f tables/cards/fuzz/card-populated.json ]; then cp tables/cards/fuzz/card-populated.json build/tables-generated-go/cards/fuzz/card-populated.json; fi
 	@mkdir -p build/tables-generated-go/cards/testdata/epoch17
 	cp tables/cards/testdata/epoch17/rejected-legacy.md build/tables-generated-go/cards/testdata/epoch17/rejected-legacy.md
 	cp tables/cards/testdata/epoch17/normalized-valid.md build/tables-generated-go/cards/testdata/epoch17/normalized-valid.md
+	@for c in initial consumers-and-rename; do \
+		mkdir -p build/tables-generated-go/cards/corpus/$$c; \
+		[ -f tables/cards/corpus/$$c/DECLARATION.schema ] && cp tables/cards/corpus/$$c/DECLARATION.schema build/tables-generated-go/cards/corpus/$$c/DECLARATION.schema; \
+		[ -f tables/cards/corpus/$$c/METADATA.txt ] && cp tables/cards/corpus/$$c/METADATA.txt build/tables-generated-go/cards/corpus/$$c/METADATA.txt; \
+		for w in tables/cards/corpus/$$c/populated.wire tables/cards/corpus/$$c/empty-consumers.wire; do \
+			[ -f "$$w" ] && cp "$$w" "build/tables-generated-go/cards/corpus/$$c/$$(basename $$w)"; \
+		done; \
+		for j in tables/cards/corpus/$$c/populated.json tables/cards/corpus/$$c/empty-consumers.json; do \
+			[ -f "$$j" ] && cp "$$j" "build/tables-generated-go/cards/corpus/$$c/$$(basename $$j)"; \
+		done; \
+		true; \
+	done
 
-cards-test: cards-generate
+# The read-only corpus gate (docs/SPEC-TABLES.md §4, §5, §6.6): the current
+# declaration must match the committed current-case declaration, and every
+# SHIPPED case and its named fixture evidence must be present. It never creates
+# wire/JSON/declaration evidence and never accepts absence as a skip.
+cards-corpus-check:
+	@cmp -s tables/cards/Card.schema tables/cards/corpus/consumers-and-rename/DECLARATION.schema || { echo "cards corpus check FAILED: Card.schema does not match corpus/consumers-and-rename/DECLARATION.schema"; exit 1; }
+	@for c in initial consumers-and-rename; do \
+		[ -f tables/cards/corpus/$$c/DECLARATION.schema ] || { echo "cards corpus check FAILED: missing corpus/$$c/DECLARATION.schema"; exit 1; }; \
+		[ -f tables/cards/corpus/$$c/METADATA.txt ] || { echo "cards corpus check FAILED: missing corpus/$$c/METADATA.txt"; exit 1; }; \
+		grep -q 'class: SHIPPED' tables/cards/corpus/$$c/METADATA.txt || { echo "cards corpus check FAILED: corpus/$$c is not SHIPPED"; exit 1; }; \
+	done
+	@for f in initial/populated consumers-and-rename/populated consumers-and-rename/empty-consumers; do \
+		[ -f tables/cards/corpus/$$f.wire ] || { echo "cards corpus check FAILED: missing corpus/$$f.wire"; exit 1; }; \
+		[ -f tables/cards/corpus/$$f.json ] || { echo "cards corpus check FAILED: missing corpus/$$f.json"; exit 1; }; \
+	done
+	@echo "cards corpus check: declaration pinned, every SHIPPED case and fixture present"
+
+# Fixture authoring: distinct from check, gated, and it refuses to overwrite an
+# existing named case. Normal tests never invoke it; it writes into the named
+# source corpus directory.
+cards-corpus-create: cards-generate
+	cd build/tables-generated-go/cards && CARDS_UPDATE_CORPUS=1 go test -run '^TestCorpusFixtureWrite$$' -count=1 -timeout 600s .
+
+cards-test: cards-generate cards-corpus-check
 	./bin/schema check tables/cards
 	cd build/tables-generated-go/cards && go vet ./... && go test -v -count=1 -timeout 600s ./...
+	cd build/tables-generated-go/cards-initial && go vet ./...
+	cd build/tables-generated-go/cards-future && go vet ./...
 	go test -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
 
 # The populated fixture is created ONLY under an explicit update flag, into the
