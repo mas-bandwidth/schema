@@ -220,6 +220,7 @@ func (g *wireGen) emit() {
 	g.pf("import 'dart:convert';\nimport 'dart:typed_data';\n\n")
 	g.emitConstants()
 	g.emitRuntime()
+	g.emitRetainRuntime()
 	for _, st := range g.closure {
 		g.emitStorage(st)
 	}
@@ -233,8 +234,10 @@ func (g *wireGen) emit() {
 		g.emitSave(st)
 		g.emitLoad(st)
 		g.emitMeasure(st)
+		g.emitRetainMembers(st)
 	}
 	g.emitTextForm()
+	g.emitDescriptors()
 }
 
 func (g *wireGen) emitConstants() {
@@ -260,6 +263,8 @@ final class TableWireReport {
   int clamped = 0;
   bool malformed = false;
   bool refused = false;
+  int retained = 0;
+  int retainLost = 0;
 }
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
@@ -268,6 +273,9 @@ final class WireState {
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<List<int>> nodes = <List<int>>[];
+  TableRetain? retain;
+  TableWireReport? report;
+  bool lost = false;
 
   int refFor(int id) {
     final r = refs[id];
@@ -276,6 +284,25 @@ final class WireState {
     final n = ids.length;
     refs[id] = n;
     return n;
+  }
+
+  // retainRefFor interns one id in first-use order, taking a retained id's
+  // entry from the caller's list rather than the generated table (§6.6): an
+  // id this build can name is here, any other is bounded by the caller's id
+  // capacity. Returns 0 and sets lost when the caller's list is full.
+  int retainRefFor(int id) {
+    final r = refs[id];
+    if (r != null) return r;
+    if (!_retainKnown.contains(id)) {
+      final t = retain;
+      if (t == null || t.idUsed >= t.ids.length) {
+        lost = true;
+        return 0;
+      }
+      t.ids[t.idUsed] = id;
+      t.idUsed++;
+    }
+    return refFor(id);
   }
 
   // nodeIndexForString numbers one *string blob node (§3.1): record k = node
@@ -303,9 +330,10 @@ final class WireState {
 final class TableWireWriter {
   final List<int> buf = <int>[];
   final WireState state;
+  List<int> path = <int>[];
   TableWireWriter(this.state);
 
-  TableWireWriter sub() => TableWireWriter(state);
+  TableWireWriter sub() => TableWireWriter(state)..path = List<int>.from(path);
 
   void putByte(int b) => buf.add(b & 0xFF);
 
@@ -389,6 +417,9 @@ final class TableWireReader {
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
+  bool stringBlob = false;
+  TableRetain? retain;
+  List<int> path = <int>[];
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -409,7 +440,10 @@ final class TableWireReader {
       nodes = parent.nodes,
       report = parent.report,
       entryCount = parent.entryCount,
-      nodeTableGood = parent.nodeTableGood;
+      nodeTableGood = parent.nodeTableGood,
+      stringBlob = parent.stringBlob,
+      retain = parent.retain,
+      path = parent.path;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -530,7 +564,7 @@ final class TableWireReader {
       report.malformed = true;
       return null;
     }
-    if (nodeTypes[rec] != _kStringBlobId) return null;
+    if (!stringBlob || nodeTypes[rec] != _kStringBlobId) return null;
     return utf8.decode(nodes[rec]);
   }
 
@@ -626,7 +660,7 @@ final class TableWireReader {
           final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
           pos += blen;
           final typeId = refToId[typeRef] ?? 0;
-          if (typeId == _kStringBlobId) {
+          if (stringBlob && typeId == _kStringBlobId) {
             if (_lebValid(bytes, 0, bytes.length)) {
               nodeTypes.add(typeId);
             } else {
@@ -635,6 +669,7 @@ final class TableWireReader {
             }
           } else {
             report.unknown++;
+            if (retain != null) report.retainLost++;
             nodeTypes.add(typeId);
           }
           nodes.add(bytes);
@@ -730,9 +765,10 @@ func (g *wireGen) emitSaveBody(st *ir.Struct) {
 	n := st.Name
 	fields := dartName(n) + "WireSaveBodyFields"
 	g.pf("void %s(TableWireWriter w, %s v) {\n", fields, n)
-	for _, f := range st.Fields {
-		g.emitSaveField(f, "\t")
+	for i, f := range st.Fields {
+		g.emitSaveField(f, "\t", i)
 	}
+	g.pf("\t_retainTail(w);\n")
 	g.pf("}\n\n")
 	g.pf("void %sWireSaveBody(TableWireWriter w, %s v) {\n", dartName(n), n)
 	g.pf("\t%s(w, v);\n", fields)
@@ -741,7 +777,7 @@ func (g *wireGen) emitSaveBody(st *ir.Struct) {
 
 // emitSaveField writes one field's header and payload when the field rides
 // (§3): the reference, the kind byte, then the value under the kind's row.
-func (g *wireGen) emitSaveField(f *ir.Field, ind string) {
+func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
@@ -761,8 +797,10 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string) {
 		g.pf("%s\tfinal s = w.sub();\n", ind)
 		g.pf("%s\ts.putByte(%d);\n", ind, ir.TableWireElemKind(f))
 		g.pf("%s\ts.putLeb(%s.length);\n", ind, expr)
-		g.pf("%s\tfor (final e in %s) {\n", ind, expr)
+		g.pf("%s\tfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
+		g.pf("%s\t\tfinal e = %s[i];\n", ind, expr)
 		g.pf("%s\t\tfinal b = s.sub();\n", ind)
+		g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
 		g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
 		g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
 		g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
@@ -843,17 +881,40 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\tcontinue;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\tswitch (id) {\n")
-	for _, f := range st.Fields {
-		g.emitLoadField(f, "\t\t\t")
+	for i, f := range st.Fields {
+		g.emitLoadField(f, "\t\t\t", i)
 	}
 	g.pf("\t\t\tdefault:\n")
 	g.pf("\t\t\t\tr.report.unknown++;\n")
-	g.pf("\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\tif (r.retain != null) {\n")
+	g.pf("\t\t\t\t\tfinal start = r.pos;\n")
+	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\t\tif (kind == %d) {\n", wireKindPtr)
+	g.pf("\t\t\t\t\t\tr.report.retainLost++;\n")
+	g.pf("\t\t\t\t\t} else {\n")
+	g.pf("\t\t\t\t\t\tfinal sub = TableWireReader.sub(r, start, r.pos);\n")
+	g.pf("\t\t\t\t\t\tfinal resolved = _retainResolve(sub, kind, 0);\n")
+	g.pf("\t\t\t\t\t\tif (resolved == null || sub.pos != sub.limit) {\n")
+	g.pf("\t\t\t\t\t\t\tr.report.retainLost++;\n")
+	g.pf("\t\t\t\t\t\t} else {\n")
+	g.pf("\t\t\t\t\t\t\tfinal rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);\n")
+	g.pf("\t\t\t\t\t\t\tif (r.retain!.used + rec.cost() > r.retain!.capacity) {\n")
+	g.pf("\t\t\t\t\t\t\t\tr.report.retainLost++;\n")
+	g.pf("\t\t\t\t\t\t\t} else {\n")
+	g.pf("\t\t\t\t\t\t\t\tr.retain!.records.add(rec);\n")
+	g.pf("\t\t\t\t\t\t\t\tr.retain!.used += rec.cost();\n")
+	g.pf("\t\t\t\t\t\t\t\tr.report.retained++;\n")
+	g.pf("\t\t\t\t\t\t\t}\n")
+	g.pf("\t\t\t\t\t\t}\n")
+	g.pf("\t\t\t\t\t}\n")
+	g.pf("\t\t\t\t} else {\n")
+	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\t}\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n}\n\n")
 }
 
-func (g *wireGen) emitLoadField(f *ir.Field, ind string) {
+func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
@@ -885,6 +946,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string) {
 		g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tvar e = %s();\n", ind, f.Type.Name)
 		g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
+		g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
 		g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
 		g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
 		g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
@@ -974,7 +1036,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string) {
 			vid := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%s\t\t\tcase %s: v.%s = %d;\n", ind, dartU64Literal(vid), name, i+1)
 		}
-		g.pf("%s\t\t\tdefault: v.%s = 0; r.report.unknown++;\n", ind, name)
+		g.pf("%s\t\t\tdefault: v.%s = 0; r.report.unknown++; if (r.retain != null) r.report.retainLost++;\n", ind, name)
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -1023,9 +1085,12 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 func (g *wireGen) emitLoad(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireLoad"
+	_, strBlob := ir.PointerReachableBlobs(st)
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
+	g.pf("\tr.stringBlob = %v;\n", strBlob)
+	g.pf("\tr.path = [1];\n")
 	g.pf("\tif (report != null) r.report = report;\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")

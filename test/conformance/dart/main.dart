@@ -738,14 +738,16 @@ Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
   final roster = <bool>[];
+  final retains = <bool>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
     final unit = await _readString(src);
     final root = await _readString(src);
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
-    final ok = unit == 'cards' && root == 'Card' && form == 1 && retain == 0;
+    final ok = unit == 'cards' && root == 'Card' && form == 1;
     roster.add(ok);
+    retains.add(ok && retain == 1);
     available.add(ok ? 1 : 0);
   }
   stdout.add(available);
@@ -765,6 +767,15 @@ Future<void> wireFuzz() async {
     if (!roster[index]) {
       loaded = false;
       measure = -1;
+    } else if (retains[index]) {
+      // the retention arm (docs/SPEC-TABLES.md §6.6): read and write back
+      // through the retaining pair, with the two caller-owned stores the
+      // harness fixes (1 MiB of bytes and one id per eight bytes).
+      final retain = TableRetain(1048576, List<int>.filled(131072, 0));
+      measure = cardWireMeasure(wire);
+      loaded = measure >= 0;
+      final card = cardWireLoadRetain(wire, retain, report);
+      saved = cardWireSaveRetain(card, retain, report);
     } else {
       measure = cardWireMeasure(wire);
       loaded = measure >= 0;
@@ -781,8 +792,8 @@ Future<void> wireFuzz() async {
     _putU8(out, report.malformed ? 1 : 0);
     _putU8(out, report.refused ? 1 : 0);
     _putU64(out, measure);
-    _putU32(out, 0); // retained
-    _putU32(out, 0); // retainLost
+    _putU32(out, report.retained);
+    _putU32(out, report.retainLost);
     _putU64(out, saved.length);
     out.addAll(saved);
     stdout.add(out);
