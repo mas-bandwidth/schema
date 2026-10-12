@@ -189,6 +189,7 @@ cards-generate: bin/schema
 	cp tables/cards/upgrade.go build/tables-generated-go/cards/upgrade.go
 	cp tables/cards/corpus_test.go build/tables-generated-go/cards/corpus_test.go
 	cp tables/cards/upgrade_test.go build/tables-generated-go/cards/upgrade_test.go
+	cp tables/cards/page_test.go build/tables-generated-go/cards/page_test.go
 	@mkdir -p build/tables-generated-go/cards/fuzz
 	@if [ -f tables/cards/fuzz/card-populated.wire ]; then cp tables/cards/fuzz/card-populated.wire build/tables-generated-go/cards/fuzz/card-populated.wire; fi
 	@if [ -f tables/cards/fuzz/card-populated.json ]; then cp tables/cards/fuzz/card-populated.json build/tables-generated-go/cards/fuzz/card-populated.json; fi
@@ -233,7 +234,7 @@ cards-corpus-create: cards-generate
 
 cards-test: cards-generate cards-corpus-check
 	./bin/schema check tables/cards
-	cd build/tables-generated-go/cards && go vet ./... && go test -v -count=1 -timeout 600s ./...
+	cd build/tables-generated-go/cards && go vet ./... && CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_SOURCE_ROOT=$(CURDIR) go test -v -count=1 -timeout 600s ./...
 	cd build/tables-generated-go/cards-initial && go vet ./...
 	cd build/tables-generated-go/cards-future && go vet ./...
 	go test -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
