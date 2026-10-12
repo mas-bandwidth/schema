@@ -1058,6 +1058,64 @@ int main(void)
     return 0;
 }
 `, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags()...)...)
+	// AND THE SAME SWEEP OVER THE THREE-UNION CHAIN, so the guard chain's code
+	// on both plans takes every forged byte too: one of three answers, and a
+	// read that lands values holds each tag it landed inside its two arms.
+	cT08Probe(t, cT08TripleUnionSchema, "Root", `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+static const uint8_t poison[6] = { 0x00, 0x01, 0x02, 0x7f, 0x80, 0xff };
+int main(void)
+{
+    static TableFixedEntry plan[4096];
+    Root value, back;
+    TableReport r;
+    uint8_t clean[4096], base[4096], hit[4096];
+    int64_t need, n;
+    int at, p, path, answered = 0;
+    memset(&value, 0, sizeof(value));
+    value.oo.type = 1;
+    value.oo.as.o.mm.type = 1;
+    value.oo.as.o.mm.as.m.i.type = 1;
+    value.oo.as.o.mm.as.m.i.as.a.x = 42;
+    need = root_fixed_measure(1);
+    CHECK(need > 0 && need <= (int64_t) sizeof(clean));
+    CHECK(root_fixed_save(&value, 1, clean, (int64_t) sizeof(clean)) == need);
+    for (path = 0; path < 2; ++path)
+    {
+        memcpy(base, clean, (size_t) need);
+        if (path == 1) { T08_REHASH(base); }
+        for (at = 0; at < (int) need; ++at)
+        {
+            for (p = 0; p < 14; ++p)
+            {
+                memcpy(hit, base, (size_t) need);
+                if (p < 6) { hit[at] = poison[p]; } else { hit[at] ^= (uint8_t) (1u << (p - 6)); }
+                memset(&back, 0x5A, sizeof(back));
+                memset(&r, 0, sizeof(r));
+                n = root_fixed_load(&back, 1, hit, need, plan, 4096, NULL, &r);
+                if (n < 0)
+                {
+                    if (r.refused == r.malformed || (r.refused && r.reason == 0))
+                        { fprintf(stderr, "path %d byte %d poison %d: a negative read is not exactly one of refused-by-name and malformed\n", path, at, p); return 1; }
+                }
+                else
+                {
+                    CHECK(n == 1 && !r.refused && !r.malformed && r.reason == 0);
+                    if (back.oo.type > 2 || (back.oo.type == 1 && (back.oo.as.o.mm.type > 2 ||
+                        (back.oo.as.o.mm.type == 1 && back.oo.as.o.mm.as.m.i.type > 2))))
+                        { fprintf(stderr, "path %d byte %d poison %d: success with a tag past its arms\n", path, at, p); return 1; }
+                }
+                ++answered;
+            }
+        }
+    }
+    CHECK(answered == 2 * 14 * (int) need);
+    return 0;
+}
+`, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags()...)...)
 }
 
 // cT08WrongPlanSchema is P4's pair: Fxnew widens `narrow`, renames `renamed`
