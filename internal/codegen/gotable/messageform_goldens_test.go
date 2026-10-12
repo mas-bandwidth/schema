@@ -3,6 +3,7 @@ package gotable
 import (
 	"bytes"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"os/exec"
@@ -29,6 +30,7 @@ import (
 //     the values the form-1 instance decodes to." (§3.3)
 //   - "SaveMessages of them gives the batch bytes back exactly." (§3.3)
 func TestGoMessageFormGoldens(t *testing.T) {
+	slowtest.Gate(t, "go test over the generated goldens")
 	t.Parallel()
 	root, err := filepath.Abs("../../..")
 	if err != nil {

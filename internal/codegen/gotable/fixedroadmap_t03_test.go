@@ -22,6 +22,7 @@ package gotable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -702,6 +703,7 @@ func t03GoR29(t *testing.T) {
 // ---- the card's test --------------------------------------------------------
 
 func TestFixedRoadmapGoT03PlansVersions(t *testing.T) {
+	slowtest.Gate(t, "go test over generated probes")
 	t.Parallel()
 	tasks := []struct {
 		id    string

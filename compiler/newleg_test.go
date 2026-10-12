@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +87,7 @@ func TestNewLegLuaFiles(t *testing.T) {
 }
 
 func TestNewLegLuaFixturePasses(t *testing.T) {
+	slowtest.Gate(t, "go test over the scaffolded fixture")
 	files, err := NewLeg("lua")
 	if err != nil {
 		t.Fatal(err)

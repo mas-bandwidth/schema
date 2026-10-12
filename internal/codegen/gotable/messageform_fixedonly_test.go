@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 // and that is a declaration, not a derivation ... `fixed table T` may ride
 // here, a plain `table T` may not."
 func TestGoMessageFormFixedOnly(t *testing.T) {
+	slowtest.Gate(t, "go test over the generated caller")
 	t.Parallel()
 	schema := `package probe
 
