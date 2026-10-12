@@ -1,0 +1,199 @@
+#!/bin/sh
+# J1 — accessor and descriptor agreement (docs/PORTING.md, schema#421), the C#
+# half. One probe, three modes: `agreement` reads every field of every table
+# twice — once through the managed class's named public field, once through the
+# descriptor's GetRaw/GetChild delegate — and requires agreement; `scalar` and
+# `slot` each sabotage ONE emitter line (codecs.go:826 and :814) through a
+# `go build -overlay` and require the agreement gate to go red on the right
+# message. C# has no f.Offset to compare — TableFieldInfo carries delegates
+# (§8.1) — so the two independent derivations held against each other are the
+# public field and the delegate.
+set -eu
+dotnet=$1
+mode=$2
+control=build/cs-accessor-control
+mkdir -p "$control"
+
+cat > "$control/Case.schema" <<'SCHEMA'
+package accessorprobe
+table Node
+{
+    value int32
+}
+table Root
+{
+    id    uint32
+    flag  bool
+    child *Node
+}
+SCHEMA
+
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="generated/*.cs"/></ItemGroup>
+</Project>
+PROJECT
+
+cat > "$control/Program.cs" <<'CS'
+using System;
+using System.Reflection;
+using System.Text;
+using Accessorprobe;
+
+class Program
+{
+    static string Pascal(string name)
+    {
+        var sb = new StringBuilder(name.Length);
+        bool upper = true;
+        foreach (char c in name)
+        {
+            if (c == '_') { upper = true; continue; }
+            sb.Append(upper && c >= 'a' && c <= 'z' ? (char)(c - 'a' + 'A') : c);
+            upper = false;
+        }
+        return sb.ToString();
+    }
+
+    static ulong RawEncode(object v, Type t)
+    {
+        if (t == typeof(bool)) return (bool)v ? 1ul : 0ul;
+        if (t == typeof(byte)) return (ulong)(byte)v;
+        if (t == typeof(sbyte)) return (ulong)(long)(sbyte)v;
+        if (t == typeof(ushort)) return (ulong)(ushort)v;
+        if (t == typeof(short)) return (ulong)(long)(short)v;
+        if (t == typeof(uint)) return (ulong)(uint)v;
+        if (t == typeof(int)) return (ulong)(long)(int)v;
+        if (t == typeof(ulong)) return (ulong)v;
+        if (t == typeof(long)) return (ulong)(long)v;
+        if (t == typeof(float)) return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits((float)v));
+        if (t == typeof(double)) return unchecked((ulong)BitConverter.DoubleToInt64Bits((double)v));
+        return 0ul;
+    }
+
+    static int CheckTable(TableTypeInfo info, Type classType, object instance)
+    {
+        int held = 0;
+        foreach (TableFieldInfo f in info.Fields)
+        {
+            FieldInfo member = classType.GetField(Pascal(f.Name));
+            if (member == null)
+            {
+                Console.WriteLine("FAILED ACCESSOR/DESCRIPTOR: the managed class has no member named " + Pascal(f.Name));
+                return -1;
+            }
+            object named = member.GetValue(instance);
+            if (f.GetRaw != null)
+            {
+                ulong viaDescriptor = f.GetRaw(instance, 0);
+                ulong viaAccessor = RawEncode(named, member.FieldType);
+                if (viaDescriptor != viaAccessor)
+                {
+                    Console.WriteLine("FAILED ACCESSOR/DESCRIPTOR: the accessor and the descriptor disagree about the value");
+                    return -1;
+                }
+            }
+            else if (f.GetChild != null)
+            {
+                if (!ReferenceEquals(f.GetChild(instance, 0), named))
+                {
+                    Console.WriteLine("FAILED ACCESSOR/DESCRIPTOR: the slot accessor and the descriptor disagree about the child");
+                    return -1;
+                }
+            }
+            else
+            {
+                Console.WriteLine("FAILED ACCESSOR/DESCRIPTOR: field " + f.Name + " has neither GetRaw nor GetChild");
+                return -1;
+            }
+            held++;
+        }
+        return held;
+    }
+
+    static int Main()
+    {
+        var node = new Node { Value = -42 };
+        var root = new Root { Id = 0x11223344u, Flag = true, Child = new Node { Value = 7 } };
+
+        int total = 0;
+        int n = CheckTable(Schema.NodeTableType(), typeof(Node), node);
+        if (n < 0) return 1;
+        total += n;
+        n = CheckTable(Schema.RootTableType(), typeof(Root), root);
+        if (n < 0) return 1;
+        total += n;
+
+        if (total == 0)
+        {
+            Console.WriteLine("FAILED ACCESSOR/DESCRIPTOR: zero fields were read both ways");
+            return 1;
+        }
+        Console.WriteLine("C# accessor/descriptor agreement: " + total + " fields read both ways agree");
+        return 0;
+    }
+}
+CS
+
+sabotage() {
+    sed "$1" internal/codegen/cstable/codecs.go > "$control/codecs.gotext"
+    count=$(grep -c 'SABOTAGED' "$control/codecs.gotext" || true)
+    if [ "$count" != "1" ]; then
+        echo "NEGATIVE CONTROL FAILED: the sabotage patched $count sites, not one"
+        exit 1
+    fi
+    printf '{"Replace":{"%s/internal/codegen/cstable/codecs.go":"%s/%s/codecs.gotext"}}\n' "$PWD" "$PWD" "$control" > "$control/overlay.json"
+    go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
+    "$control/schema" generate --lang cs --out "$control/generated" "$control/Case.schema"
+    if ! "$dotnet" build "$control/control.csproj" -v q > "$control/build.log" 2>&1; then
+        echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"
+        cat "$control/build.log"
+        exit 1
+    fi
+    if "$dotnet" "$control/bin/Debug/net10.0/control.dll" > "$control/run.log" 2>&1; then
+        echo "NEGATIVE CONTROL FAILED: the sabotage left the agreement gate GREEN"
+        cat "$control/run.log"
+        exit 1
+    fi
+    if ! grep -q "$2" "$control/run.log"; then
+        echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the expected message"
+        cat "$control/run.log"
+        exit 1
+    fi
+    grep -m1 "FAILED ACCESSOR/DESCRIPTOR" "$control/run.log"
+    echo "negative control: $3 turns the C# accessor/descriptor agreement RED"
+}
+
+case "$mode" in
+agreement)
+    ./bin/schema generate --lang cs --out "$control/generated" "$control/Case.schema"
+    "$dotnet" build "$control/control.csproj" -v q
+    "$dotnet" "$control/bin/Debug/net10.0/control.dll"
+    ;;
+scalar)
+    # the ONE edit is codecs.go:826; the descriptor's raw read parts company
+    # with the named accessor by four, this leg's twin of "a scalar accessor
+    # moved four bytes".
+    sabotage 's|GetRaw = delegate(object o, int i) { return %s; }|GetRaw = delegate(object o, int i) { return unchecked(4ul + (%s)); } /* SABOTAGED */|' \
+        "the accessor and the descriptor disagree about the value" \
+        "one scalar accessor four bytes off"
+    ;;
+slot)
+    # the ONE edit is codecs.go:814; the descriptor's child accessor returns
+    # null and parts company with the named member. The first elementExpr
+    # argument must be dropped too, or Fprintf's leftover verb prints
+    # %!(EXTRA ...) and the generated C# does not compile.
+    sabotage 's|GetChild = delegate(object o, int i) { return %s; }, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)|GetChild = delegate(object o, int i) { return null; } /* SABOTAGED */, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), typ)|' \
+        "the slot accessor and the descriptor disagree about the child" \
+        "one pointer slot's child accessor broken"
+    ;;
+*)
+    echo "unknown mode $mode" >&2
+    exit 1
+    ;;
+esac

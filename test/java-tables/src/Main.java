@@ -24,6 +24,7 @@
 */
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -345,9 +346,70 @@ public final class Main {
         return 0;
     }
 
+    // ---- the allocation gate (docs/PORTING.md I14)
+    //
+    // Reads the JDK's feature version and the JVM's per-thread allocation
+    // counter, and refuses to certify on any JDK other than the pin — or with
+    // no counter at all — without measuring. The escape hatch reports and does
+    // not certify.
+    private static int modeAllocator() {
+        int found = Runtime.version().feature();
+        int pin = 21;
+        String pinEnv = System.getenv("SCHEMA_JAVA_ALLOC_PINNED_FEATURE");
+        if (pinEnv != null && !pinEnv.isEmpty()) {
+            try {
+                pin = Integer.parseInt(pinEnv);
+            } catch (NumberFormatException ignored) {
+                pin = 21;
+            }
+        }
+        boolean anyJdk = "1".equals(System.getenv("SCHEMA_JAVA_ALLOC_ANY_JDK"));
+
+        java.lang.management.ThreadMXBean base = ManagementFactory.getThreadMXBean();
+        com.sun.management.ThreadMXBean bean = null;
+        boolean counterPresent = false;
+        if (base instanceof com.sun.management.ThreadMXBean b
+                && b.isThreadAllocatedMemorySupported()
+                && b.isThreadAllocatedMemoryEnabled()) {
+            bean = b;
+            counterPresent = true;
+        }
+
+        if (anyJdk) {
+            System.err.println("NOT CERTIFIED: allocation observations on JDK " + Runtime.version()
+                    + (counterPresent ? "" : " (no per-thread allocation counter)")
+                    + "; reporting, not certifying");
+        } else if (found != pin) {
+            fail("allocation certification requires JDK " + pin + ", running " + Runtime.version());
+        } else if (!counterPresent) {
+            fail("the JVM exposes no per-thread allocation counter, so the allocation gate "
+                    + "cannot certify a floor it cannot measure");
+        }
+
+        describe("allocation measurement on JDK " + Runtime.version());
+        long before = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
+        int iterations = 1_000_000;
+        long sink = 0L;
+        for (int i = 0; i < iterations; i++) {
+            byte[] scratch = new byte[256];
+            sink += scratch[0];
+        }
+        long after = bean != null ? bean.getCurrentThreadAllocatedBytes() : 0L;
+        if (sink == Long.MIN_VALUE) {
+            System.out.println(sink);
+        }
+        long bytes = after - before;
+        System.out.println("allocator: " + bytes + " bytes over " + iterations + " iterations = "
+                + ((double) bytes / iterations) + " bytes per iteration");
+        if (!anyJdk) {
+            System.out.println("the java allocation gate certified on JDK " + pin);
+        }
+        return 0;
+    }
+
     public static void main(String[] args) throws IOException {
         if (args.length < 1) {
-            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook>");
+            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook> | allocator");
             System.exit(1);
         }
         String mode = args[0];
@@ -371,6 +433,9 @@ public final class Main {
                 break;
             case "extent":
                 System.exit(modeExtent(args[1]));
+                break;
+            case "allocator":
+                System.exit(modeAllocator());
                 break;
             default:
                 System.err.println("FAILED: unknown mode " + mode);

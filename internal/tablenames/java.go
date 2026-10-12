@@ -11,6 +11,7 @@ func init() {
 		// package-level class of explicit little-endian readers — which is also
 		// what settles the byte order of both accelerators without asking the host.
 		Name{Name: "TableBytes", What: "explicit little-endian reads out of a byte[] (Java's block and cook read through it)"},
+		Name{Name: "TableIds", What: "the form-1 wire runtime (Java: the id-table wire's primitives — the form byte, fnv1a64 identity, canonical LEB128 and the first-use id table, docs/SPEC-TABLES.md §3)"},
 		Name{Name: "TableBlockRows", What: "one array's rows, iterated at the pitch the instance gives"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
