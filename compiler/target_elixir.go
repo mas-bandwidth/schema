@@ -112,5 +112,9 @@ func init() {
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
 	registerWideTextCarrier("elixir")
-	registerBuiltin(elixirTarget{}, true, false, false, false)
+	registerListCarrier("elixir")
+	// blobs=true: the variable form's card slice carries *string (docs/SPEC-TABLES.md
+	// §2.5); *bytes stays refused at the elixirtable boundary (§11), so the
+	// compiler-level byte-buffer gate must not fire for the *string the card uses.
+	registerBuiltin(elixirTarget{}, true, false, false, true)
 }

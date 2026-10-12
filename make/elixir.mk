@@ -87,13 +87,20 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # ONE ebin, because a unit's namespace is its package and the corpus's packages
 # are distinct. The conformance driver starts a BEAM per surface over these
 # .beam files, so nothing is compiled at driver time.
+#
+# tblp2 (test/tables/P2.schema) is DELIBERATELY ABSENT: its two tables are the
+# pointered side of the evolution pair (`Chain.link *Link`, `Link.next *Link`),
+# and the variable form's boundary refuses a pointer to a table outside a list
+# element by name (docs/SPEC-TABLES.md §2.1, §11). The conformance matrix's
+# cook, block and forgery surfaces — the three this leg answers — name only
+# graphdemo and blockdemo, so dropping the unit changes no cell.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
-	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
+	tblp1:test/tables/P1.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
 
-build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -531,3 +538,54 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-paired-gate
+
+# ---------------------------------------------------------------------------
+# THE CARDS UNIT'S ELIXIR LEG (docs/SPEC-TABLES.md §2)
+# ---------------------------------------------------------------------------
+#
+# These targets are the Elixir side of the cards wire-fuzz gate: they mirror the
+# Go leg's cards-generate and cards-wire-fuzz (make/go.mk) against the same
+# oracle harness and the same seed, so the Elixir Card codec is held to the
+# identical byte-for-byte contract. They live in make/elixir.mk (NOT a separate
+# make/cards-elixir.mk) because the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-elixir.mk would be refused there as a phantom port.
+.PHONY: cards-elixir-generate cards-elixir-wire-fuzz
+
+# cards-elixir-generate emits the Elixir table surface for tables/cards.
+# The packet emitter's name check no longer refuses the `Card` table for
+# colliding with the module it writes for schema file Card.schema
+# (docs/SPEC-TABLES.md §11): a table lowers to a module in the TABLE backend,
+# so the packet emitter skips it and the command reaches elixirtable.
+cards-elixir-generate:
+	@rm -rf build/tables-generated-elixir/cards
+	@mkdir -p build/tables-generated-elixir/cards
+	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
+
+# the cards corpus and the driver compiled into one ebin, so the wire-fuzz
+# driver's one BEAM can name the Cards.Table codec it drives.
+build/elixir-cards-ebin/.stamp: cards-elixir-generate test/conformance/elixir/driver_impl.ex
+	@rm -rf build/elixir-cards-ebin && mkdir -p build/elixir-cards-ebin
+	$(ELIXIRC) -o build/elixir-cards-ebin build/tables-generated-elixir/cards/*.ex \
+		test/conformance/elixir/driver_impl.ex
+	@touch $@
+
+# cards-elixir-wire-fuzz runs the conformance harness's wire fuzzer over the
+# Card root, comparing the Elixir driver's reads and writes with the Go
+# reference leg's. It requires cards-elixir-generate to have succeeded first.
+# The gate refuses a zero-coverage roster: the harness errors when the leg has
+# a codec for none of the named roots, and the greps below hold the nonzero
+# seed/mutant claim explicitly.
+cards-elixir-wire-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
+		./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-elixir-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-elixir-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-elixir-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-elixir-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-elixir-wire-fuzz.log
+
+test-elixir: cards-elixir-wire-fuzz

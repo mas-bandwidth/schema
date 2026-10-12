@@ -121,6 +121,14 @@ func checkNames(u *ir.Unit) error {
 		if _, isFlags := u.Flags[decl]; isFlags {
 			continue // flags are file-module functions, not modules
 		}
+		if _, isTable := u.Tables[decl]; isTable {
+			// Tables are deliberately absent from the packet wire (ir.go:
+			// Tables) and lower to modules in the TABLE backend, under that
+			// backend's own suffix rules (docs/SPEC-TABLES.md §11); a table
+			// named after its schema file is that backend's collision to
+			// refuse, not this one's.
+			continue
+		}
 		if base, taken := bases[decl]; taken {
 			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema; rename one", decl, base)
 		}
