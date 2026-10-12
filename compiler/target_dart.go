@@ -53,7 +53,13 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if err := refuseUnionArrays(u, "dart"); err != nil {
 		return nil, err
 	}
-	if err := refuseBlobs(u, "dart"); err != nil {
+	// §2.5: the variable wire carries the STRING blob but not the BYTES blob,
+	// so the two are refused apart — *bytes stays a named refusal, *string is
+	// the card's optional scalar pointer and is carried.
+	if err := refuseBytes(u, "dart"); err != nil {
+		return nil, err
+	}
+	if err := refuseStrings(u, "dart"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "dart"); err != nil {
@@ -122,5 +128,13 @@ func dartTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]darttable.
 func init() {
 	registerPacketValueDefaultCarrier("dart")
 	registerWideTextCarrier("dart")
+	// The card record's closure also carries an unbounded []T of table
+	// elements (docs/SPEC-TABLES.md §2.9), so the Dart table backend registers
+	// as a list carrier too.
+	registerListCarrier("dart")
+	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
+	// *bytes stays a named refusal (§11), so dart registers as a string carrier
+	// alone and not as a byte-buffer carrier.
+	registerStringCarrier("dart")
 	registerBuiltin(dartTarget{}, true, false, false, false)
 }

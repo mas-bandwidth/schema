@@ -1,0 +1,22 @@
+// new.schema — the NEWER declaration of the cards testdata pair
+// (docs/SPEC-TABLES.md §3, §5). It renames the optional body field `body` to
+// `done_when` and keeps its wire id through `was = "body"`, and adds the
+// scalar and list fields the card record carries.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+table PathText
+{
+    s string(192)
+}
+
+table Card
+{
+    id               string(64)
+    tier             Tier
+    paths            []PathText
+    done_when        *string     | was = "body"
+    deadline_minutes int32       | min = 0, max = 100000
+    flag             bool
+}

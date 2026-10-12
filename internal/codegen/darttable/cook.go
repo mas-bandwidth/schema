@@ -544,7 +544,11 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		// A `*string`/`*bytes` (docs/SPEC-TABLES.md §2.5) is a POINTER, and a
+		// pointer's cooked slot is one eight-byte reference — it has no inline
+		// length companion and no inline buffer, so the pieces it would index
+		// are not there. Only the INLINE string/bytes takes a count companion.
+		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
@@ -553,16 +557,31 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 		elemSize := fl.Size
 		if isArray {
 			bound = f.ArrayBound
-			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
+			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
+			if bound > 0 {
+				elemSize = pieces[0].Size / bound
+			} else {
+				// AN UNBOUNDED ARRAY (docs/SPEC-TABLES.md §2.9) carries no
+				// inline slot count: the field is the sixteen-byte TableList
+				// reference and there is no per-element stride to divide out,
+				// so the slot is the reference and it is not an inline array.
+				// This is the same row ir.BlockFieldOf states for the case,
+				// and it keeps an unbounded []T from taking the descriptor
+				// down with a divide by its absent bound.
+				elemSize = pieces[0].Size
+				isArray = false
+			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
-			// as an array's does (§7.4), and the bound is the declared length
+			// as an array's does (§7.4), and the bound is the declared length;
+			// a POINTER string carries no inline buffer and takes the
+			// reference row above instead
 			bound = f.Type.Size
 			isArray = false
 		}
 		presentOffset := int64(-1)
-		if f.Type.Optional {
+		if f.Type.Optional && !f.Type.Pointer {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			presentOffset = pieces[len(pieces)-1].Offset
 		}

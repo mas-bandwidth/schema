@@ -116,6 +116,22 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
+	closure := ir.TableClosure(u)
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
+	// this backend carries is admitted; every other variable-class construct is
+	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
+	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
+	// those forms as it did before — none of them reads or writes a form-1
+	// byte, so a variable table beside them is not mis-encoded by anything this
+	// leg writes, and refusing the whole unit would take the block and cook
+	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
+	// therefore binds a unit the variable form OWNS: one whose closure holds no
+	// fixed table, which is where the wire this card teaches is the only answer.
+	if !closureHoldsFixedTable(u, closure) {
+		if err := checkUnsupportedConstructs(u); err != nil {
+			return nil, err
+		}
+	}
 	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
 	// ACCELERATORS, NOT OF THE FIXED FORM. A block row and a cooked node are
 	// laid out in the ID-TABLE's kind vocabulary, which has no fixed-point and
@@ -154,6 +170,19 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the card
+	// record's constructs. The card's tables are all plain `table`, so the
+	// form-1 wire is their load/save; a fixed-only unit has no variable root
+	// and gets nothing (its form 3 is above). A unit the fixed form already
+	// serves emits no form-1 byte either (§3.4): the variable form is emitted
+	// for the unit it OWNS — one whose closure holds no fixed table.
+	if !closureHoldsFixedTable(u, closure) {
+		wire, err := generateWireFiles(u)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, wire)
+	}
 	// A unit whose wide kinds cost it the accelerators AND that has no fixed
 	// form to put in their place has nothing to emit, so it is refused whole
 	// and by name, exactly as it was before the form arrived.
@@ -170,6 +199,26 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return out, nil
 }
 
+// closureHoldsFixedTable reports whether the unit's table closure holds a
+// `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the
+// block, cook and fixed forms, so the variable form's boundary — the refusal
+// in checkUnsupportedConstructs and the form-1 emission — does not bind it
+// (docs/SPEC-TABLES.md §11): a variable table beside a fixed one is not
+// mis-encoded by anything the accelerators or the fixed form write.
+func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
+	variable := ir.VariableTables(u)
+	for name := range closure {
+		// A GENERATED map-entry table is not a declared `fixed table` and does
+		// not buy the unit the fixed form (§2.8): the map FIELD that generated
+		// it is a variable-class construct the boundary refuses by name.
+		st := u.Tables[name]
+		if st != nil && !st.IsMapEntry() && !variable[name] {
+			return true
+		}
+	}
+	return false
+}
+
 // checkNames refuses a table or field whose Dart spelling is a reserved
 // identifier: the block and cook surfaces spell members by dartName, and a
 // member named `class` or `hashCode` is a declaration error in Dart.
@@ -180,6 +229,11 @@ func checkNames(u *ir.Unit) error {
 			return fmt.Errorf("table %s maps to the reserved Dart identifier %q; rename it", st.Name, st.Name)
 		}
 		for _, f := range st.Fields {
+			// Skip underscore-prefixed fields (e.g., _new) - they map to valid Dart identifiers
+			// that don't collide with reserved words (e.g., _new -> _new)
+			if strings.HasPrefix(f.Name, "_") {
+				continue
+			}
 			if dartReserved[dartName(f.Name)] {
 				return fmt.Errorf("field %s of table %s maps to the reserved Dart identifier %q; rename it",
 					f.Name, st.Name, dartName(f.Name))
@@ -224,4 +278,72 @@ func tableFieldTypeName(f *ir.Field) string {
 		return f.Type.Name
 	}
 	return "?"
+}
+
+// checkUnsupportedConstructs refuses variable-class constructs that are not
+// part of the card record's closure (docs/SPEC-TABLES.md §2.1, §2.3, §2.4,
+// §2.5, §2.6, §2.8, §11): every construct the card does not use is refused
+// by name — the table, the field and the construct — so it is never mis-
+// encoded and never silently dropped. The card's own closure — a plain table,
+// bool/int32/int64/enum fields, string(N), *string (the string kind of §2.5)
+// and unbounded []T of table elements (§2.9) — passes.
+func checkUnsupportedConstructs(u *ir.Unit) error {
+	variable := ir.VariableTables(u)
+	for _, name := range sortedKeys(u.Tables) {
+		st := u.Tables[name]
+		for _, f := range st.Fields {
+			// maps (docs/SPEC-TABLES.md §2.8)
+			if f.Type.Kind == ir.TMap || f.MapEntry != nil {
+				return fmt.Errorf("table %s field %s: map[K]V is refused in the Dart table backend (docs/SPEC-TABLES.md §2.8, §11)",
+					name, f.Name)
+			}
+			// The three refusals below are SCOPED to the variable form: the
+			// card's form-1 wire carries none of them, so a plain `table` that
+			// reaches form 1 must refuse them by name rather than mis-encode or
+			// silently drop them. A `fixed table` is untouched — the fixed form
+			// (form 3) and its block/cook/message forms carry optional ?T,
+			// enum-keyed arrays and union arms by their own layouts (§3.4), and
+			// this card does not change them.
+			if !variable[name] {
+				continue
+			}
+			// optional ?T (docs/SPEC-TABLES.md §2.3): an optional by-value field
+			// carries a generated presence bool beside its value; the card's
+			// form-1 wire has no cell for it, so it must be refused, never
+			// mis-encoded as its bare value.
+			if f.Type.Optional {
+				return fmt.Errorf("table %s field %s: optional ?T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.3, §11)",
+					name, f.Name)
+			}
+			// enum-keyed arrays (docs/SPEC-TABLES.md §2.4): `[E]T` is an
+			// ArrayFixed of one slot per named variant, keyed by variant id on
+			// the wire; the card's form-1 writer has no keyed body, so it must
+			// be refused, never mis-encoded as a plain scalar enum.
+			if f.KeyEnum != "" {
+				return fmt.Errorf("table %s field %s: enum-keyed array [E]T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.4, §11)",
+					name, f.Name)
+			}
+			// union arms (docs/SPEC-TABLES.md §2.6): a field whose type names a
+			// union carries an arm id and a per-arm body; the card's form-1
+			// writer has no union tag, so it must be refused, never silently
+			// dropped from the variable form.
+			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
+					name, f.Name)
+			}
+			// *bytes, the byte-buffer kind (docs/SPEC-TABLES.md §2.5);
+			// *string is the card's optional scalar pointer and is kept.
+			if f.Type.Pointer && f.Type.Kind == ir.TBytes {
+				return fmt.Errorf("table %s field %s: *bytes is refused in the Dart table backend; cards use only *string (docs/SPEC-TABLES.md §2.5, §11)",
+					name, f.Name)
+			}
+			// pointers to tables outside an unbounded list element
+			// (docs/SPEC-TABLES.md §2.1)
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Pointer && f.Type.Kind == ir.TNamed && ref.IsTable && f.Array != ir.ArrayList {
+				return fmt.Errorf("table %s field %s: a pointer to a table outside an unbounded list element is refused in the Dart table backend (docs/SPEC-TABLES.md §2.1, §11)",
+					name, f.Name)
+			}
+		}
+	}
+	return nil
 }
