@@ -305,6 +305,50 @@ type fixedPlanEntry struct {
 	argw2  byte
 }
 
+// fixedPartitionPlan stable-partitions the built plan into every UNGUARDED
+// entry first and then every guarded one, and coalesces adjacent COPY entries
+// inside each half, never across the split (docs/FIXED-FORM-ALGORITHM.md §5.9
+// #42). It returns the partition and the split: the number of unguarded
+// entries, the index the guarded half starts at — a plan with no guarded entry
+// has its split at the END, not at zero. The run loop still tests the guard per
+// entry, which #42 allows outright; what a leg may not do is skip the
+// partition. A field past a union otherwise lands its unguarded entry behind
+// the union's guarded arms, and the coalescer would then face the two halves
+// interleaved.
+//
+// The destination is a SLOT index, not a byte offset, so two adjacent scalar
+// copies never merge: each scalar slot has its own setter and one entry cannot
+// write two slots. The coalesce condition therefore demands the SAME slot and a
+// contiguous source, which only a span-setter run satisfies — and a span-setter
+// run is already one Flat or Text entry. The pass still exists, and its
+// guard-equality and never-across-the-split checks are what §5.9 #42 pins.
+func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
+	out := make([]fixedPlanEntry, 0, len(plan))
+	split := 0
+	for pass := 0; pass < 2; pass++ {
+		for _, e := range plan {
+			if (e.guard != kFixedNoGuard) != (pass == 1) {
+				continue
+			}
+			if len(out) > split {
+				last := &out[len(out)-1]
+				if last.op == e.op && e.op == 0 &&
+					last.guard == e.guard && last.arg == e.arg &&
+					last.argw == e.argw && last.meta == e.meta &&
+					last.src+last.size == e.src && last.dst == e.dst {
+					last.size += e.size
+					continue
+				}
+			}
+			out = append(out, e)
+		}
+		if pass == 0 {
+			split = len(out)
+		}
+	}
+	return out, split
+}
+
 type fixedRootBuild struct {
 	g       *tableGen
 	argw    byte // the CURRENT union's tag width, stamped onto every guarded push
@@ -1582,6 +1626,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	for _, f := range st.Fields {
 		b.buildField(st, f, "t", 0, &wireOff, kFixedNoGuard, 0)
 	}
+	// THE PLAN IS PARTITIONED, unguarded entries first (§5.9 #42): the walk
+	// lays entries down in field order, so a field past a union would land its
+	// unguarded entry behind the union's guarded arms. The split is the number
+	// of unguarded entries, carried beside the plan as metadata and never
+	// consulted by the run loop, which tests the guard per entry (allowed).
+	plan, planSplit := fixedPartitionPlan(b.plan)
+	b.plan = plan
 
 	block := fixedBlockBytes(b.entries)
 	hash := ir.TableFixedLayoutHash(block, st)
@@ -1642,6 +1693,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
+	// THE SPLIT (§5.9 #42): the number of unguarded entries, the index the
+	// guarded half starts at. It is metadata beside the plan, exactly the shape
+	// the C++ reference carries as FixedPlanGuarded: the run loop does not read
+	// it, but the partition it names is what a plan-execution test holds this
+	// leg to.
+	g.pf("public const int %sFixedPlanSplit = %d;\n\n", name, planSplit)
 	g.pf("public static readonly TableFixedPlan %sFixedPlan = new TableFixedPlan(new TableFixedEntry[] {\n", name)
 	for _, p := range b.plan {
 		guardStr := "TableFixedWire.NoGuard"

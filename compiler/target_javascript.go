@@ -33,7 +33,24 @@ func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	if err := refuseWideText(u, "js"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "js"); err != nil {
+	// THE TABLE-SIDE UNION IS CARRIED, NAMED PER TABLE, NOT REFUSED PER UNIT
+	// (docs/SPEC-TABLES.md §2.6, §3.4): the fixed form walks a union's arms and
+	// this backend refuses only the tables its own closure test names
+	// (internal/codegen/jstable/fixedRefusal, fixedRoots), so a unit that
+	// declares a union with table arms keeps every table the form reaches — the
+	// `backend` unit's three message roots among them — instead of losing the
+	// whole unit to one union. The refusals that remain are this leg's own: an
+	// array of unions and a byte buffer, which its fixed form does not carry.
+	if err := refuseValueDefaults(u, "js"); err != nil {
+		return nil, err
+	}
+	if err := refuseWasRows(u, "js"); err != nil {
+		return nil, err
+	}
+	if err := refuseUnionArrays(u, "js"); err != nil {
+		return nil, err
+	}
+	if err := refuseBlobs(u, "js"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "js"); err != nil {
