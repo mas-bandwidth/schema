@@ -35,6 +35,13 @@ const maxHostInt = int(^uint(0) >> 1)
 // Malformed — or when the wire is refused; the input wire is never mutated and
 // no Record replacement occurs on error. The result is idempotent: upgrading an
 // already-upgraded wire is byte-for-byte the same (§6.6).
+//
+// The checked abstraction of this contract is tla/CardVersioning.tla: one
+// atomic retained round trip — retained decode (CardLoadRetain), the
+// accumulated loss-report check, retained encode (CardSaveRetain), then publish
+// or refuse — holding NoFieldLost, BodyUnchanged, RefusalKeepsOriginal and
+// ShippedUpgradeSucceeds. Loss reported by SAVE is checked before publishing
+// too. The concrete generated-runtime proof is TestUpgradeKeepsEveryField.
 func Upgrade(wire []byte) ([]byte, Report, error) {
 	return upgrade(wire, MaxRetainBytes, MaxRetainIDs)
 }
