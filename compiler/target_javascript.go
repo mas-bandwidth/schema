@@ -128,5 +128,6 @@ func init() {
 	valueDefaultTargets = append(valueDefaultTargets, "js")
 	registerPacketValueDefaultCarrier("js")
 	registerWideTextCarrier("js")
-	registerBuiltin(jsTarget{}, true, false, false, false)
+	registerListCarrier("js")
+	registerBuiltin(jsTarget{}, true, false, false, true)
 }
