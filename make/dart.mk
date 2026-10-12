@@ -485,9 +485,10 @@ test-dart: packet-wide-dart packet-wide-dart-negative-control
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
 # harness and the same seed, so the Dart Card codec can be held to the
 # identical byte-for-byte contract. They live in make/dart.mk (NOT a separate
-# make/cards-dart.mk) because the wide-scalar refusal gate
-# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
-# and a fragment named cards-dart.mk would be refused there as a phantom port.
+# make/cards-dart.mk or make/cards-dart-retain.mk) because the wide-scalar
+# refusal gate (tables-ports-refuse-wide-scalars) discovers every make/*.mk as
+# a live port, and a fragment named cards-dart.mk or cards-dart-retain.mk
+# would be refused there as a phantom port.
 CARDS_DART_FUZZ_TIME ?= 30s
 
 # cards-dart-generate produces ONLY build/tables-generated-dart/cards, cleaning
@@ -518,3 +519,26 @@ cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/confor
 # the same seed, over the Card root only, so the Dart Card codec is held to the
 # identical byte-for-byte contract the Go leg's cards-wire-fuzz pins.
 test-dart: cards-dart-wire-fuzz
+
+# cards-dart-retain-fuzz is the SAME fuzzer through the RETENTION ARM
+# (docs/SPEC-TABLES.md §6.6): every mutant is read and written back through the
+# Card codec's retaining pair, and the two retention counters ride beside the
+# six. The seed, count and coverage greps are cards-dart-wire-fuzz's, plus
+# --retain, so a retained save is held to the Go reference leg byte for byte.
+.PHONY: cards-dart-retain-fuzz
+cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
+		> build/cards-dart-retain-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-dart-retain-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-dart-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-dart-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-dart-retain-fuzz.log
+
+# THE CARD WIRE-FUZZ'S RETAIN ARM RIDES THE DART LEG'S GATE (§6.6): the same
+# oracle harness, the same seed, over the Card root only, so the Dart Card
+# codec's retained save is held to the identical byte-for-byte contract the Go
+# leg's cards-retain-fuzz pins.
+test-dart: cards-dart-retain-fuzz
