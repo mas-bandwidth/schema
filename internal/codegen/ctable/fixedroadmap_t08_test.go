@@ -876,7 +876,7 @@ func cT08ManifestIsTheWire(t *testing.T) {
 }
 
 // cT08HostileSchema is P3's probe unit: a ranged scalar, a bounded array, an
-// optional and a trailing scalar, so the byte-flip sweep can forge a count, a
+// optional and a trailing scalar, so the byte-flip sweep forges a count, a
 // present byte and a ranged value at once.
 const cT08HostileSchema = `package probe
 fixed table Host {
@@ -888,15 +888,17 @@ fixed table Host {
 `
 
 // c/P3 [verify] — "hostile bytes, sweep + sanitizer". FIXED-FORM-ALGORITHM §7
-// item 5: a byte-flip fuzz over the whole record, under a sanitizer. Every byte
-// of a saved record is poisoned six ways and the reader must answer ONE OF
-// THREE ways and never a fourth: a named refusal, a malformed read, or a read
-// that lands values. The fourth answer — a read that returns while a ranged
-// field rode past its declared bound — fails by name. The probe compiles under
-// -fsanitize=address,undefined so an out-of-bounds step aborts the probe and
-// reds the test; the sanitizer is the claim the reader never leaves the buffer.
+// item 5: "a byte-flip fuzz over the whole file, under a sanitizer, and it is
+// not optional — every offset is arithmetic over sizes a stranger wrote down, so
+// every byte, one bit at a time, is answered one of three ways and never a
+// fourth: a refusal by name, a `malformed` read, or a read that lands values."
+// Every byte of the saved FILE (header, layout and record) is flipped one bit
+// at a time and also poisoned with six whole values, on the identity plan and
+// on the compiled plan; the read must answer one of the three ways, and a read
+// that lands values must hold every declared bound. The probe compiles under
+// -fsanitize=address,undefined, so a step outside the buffer aborts it.
 func cT08HostileByteSweep(t *testing.T) {
-	runCGenerated(t, cT08HostileSchema, `#include "ProbeTable.h"
+	cT08Probe(t, cT08HostileSchema, "Host", `#include "ProbeTable.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -904,12 +906,12 @@ func cT08HostileByteSweep(t *testing.T) {
 static const uint8_t poison[6] = { 0x00, 0x01, 0x02, 0x7f, 0x80, 0xff };
 int main(void)
 {
+    static TableFixedEntry plan[4096];
     Host value, back;
     TableReport r;
-    TableFixedEntry plan[256];
-    uint8_t clean[4096], hit[4096];
+    uint8_t clean[4096], base[4096], hit[4096];
     int64_t need, n;
-    int at, p, i;
+    int at, p, i, path, answered = 0;
     memset(&value, 0, sizeof(value));
     value.small = 5;
     value.marks_count = 2;
@@ -919,36 +921,46 @@ int main(void)
     value.note = 30;
     value.tail = 7;
     need = host_fixed_measure(1);
-    CHECK(need > 0 && need <= (int64_t)sizeof(clean));
-    CHECK(host_fixed_save(&value, 1, clean, (int64_t)sizeof(clean)) == need);
-    for (at = 0; at < (int)host_fixed_record_bytes; ++at)
+    CHECK(need > 0 && need <= (int64_t) sizeof(clean));
+    CHECK(host_fixed_save(&value, 1, clean, (int64_t) sizeof(clean)) == need);
+    for (path = 0; path < 2; ++path)
     {
-        for (p = 0; p < 6; ++p)
+        memcpy(base, clean, (size_t) need);
+        if (path == 1) { T08_REHASH(base); }
+        for (at = 0; at < (int) need; ++at)
         {
-            memcpy(hit, clean, (size_t)need);
-            hit[need - host_fixed_record_bytes + at] = poison[p];
-            memset(&back, 0x5A, sizeof(back));
-            memset(&r, 0, sizeof(r));
-            n = host_fixed_load(&back, 1, hit, need, plan, 256, NULL, &r);
-            if (n < 0)
+            for (p = 0; p < 14; ++p)
             {
-                CHECK(!(r.refused && r.malformed));
-                if (!r.refused && !r.malformed)
-                    { fprintf(stderr, "byte %d poison 0x%02x: a negative read is NEITHER a refusal NOR malformed\n", at, poison[p]); return 1; }
-                continue;
+                memcpy(hit, base, (size_t) need);
+                if (p < 6) { hit[at] = poison[p]; } else { hit[at] ^= (uint8_t) (1u << (p - 6)); }
+                memset(&back, 0x5A, sizeof(back));
+                memset(&r, 0, sizeof(r));
+                n = host_fixed_load(&back, 1, hit, need, plan, 4096, NULL, &r);
+                if (n < 0)
+                {
+                    /* A REFUSAL BY NAME, or A MALFORMED READ — exactly one. */
+                    if (r.refused == r.malformed || (r.refused && r.reason == 0))
+                        { fprintf(stderr, "path %d byte %d poison %d: a negative read is not exactly one of refused-by-name and malformed\n", path, at, p); return 1; }
+                }
+                else
+                {
+                    /* A READ THAT LANDS VALUES, and every one inside its bound. */
+                    CHECK(n == 1 && !r.refused && !r.malformed && r.reason == 0);
+                    if (back.small < 0 || back.small > 1000)
+                        { fprintf(stderr, "path %d byte %d poison %d: success with small=%d out of bound\n", path, at, p, (int) back.small); return 1; }
+                    if (back.marks_count < 0 || back.marks_count > 4)
+                        { fprintf(stderr, "path %d byte %d poison %d: success with marks_count=%d out of bound\n", path, at, p, (int) back.marks_count); return 1; }
+                    for (i = 0; i < back.marks_count; ++i)
+                        if (back.marks[i] < 0 || back.marks[i] > 1000)
+                            { fprintf(stderr, "path %d byte %d poison %d: success with marks[%d]=%d out of bound\n", path, at, p, i, (int) back.marks[i]); return 1; }
+                    if (back.note_present && (back.note < 0 || back.note > 1000))
+                        { fprintf(stderr, "path %d byte %d poison %d: success with note=%d out of bound\n", path, at, p, (int) back.note); return 1; }
+                }
+                ++answered;
             }
-            CHECK(!r.refused && !r.malformed && r.reason == 0);
-            if (back.small < 0 || back.small > 1000)
-                { fprintf(stderr, "byte %d poison 0x%02x: success with small=%d out of bound\n", at, poison[p], (int)back.small); return 1; }
-            if (back.marks_count < 0 || back.marks_count > 4)
-                { fprintf(stderr, "byte %d poison 0x%02x: success with marks_count=%d out of bound\n", at, poison[p], (int)back.marks_count); return 1; }
-            for (i = 0; i < back.marks_count; ++i)
-                if (back.marks[i] < 0 || back.marks[i] > 1000)
-                    { fprintf(stderr, "byte %d poison 0x%02x: success with marks[%d]=%d out of bound\n", at, poison[p], i, (int)back.marks[i]); return 1; }
-            if (back.note_present && (back.note < 0 || back.note > 1000))
-                { fprintf(stderr, "byte %d poison 0x%02x: success with note=%d out of bound\n", at, poison[p], (int)back.note); return 1; }
         }
     }
+    CHECK(answered == 2 * 14 * (int) need);
     return 0;
 }
 `, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags()...)...)
@@ -971,12 +983,14 @@ fixed table Fxnew {
 }
 `
 
-// c/P4 [verify] — "wrong plan goes red". FIXED-FORM-ALGORITHM §7 item 4: the
-// loader refuses a file whose hash it does not lock (layout_newer, no counter),
-// and Fxold's identity plan run straight over Fxnew's record body must NOT
-// reproduce the record — the path select-by-hash exists to prevent. The
-// legitimate value the rule admits (Fxold reading its own record) is asserted
-// too, so neither half passes vacuously.
+// c/P4 [verify] — "wrong plan goes red". FIXED-FORM-ALGORITHM §7 item 4: "the
+// wrong plan must go red, and so must each fix's own bug: this build's identity
+// plan over another schema's record". Two halves: the loader REFUSES a file
+// whose hash it does not lock (§4.2 row 4: "a hash in no entry is
+// `layout_newer`"), counting nothing; and Fxold's identity plan run straight
+// over Fxnew's record body does NOT reproduce the record — the path
+// select-by-hash exists to prevent. The legitimate value the rule admits
+// (Fxold reading its own record) is asserted too, so neither half is vacuous.
 func cT08WrongPlanGoesRed(t *testing.T) {
 	runCGenerated(t, cT08WrongPlanSchema, `#include "ProbeTable.h"
 #include <stdio.h>
@@ -1012,7 +1026,6 @@ int main(void)
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */
     body = w2 + need - fxnew_fixed_body_bytes;
     memset(&wrong, 0x5A, sizeof(wrong));
-    memset(&r, 0, sizeof(r));
     table_fixed_run(fxold_fixed_plan, fxold_fixed_guards, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &clamped, &widened);
     if (wrong.renamed == 808)
         { fprintf(stderr, "NEGATIVE CONTROL FAILED: Fxold's identity plan reproduced an Fxnew record (renamed=%d)\n", (int)wrong.renamed); return 1; }
