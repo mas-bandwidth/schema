@@ -559,24 +559,20 @@ func cT08GuardChain(t *testing.T) {
 	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) {
 		t.Fatal("no published plan entry carries count 3 at the chain's offset")
 	}
-	// THE TWO-LANE CONSUMERS REFUSE THE CHAIN BY NAME. The C++ reference reads
-	// only the two inline lanes of ir.TableFixedBuildPlanNormalised, so the
-	// deepest leaf of a three-union chain would reach it without the OUTERMOST
-	// link — and a record whose outermost tag names another arm, its inner tags
-	// intact, would land that leaf. The page's answer for a consumer without the
-	// chain is the refusal by name (§4.1, §5.8 row 6), never a dropped condition.
-	func() {
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("the C++ reference emitted a three-union table on two guard lanes: its deepest leaf has lost the OUTERMOST tag, so a false outer tag with the inner tags intact lands it")
-			}
-			if !strings.Contains(fmt.Sprint(r), "a backend without the guard chain refuses a third nested union") {
-				t.Fatalf("the C++ reference refused for another reason: %v", r)
-			}
-		}()
-		_, _ = cpptable.Generate(unitFrom(t, cT08TripleUnionSchema))
-	}()
+	// The C++ reference now carries the same identity-plan guard chain rather
+	// than consuming the two-lane plan. Assert the emitted entry and pool both
+	// name the OUTERMOST link, or the deepest leaf could run under a false tag.
+	cpp, err := cpptable.Generate(unitFrom(t, cT08TripleUnionSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cppHeader := string(cpp["ProbeTable.h"])
+	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
+		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
+		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) ||
+		!strings.Contains(cppHeader, "report, RootFixedGuards );") {
+		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
+	}
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
     value.oo.as.o.mm.type = 1;
     value.oo.as.o.mm.as.m.i.type = 1;
@@ -854,9 +850,8 @@ func cT08Hex(t *testing.T, text, marker string) uint64 {
 // published constants are compared, not a shared helper's answer with itself.
 //
 // THE CLAUSE IS THE LAYOUT AND THE HASH, AND ONLY THEM: equal constants say
-// nothing about the predicates either runtime applies to a record. The C++
-// leg's refusal of a guard chain it cannot carry is asserted under c/R28, and a
-// three-union schema is not a row here because the C++ reference refuses it.
+// nothing about the predicates either runtime applies to a record. Both legs'
+// three-union guard chains are checked under c/R28.
 func cT08LayoutHashEqualsReference(t *testing.T) {
 	sources := []string{cReadSchema(t, "FX1"), cT08LayoutSchema}
 	tables := 0

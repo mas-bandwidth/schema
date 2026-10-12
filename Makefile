@@ -6024,7 +6024,7 @@ build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
 	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
 	@touch $@
 
-build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
+build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
