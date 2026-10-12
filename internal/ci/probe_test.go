@@ -76,11 +76,6 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Card fragments (make/cards-*.mk) are not ports; the refusal gate filters
-	// them out of its discovery, so this registry count must too.
-	legs = slices.DeleteFunc(legs, func(p string) bool {
-		return strings.HasPrefix(filepath.Base(p), "cards-")
-	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
