@@ -212,6 +212,11 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
 				fixedDst{dst: at, aux: at})
 			for _, v := range r.Variants {
+				if v.F == nil {
+					w.push(fixedLayoutEntry{id: ir.TableWireId(v.WireName()), kind: ir.TableKindNoPayload,
+						size: 0, children: 0, note: v.Name}, fixedDst{})
+					continue
+				}
 				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
 			}
 			return

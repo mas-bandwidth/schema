@@ -109,6 +109,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Union:
 			widest := int64(0)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
 				if n := fixedFieldBytes(v.F); n > widest {
 					widest = n
 				}
@@ -234,6 +237,11 @@ func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, 
 				dstGo(dst, "", dst+" + "+offGo(f.Type.Name, "Type"), 0, 0))
 			for _, v := range r.Variants {
 				armID := ir.TableWireId(v.WireName())
+				if v.F == nil {
+					w.push(fixedLayoutEntry{id: armID, kind: ir.TableKindNoPayload, size: 0, children: 0, note: v.Name},
+						dstGo("0", "", "", 0, 0))
+					continue
+				}
 				g.fixedWalkElement(w, v.F, armID, v.Name, offGo(f.Type.Name, ir.GoExportName(v.Name)))
 			}
 			return
@@ -366,6 +374,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -410,7 +421,9 @@ func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
 		case *ir.Union:
 			n := 1
 			for _, v := range r.Variants {
-				n += g.fixedFieldLeafCount(v.F)
+				if v.F != nil {
+					n += g.fixedFieldLeafCount(v.F)
+				}
 			}
 			return n
 		}
@@ -518,8 +531,10 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			g.pf("%sn++\n", ind)
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
-				g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("%s+%d", src, tag),
-					fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
+				if v.F != nil {
+					g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("%s+%d", src, tag),
+						fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
+				}
 				// THE GUARD'S WIDTH IS THE TAG'S (§5.2): stamped here, the read
 				// loop compares the tag WHOLE and a foreign 0x0101 is not arm 1.
 				// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG (§4.1): an entry
@@ -635,6 +650,9 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, tabs in
 			g.emitFixedPutInt(ind, dest, tag, expr+".Type")
 			g.pf("%sswitch %s.Type {\n", ind, expr)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
 				g.emitFixedWriteElement(v.F, fmt.Sprintf("%s[%d:]", dest, tag), expr+"."+ir.GoExportName(v.Name), tabs+1)
 			}

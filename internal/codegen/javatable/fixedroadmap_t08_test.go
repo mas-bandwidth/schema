@@ -254,14 +254,13 @@ func t08RoundTrip(t *testing.T, name, schema, setters string, moved []string) {
 	}
 }
 
-// t08Unsupported asserts a task's construct is refused by the ONE rule the card
-// names — ir.TableFixedSupported (§3.4: "a union arm carrying text or an array,
-// and ... a void arm"). The capability clause is not proved by a refusal, so the
-// card records these three tasks `unknown`; this assertion is their evidence.
-func t08Unsupported(t *testing.T, name, schema string) {
+// t08FixedWireSupported checks the shared fixed-form closure rule. A shape
+// accepted there is still not a Java-target capability while Java refuses
+// every union held by a table closure.
+func t08FixedWireSupported(t *testing.T, name, schema string) {
 	t.Helper()
-	if ir.TableFixedSupported(rootOf(t, unitFrom(t, schema)), 0) {
-		t.Fatalf("%s: ir.TableFixedSupported accepts the construct the card records as unproved", name)
+	if !ir.TableFixedSupported(rootOf(t, unitFrom(t, schema)), 0) {
+		t.Fatalf("%s: §2.6 permits this fixed-form union arm", name)
 	}
 }
 
@@ -361,8 +360,8 @@ fixed table T
 // clauses are all unreachable in the Java target, which refuses any union a
 // table closure holds (compiler/builtin.go:94, java registered without table
 // arms). The scalar round trip below exercises the internal emitter directly;
-// the direct text and array arms are refused by ir.TableFixedSupported and by
-// the same target refusal, so no clause is proved in a target a gate runs.
+// the text and array subchecks only pin shared wire admission, so no clause is
+// proved in a target a gate runs.
 func t08UnionFieldArms(t *testing.T) {
 	// The internal-emitter branch for scalars: it writes and reads the selected
 	// arm with non-default values through javatable.Generate, but the Java
@@ -381,8 +380,9 @@ fixed table T
 }
 `, `        vals[0].item.type = probe.CellFixed.ratio;
         vals[0].item.ratio = 2.5f;`, []string{"item.type", "item.ratio"})
-	// The refused clause: a text arm.
-	t08Unsupported(t, "union-field-arms (text arm)", `package probe
+	// The shared fixed-form predicate admits text arms; target-level support
+	// stays unknown because the Java target refuses every union.
+	t08FixedWireSupported(t, "union text arm", `package probe
 
 union Cell
 {
@@ -395,8 +395,8 @@ fixed table T
     item Cell
 }
 `)
-	// The refused clause: an array arm.
-	t08Unsupported(t, "union-field-arms (array arm)", `package probe
+	// Likewise for an array arm; this is wire admission, not Java generation.
+	t08FixedWireSupported(t, "union array arm", `package probe
 
 union Cell
 {
@@ -411,10 +411,10 @@ fixed table T
 `)
 }
 
-// payload-free-arms is recorded `unknown`: a void arm is refused by
-// ir.TableFixedSupported, so the construct cannot be written or read.
+// payload-free-arms is recorded `unknown`: the shared fixed-form closure
+// accepts the tag-only arm from §2.6, but Java refuses every union.
 func t08PayloadFree(t *testing.T) {
-	t08Unsupported(t, "payload-free-arms", `package probe
+	t08FixedWireSupported(t, "payload-free arm", `package probe
 
 union Cell
 {

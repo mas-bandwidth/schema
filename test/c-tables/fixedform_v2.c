@@ -16,7 +16,7 @@ static TableFixedEntry g_plan[PlanCapacity];
 
 void fixed_v2_read_v1( const uint8_t * data, int64_t bytes )
 {
-    Cfg back;
+    Cfg back = { 0 };
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
