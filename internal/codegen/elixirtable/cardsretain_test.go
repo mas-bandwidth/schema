@@ -317,5 +317,3 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 		t.Errorf("the input bytes changed across the retained round trips")
 	}
 }
-
-
