@@ -453,7 +453,7 @@ func (p *parsedCard) build(body []byte) (*Record, error) {
 	}
 	assignFixed(root.Test[:], &root.TestLength, p.test)
 	if p.doneWhen != "" {
-		TableStringEmplace(&b.Main, &root.DoneWhen, []byte(p.doneWhen))
+		TableStringEmplace(&b.Main, &root.Done, []byte(p.doneWhen))
 	}
 	root.DeadlineMinutes = p.deadline
 	if p.source != "" {

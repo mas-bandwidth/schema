@@ -81,7 +81,7 @@ func buildPopulated(t *testing.T) []byte {
 		setStr(e.S[:], &e.SLength, n)
 	}
 	setStr(root.Test[:], &root.TestLength, "TestCardDeclarationRoundTrip")
-	TableStringEmplace(&b.Main, &root.DoneWhen, []byte("make cards-test"))
+	TableStringEmplace(&b.Main, &root.Done, []byte("make cards-test"))
 	root.DeadlineMinutes = 90
 	TableStringEmplace(&b.Main, &root.Source, []byte("docs/CONTRIBUTING.md résumé→世界"))
 	root.Epoch = 17
@@ -319,7 +319,7 @@ func fixtureCard(t *testing.T) (wire, json []byte) {
 		setStr(e.S[:], &e.SLength, s)
 	}
 	setStr(root.Test[:], &root.TestLength, "fixture test")
-	TableStringEmplace(&b.Main, &root.DoneWhen, []byte("done when"))
+	TableStringEmplace(&b.Main, &root.Done, []byte("done when"))
 	root.DeadlineMinutes = 45
 	TableStringEmplace(&b.Main, &root.Source, []byte("source résumé→世界"))
 	root.Epoch = 7

@@ -1,0 +1,70 @@
+// DECLARATION.schema — the future probe declaration (docs/SPEC-TABLES.md §6.6):
+// the current Card plus a newer writer's additions — one scalar string field and
+// one Column variant the current reader cannot name. It is test-only, under
+// testdata/upgrade, never a shipped corpus case.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+enum Priority { normal, high, critical, blocker }
+
+enum Column { waiting, ready, working, review, merging, landed, plan, check, archived }
+
+table PathText
+{
+    s string(192)
+}
+
+table CardID
+{
+    s string(64)
+}
+
+table KeyValue
+{
+    key   string(32)
+    value *string
+}
+
+table Consumer
+{
+    kind          string(16)
+    who           string(32)
+    route         string(48)
+    model         string(64)
+    started       int64
+    ended         int64
+    outcome       string(16)
+    line          string(200)
+    cost_micro_usd int64
+}
+
+table Card
+{
+    id               string(64)
+    sha              string(40)
+    tier             Tier
+    repo             string(96)
+    _base            string(96)
+    kind             string(24)
+    priority         Priority
+    stream           string(32)
+    paths            []PathText
+    _new             []PathText
+    shared           []PathText
+    needs            []CardID
+    test             string(192)
+    done             *string | was = "done_when", json = "done_when"
+    deadline_minutes int32       | min = 0, max = 100000
+    source           *string
+    epoch            int32
+    column           Column
+    holder           string(32)
+    attempt          int32
+    head             string(40)
+    branch           string(128)
+    body             *string
+    extra            []KeyValue
+    consumers        []Consumer
+    future_note      string(32)
+}

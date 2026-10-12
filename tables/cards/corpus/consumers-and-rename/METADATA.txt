@@ -1,0 +1,3 @@
+case: consumers-and-rename
+class: SHIPPED
+note: the current declaration frozen; nonempty consumers, plan/check columns and the done rename via was.

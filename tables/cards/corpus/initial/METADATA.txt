@@ -1,0 +1,3 @@
+case: initial
+class: SHIPPED
+note: frozen from Card.schema at sprint/schema-finish base e384b57e5; the first customer case.

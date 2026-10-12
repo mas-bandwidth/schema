@@ -64,7 +64,7 @@ func Render(record *Record) ([]byte, Report, error) {
 	emitList(&out, "SHARED", collectPaths(&root.Shared))
 	emitList(&out, "DEPENDS-ON", collectIDs(&root.Needs))
 	emitStr(&out, "TEST", rowStr(root.Test[:], root.TestLength))
-	emitPtr(&out, "DONE-WHEN", &root.DoneWhen)
+	emitPtr(&out, "DONE-WHEN", &root.Done)
 	emitDeadline(&out, root.DeadlineMinutes)
 	emitPtr(&out, "SOURCE", &root.Source)
 
