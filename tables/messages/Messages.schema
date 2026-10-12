@@ -129,7 +129,6 @@ union ToolBody
 {
     open     OpenDocument
     save     SaveDocument
-    transact Transaction
     ping     Ping
     caps     Capabilities
     spans    [2]int32
