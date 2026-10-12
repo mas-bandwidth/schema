@@ -19,7 +19,6 @@ package ctable
 // file as saved runs the baked identity plan.
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -33,6 +32,7 @@ import (
 	"time"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -704,8 +704,9 @@ int main(void)
 `+same)
 }
 
-// cT08LayoutSchema is W13's probe: a ranged scalar so the layout is non-trivial
-// and the hash folds the definitions digest, beside two plain scalars.
+// cT08LayoutSchema is W13's second probe beside test/tables/FX1.schema: a
+// ranged scalar so the hash folds the definitions digest, beside two plain
+// scalars.
 const cT08LayoutSchema = `package probe
 fixed table Root {
     lead uint32 = 1
@@ -714,49 +715,109 @@ fixed table Root {
 }
 `
 
-// c/W13 [verify] — "layout+hash == C++ reference". FIXED-FORM-ALGORITHM §1 (the
-// layout's bytes) and §5.9 #12 ("THE HASH IS THE SHARED FUNCTION'S:
-// ir.TableFixedLayoutHash, whose signature has no digest argument for a leg to
-// omit"). The C++ reference's layout and hash are the shared functions' answers
-// (ir.TableFixedLayoutBytes / ir.TableFixedLayoutHash); the emitted C header
-// spells them out as `<snake>_fixed_layout` and `<snake>_fixed_hash`, and the
-// test reads those back out of the header and asserts they equal the shared
-// functions' answers byte for byte, so the C leg cannot have drifted from the
-// reference's layout or hash.
+// cT08Bytes reads a published `{ 0x.., ... }` byte array that follows marker.
+func cT08Bytes(t *testing.T, text, marker string) []byte {
+	t.Helper()
+	at := strings.Index(text, marker)
+	if at < 0 {
+		t.Fatalf("no %q in the generated source", marker)
+	}
+	rest := text[at+len(marker):]
+	rest = rest[:strings.Index(rest, "}")]
+	var out []byte
+	for _, f := range strings.Split(rest, ",") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		n, err := strconv.ParseUint(strings.TrimPrefix(f, "0x"), 16, 8)
+		if err != nil {
+			t.Fatalf("byte %q after %q: %v", f, marker, err)
+		}
+		out = append(out, byte(n))
+	}
+	return out
+}
+
+// cT08Hex reads a published `0x...ull` constant that follows marker.
+func cT08Hex(t *testing.T, text, marker string) uint64 {
+	t.Helper()
+	at := strings.Index(text, marker)
+	if at < 0 {
+		t.Fatalf("no %q in the generated source", marker)
+	}
+	rest := text[at+len(marker):]
+	v, err := strconv.ParseUint(rest[:strings.Index(rest, "ull")], 16, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// c/W13 [verify] — "layout+hash == C++ reference". FIXED-FORM-ALGORITHM §5.9
+// #12: "THE HASH IS THE SHARED FUNCTION'S: ir.TableFixedLayoutHash, whose
+// signature has no digest argument for a leg to omit." The reference is the C++
+// emitter's OWN OUTPUT (internal/codegen/cpptable): for test/tables/FX1.schema —
+// the schema test/conformance/c/rows/W13.c names — and the two probe schemas,
+// every fixed table's `<Name>FixedHash` and `<Name>FixedLayout[]` the C++ header
+// publishes are read back and asserted equal to the `<snake>_fixed_hash` and
+// `<snake>_fixed_layout[]` the C header publishes, byte for byte. Two emitters'
+// published constants are compared, not a shared helper's answer with itself.
 func cT08LayoutHashEqualsReference(t *testing.T) {
-	u := unitFrom(t, cT08LayoutSchema)
-	st := u.Tables["Root"]
-	if st == nil {
-		t.Fatal("the unit declares no table Root")
+	sources := []string{cReadSchema(t, "FX1"), cT08LayoutSchema, cT08TripleUnionSchema}
+	tables := 0
+	for _, src := range sources {
+		u := unitFrom(t, src)
+		ctext := t03Header(t, u)
+		ref, err := cpptable.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cpp string
+		for name, data := range ref {
+			if strings.HasSuffix(name, "Table.h") {
+				cpp += string(data)
+			}
+		}
+		for _, st := range ir.TableFixedRoots(u) {
+			if !ir.TableFixedEmitted(u, st) {
+				t.Fatalf("%s: a fixed root the C leg does not emit; this row cannot be compared", st.Name)
+			}
+			snake := ir.RustSnake(st.Name)
+			if c, ref := cT08Hex(t, ctext, snake+"_fixed_hash = 0x"), cT08Hex(t, cpp, st.Name+"FixedHash = 0x"); c != ref {
+				t.Fatalf("%s: the C hash 0x%016x is not the C++ reference's 0x%016x", st.Name, c, ref)
+			}
+			c := cT08Bytes(t, ctext, snake+"_fixed_layout[] = {")
+			r := cT08Bytes(t, cpp, st.Name+"FixedLayout[] = {")
+			if string(c) != string(r) {
+				t.Fatalf("%s: the C layout (%d bytes) is not the C++ reference's (%d bytes)", st.Name, len(c), len(r))
+			}
+			tables++
+		}
 	}
-	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
-	hash := ir.TableFixedLayoutHash(layout, st)
-	text := t03Header(t, u)
-	snake := ir.RustSnake(st.Name)
-	if got := t03Hash(t, text, snake); got != hash {
-		t.Fatalf("the emitted hash 0x%016x is not the C++ reference's 0x%016x (ir.TableFixedLayoutHash)", got, hash)
-	}
-	if got := t03Layout(t, text, snake); !bytes.Equal(got, layout) {
-		t.Fatalf("the emitted layout is %d bytes, not the C++ reference's %d (ir.TableFixedLayoutBytes)", len(got), len(layout))
+	if tables < 4 {
+		t.Fatalf("only %d tables compared: the rows are not all here", tables)
 	}
 }
 
 // c/P2 [owed] — "write-read-write byte-identical". SPEC-TABLES §3.4: a saved
 // fixed image read back and saved again is the same bytes. The probe writes a
-// value with a non-default count and text, reads it into a dirty destination,
-// writes again, and memcmps the two images byte for byte.
+// value with a non-default count and text, reads it into a stained destination
+// on the identity plan and on the compiled plan, writes each again, and
+// memcmps every image with the first, byte for byte.
 func cT08WriteReadWriteIdentical(t *testing.T) {
-	runCGenerated(t, identityHeldSchema, `#include "ProbeTable.h"
+	cT08Probe(t, identityHeldSchema, "Held", `#include "ProbeTable.h"
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(void)
 {
+    static TableFixedEntry plan[4096];
     Held value, loaded;
     TableReport report;
-    TableFixedEntry plan[64];
-    uint8_t first[512], second[512];
-    int64_t need, n;
+    uint8_t first[512], file[512], second[512];
+    int64_t need;
+    int path;
     memset(&value, 0, sizeof(value));
     value.marks[0] = 7;
     value.marks_count = 1;
@@ -764,28 +825,32 @@ int main(void)
     value.label[1] = 'i';
     value.label_length = 2;
     need = held_fixed_measure(1);
-    CHECK(need > 0 && need <= (int64_t)sizeof(first));
-    CHECK(held_fixed_save(&value, 1, first, (int64_t)sizeof(first)) == need);
-    memset(&loaded, 0xAA, sizeof(loaded));
-    memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, first, need, plan, 64, NULL, &report);
-    CHECK(n == 1);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
-    CHECK(held_fixed_save(&loaded, 1, second, (int64_t)sizeof(second)) == need);
-    CHECK(memcmp(first, second, (size_t)need) == 0);
+    CHECK(need > 0 && need <= (int64_t) sizeof(first));
+    CHECK(held_fixed_save(&value, 1, first, (int64_t) sizeof(first)) == need);
+    for (path = 0; path < 2; ++path)
+    {
+        memcpy(file, first, (size_t) need);
+        if (path == 1) { T08_REHASH(file); }
+        memset(&loaded, 0xAA, sizeof(loaded));
+        memset(&report, 0, sizeof(report));
+        CHECK(held_fixed_load(&loaded, 1, file, need, plan, 4096, NULL, &report) == 1);
+        CHECK(!report.malformed && !report.refused && report.clamped == 0);
+        CHECK(held_fixed_save(&loaded, 1, second, (int64_t) sizeof(second)) == need);
+        if (memcmp(first, second, (size_t) need) != 0)
+            { fprintf(stderr, "path %d: write-read-write is not byte-identical\n", path); return 1; }
+    }
     return 0;
 }
 `, identityCCFlags()...)
 }
 
-// c/R27 [verify] — "the manifest is the wire". FIXED-FORM-ALGORITHM §5.9
-// #32/#37: build/fixedform-corpus/manifest.txt is the SINGLE VALUE ORACLE every
-// leg reads its expected values from, never from the bytes under test and never
-// from a hard-coded literal. The manifest's stated lead/trail for
-// old_array_bounded_grow.bin are read off the manifest and asserted to BE the
-// bytes actually on the wire — the record body's first and last four. A
-// manifest that went missing (the oracle is the .bin again) or that drifted
-// from the dump that wrote the bytes fails by name.
+// c/R27 [verify] — "the manifest is the wire". FIXED-FORM-ALGORITHM §5.9 #32:
+// "A PORT ASSERTS THE MANIFEST'S VALUES, NEVER READS THE DUMP", and #37: "The
+// oracle is `manifest.txt` (#32) and nothing else." The manifest's stated
+// lead/trail for old_array_bounded_grow.bin are read off the manifest and
+// asserted to BE the bytes on the wire — the record body's first and last four.
+// A manifest that went missing, or that drifted from the dump that wrote the
+// bytes, fails by name.
 func cT08ManifestIsTheWire(t *testing.T) {
 	corpus := cFixedCorpus(t)
 	lead, trail, ok := cManifestBrackets(t, corpus, "old_array_bounded_grow.bin")
