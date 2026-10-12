@@ -1,12 +1,16 @@
 package javatable
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -62,9 +66,30 @@ type Inner
 }
 `)
 		runMessageDriver(t, nested, nestedElisionDriver)
-		// "SaveMessages of them gives the batch bytes back exactly" (§3.3):
-		// the manifest's `message` rows are the C++ reference's bytes, so a
-		// fixed root's batch reproduces its pinned wire byte for byte.
+		// "A field at its declared default is not written ... and presence
+		// rather than content decides ?T" (docs/SPEC-TABLES.md §3.3): a value
+		// at every declared default is the terminator alone and reads back as
+		// those defaults, and a zero that is not the default rides.
+		defaults := generate(t, `package probe
+
+enum Region { NA, EU }
+
+fixed table Defaults
+{
+    count  uint8 = 7
+    flag   bool = true
+    ratio  float32 = 1.5
+    tag    string(8) = "hi"
+    region Region = EU
+    slots  [3]uint8
+    list   [..4]uint16
+    extra  ?uint32
+}
+`)
+		runMessageDriver(t, defaults, declaredDefaultsDriver)
+		// "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and the pin is a
+		// ROUND TRIP" (§3.3): every manifest `message` row, one subtest each,
+		// with no row skipped.
 		runManifestMessageRows(t)
 	})
 
@@ -222,6 +247,59 @@ const nestedElisionDriver = batchDriverPrologue + `
 }
 `
 
+const declaredDefaultsDriver = batchDriverPrologue + `
+    static DefaultsFixed.Value load(byte[] buf, TableVocabulary vocab) {
+        final DefaultsFixed.Value[] got = { new DefaultsFixed.Value() };
+        // storage holding other values first, so the read's reset is observed
+        got[0].count = 9; got[0].flag = false; got[0].ratio = 0f; got[0].tagLength = 0;
+        got[0].region = 0; got[0].slots[1] = 5; got[0].listCount = 2; got[0].extraPresent = true;
+        final TableMessage.Report r = new TableMessage.Report();
+        if (DefaultsMessage.loadMessages(got, buf, vocab, r) != 1 || r.refused || r.malformed) { fail("load " + r.reason); }
+        return got[0];
+    }
+
+    static byte[] save(DefaultsFixed.Value v) {
+        final DefaultsFixed.Value[] values = { v };
+        final TableMessage.Report report = new TableMessage.Report();
+        final long m = DefaultsMessage.measureMessages(values, report);
+        if (m <= 0 || report.refused) { fail("measure " + m); }
+        final byte[] buf = new byte[(int) m];
+        if (DefaultsMessage.saveMessages(values, buf, report) != m) { fail("save"); }
+        return buf;
+    }
+
+    public static void main(String[] args) {
+        final TableVocabulary vocab = mkVocab();
+        // "A field at its declared default is not written" (§3.3): the batch
+        // of a value at its declared defaults is its terminator alone.
+        final byte[] all = save(new DefaultsFixed.Value());
+        if (all.length != 3 || all[0] != 2 || all[1] != 0 || all[2] != 0) { fail("all-default batch is " + all.length + " bytes"); }
+        // ... so a body that names no field reads back every declared default.
+        final DefaultsFixed.Value d = load(all, vocab);
+        if (d.count != 7) { fail("count default " + d.count); }
+        if (!d.flag) { fail("flag default"); }
+        if (d.ratio != 1.5f) { fail("ratio default " + d.ratio); }
+        if (d.tagLength != 2 || d.tag[0] != 'h' || d.tag[1] != 'i') { fail("tag default"); }
+        if (d.region != 2) { fail("region default " + d.region); }
+        if (d.slots[1] != 0) { fail("slots default"); }
+        if (d.listCount != 0) { fail("list default"); }
+        if (d.extraPresent) { fail("extra present"); }
+
+        // A zero that is not the declared default rides, and a present ?T
+        // rides whatever it holds ("presence rather than content", §3.3).
+        final DefaultsFixed.Value z = new DefaultsFixed.Value();
+        z.count = 0; z.flag = false; z.ratio = 0f; z.tagLength = 0; z.region = 0;
+        z.slots[2] = 4; z.listCount = 1; z.list[0] = 9; z.extraPresent = true; z.extra = 0;
+        final DefaultsFixed.Value back = load(save(z), vocab);
+        if (back.count != 0 || back.flag || back.ratio != 0f || back.tagLength != 0 || back.region != 0) { fail("zero scalars"); }
+        if (back.slots[0] != 0 || back.slots[2] != 4) { fail("slots"); }
+        if (back.listCount != 1 || back.list[0] != 9) { fail("list"); }
+        if (!back.extraPresent || back.extra != 0) { fail("present optional at zero"); }
+        System.out.println("ok");
+    }
+}
+`
+
 const messageRefusalDriver = batchDriverPrologue + `
     public static void main(String[] args) {
         // M above 256 on the write side (docs/SPEC-TABLES.md §3.3).
@@ -300,9 +378,10 @@ const messageDamageDriver = batchDriverPrologue + `
 `
 
 // manifestMessageRow is one manifest `message` line: the connection's unit
-// directory and the message's pinned batch wire (docs/SPEC-TABLES.md §3.3).
+// directory, the instance's pinned form-1 wire and the message's pinned batch
+// wire (docs/SPEC-TABLES.md §3.3).
 type manifestMessageRow struct {
-	name, root, unitDir, batchPath string
+	name, root, unitDir, filePath, batchPath string
 }
 
 // manifestMessageRows reads the `message` rows of the cross-language manifest
@@ -341,6 +420,7 @@ func manifestMessageRows(t *testing.T) []manifestMessageRow {
 					name:      fields[1],
 					root:      fields[3],
 					unitDir:   units[conns[fields[2]]],
+					filePath:  fields[4],
 					batchPath: fields[5],
 				})
 			}
@@ -352,14 +432,20 @@ func manifestMessageRows(t *testing.T) []manifestMessageRow {
 	return rows
 }
 
-// runManifestMessageRows pins every manifest `message` row whose root is a
-// fixed table: MeasureMessages equals the batch's length and SaveMessages gives
-// the pinned bytes back exactly (§3.3). A root that is a plain `table` rather
-// than a `fixed table` is not a message-form root at all ("the form is a fixed
-// table's", §3.3), so its row asserts nothing, exactly as the Go leg's answer
-// does (gotable/messageform_goldens_test.go's VariableTables skip). The clause's
-// "the values the form-1 instance decodes to" half is answered NOT DONE rather
-// than here: the Java leg emits no form-1 reader (messageManifestDriver's note).
+// runManifestMessageRows asserts EVERY manifest `message` row, one subtest a
+// row and none skipped (docs/SPEC-TABLES.md §3.3).
+//
+// A `fixed table` root: the row's FORM-1 wire (the manifest's fourth field) is
+// decoded by the compiler's own file reader (internal/tablewire), and the Java
+// LoadMessages of the row's batch must hold exactly that value, field by
+// field; MeasureMessages equals the batch's length and SaveMessages gives the
+// batch bytes back exactly. "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and
+// the pin is a ROUND TRIP ... loading either form and saving the other, which
+// reproduces the other's pinned bytes" (§3.3).
+//
+// A plain `table` root: "`fixed table T` may ride here, a plain `table T` may
+// not" (§3.3), so the row's assertion is that the leg emits NO batch surface
+// for it — the Go, C#, JavaScript and Dart legs answer the same row ABSENT.
 func runManifestMessageRows(t *testing.T) {
 	t.Helper()
 	root, err := filepath.Abs("../../..")
@@ -367,22 +453,128 @@ func runManifestMessageRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, row := range manifestMessageRows(t) {
-		u := loadUnitDir(t, root, row.unitDir)
-		st, ok := u.Tables[row.root]
-		if !ok || !st.FixedDeclared {
-			continue
-		}
-		batch, err := os.ReadFile(filepath.Join(root, row.batchPath))
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := Generate(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		runMessageDriverPkg(t, u.Package, messageBatchClosure(u, files, row.root),
-			messageManifestDriver(u, row.root, hexOf(batch)))
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			u := loadUnitDir(t, root, row.unitDir)
+			st, ok := u.Tables[row.root]
+			if !ok {
+				t.Fatalf("manifest message %q names root %q, which unit %s does not declare", row.name, row.root, row.unitDir)
+			}
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !st.FixedDeclared {
+				// "THE FORM IS A FIXED TABLE'S ... a plain `table T` may not"
+				// (docs/SPEC-TABLES.md §3.3): no batch verb is emitted for it.
+				if _, emitted := files[messageClass(row.root)+".java"]; emitted {
+					t.Fatalf("%s is a plain table and the leg emits %s.java; §3.3: a plain `table T` may not ride the message form", row.root, messageClass(row.root))
+				}
+				return
+			}
+			batch, err := os.ReadFile(filepath.Join(root, row.batchPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fileWire, err := os.ReadFile(filepath.Join(root, row.filePath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The form-1 instance, decoded by the compiler's own file reader:
+			// "a form-`1` wire is the three parts §3 describes and every rule
+			// above holds over it unchanged" (§3.3).
+			model := tabletext.NewModel(u)
+			want := model.New(st)
+			var report tabletext.Report
+			if ok, err := tablewire.Decode(model, want, fileWire, &report); !ok || err != nil || !report.Silent() || report.Refused {
+				t.Fatalf("the form-1 wire %s does not decode cleanly: ok=%v err=%v report=%+v", row.filePath, ok, err, report)
+			}
+			var checks strings.Builder
+			if err := javaInstanceChecks(&checks, want, "got[0]"); err != nil {
+				t.Fatalf("NOT DONE for row %s: %v", row.name, err)
+			}
+			runMessageDriverPkg(t, u.Package, messageBatchClosure(u, files, row.root),
+				messageManifestDriver(u, row.root, hexOf(batch), checks.String()))
+		})
 	}
+}
+
+// javaInstanceChecks writes one Java statement a value slot, each failing the
+// driver when the loaded batch value differs from the form-1 instance's value
+// at that slot (docs/SPEC-TABLES.md §3.3: "What is claimed is the VALUE").
+// A construct this comparison does not spell is an error, never a skipped
+// field, so a row that holds one goes red rather than green.
+func javaInstanceChecks(b *strings.Builder, inst *tabletext.Instance, expr string) error {
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		f := fv.Def
+		at := expr + "." + member(f)
+		if f.Type.Optional {
+			fmt.Fprintf(b, "        if (%sPresent != %t) fail(%q);\n", at, fv.Present, at+"Present")
+			if !fv.Present {
+				continue
+			}
+		}
+		switch {
+		case f.Type.Pointer || f.IsMap() || f.KeyEnum != "":
+			return fmt.Errorf("field %s: a pointer, map or enum-keyed array is outside this comparison", f.Name)
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+			fmt.Fprintf(b, "        if (%sLength != %d) fail(%q);\n", at, fv.Count, at+"Length")
+			for j := 0; j < fv.Count; j++ {
+				fmt.Fprintf(b, "        if (%s[%d] != (byte) 0x%02x) fail(%q);\n", at, j, fv.Cell.Str[j], fmt.Sprintf("%s[%d]", at, j))
+			}
+		case f.Array != ir.ArrayNone:
+			n := int(f.ArrayBound)
+			if f.Array == ir.ArrayCounted {
+				fmt.Fprintf(b, "        if (%sCount != %d) fail(%q);\n", at, fv.Count, at+"Count")
+				n = fv.Count
+			}
+			el := messageElementField(f)
+			for j := 0; j < n; j++ {
+				if err := javaCellCheck(b, el, fv.Elems[j], fmt.Sprintf("%s[%d]", at, j)); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := javaCellCheck(b, f, fv.Cell, at); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// javaCellCheck spells one non-array slot's comparison. An integer compares
+// at its declared width, because the Java storage is the same-width SIGNED
+// type (fixedform.go, fixedScalarType); an enum compares its value, 0 for
+// None and the declared variants from 1, which is the ordinal the reader
+// stores for a resolved variant name (§3.3: "an ENUM value | a REFERENCE
+// naming the VARIANT's name").
+func javaCellCheck(b *strings.Builder, f *ir.Field, c tabletext.Cell, at string) error {
+	switch {
+	case f.Type.Kind == ir.TBool:
+		fmt.Fprintf(b, "        if (%s != %t) fail(%q);\n", at, c.B, at)
+	case f.Type.Kind == ir.TFloat32:
+		fmt.Fprintf(b, "        if (java.lang.Float.floatToRawIntBits(%s) != 0x%08x) fail(%q);\n", at, math.Float32bits(float32(c.F)), at)
+	case f.Type.Kind == ir.TFloat64:
+		fmt.Fprintf(b, "        if (java.lang.Double.doubleToRawLongBits(%s) != 0x%016xL) fail(%q);\n", at, math.Float64bits(c.F), at)
+	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 64:
+		mask := ^uint64(0)
+		if f.Type.Width < 64 {
+			mask = uint64(1)<<uint(f.Type.Width) - 1
+		}
+		fmt.Fprintf(b, "        if ((((long) %s) & 0x%016xL) != 0x%016xL) fail(%q);\n", at, mask, c.U&mask, at)
+	case enumRef(f) != nil:
+		fmt.Fprintf(b, "        if (((long) %s) != %dL) fail(%q);\n", at, c.U, at)
+	case isStructRef(f.Type):
+		if c.Tab == nil {
+			return fmt.Errorf("field %s: the form-1 instance holds no nested value", f.Name)
+		}
+		return javaInstanceChecks(b, c.Tab, at)
+	default:
+		return fmt.Errorf("field %s: kind %v is outside this comparison", f.Name, f.Type.Kind)
+	}
+	return nil
 }
 
 // messageBatchClosure keeps only the files one root's batch needs: the shared
@@ -405,15 +597,12 @@ func messageBatchClosure(u *ir.Unit, files map[string][]byte, root string) map[s
 	return out
 }
 
-// messageManifestDriver compiles one manifest row's root and asserts the two
-// halves of §3.3 this leg can pin: MeasureMessages equals the batch's length
-// and SaveMessages of the batch's value gives the pinned bytes back exactly.
-// The third half — "LoadMessages of the batch gives the values the form-1
-// instance decodes to" — is answered NOT DONE rather than here: the Java leg
-// emits no form-1 reader (form 1 is not emitted for Java, javatable.go), so
-// the manifest's form-1 file is unreadable and the batch's value cannot be
-// compared against the instance it decodes.
-func messageManifestDriver(u *ir.Unit, root, batchHex string) string {
+// messageManifestDriver compiles one manifest row's root and asserts the three
+// halves of STEP 2.1 (docs/SPEC-TABLES.md §3.3): LoadMessages of the batch
+// holds the value the form-1 instance decodes to (`checks`, written by
+// javaInstanceChecks), MeasureMessages equals the batch's length, and
+// SaveMessages of that value gives the pinned batch bytes back exactly.
+func messageManifestDriver(u *ir.Unit, root, batchHex, checks string) string {
 	const tmpl = `package @PKG@;
 
 public final class Driver {
@@ -438,6 +627,9 @@ public final class Driver {
         final long c = @MSG@.loadMessages(got, batch, vocab, r);
         if (c != 1 || r.refused || r.malformed) fail("load " + c + " " + r.reason);
 
+        // "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE" (§3.3): the batch's
+        // value is the form-1 instance's value, slot by slot.
+@CHECKS@
         // "MeasureMessages sizes the buffer" (§3.3), so it equals the batch's
         // length, and "SaveMessages of them gives the batch bytes back exactly"
         // (§3.3).
@@ -455,5 +647,6 @@ public final class Driver {
 		"@HEX@", batchHex,
 		"@VAL@", fixedClass(root),
 		"@MSG@", messageClass(root),
+		"@CHECKS@", checks,
 	).Replace(tmpl)
 }

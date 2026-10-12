@@ -115,6 +115,11 @@ func (g *messageGen) emitType(st *ir.Struct, root bool) {
 	g.pf("}\n")
 }
 
+// emitReset returns a value to its DECLARED DEFAULTS before a body is read,
+// the same values the fixed form's Value constructor holds (fixedform.go,
+// emitStorageField), because "a field at its declared default is not written"
+// (docs/SPEC-TABLES.md §3.3): a field the body does not name reads as its
+// declared default, never as zero.
 func (g *messageGen) emitReset(st *ir.Struct) {
 	g.pf("    static void reset(%s.Value v) {\n", fixedClass(st.Name))
 	for _, f := range st.Fields {
@@ -123,10 +128,11 @@ func (g *messageGen) emitReset(st *ir.Struct) {
 			g.pf("        v.%sPresent = false;\n", name)
 		}
 		switch {
-		case f.Type.Kind == ir.TBool:
-			g.pf("        v.%s = false;\n", name)
 		case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
-			g.pf("        v.%sLength = 0;\n", name)
+			g.pf("        v.%sLength = %d;\n", name, len(f.DefBytes))
+			if len(f.DefBytes) > 0 {
+				g.pf("        %s;\n", fixedByteDefaultExpr("v."+name, f.DefBytes))
+			}
 		case f.Type.Kind == ir.TWString:
 			g.pf("        v.%sLength = 0;\n", name)
 		case f.Array != ir.ArrayNone || f.KeyEnum != "":
@@ -134,37 +140,45 @@ func (g *messageGen) emitReset(st *ir.Struct) {
 				g.resetElement(messageElementField(f), fmt.Sprintf("v.%s[%d]", name, i))
 			}
 			if f.Array == ir.ArrayCounted {
-				g.pf("        v.%sCount = 0;\n", name)
+				g.pf("        v.%sCount = %d;\n", name, f.BornCount())
 			}
 		case isStructRef(f.Type):
 			g.pf("        %s.reset(v.%s);\n", messageClass(f.Type.Name), name)
 		case isUnionRef(f.Type):
 			g.pf("        v.%s.type = 0;\n", name)
-		case enumRef(f) != nil:
-			g.pf("        v.%s = 0;\n", name)
 		default:
-			g.pf("        v.%s = 0;\n", name)
+			g.pf("        v.%s = %s;\n", name, messageDefault(f))
 		}
 	}
 	g.pf("    }\n")
 }
 
+// resetElement returns one array or keyed slot to its declared default:
+// "EVERY SLOT TAKES THE DECLARED DEFAULT" (fixedform.go, emitStorageField).
 func (g *messageGen) resetElement(f *ir.Field, expr string) {
 	switch {
-	case f.Type.Kind == ir.TBool:
-		g.pf("        %s = false;\n", expr)
-	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
-		// a bytes(N) element is a plain u8: no length companion
-		g.pf("        %s = 0;\n", expr)
 	case isStructRef(f.Type):
 		g.pf("        %s.reset(%s);\n", messageClass(f.Type.Name), expr)
 	case isUnionRef(f.Type):
 		g.pf("        %s.type = 0;\n", expr)
-	case enumRef(f) != nil:
-		g.pf("        %s = 0;\n", expr)
 	default:
-		g.pf("        %s = 0;\n", expr)
+		g.pf("        %s = %s;\n", expr, messageDefault(f))
 	}
+}
+
+// messageDefault is the Java literal of a leaf's declared default, the one the
+// fixed form's Value constructor assigns (fixedScalarDefault), and zero or
+// false where none is declared. The writer elides against it and the reader
+// resets to it (docs/SPEC-TABLES.md §3.3, "Elision, defaults, and what a
+// reader reports").
+func messageDefault(f *ir.Field) string {
+	if d := fixedScalarDefault(f); d != "" {
+		return d
+	}
+	if f.Type.Kind == ir.TBool {
+		return "false"
+	}
+	return "0"
 }
 
 func (g *messageGen) emitBatchVerbs(st *ir.Struct) {
@@ -206,7 +220,13 @@ func (g *messageGen) emitWriteBody(st *ir.Struct) {
 			g.pf("            if (!%s.writeBody(probe, %s)) return false;\n", messageClass(f.Type.Name), expr)
 			g.pf("            if (probe.bits > TableMessage.refBits) { w.put(%d, TableMessage.refBits); %s }\n", messageSlot(g.unit, entry), g.value(f, expr))
 		} else {
-			g.pf("            if (%s) { w.put(%d, TableMessage.refBits); %s }\n", g.rides(f, expr), messageSlot(g.unit, entry), g.value(f, expr))
+			// "presence rather than content decides ?T" (§3.3): a present
+			// optional rides whatever it holds.
+			pre, cond := "", "true"
+			if !f.Type.Optional {
+				pre, cond = g.fieldRides(f, expr)
+			}
+			g.pf("            %sif (%s) { w.put(%d, TableMessage.refBits); %s }\n", pre, cond, messageSlot(g.unit, entry), g.value(f, expr))
 		}
 		if f.Type.Optional {
 			g.pf("            }\n")
@@ -216,29 +236,48 @@ func (g *messageGen) emitWriteBody(st *ir.Struct) {
 	g.pf("        w.put(0, TableMessage.refBits);\n        return !w.overflow;\n    }\n")
 }
 
-func (g *messageGen) rides(f *ir.Field, expr string) string {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return expr
-	case ir.TFloat32, ir.TFloat64:
-		return expr + " != 0f"
-	case ir.TInt, ir.TFixed:
-		return expr + " != 0"
-	case ir.TString, ir.TBytes, ir.TWString:
-		return expr + "Length != 0"
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			return expr + " != 0"
-		case *ir.Flags:
-			return expr + " != 0"
-		case *ir.Struct:
-			return "true"
-		case *ir.Union:
-			return expr + ".type != 0"
+// fieldRides answers whether a field rides: "A field at its declared default is
+// not written, an empty string, array, union or all-default nested table is
+// not written" (docs/SPEC-TABLES.md §3.3). It mirrors the Go reference's
+// emitFieldRides (gotable/write.go): `pre` is a statement the condition needs
+// (a fixed array's all-default scan), emitted inside the field's own block.
+func (g *messageGen) fieldRides(f *ir.Field, expr string) (pre, cond string) {
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
+		if isStructRef(f.Type) {
+			return "", "true"
 		}
+		el := messageElementField(f)
+		return fmt.Sprintf("boolean allDefault = true; for (int i = 0; i < %s.length; i++) { if (%s) { allDefault = false; break; } } ", expr, g.rides(el, expr+"[i]")), "!allDefault"
 	}
-	return "true"
+	return "", g.rides(f, expr)
+}
+
+// rides is one value's elision test against its declared default (§3.3); a
+// counted array rides when it holds an element, text when it differs from its
+// declared default, a union when an arm is selected.
+func (g *messageGen) rides(f *ir.Field, expr string) string {
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		if len(f.DefBytes) == 0 {
+			return expr + "Length != 0"
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "(%sLength != %d", expr, len(f.DefBytes))
+		for i, c := range f.DefBytes {
+			fmt.Fprintf(&b, " || %s[%d] != (byte) %d", expr, i, int8(c))
+		}
+		b.WriteString(")")
+		return b.String()
+	case f.Type.Kind == ir.TWString:
+		return expr + "Length != 0"
+	case f.Array == ir.ArrayCounted:
+		return expr + "Count != 0"
+	case isStructRef(f.Type):
+		return "true"
+	case isUnionRef(f.Type):
+		return expr + ".type != 0"
+	}
+	return expr + " != " + messageDefault(f)
 }
 
 func (g *messageGen) value(f *ir.Field, expr string) string {
@@ -381,7 +420,7 @@ func (g *messageGen) emitReadBody(st *ir.Struct) {
 			kw = "else if"
 		}
 		g.pf("            %s (entry.id == 0x%016xL) {\n", kw, mine.Id)
-		g.emitReadValue(f, "v."+member(f), "entry", "                ")
+		g.emitReadValue(f, "v."+member(f), "entry.shape", "entry.element", "                ")
 		if f.Type.Optional {
 			g.pf("                v.%sPresent = true;\n", member(f))
 		}
@@ -391,20 +430,23 @@ func (g *messageGen) emitReadBody(st *ir.Struct) {
 	g.pf("        }\n    }\n")
 }
 
-func (g *messageGen) emitReadValue(f *ir.Field, expr, entry, ind string) {
+// emitReadValue reads one value under its ANNOUNCED shape (docs/SPEC-TABLES.md
+// §3.3): `shape` and `element` are Java expressions of the sender's Shape for
+// the value and, for an array or keyed array, for its elements.
+func (g *messageGen) emitReadValue(f *ir.Field, expr, shape, element, ind string) {
 	switch {
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s%s = r.get(1) != 0;\n", ind, expr)
 	case f.Type.Kind == ir.TString:
-		g.pf("%s{ final long n = r.count(%s.shape); if (!r.align()) return false; final int start = (int) r.offset / 8; if (!r.skip(n * 8)) return false; final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; java.lang.System.arraycopy(r.buffer, start, %s, 0, kept); %sLength = kept; }\n", ind, entry, f.Type.Size, expr, expr)
+		g.pf("%s{ final long n = r.count(%s); if (!r.align()) return false; final int start = (int) r.offset / 8; if (!r.skip(n * 8)) return false; final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; java.lang.System.arraycopy(r.buffer, start, %s, 0, kept); %sLength = kept; }\n", ind, shape, f.Type.Size, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
-		g.pf("%s{ final long n = r.count(%s.shape); if (!r.align()) return false; final int start = (int) r.offset / 8; if (!r.skip(n * 8)) return false; final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; java.lang.System.arraycopy(r.buffer, start, %s, 0, kept); %sLength = kept; }\n", ind, entry, f.Type.Size, expr, expr)
+		g.pf("%s{ final long n = r.count(%s); if (!r.align()) return false; final int start = (int) r.offset / 8; if (!r.skip(n * 8)) return false; final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; java.lang.System.arraycopy(r.buffer, start, %s, 0, kept); %sLength = kept; }\n", ind, shape, f.Type.Size, expr, expr)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ final long n = r.count(%s.shape); final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; for (int i = 0; i < n; i++) { final int u = (int) r.get(16); if (i < kept) %s[i] = (char) u; } %sLength = kept; }\n", ind, entry, f.Type.Size, expr, expr)
+		g.pf("%s{ final long n = r.count(%s); final int kept = (int) java.lang.Math.min(n, %d); if (kept < n) r.report.clamped++; for (int i = 0; i < n; i++) { final int u = (int) r.get(16); if (i < kept) %s[i] = (char) u; } %sLength = kept; }\n", ind, shape, f.Type.Size, expr, expr)
 	case f.KeyEnum != "":
-		g.keyedRead(f, expr, entry, ind)
+		g.keyedRead(f, expr, shape, element, ind)
 	case f.Array != ir.ArrayNone:
-		g.arrayRead(f, expr, entry, ind)
+		g.arrayRead(f, expr, shape, element, ind)
 	case isStructRef(f.Type):
 		g.pf("%sif (!%s.readBody(r, vocabulary, %s)) return false;\n", ind, messageClass(f.Type.Name), expr)
 	case isUnionRef(f.Type):
@@ -412,19 +454,19 @@ func (g *messageGen) emitReadValue(f *ir.Field, expr, entry, ind string) {
 	case enumRef(f) != nil:
 		g.enumRead(f, expr, ind)
 	default:
-		g.scalarRead(f, expr, entry, ind)
+		g.scalarRead(f, expr, shape, ind)
 	}
 }
 
-func (g *messageGen) scalarRead(f *ir.Field, expr, entry, ind string) {
+func (g *messageGen) scalarRead(f *ir.Field, expr, shape, ind string) {
 	kind := ir.TableFieldEntry(f).Kind
 	switch kind {
 	case 10:
-		g.pf("%s%s = java.lang.Float.intBitsToFloat((int) r.getScalar(%s.shape));\n", ind, expr, entry)
+		g.pf("%s%s = java.lang.Float.intBitsToFloat((int) r.getScalar(%s));\n", ind, expr, shape)
 	case 11:
-		g.pf("%s%s = java.lang.Double.longBitsToDouble(r.getScalar(%s.shape));\n", ind, expr, entry)
+		g.pf("%s%s = java.lang.Double.longBitsToDouble(r.getScalar(%s));\n", ind, expr, shape)
 	default:
-		g.pf("%s%s = (%s) r.getScalar(%s.shape);\n", ind, expr, fixedScalarType(f.Type), entry)
+		g.pf("%s%s = (%s) r.getScalar(%s);\n", ind, expr, fixedScalarType(f.Type), shape)
 	}
 }
 
@@ -441,8 +483,7 @@ func (g *messageGen) enumRead(f *ir.Field, expr, ind string) {
 	g.pf("%s    else { r.report.unknown++; }\n%s} }\n", ind, ind)
 }
 
-func (g *messageGen) arrayRead(f *ir.Field, expr, entry, ind string) {
-	shape := entry + ".shape"
+func (g *messageGen) arrayRead(f *ir.Field, expr, shape, element, ind string) {
 	el := messageElementField(f)
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted
@@ -452,7 +493,7 @@ func (g *messageGen) arrayRead(f *ir.Field, expr, entry, ind string) {
 		g.pf("if (!r.align()) return false; ")
 	}
 	g.pf("final int keep = (int) java.lang.Math.min(n, %d); if (keep < n) r.report.clamped++; for (int i = 0; i < keep; i++) { ", bound)
-	g.emitReadValue(el, expr+"[i]", entry+".element", ind+"    ")
+	g.emitReadValue(el, expr+"[i]", element, "null", ind+"    ")
 	g.pf("} ")
 	if counted {
 		g.pf("%s = keep; ", companion)
@@ -460,19 +501,19 @@ func (g *messageGen) arrayRead(f *ir.Field, expr, entry, ind string) {
 	g.pf("}\n")
 }
 
-func (g *messageGen) keyedRead(f *ir.Field, expr, entry, ind string) {
+func (g *messageGen) keyedRead(f *ir.Field, expr, shape, element, ind string) {
 	el := messageElementField(f)
-	g.pf("%s{ final long n = r.count(%s.shape); for (int i = 0; i < n; i++) { final long slot = r.get(vocabulary.refBits); final long id = vocabulary.name(slot);\n", ind, entry)
+	g.pf("%s{ final long n = r.count(%s); for (int i = 0; i < n; i++) { final long slot = r.get(vocabulary.refBits); final long id = vocabulary.name(slot);\n", ind, shape)
 	for i, v := range f.KeyEnumRef.Variants {
 		kw := "if"
 		if i > 0 {
 			kw = "else if"
 		}
 		g.pf("%s    %s (id == 0x%016xL) {\n", ind, kw, ir.TableWireId(v))
-		g.emitReadValue(el, expr+"["+fmt.Sprint(i)+"]", entry+".element", ind+"        ")
+		g.emitReadValue(el, expr+"["+fmt.Sprint(i)+"]", element, "null", ind+"        ")
 		g.pf("%s    } ", ind)
 	}
-	g.pf("else { r.report.unknown++; if (!TableMessage.skip(r, %s.element, 0)) { r.malformed(); return false; } }\n%s} }\n", entry, ind)
+	g.pf("else { r.report.unknown++; if (!TableMessage.skipShape(r, %s, null, 0)) { r.malformed(); return false; } }\n%s} }\n", element, ind)
 }
 
 func (g *messageGen) unionRead(f *ir.Field, expr, ind string) {
@@ -488,7 +529,7 @@ func (g *messageGen) unionRead(f *ir.Field, expr, ind string) {
 		g.pf("%s        %s.type = %d;", ind, expr, i+1)
 		if !v.Void() {
 			g.pf("\n")
-			g.emitReadValue(v.F, g.unionArmExpr(un, v, expr), "arm", ind+"        ")
+			g.emitReadValue(v.F, g.unionArmExpr(un, v, expr), "arm.shape", "arm.element", ind+"        ")
 		}
 		g.pf("\n%s    } ", ind)
 	}
@@ -647,7 +688,7 @@ public static boolean skip(Reader r, TableVocabulary.Entry entry, int depth) {
     return skipShape(r, entry.shape, entry.element, depth);
 }
 
-private static boolean skipShape(Reader r, TableVocabulary.Shape s, TableVocabulary.Shape element, int depth) {
+static boolean skipShape(Reader r, TableVocabulary.Shape s, TableVocabulary.Shape element, int depth) {
     switch (s.kind) {
         case 0: case 32: return true;
         case 30: { final long ref = r.get(r.vocabulary.refBits); return ref == 0 || r.vocabulary.name(ref) != 0; }
