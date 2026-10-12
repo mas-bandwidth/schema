@@ -265,9 +265,14 @@ int main(void)
 `)
 }
 
-// c/W5 "write checks DEBUG only": the write-side bound is `schema_assert`,
-// which NDEBUG removes exactly as it removes `assert` — nothing aborts behind
-// it (§3.4). The generated writer carries the assert and no fatal.
+// c/W5 "write checks DEBUG only": docs/FIXED-FORM-ALGORITHM.md §3 — "Write-side
+// bound checks are DEBUG ONLY, by rule. `count <= Max` and `length <= N` are a
+// caller contract; a release build removes them exactly as it removes `assert`,
+// pays nothing, and clamps nothing." The generated writer's bound is
+// `schema_assert`, defined as `assert`; and the same save is RUN both ways
+// with a count outside the contract (-1, which no loop iterates): built
+// without NDEBUG the check fires and the save aborts; built with -DNDEBUG
+// nothing aborts and the count rides as the caller gave it, unclamped.
 func cT07WriteChecksDebug(t *testing.T) {
 	h := tableH(t, t07ArraySchema)
 	if !strings.Contains(h, "schema_assert( value->vals_count >= 0 && value->vals_count <= 4 )") {
@@ -276,6 +281,56 @@ func cT07WriteChecksDebug(t *testing.T) {
 	if !strings.Contains(h, "#define schema_assert assert") {
 		t.Fatal("schema_assert is not defined as assert: NDEBUG would not remove the write check")
 	}
+	// A DEBUG BUILD CHECKS: the save of a count outside the contract aborts.
+	runCGenerated(t, t07ArraySchema, `#define _POSIX_C_SOURCE 200809L
+#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
+int main(void)
+{
+    pid_t pid;
+    int status = 0;
+    pid = fork();
+    if (pid < 0) { printf("fork\n"); return 1; }
+    if (pid == 0)
+    {
+        Grow value;
+        uint8_t file[256];
+        memset(&value, 0, sizeof(value));
+        value.vals_count = -1;
+        (void) grow_fixed_save(&value, 1, file, (int64_t)sizeof(file));
+        _exit(0);
+    }
+    if (waitpid(pid, &status, 0) != pid) { printf("waitpid\n"); return 1; }
+    if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGABRT)
+        { printf("a debug build's write check did not fire on a count outside the contract\n"); return 1; }
+    return 0;
+}
+`)
+	// A RELEASE BUILD (-DNDEBUG) PAYS NOTHING AND CLAMPS NOTHING: the save
+	// returns and the count the caller gave is the count on the record.
+	runCGenerated(t, t07ArraySchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    Grow value;
+    int64_t need, layout;
+    uint8_t file[256];
+    uint8_t * body;
+    memset(&value, 0, sizeof(value));
+    value.vals_count = -1;
+    need = grow_fixed_measure(1);
+    if (grow_fixed_save(&value, 1, file, (int64_t)sizeof(file)) != need) { printf("an NDEBUG save of a count outside the contract did not return\n"); return 1; }
+    layout = table_fixed_get32(file + kTableFixedHeaderBytes);
+    body = file + kTableFixedHeaderBytes + 4 + layout + 8;
+    if (table_fixed_get32(body) != 0xFFFFFFFFu) { printf("an NDEBUG write clamped the count: 0x%08x\n", (unsigned) table_fixed_get32(body)); return 1; }
+    return 0;
+}
+`, "-DNDEBUG")
 }
 
 // c/W8 "bytes(N) takes the array row": docs/FIXED-FORM-ALGORITHM.md §4.1,
