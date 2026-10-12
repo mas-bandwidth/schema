@@ -9,12 +9,14 @@
 //
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import '../../../build/tables-generated-dart/block/BlockdemoBlock.dart';
 import '../../../build/tables-generated-dart/block/PaddedBlock.dart' as blk;
 import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
+import '../../../build/tables-generated-dart/cards/CardsWire.dart';
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 
@@ -655,7 +657,137 @@ const String surfaces =
     'forgery\ncook-forgery\n';
 
 void main(List<String> args) {
+  if (args.isNotEmpty && args[0] == 'wire-fuzz') {
+    wireFuzz().then((_) => exit(0)).catchError((Object e) {
+      stderr.writeln('wire-fuzz: $e');
+      exit(1);
+    });
+    return;
+  }
   exit(run(args));
+}
+
+// ---- the WIRE-FUZZ driver (test/conformance/harness/wirefuzz.go) ----
+//
+// The harness owns the mutations and the oracle; this process only binds the
+// roster entry to the generated Card codec and returns the report and the
+// saved value. The protocol is the binary one the Go leg speaks
+// (test/conformance/go/wire_fuzz.go): a roster of (unit, root, form, retain),
+// one availability byte a root, then for each mutant an index, a length, the
+// wire bytes, and back the loaded flag, the six counters, the verdict, the
+// region measure and the saved bytes.
+
+class _ByteSource {
+  final List<int> _buf = <int>[];
+  final List<Completer<void>> _waiters = <Completer<void>>[];
+  bool _done = false;
+
+  _ByteSource() {
+    stdin.listen((List<int> chunk) {
+      _buf.addAll(chunk);
+      _flush();
+    }, onDone: () {
+      _done = true;
+      _flush();
+    });
+  }
+
+  void _flush() {
+    while (_waiters.isNotEmpty) {
+      _waiters.removeAt(0).complete();
+    }
+  }
+
+  Future<Uint8List> read(int n) async {
+    while (_buf.length < n && !_done) {
+      final c = Completer<void>();
+      _waiters.add(c);
+      await c.future;
+    }
+    final take = _buf.length < n ? _buf.length : n;
+    final out = Uint8List.fromList(_buf.sublist(0, take));
+    _buf.removeRange(0, take);
+    return out;
+  }
+}
+
+void _putU8(List<int> out, int v) => out.add(v & 0xFF);
+void _putU16(List<int> out, int v) {
+  out.add(v & 0xFF);
+  out.add((v >> 8) & 0xFF);
+}
+
+void _putU32(List<int> out, int v) {
+  for (var i = 0; i < 4; i++) {
+    out.add((v >> (8 * i)) & 0xFF);
+  }
+}
+
+void _putU64(List<int> out, int v) {
+  for (var i = 0; i < 8; i++) {
+    out.add((v >> (8 * i)) & 0xFF);
+  }
+}
+
+Future<String> _readString(_ByteSource src) async {
+  final n = ByteData.sublistView(await src.read(2)).getUint16(0, Endian.little);
+  return String.fromCharCodes(await src.read(n));
+}
+
+Future<void> wireFuzz() async {
+  final src = _ByteSource();
+  final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
+  final roster = <bool>[];
+  final available = <int>[];
+  for (var i = 0; i < count; i++) {
+    final unit = await _readString(src);
+    final root = await _readString(src);
+    final form = (await src.read(1))[0];
+    final retain = (await src.read(1))[0];
+    final ok = unit == 'cards' && root == 'Card' && form == 1 && retain == 0;
+    roster.add(ok);
+    available.add(ok ? 1 : 0);
+  }
+  stdout.add(available);
+  await stdout.flush();
+  while (true) {
+    final idxBytes = await src.read(4);
+    if (idxBytes.length < 4) {
+      break; // the harness closed the stream
+    }
+    final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
+    final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
+    final wire = await src.read(size);
+    final report = TableWireReport();
+    var loaded = true;
+    var measure = 0;
+    var saved = <int>[];
+    if (!roster[index]) {
+      loaded = false;
+      measure = -1;
+    } else {
+      measure = cardWireMeasure(wire);
+      loaded = measure >= 0;
+      final card = cardWireLoad(wire, report);
+      saved = cardWireSave(card);
+    }
+    final out = <int>[];
+    _putU8(out, loaded ? 1 : 0);
+    _putU32(out, report.unknown);
+    _putU32(out, report.kindMismatch);
+    _putU32(out, report.widened);
+    _putU32(out, report.clamped);
+    _putU32(out, 0); // duplicate: the card carries no map
+    _putU8(out, report.malformed ? 1 : 0);
+    _putU8(out, report.refused ? 1 : 0);
+    _putU64(out, measure);
+    _putU32(out, 0); // retained
+    _putU32(out, 0); // retainLost
+    _putU64(out, saved.length);
+    out.addAll(saved);
+    stdout.add(out);
+    await stdout.flush();
+  }
 }
 
 int run(List<String> args) {

@@ -236,7 +236,9 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
-build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart/main.dart
+# The cards wire library is generated beside it so the wire-fuzz mode below can
+# bind the Card codec.
+build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
@@ -477,3 +479,42 @@ packet-wide-dart-negative-control: packet-wide-dart
 	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
 
 test-dart: packet-wide-dart packet-wide-dart-negative-control
+
+# THE CARDS UNIT'S DART LEG (docs/SPEC-TABLES.md §2). These targets are the
+# Dart side of the cards wire-fuzz gate: they mirror the Go leg's
+# cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
+# harness and the same seed, so the Dart Card codec can be held to the
+# identical byte-for-byte contract. They live in make/dart.mk (NOT a separate
+# make/cards-dart.mk) because the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-dart.mk would be refused there as a phantom port.
+CARDS_DART_FUZZ_TIME ?= 30s
+
+# cards-dart-generate produces ONLY build/tables-generated-dart/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+.PHONY: cards-dart-generate
+cards-dart-generate: bin/schema
+	@rm -rf build/tables-generated-dart/cards
+	@mkdir -p build/tables-generated-dart/cards
+	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+
+# cards-dart-wire-fuzz is the oracle harness over the Card root only. --vectors
+# '' keeps the default pinned vectors out of this Card-only manifest. The greps
+# hold the nonzero seed/root/mutant claim and the zero-divergence claim, as
+# make/go.mk's cards-wire-fuzz does.
+.PHONY: cards-dart-wire-fuzz
+cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-dart-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-dart-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-dart-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-dart-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-dart-wire-fuzz.log
+
+# THE CARD WIRE-FUZZ RIDES THE DART LEG'S GATE (§4.2): the same oracle harness,
+# the same seed, over the Card root only, so the Dart Card codec is held to the
+# identical byte-for-byte contract the Go leg's cards-wire-fuzz pins.
+test-dart: cards-dart-wire-fuzz

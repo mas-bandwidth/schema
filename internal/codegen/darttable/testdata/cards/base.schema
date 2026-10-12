@@ -1,0 +1,23 @@
+// base.schema — the OLDER declaration of the cards testdata pair
+// (docs/SPEC-TABLES.md §3, §5). Its `Card` names the optional body field
+// `body`; `new.schema` renames it `done_when` with a `was` alias, so the
+// newer wire's id survives the rename and a reader built from this file
+// finds it through the alias.
+package cards
+
+enum Tier { flash, pro, heavy, frontier }
+
+table PathText
+{
+    s string(192)
+}
+
+table Card
+{
+    id               string(64)
+    tier             Tier
+    paths            []PathText
+    deadline_minutes int32       | min = 0, max = 100000
+    body             *string
+    flag             bool
+}

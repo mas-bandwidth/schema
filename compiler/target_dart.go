@@ -122,5 +122,12 @@ func dartTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]darttable.
 func init() {
 	registerPacketValueDefaultCarrier("dart")
 	registerWideTextCarrier("dart")
-	registerBuiltin(dartTarget{}, true, false, false, false)
+	// blobs=true: the Dart table backend carries *string (docs/SPEC-TABLES.md
+	// §2.5), the card record's optional scalar pointer; *bytes is still refused
+	// by name in internal/codegen/darttable (checkUnsupportedConstructs).
+	registerBuiltin(dartTarget{}, true, false, false, true)
+	// The card record's closure also carries an unbounded []T of table
+	// elements (docs/SPEC-TABLES.md §2.9), so the Dart table backend registers
+	// as a list carrier too.
+	registerListCarrier("dart")
 }
