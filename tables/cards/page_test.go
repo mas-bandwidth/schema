@@ -77,6 +77,59 @@ func TestCardsPageNamesFacade(t *testing.T) {
 	if strings.TrimRight(block, "\n") != strings.TrimRight(decl, "\n") {
 		t.Error("the declaration block in docs/CARDS.md does not match Card.schema byte for byte")
 	}
+
+	// The page's marked customer example and the source test cannot drift: the
+	// fenced block carrying the marker is byte-identical to the marked block in
+	// tables/cards/example/example_test.go.
+	exampleSrc := mustReadFile(t, filepath.Join(root, "tables", "cards", "example", "example_test.go"))
+	want := markedExample(exampleSrc)
+	if want == "" {
+		t.Fatal("tables/cards/example/example_test.go has no CARDS-CUSTOMER-EXAMPLE marked block")
+	}
+	got := fencedMarkedExample(doc)
+	if got == "" {
+		t.Fatal("docs/CARDS.md has no fenced CARDS-CUSTOMER-EXAMPLE block")
+	}
+	if got != want {
+		t.Errorf("docs/CARDS.md customer example differs from the source test:\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// markedExample returns the lines between the begin and end markers, inclusive.
+func markedExample(src string) string {
+	const begin = "// BEGIN CARDS-CUSTOMER-EXAMPLE"
+	const end = "// END CARDS-CUSTOMER-EXAMPLE"
+	i := strings.Index(src, begin)
+	if i < 0 {
+		return ""
+	}
+	j := strings.Index(src[i:], end)
+	if j < 0 {
+		return ""
+	}
+	return src[i : i+j+len(end)]
+}
+
+// fencedMarkedExample returns the body of the first fenced block that carries
+// the begin marker, from the marker line through the end marker line.
+func fencedMarkedExample(doc string) string {
+	parts := strings.Split(doc, "```")
+	for i := 1; i < len(parts); i += 2 {
+		body := parts[i]
+		if strings.Contains(body, "// BEGIN CARDS-CUSTOMER-EXAMPLE") {
+			return markedExample(body)
+		}
+	}
+	return ""
+}
+
+func mustReadFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(b)
 }
 
 func mustReadEnv(t *testing.T, key string) string {

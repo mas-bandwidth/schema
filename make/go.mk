@@ -167,7 +167,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 # c03 adds two test-only historical units (cards-initial, cards-future), each in
 # its own generated directory/module and imported under an alias: two
 # declarations whose package is cards are never compiled in one package.
-.PHONY: cards-generate cards-test cards-fuzz-fixture cards-wire-fuzz cards-fuzz cards-corpus-create cards-corpus-check
+.PHONY: cards-generate cards-test cards-example cards-fuzz-fixture cards-wire-fuzz cards-fuzz cards-corpus-create cards-corpus-check
 CARDS_FUZZ_TIME ?= 30s
 cards-generate: bin/schema
 	@rm -rf build/tables-generated-go/cards build/tables-generated-go/cards-initial build/tables-generated-go/cards-future
@@ -208,6 +208,26 @@ cards-generate: bin/schema
 		done; \
 		true; \
 	done
+
+# THE CUSTOMER EXAMPLE (schema-cards-c05): a SEPARATE module, cardsexample,
+# that imports only the generated `cards` package and the standard library,
+# proving local adoption (docs/CARDS.md). Go does not inherit replace
+# directives from module cards, so the two replaces this consuming module needs
+# are materialized into the owned build output from absolute paths. The c03
+# future probe wire is regenerated under build/ from the c03 future
+# declaration; no source fixture is written and the source-template go.mod is
+# never edited.
+cards-example: cards-generate
+	@rm -rf build/cards-example
+	@mkdir -p build/cards-example/testdata
+	cp tables/cards/example/go.mod build/cards-example/go.mod
+	cp tables/cards/example/example_test.go build/cards-example/example_test.go
+	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
+		"$(CURDIR)/build/tables-generated-go/cards" "$(abspath $(SERIALIZE_GO))" >> build/cards-example/go.mod
+	@mkdir -p build/tables-generated-go/cards-future/probe
+	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.Id[:], &r.IdLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
+	cd build/tables-generated-go/cards-future && go run "$(CURDIR)/build/tables-generated-go/cards-future/probe" > $(CURDIR)/build/cards-example/testdata/future-note.wire
+	cd build/cards-example && go vet ./... && CARDS_SOURCE_ROOT=$(CURDIR) CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_FUTURE_WIRE=$(CURDIR)/build/cards-example/testdata/future-note.wire go test -count=1 -timeout 600s -v ./...
 
 # The read-only corpus gate (docs/SPEC-TABLES.md §4, §5, §6.6): the current
 # declaration must match the committed current-case declaration, and every
@@ -263,7 +283,7 @@ cards-wire-fuzz: build/conformance-harness build/conformance-go
 
 cards-fuzz: cards-wire-fuzz
 
-test-go: cards-test cards-wire-fuzz
+test-go: cards-test cards-example cards-wire-fuzz
 
 # one generated unit's module wiring (build wiring, not schema output — the
 # emitter writes only .go files)

@@ -175,6 +175,43 @@ priority and machine fields.
 sum, err := cards.TaskHash(rec) // [32]byte; refused for a lossy record
 ```
 
+## The external customer
+
+`tables/cards/example` is a separate Go module, `cardsexample`, that imports
+only `cards` and the standard library. It is a source-template module boundary,
+not a published module: the make target stages it into `build/cards-example`,
+materializes its `go.mod`, and runs it. A customer import proves local adoption
+of generated code, not a `github.com/.../tables/cards` distribution promise.
+
+The checkout-relative replaces are materialized from absolute paths because Go
+does not inherit replace directives from module `cards`:
+
+```go
+replace cards => <checkout>/build/tables-generated-go/cards
+replace github.com/mas-bandwidth/serialize.go => <checkout>/serialize.go
+```
+
+`make cards-example` is the runnable command. Its test runs the marked example
+below (the page test holds the two in step), plus the read/edit/upgrade and
+lossy-probe assertions. This is the recipe a later sprint integration follows:
+parse briefly at admission, keep machine fields server-owned, index the
+authoritative record, preserve the wire, and hash the task-bearing fields.
+
+```go
+// BEGIN CARDS-CUSTOMER-EXAMPLE
+	rec, err := cards.Parse([]byte(
+		"RESULT: probe-card sha=0123456789ab tier: pro\n" +
+			"REPO: mas-bandwidth/schema\n" +
+			"PATHS: tables/cards\n" +
+			"DEPENDS-ON: dep-alpha\n" +
+			"TEST: TestCardsCustomerExample\n" +
+			"\ndistinctive body line\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// END CARDS-CUSTOMER-EXAMPLE
+```
+
 ## Corpus and make targets
 
 The corpus is fixed historical evidence. `tables/cards/corpus` and
@@ -188,6 +225,7 @@ Existing targets:
 
 - `make cards-generate` — generate the local module and copy the named facade/test files.
 - `make cards-test` — check the declaration, vet and test the generated module.
+- `make cards-example` — stage and run the separate `cardsexample` customer module.
 - `make cards-corpus-check` — pin the current declaration and require every SHIPPED case.
 - `make cards-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
 
