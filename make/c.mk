@@ -983,12 +983,13 @@ tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_
 # a bare `go test ./...` on a tree that never built the oracle — and is exactly
 # how a §5 regression would have ridden into CI green. So the target BUILDS THE
 # ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
-# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
-# name a missing corpus can never pass silently.
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE. Run the
+# whole ctable package: the fixed roadmap framing tests also read this corpus,
+# and the former TestFixedVersioning filter left them outside the gate.
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -run 'TestFixedVersioning'
-	@echo 'tables C versioning: §5 read both columns of every row against the C++ reference bytes'
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1
+	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan

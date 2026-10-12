@@ -60,20 +60,61 @@ func dstTerms(terms []ir.TableFixedTerm) string {
 // dstRow is one TableFixedDst: MY side of a layout entry, in C++.
 func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 	d := e.Dst
-	stride := "0"
+	stride := int64(0)
 	switch {
 	case d.Stride1:
-		stride = "1"
+		stride = 1
 	case d.Stride != nil:
-		stride = "(uint32_t) sizeof( " + g.fixedElemStorage(d.Stride) + " )"
+		stride = ir.TableFixedStrideBytes(g.unit, d.Stride)
 	}
-	aux := dstTerms(d.Aux)
-	if d.AuxExtendsDst && len(d.Aux) == 1 {
+	dst := g.fixedTerms(d.Dst)
+	aux := g.fixedTerms(d.Aux)
+	if d.AuxExtendsDst {
 		// a union's tag sits INSIDE the union storage the destination named,
-		// so the aux is that destination and then the tag's own offset
-		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
+		// and the tag leads that storage, so the two offsets are the same byte
+		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta)
+}
+
+// fixedTerms sums a destination's offsetof terms numerically, the same answer
+// the C leg computes (ctable/fixedform.go): offsetof in the C++ spelling cannot
+// name an ARRAY element (a fixed arm's `spans[2]int32` has no `.value` member),
+// so a fixed form carries the byte offsets, computed once, and both legs share
+// one walk.
+func (g *tableGen) fixedTerms(terms []ir.TableFixedTerm) int64 {
+	total := int64(0)
+	for _, t := range terms {
+		total += g.fixedTermOffset(t)
+	}
+	return total
+}
+
+func (g *tableGen) fixedTermOffset(t ir.TableFixedTerm) int64 {
+	if un := g.unionNamed(t.Type); un != nil {
+		if t.Member == "type" {
+			return 0
+		}
+		return ir.TableFixedUnionArmOffset(g.unit, un)
+	}
+	if st := g.structNamed(t.Type); st != nil {
+		return ir.TableFixedMemberOffset(g.unit, st, t.Member)
+	}
+	return 0
+}
+
+func (g *tableGen) unionNamed(name string) *ir.Union {
+	if un := g.unit.Unions[name]; un != nil {
+		return un
+	}
+	return g.unit.TableUnions[name]
+}
+
+func (g *tableGen) structNamed(name string) *ir.Struct {
+	if st := g.unit.Tables[name]; st != nil {
+		return st
+	}
+	return g.unit.Structs[name]
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +552,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(g.unit, st)
 	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
@@ -540,12 +581,28 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Guard2 != ir.TableFixedNoGuard {
 			guard2 = fmt.Sprintf("%du", e.Guard2)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, // %s\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
+		// THE GUARD CHAIN (§5.8 row 6): byte-offset + count into the pool below,
+		// OUTERMOST FIRST. Zero count is "the two inline lanes only". The offset is
+		// a BYTE OFFSET from the pool's base (the identity pool is this static array).
+		guardIndex := "0"
+		if e.GuardCount > 0 {
+			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, // %s\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+			e.GuardCount, guardIndex, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
-	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n\n", st.Name, guarded)
+	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, guarded)
+	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
+	g.pf("// into, OUTERMOST FIRST (§5.8 row 6).\n")
+	g.pf("constexpr TableFixedGuardLink %sFixedGuards[] = {\n", st.Name)
+	for _, l := range pool {
+		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	g.pf("};\n")
+	g.pf("constexpr int32_t %sFixedGuardCount = %d;\n\n", st.Name, len(pool))
 
 	cover := ir.TableFixedIdentityCoverage(g.unit, st)
 	g.pf("// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds\n")
@@ -699,7 +756,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        const int32_t rec_clamped = report->clamped;\n")
 		g.pf("        const int32_t rec_widened = report->widened;\n")
 	}
-	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
+	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards );\n", st.Name)
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {

@@ -192,7 +192,7 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §4.5 fix 2: a PRESENT FLAG lands
 			// the same way; HB.schema's `link ?Pay` emits `link present` as a
 			// kTableFixedBool entry in front of the payload.
-			t06Has(t, cppHB, "kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // link present", "cpp/C13 the present flag's emitted plan entry")
+			t06Has(t, cppHB, "kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // link present", "cpp/C13 the present flag's emitted plan entry")
 			t06Has(t, boolCase, "d[i] = (uint8_t) ( s[i] != 0 );", "cpp/C13 the present byte lands byte != 0")
 		}},
 		{"cpp/R17", func(t *testing.T) {

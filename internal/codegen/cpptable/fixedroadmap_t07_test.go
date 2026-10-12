@@ -396,8 +396,12 @@ fixed table W5 {
 // destination row is an ARRAY's — the buffer, with a stride of one and a live
 // count beside it — and NOT a text field's, which is the other way round. The
 // generated ProbeFixedDst prints both, and the two lines are the assertion: the
-// blob row is `{ offsetof(Probe, blob), 1, offsetof(Probe, blob_length), 1, 3 }`
-// and the label row, as the CONTROL, is the text convention.
+// blob row is `{ 16, 1, 24, 1, 3 }` (buffer at offset 16, stride one, live count
+// at 24) and the label row, as the CONTROL, is the text convention
+// `{ 12, 0, 0, 0, 1 }` (the length word at 12, the text bytes at 0). The offsets
+// are byte offsets, not offsetof expressions: the fixed form carries the
+// numbers both legs share (ctable/fixedform.go), and the static asserts beside
+// the rows tie them to the ABI (offsetof(Probe,blob) == 16, and so on).
 func cppT07W8(t *testing.T) {
 	src := `package w8
 fixed table Probe {
@@ -407,8 +411,8 @@ fixed table Probe {
 }
 `
 	h := cppT07Header(t, src, "w8")
-	blob := "{ (uint32_t) __builtin_offsetof( Probe, blob ), 1, (uint32_t) __builtin_offsetof( Probe, blob_length ), 1, 3 }, // blob"
-	label := "{ (uint32_t) __builtin_offsetof( Probe, label_length ), 0, (uint32_t) __builtin_offsetof( Probe, label ), 0, 1 }, // label"
+	blob := "{ 16, 1, 24, 1, 3 }, // blob"
+	label := "{ 12, 0, 0, 0, 1 }, // label"
 	if !strings.Contains(h, blob) {
 		t.Errorf("W8: bytes(N) takes the array row: the bytes destination row must be the array's — buffer at dst, stride one, live count at aux — got no line %q", blob)
 	}
