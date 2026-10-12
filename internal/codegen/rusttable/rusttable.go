@@ -55,6 +55,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
 
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3, §3.1), form byte 1, for the
+	// card record's constructs (§2.5, §2.9). The wire is emitted for the
+	// variable tables that pass the card boundary; a variable table with any
+	// other construct stays ABSENT (its wire is not emitted, never mis-encoded).
+	// The by-name refusal (§11) is the card's own path, in cardVariableModules.
+	maps.Copy(out, scopedVariableModules(u))
+
 	// §15's WIDE-KIND REFUSAL IS OWED BY THE ACCELERATORS AND NOT BY THE WIRE,
 	// and ir.WideTableKinds is the one place that rule lives. The block form and
 	// the cooked form are the two things this backend has that must name a

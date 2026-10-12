@@ -108,5 +108,6 @@ func init() {
 	// form 1's ELISION, which this port does not emit at all; leaving it up
 	// refused a schema the reference writes bytes for and this port reads.
 	valueDefaultTargets = append(valueDefaultTargets, "rust")
-	registerBuiltin(rustTarget{}, true, false, false, false)
+	registerListCarrier("rust") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
+	registerBuiltin(rustTarget{}, true, false, false, true)
 }

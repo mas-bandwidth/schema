@@ -526,3 +526,49 @@ packet-wide-rust-negative-control: packet-wide-rust
 	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
 
 test-rust: packet-wide-rust packet-wide-rust-negative-control
+
+# THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
+# Rust side of the cards wire-fuzz gate: they mirror the Go leg's
+# cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
+# harness and the same seed, so the Rust Card codec is held to the identical
+# byte-for-byte contract. They live in make/rust.mk (NOT a separate
+# make/cards-rust.mk) because the wide-scalar refusal gate
+# (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
+# and a fragment named cards-rust.mk would be refused there as a phantom port.
+CARDS_RUST_FUZZ_TIME ?= 60s
+
+# cards-rust-generate produces ONLY build/tables-generated-rust/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+.PHONY: cards-rust-generate
+cards-rust-generate: bin/schema
+	@rm -rf build/tables-generated-rust/cards
+	@mkdir -p build/tables-generated-rust/cards/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/cards/src tables/cards
+
+# build/conformance-rust-card is the wire-fuzz driver: the hand-written main in
+# test/conformance/rust/src/wire_fuzz.rs compiled beside the card's generated
+# wire modules, exactly the way this port's tests run generated code.
+build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_fuzz.rs
+	@mkdir -p build/cards-rust-fuzz
+	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust-fuzz/
+	@cp test/conformance/rust/src/wire_fuzz.rs build/cards-rust-fuzz/main.rs
+	@rustc --edition 2024 -O -o build/conformance-rust-card build/cards-rust-fuzz/main.rs
+
+# THE CARD WIRE-FUZZ GATE: the oracle harness over the Card root only, the same
+# shape as make/go.mk's cards-wire-fuzz. --vectors '' keeps the default pinned
+# vectors out of this Card-only manifest. The greps hold the nonzero
+# seed/mutant claim and the zero-divergence claim explicitly.
+cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
+		> build/cards-rust-wire-fuzz.log 2>&1; \
+		status=$$?; cat build/cards-rust-wire-fuzz.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/cards-rust-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-wire-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-wire-fuzz.log
+
+test-rust: cards-rust-wire-fuzz
