@@ -88,6 +88,11 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 
 func (g *variableGen) emitRetainMeasure(st *ir.Struct) {
 	g.pf("export function %sMeasureRetain(v, retain) {\n", st.Name)
+	// Each walk starts from a clean interner and an unplaced record set, exactly
+	// as the reference's save resets idUsed and clears the placed bytes (§6.6):
+	// a measure that ran first must not consume the id list the save will need,
+	// and a record the measure placed must not mask one the save never emitted.
+	g.pf("  if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }\n")
 	g.pf("  const w = new TableVariableWriter();\n")
 	g.pf("  w.u8(TableVariableForm);\n")
 	g.pf("  const ids = new TableVariableIds(retain);\n")
@@ -119,6 +124,10 @@ func (g *variableGen) emitRetainSave(st *ir.Struct) {
 	g.pf("  if (retain === null) { return %sSave(v); }\n", st.Name)
 	g.pf("  const n = %sMeasureRetain(v, retain);\n", st.Name)
 	g.pf("  if (n < 0) { return null; }\n")
+	// The save's own walk needs the id list and placed bytes the measure just
+	// consumed, reset to clean before it re-interns and re-places (§6.6). A
+	// tight id list would otherwise drop every retained record with no loss.
+	g.pf("  if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }\n")
 	g.pf("  const w = new TableVariableWriter();\n")
 	g.pf("  w.u8(TableVariableForm);\n")
 	g.pf("  const ids = new TableVariableIds(retain);\n")
@@ -164,6 +173,17 @@ export class TableVariableRetain {
     this.idUsed = 0;
   }
   reset() { this.used = 0; this.count = 0; this.idUsed = 0; }
+  // clearPlaced resets every retained record's placed byte to 0, so a walk
+  // that does not re-emit a record leaves it countable as a loss (§6.6).
+  clearPlaced() {
+    let at = 0;
+    while (at < this.used) {
+      const total = tableRetainU32(this.bytes, at);
+      const depth = this.bytes[at + 4];
+      this.bytes[at + 5 + depth * 8 + 9] = 0;
+      at += total;
+    }
+  }
 }
 
 function tableRetainU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0; }
