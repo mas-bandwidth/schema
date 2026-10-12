@@ -47,10 +47,10 @@ func TestCardVariableModulesEmitTheForm1Framing(t *testing.T) {
 		field string
 		kind  int
 	}{
-		{"id", ir.TableKindString},        // 0x0c on the wire
-		{"tier", ir.TableKindEnum},        // 0x1e on the wire
+		{"id", ir.TableKindString},            // 0x0c on the wire
+		{"tier", ir.TableKindEnum},            // 0x1e on the wire
 		{"deadline_minutes", ir.TableKindI32}, // 0x04 on the wire
-		{"attempt", ir.TableKindI64},      // 0x05 on the wire
+		{"attempt", ir.TableKindI64},          // 0x05 on the wire
 	} {
 		f := findField(card, want.field)
 		if f == nil {
