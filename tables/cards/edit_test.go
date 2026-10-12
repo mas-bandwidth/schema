@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
+
+	cardsfuture "cardsfuture"
 )
 
 type cardCfg struct {
@@ -240,6 +243,38 @@ func TestFieldEditLeavesTheTaskHashAlone(t *testing.T) {
 	if !bytes.Equal(rec.Wire(), rec.Wire()) {
 		t.Fatal("Wire() unstable after edits")
 	}
+
+	emptyRec := buildCfg(t, cardCfg{body: "body", test: "T", done: "d"})
+	emptyWire := emptyRec.Wire()
+	emptyHash, err := TaskHash(emptyRec)
+	if err != nil {
+		t.Fatalf("TaskHash(empty): %v", err)
+	}
+	if err := SetPaths(emptyRec, []string{"grow"}); err != nil {
+		t.Fatalf("SetPaths empty->growing: %v", err)
+	}
+	if bytes.Equal(emptyRec.Wire(), emptyWire) {
+		t.Fatal("empty->growing paths edit did not change the wire")
+	}
+	emptyHash2, err := TaskHash(emptyRec)
+	if err != nil {
+		t.Fatalf("TaskHash after empty->growing paths: %v", err)
+	}
+	if emptyHash2 == emptyHash {
+		t.Fatal("empty->growing paths edit left the task hash unchanged")
+	}
+	if err := SetNeeds(emptyRec, []string{"n"}); err != nil {
+		t.Fatalf("SetNeeds empty->growing: %v", err)
+	}
+	if _, _, err := ToJSON(emptyRec); err != nil {
+		t.Fatalf("ToJSON after empty->growing: %v", err)
+	}
+	if _, err := TaskHash(emptyRec); err != nil {
+		t.Fatalf("TaskHash after empty->growing cleanup: %v", err)
+	}
+	if !bytes.Equal(emptyRec.Wire(), emptyRec.Wire()) {
+		t.Fatal("Wire() unstable after empty->growing edits")
+	}
 }
 
 func TestFieldEditFailureLeavesOriginalWire(t *testing.T) {
@@ -379,5 +414,66 @@ func TestListBoundIsARefusal(t *testing.T) {
 	sb.WriteString(`]}`)
 	if _, err := FromJSON([]byte(sb.String())); err == nil {
 		t.Fatal("FromJSON accepted 513 paths: the setter is not the sole bound")
+	}
+}
+
+func TestFieldEditRefusesUnknownOrLossyInput(t *testing.T) {
+	t.Parallel()
+	wire := buildFutureCard(t, false)
+	rec, rep, err := Load(wire)
+	if err != nil {
+		t.Fatalf("Load(future): %v", err)
+	}
+	if rep.Unknown == 0 {
+		t.Fatal("future card loaded with no unknown events")
+	}
+	origWire := rec.Wire()
+	if err := SetPaths(rec, []string{"p"}); err == nil {
+		t.Fatal("SetPaths accepted an unknown/lossy record")
+	}
+	if !bytes.Equal(rec.Wire(), origWire) {
+		t.Fatal("refused SetPaths published a wire")
+	}
+	if err := SetNeeds(rec, []string{"n"}); err == nil {
+		t.Fatal("SetNeeds accepted an unknown/lossy record")
+	}
+	if !bytes.Equal(rec.Wire(), origWire) {
+		t.Fatal("refused SetNeeds published a wire")
+	}
+	pw := rec.Wire()
+	pn := cardsfuture.CardLoadMeasure(pw)
+	if pn < 0 {
+		t.Fatal("future measure of preserved wire refused")
+	}
+	pregion := alignedRegion(pn)
+	var pref cardsfuture.TableReport
+	proot := cardsfuture.CardLoad(pregion, pw, &pref)
+	if proot == nil || pref.Malformed {
+		t.Fatal("unknown values lost after refused edit")
+	}
+	if got := rowStr(proot.FutureNote[:], proot.FutureNoteLength); got != "future-value" {
+		t.Fatalf("future_note not recoverable after refused edit: %q", got)
+	}
+}
+
+func TestFieldEditRefusalOnInjectedSerializationFailure(t *testing.T) {
+	t.Parallel()
+	rec := buildCfg(t, cardCfg{body: "body", paths: []string{"p1"}, test: "T", done: "d", needs: []string{"n1"}})
+	origWire := rec.Wire()
+	rec.failEdit = func() error { return errors.New("injected serialization refusal") }
+	if err := SetPaths(rec, []string{"p1", "p2"}); err == nil {
+		t.Fatal("SetPaths succeeded despite injected serialization refusal")
+	}
+	if !bytes.Equal(rec.Wire(), origWire) {
+		t.Fatal("injected serialization refusal published a wire")
+	}
+	if err := SetHolder(rec, "h2"); err == nil {
+		t.Fatal("SetHolder succeeded despite injected serialization refusal")
+	}
+	if !bytes.Equal(rec.Wire(), origWire) {
+		t.Fatal("injected refusal altered the wire")
+	}
+	if got := stringData(&rec.root.Body, nil); !bytes.Equal(got, []byte("body")) {
+		t.Fatalf("known body not recoverable after injected refusal: %q", got)
 	}
 }

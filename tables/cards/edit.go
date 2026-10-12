@@ -286,6 +286,11 @@ func edit(r *Record, mutate func(root *Card, w *TableWorker) error) error {
 	if err := checkCard(b.GetRoot(), &b.Arena); err != nil {
 		return err
 	}
+	if r.failEdit != nil {
+		if err := r.failEdit(); err != nil {
+			return err
+		}
+	}
 	if !b.Lock() {
 		return errors.New("cards: pack failed")
 	}
