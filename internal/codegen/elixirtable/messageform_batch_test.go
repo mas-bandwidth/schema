@@ -20,10 +20,13 @@ package elixirtable
 // emitter's reader verdict (docs/SPEC-TABLES.md §3.3's own note).
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -98,7 +101,9 @@ func TestMessageFormBatchElixir(t *testing.T) {
 				t.Parallel()
 				ann := filepath.Join(root, conn.path)
 				batch := filepath.Join(root, row.batch)
-				out, err := runMessageBatchProbe(t, u, ann, batch, roundTripBody(row))
+				jsonPath := filepath.Join(root, "testdata", "conformance", "tables", "json", row.name+".json")
+				expected := expectedMessageBody(t, u, st, jsonPath)
+				out, err := runMessageBatchProbe(t, u, ann, batch, roundTripBody(row, expected))
 				if err != nil {
 					t.Fatalf("%v\n%s", err, out)
 				}
@@ -178,37 +183,185 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	})
 }
 
-// roundTripBody is the 2.1 probe: LoadMessages the batch, SaveMessages the
-// values back, and MeasureMessages the length, then spot-check the decoded
-// values against the pinned form-1 JSON where the manifest has one.
-func roundTripBody(row messageBatchRow) string {
+// roundTripBody is the 2.1 probe: LoadMessages the batch, compare the decoded
+// body against the values the form-1 instance's pinned text pins, SaveMessages
+// the values back, and MeasureMessages the length.
+func roundTripBody(row messageBatchRow, expected string) string {
 	b := `    vocab =
       case M.announce_read(File.read!(file())) do
         {:ok, v} -> v
         other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
       end
 
+    # "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE ... loading either form and
+    # saving the other, which reproduces the other's pinned bytes", and "a
+    # message's text is its variable form's text, byte for byte"
+    # (docs/SPEC-TABLES.md §3.3): the batch must decode to the value the
+    # form-1 instance's pinned text holds.
     batch = File.read!(batch_file())
     {:ok, values} = M.load_messages(vocab, batch)
+    check(values == ` + expected + `, "LoadMessages did not give the values the form-1 instance decodes to")
     {:ok, again} = M.save_messages(vocab, values)
     check(again == batch, "SaveMessages did not reproduce the batch bytes exactly")
     {:ok, measure} = M.measure_messages(vocab, values)
     check(measure == byte_size(batch), "MeasureMessages differs from the batch length")
 `
-	switch row.name {
-	case "login_full":
-		b += `    [login] = values
-    check(Enum.any?(login, fn {_ref, v} -> v == 9007199254740993 end), "player_id decoded wrong")
-    check(Enum.any?(login, fn {_ref, v} -> v == 140233 end), "client_build decoded wrong")
-`
-	case "store_full":
-		b += `    [store] = values
-    check(Enum.any?(store, fn {_ref, v} -> v == 499 end), "price_minor decoded wrong")
-    check(Enum.any?(store, fn {_ref, v} -> v == 7 end), "quantity decoded wrong")
-    check(Enum.any?(store, fn {_ref, v} -> v == "coins.pack.large.2500" end), "sku decoded wrong")
-`
-	}
 	return b
+}
+
+// expectedMessageBody renders the batch body a `message` row's form-1 instance
+// pins, as an Elixir list literal in the exact shape LoadMessages returns: one
+// body, a list of `{slot, value}` pairs in declared order, a field at its
+// declared default elided exactly as the reference's writer elides it. The
+// value is the PINS' — testdata/conformance/tables/json/<name>.json — never a
+// list copied into this file (docs/SPEC-TABLES.md §3.3: "a message's text is
+// its variable form's text, byte for byte").
+func expectedMessageBody(t *testing.T, u *ir.Unit, st *ir.Struct, jsonPath string) string {
+	t.Helper()
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("the pinned instance text %s is unreadable: %v", jsonPath, err)
+	}
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.UseNumber()
+	var obj map[string]any
+	if err := dec.Decode(&obj); err != nil {
+		t.Fatalf("the pinned instance text %s is not an object: %v", jsonPath, err)
+	}
+	slots := ir.TableVocabularySlots(u)
+	return "[" + expectedStructBody(t, u, slots, st, obj) + "]"
+}
+
+// expectedStructBody renders one table's decoded body: the `{slot, value}`
+// pairs for its non-default fields in declared order.
+func expectedStructBody(t *testing.T, u *ir.Unit, slots map[string]uint64, st *ir.Struct, obj map[string]any) string {
+	t.Helper()
+	var parts []string
+	for _, f := range st.Fields {
+		raw, ok := obj[f.Name]
+		if !ok {
+			continue
+		}
+		lit, present := expectedFieldValue(t, u, slots, f, raw)
+		if !present {
+			continue
+		}
+		slot, ok := slots[ir.TableFieldEntry(f).Key()]
+		if !ok {
+			t.Fatalf("field %s of %s has no announced slot", f.Name, st.Name)
+		}
+		parts = append(parts, fmt.Sprintf("{%d, %s}", slot, lit))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// expectedFieldValue translates one pinned JSON value into the term
+// LoadMessages decodes for that field, and present=false where the value is the
+// field's declared default — the field the reference's writer elides from the
+// wire (SPEC §5's zero initialization).
+func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, raw any) (string, bool) {
+	t.Helper()
+	switch {
+	case f.Array != ir.ArrayNone:
+		arr, ok := raw.([]any)
+		if !ok {
+			t.Fatalf("field %s holds %T, want an array", f.Name, raw)
+		}
+		return expectedArrayValue(t, u, slots, f, arr), true
+	case f.Type.Kind == ir.TNamed:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			name, ok := raw.(string)
+			if !ok {
+				t.Fatalf("enum field %s holds %T, want a string", f.Name, raw)
+			}
+			if name == "None" {
+				return "", false
+			}
+			return expectedEnumSlot(t, slots, e, name), true
+		}
+		t.Fatalf("named field %s refers to %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
+	case f.Type.Kind == ir.TBytes:
+		s, ok := raw.(string)
+		if !ok {
+			t.Fatalf("bytes field %s holds %T, want a string", f.Name, raw)
+		}
+		if s == "" {
+			return "", false
+		}
+		data, err := base64.StdEncoding.DecodeString(s)
+		if err != nil {
+			t.Fatalf("bytes field %s is not base64: %v", f.Name, err)
+		}
+		var bytes []string
+		for _, b := range data {
+			bytes = append(bytes, strconv.Itoa(int(b)))
+		}
+		return "[" + strings.Join(bytes, ", ") + "]", true
+	case f.Type.Kind == ir.TString:
+		s, ok := raw.(string)
+		if !ok {
+			t.Fatalf("string field %s holds %T, want a string", f.Name, raw)
+		}
+		if s == "" {
+			return "", false
+		}
+		return fmt.Sprintf("%q", s), true
+	case f.Type.Kind == ir.TInt:
+		n, ok := raw.(json.Number)
+		if !ok {
+			t.Fatalf("integer field %s holds %T, want a number", f.Name, raw)
+		}
+		def := "0"
+		if f.HasDefault && f.DefInt != nil {
+			def = f.DefInt.String()
+		}
+		if n.String() == def {
+			return "", false
+		}
+		return n.String(), true
+	}
+	t.Fatalf("field %s of kind %v is not a kind this card's fixed roots carry", f.Name, f.Type.Kind)
+	return "", false
+}
+
+// expectedArrayValue renders one fixed array's decoded elements: the element is
+// the field's named type with the array shape stripped, a table for every
+// array this card's roots carry.
+func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, arr []any) string {
+	t.Helper()
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok {
+		t.Fatalf("array field %s holds element type %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
+	}
+	var elems []string
+	for _, e := range arr {
+		obj, ok := e.(map[string]any)
+		if !ok {
+			t.Fatalf("array field %s holds element %T, want an object", f.Name, e)
+		}
+		elems = append(elems, expectedStructBody(t, u, slots, st, obj))
+	}
+	return "[" + strings.Join(elems, ", ") + "]"
+}
+
+// expectedEnumSlot renders a selected enum variant as the reference LoadMessages
+// decodes one: the variant's own announced slot (kind 0), never a name
+// (docs/SPEC-TABLES.md §3.3).
+func expectedEnumSlot(t *testing.T, slots map[string]uint64, e *ir.Enum, name string) string {
+	t.Helper()
+	for i := range e.Variants {
+		if e.Variants[i] != name {
+			continue
+		}
+		entry := ir.TableVocabularyEntry{Id: ir.TableWireId(e.VariantWireName(i))}
+		slot, ok := slots[entry.Key()]
+		if !ok {
+			t.Fatalf("enum %s variant %s has no announced slot", e.Name, name)
+		}
+		return strconv.FormatUint(slot, 10)
+	}
+	t.Fatalf("enum %s has no variant named %s", e.Name, name)
+	return ""
 }
 
 // runMessageBatchProbe generates the table library and runs one generated
