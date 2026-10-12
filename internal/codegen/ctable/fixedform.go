@@ -389,7 +389,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlanNormalised(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(g.unit, st)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
@@ -418,12 +418,30 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Guard2 != ir.TableFixedNoGuard {
 			guard2 = fmt.Sprintf("%du", e.Guard2)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
+		// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
+		// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
+		// which is every unguarded and singly-nested entry. The offset is a BYTE
+		// OFFSET from the pool's base — the identity pool is this static array,
+		// a compiled plan's pool is laid in the plan's own storage, one rule.
+		guardIndex := "0"
+		if e.GuardCount > 0 {
+			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+			e.GuardCount, guardIndex, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
-	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n\n", n, guarded)
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, guarded)
+	// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+	// into, OUTERMOST FIRST, the only bound the layout's 64 (§5.8 row 6).
+	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
+	for _, l := range pool {
+		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	g.pf("};\n")
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_guard_count = %d;\n\n", n, len(pool))
 
 	cover := ir.TableFixedIdentityCoverage(g.unit, st)
 	g.pf("/* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds\n")
@@ -489,6 +507,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	if older > 0 {
 		stride := ir.TableFixedLeafCount(g.unit, st)*2 + len(entries)*2 + 128
+		// THE GUARD CHAINS RIDE THE SAME STORAGE (§5.8 row 6): a compiled
+		// plan lays each path's chain once per union on it, growing by one
+		// link a level, so a chain of k links costs at most k(k+1)/2 links
+		// (each no wider than an entry) and one alignment step. Counting it
+		// here keeps the layout's 64 the only bound on a chain: the declared
+		// capacity is never the one that refuses it.
+		seen := map[[2]int]bool{}
+		for _, e := range plan {
+			if e.GuardCount > 2 && !seen[[2]int{e.GuardIndex, e.GuardCount}] {
+				seen[[2]int{e.GuardIndex, e.GuardCount}] = true
+				stride += e.GuardCount*(e.GuardCount+1)/2 + 1
+			}
+		}
 		g.pf("/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and\n")
 		g.pf("   never from a file's (§5.9 #3). The storage is STATIC — this codec\n")
 		g.pf("   allocates nothing — and the walk runs ONCE PER PROCESS, off the record\n")
@@ -611,6 +642,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
+	g.pf("    const TableFixedGuardLink * entry_guards = %s_fixed_guards;\n", n)
 	g.pf("    const TableFixedFill * fill = NULL;\n")
 	g.pf("    int32_t fill_count = 0;\n")
 	g.pf("    %s defaults;\n", st.Name)
@@ -670,6 +702,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        if ( %s_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = %s_fixed_lineage[pick].reason; return -1; }\n", n, n)
 		g.pf("        if ( %s_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n", n)
 		g.pf("        entries = %s_fixed_lineage[pick].entries;\n", n)
+		g.pf("        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,\n")
+		g.pf("           and a chain-carrying entry's guard_index is a BYTE OFFSET from\n")
+		g.pf("           that base — the same arithmetic the identity plan's static pool\n")
+		g.pf("           reads by (§5.8 row 6). */\n")
+		g.pf("        entry_guards = (const TableFixedGuardLink *) (const void *) entries;\n")
 		g.pf("        entry_count = %s_fixed_lineage[pick].count;\n", n)
 		g.pf("        entry_guarded = %s_fixed_lineage[pick].guarded;\n", n)
 		g.pf("        fill = %s_fixed_lineage[pick].fill;\n", n)
@@ -701,7 +738,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        int32_t rec_widened = 0;\n")
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), &rec_clamped, &rec_widened );\n")
+	g.pf("        table_fixed_run( entries, entry_guards, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), &rec_clamped, &rec_widened );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")

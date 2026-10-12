@@ -192,6 +192,18 @@ static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
    entry belongs to an arm, and SCHEMA_TABLE_FIXED_NO_GUARD when it does not. */
+/* TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+   the ordinal it must hold, and the width it is compared at. A chain is a
+   CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+   the first link is the outermost union's tag and the last the innermost one
+   (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64. */
+typedef struct TableFixedGuardLink
+{
+    uint32_t guard;
+    uint64_t arg;
+    uint8_t argw;
+} TableFixedGuardLink;
+
 typedef struct TableFixedEntry
 {
     uint32_t src;
@@ -229,6 +241,16 @@ typedef struct TableFixedEntry
     uint32_t guard2;
     uint64_t arg2;
     uint8_t argw2;
+    /* guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): offset+count
+       into a pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound
+       the layout's 64. guard_index is a BYTE OFFSET from the pool's base — the
+       identity plan's pool is a static array and a compiled plan's pool is laid
+       in the plan's own storage, read by the same arithmetic. Zero count is
+       "the two inline lanes only", which is every unguarded and singly-nested
+       entry; a chain past two rides the pool whole, so an arm inside an arm
+       inside an arm answers to BOTH outer tags and its own. */
+    uint8_t guard_count;
+    uint32_t guard_index;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -590,7 +612,8 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
    accumulators and NOT written to the report here, so a content rule that
    refuses after the loop still leaves the report's counters all zero — REFUSE
    is total (docs/FIXED-FORM-ALGORITHM.md §5.8). */
-static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, const TableFixedGuardLink * guard_pool,
+                                           int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
                                            int32_t * clamped_out, int32_t * widened_out )
@@ -613,9 +636,30 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
-        if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
-        table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
+        int32_t matches = 1;
+        if ( p->guard_count > 0 )
+        {
+            /* THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+               (guard, arg, argw) links, OUTERMOST FIRST, every link a
+               CONJUNCTION. A chain past two nested unions rides here whole,
+               so an arm inside an arm inside an arm answers to BOTH outer
+               tags and its own. guard_index is a BYTE OFFSET from the pool's
+               base, so the identity plan's static pool and a compiled plan's
+               pool — laid in the plan's own storage — read by one arithmetic. */
+            int32_t j;
+            for ( j = 0; j < (int32_t) p->guard_count; ++j )
+            {
+                const TableFixedGuardLink * l = (const TableFixedGuardLink *) (const void *)
+                    ( (const uint8_t *) guard_pool + p->guard_index + (uint32_t) j * sizeof( TableFixedGuardLink ) );
+                if ( table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+            }
+        }
+        else
+        {
+            if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+        }
+        if ( matches ) { table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened ); }
     }
     *clamped_out = clamped;
     *widened_out = widened;
@@ -1210,6 +1254,145 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
     return at;
 }
 
+/* table_fixed_lay_guards lays one guard chain's links in the SAME POOL the remap
+   tables and the fills come out of, above the entries and growing downward, and
+   answers the BYTE OFFSET of the first link from the plan's base — the guard_index
+   a chain-carrying entry stamps. A link's uint64 arg needs 8-byte alignment, so
+   the pool is rounded up to 8 first: a remap table (uint16) may have left it at
+   2, and the plan's base and total are multiples of the entry, which holds a
+   uint64 itself. The pool is the caller's plan storage: this codec allocates
+   nothing, here as everywhere, and a plan whose pool does not fit is a refusal
+   by name. */
+static SCHEMA_UNUSED uint32_t table_fixed_lay_guards( TableFixedCompiler * c, const TableFixedGuardLink * links, int32_t n )
+{
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
+    const int32_t link = (int32_t) sizeof( TableFixedGuardLink );
+    c->pool = ( c->pool + 7 ) & ~7;
+    c->pool += n * link;
+    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
+    const uint32_t at = (uint32_t) ( total - c->pool );
+    TableFixedGuardLink * dst = (TableFixedGuardLink *) (void *) ( (uint8_t *) c->plan + at );
+    int32_t i;
+    for ( i = 0; i < n; ++i ) { dst[i] = links[i]; }
+    return at;
+}
+
+/* table_fixed_chain_of writes the chain one entry answers to, OUTERMOST FIRST,
+   and answers its length (§5.8 row 6): the pool links it points at past two, or
+   its two inline lanes — guard2 the outer, guard the inner — below that. */
+static SCHEMA_UNUSED int32_t table_fixed_chain_of( const TableFixedCompiler * c, const TableFixedEntry * e, TableFixedGuardLink * links )
+{
+    int32_t n = 0;
+    if ( e->guard_count > 0 )
+    {
+        const TableFixedGuardLink * base = (const TableFixedGuardLink *) (const void *) ( (const uint8_t *) c->plan + e->guard_index );
+        for ( n = 0; n < (int32_t) e->guard_count; ++n ) { links[n] = base[n]; }
+        return n;
+    }
+    if ( e->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD )
+    {
+        links[n].guard = e->guard2; links[n].arg = e->arg2; links[n].argw = e->argw2; ++n;
+    }
+    links[n].guard = e->guard; links[n].arg = e->arg; links[n].argw = e->argw; ++n;
+    return n;
+}
+
+/* table_fixed_chain_prefix answers whether the first n links of whole are
+   part, link for link (the padding inside a link is never compared). */
+static SCHEMA_UNUSED int table_fixed_chain_prefix( const TableFixedGuardLink * whole, int32_t whole_n,
+                                                   const TableFixedGuardLink * part, int32_t n )
+{
+    int32_t i;
+    if ( n > whole_n ) { return 0; }
+    for ( i = 0; i < n; ++i )
+    {
+        if ( whole[i].guard != part[i].guard || whole[i].arg != part[i].arg || whole[i].argw != part[i].argw ) { return 0; }
+    }
+    return 1;
+}
+
+/* table_fixed_restamp_outer ADDS THE OUTER TAG to every entry an arm laid down
+   (§4.1, §5.8 row 6): an arm inside an arm answers to the OUTER tag, which is
+   the one that decides whether any of those bytes are there at all, and its OWN
+   arm selection survives that, because the links are a CONJUNCTION. An entry
+   with one condition takes the outer tag on its second inline lane; an entry
+   with two or more takes it as the new FIRST link of a chain laid in the pool,
+   OUTERMOST FIRST — the walk meets guards innermost-first, so the outer link is
+   prepended. THE ONLY BOUND IS THE LAYOUT'S 64 (kTableFixedMaxDepth): a chain
+   past it is a hostile layout, never a dropped condition.
+
+   ONE BLOCK SERVES EVERY CHAIN THAT IS ITS PREFIX. Every entry under one path of
+   arms answers to a prefix of the deepest entry's chain on that path (a union's
+   own tag entries answer to the arms ABOVE it, its leaves to those and its own),
+   so the longest chain is laid once per path and every prefix points into it
+   with a shorter count. The pool then grows with the paths and their depth, not
+   with the entries, so the plan capacity a build declares is not a second bound
+   on the chain. */
+static SCHEMA_UNUSED void table_fixed_restamp_outer( TableFixedCompiler * c, int32_t from,
+                                                     uint32_t guard, uint64_t arg, uint8_t argw )
+{
+    /* ONE SLOT PAST THE BOUND: the outer link goes at [0] and a chain of up to
+       kTableFixedMaxDepth links is read in behind it at [1] — a chain already
+       restamped this pass included — before the bound is asked of it. */
+    TableFixedGuardLink longest[kTableFixedMaxDepth + 1];
+    TableFixedGuardLink links[kTableFixedMaxDepth + 1];
+    int32_t q;
+    /* ONE CONDITION: the outer tag rides the second inline lane. */
+    for ( q = from; q < c->count; ++q )
+    {
+        TableFixedEntry * e = &c->plan[q];
+        if ( e->guard2 == SCHEMA_TABLE_FIXED_NO_GUARD && e->guard_count == 0 )
+        {
+            e->guard2 = guard;
+            e->arg2 = arg;
+            e->argw2 = argw;
+            e->guard_count = 0xFFu; /* restamped this pass; cleared below */
+        }
+    }
+    /* TWO OR MORE: one block per path, the longest chain first. An entry is done
+       once its first link is this outer tag, which no inner link can be — an
+       inner tag sits past the outer one in the record. */
+    for ( ;; )
+    {
+        int32_t deepest = -1;
+        int32_t longest_n = 0;
+        uint32_t block;
+        for ( q = from; q < c->count; ++q )
+        {
+            const TableFixedEntry * e = &c->plan[q];
+            int32_t n;
+            if ( e->guard_count == 0xFFu ) { continue; }
+            n = table_fixed_chain_of( c, e, links );
+            if ( links[0].guard == guard && links[0].arg == arg && n >= 3 ) { continue; }
+            if ( n > longest_n ) { longest_n = n; deepest = q; }
+        }
+        if ( deepest < 0 ) { break; }
+        if ( longest_n + 1 > kTableFixedMaxDepth ) { c->hostile = 1; return; }
+        longest[0].guard = guard; longest[0].arg = arg; longest[0].argw = argw;
+        (void) table_fixed_chain_of( c, &c->plan[deepest], longest + 1 );
+        block = table_fixed_lay_guards( c, longest, longest_n + 1 );
+        if ( c->overflow ) { return; }
+        for ( q = from; q < c->count; ++q )
+        {
+            TableFixedEntry * e = &c->plan[q];
+            int32_t n;
+            if ( e->guard_count == 0xFFu ) { continue; }
+            n = table_fixed_chain_of( c, e, links + 1 );
+            if ( links[1].guard == guard && links[1].arg == arg && n >= 3 ) { continue; }
+            links[0].guard = guard; links[0].arg = arg; links[0].argw = argw;
+            if ( table_fixed_chain_prefix( longest, longest_n + 1, links, n + 1 ) )
+            {
+                e->guard_index = block;
+                e->guard_count = (uint8_t) ( n + 1 );
+            }
+        }
+    }
+    for ( q = from; q < c->count; ++q )
+    {
+        if ( c->plan[q].guard_count == 0xFFu ) { c->plan[q].guard_count = 0; }
+    }
+}
+
 /* table_fixed_lay_fills reserves the prefill's ranges in the SAME POOL the remap
    tables come out of, above the entries and growing downward, and answers the
    byte offset of the array from the plan's base. The pool is the caller's plan
@@ -1463,20 +1646,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                    one that decides whether any of those bytes are there at all —
                    and its OWN arm selection must survive that (§4.1). So the two
                    tags are CONJOINED on the second guard lane rather than the
-                   outer one replacing the inner (§5.8 row 6). */
+                   outer one replacing the inner (§5.8 row 6). A THIRD condition
+                   past the two inline lanes rides the guard CHAIN instead: the
+                   walk meets guards innermost-first, so each outer link is
+                   PREPENDED and the whole chain laid in the pool, OUTERMOST
+                   FIRST, the only bound the layout's 64 (§5.8 row 6). */
                 if ( guard != SCHEMA_TABLE_FIXED_NO_GUARD )
                 {
                     const uint8_t outer_w = saved_argw ? saved_argw : (uint8_t) 1;
-                    for ( int32_t q = restamp_from; q < c->count; ++q )
-                    {
-                        /* A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
-                           cannot carry it: the plan REFUSES BY NAME rather than
-                           drop one (the guard chain is the follow-on, §5.8 row 6). */
-                        if ( c->plan[q].guard2 != SCHEMA_TABLE_FIXED_NO_GUARD ) { c->hostile = 1; break; }
-                        c->plan[q].guard2 = guard;
-                        c->plan[q].arg2 = arg;
-                        c->plan[q].argw2 = outer_w;
-                    }
+                    table_fixed_restamp_outer( c, restamp_from, guard, arg, outer_w );
                 }
                 c->argw = saved_argw;
                 break;
@@ -1604,6 +1782,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
              plan[out-1].argw2 == plan[i].argw2 &&
+             plan[out-1].guard_count == plan[i].guard_count && plan[out-1].guard_index == plan[i].guard_index &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
