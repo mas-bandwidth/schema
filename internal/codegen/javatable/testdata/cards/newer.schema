@@ -1,0 +1,11 @@
+// The NEWER declaration of the cross-read pair: `renamed` keeps the wire id of
+// `old_name` through `was`, and `extra` is a field the older build cannot name
+// (docs/SPEC-TABLES.md §4, §5).
+package newpkg
+
+table Card
+{
+    id      string(16)
+    renamed int32      | was = "old_name"
+    extra   string(16)
+}
