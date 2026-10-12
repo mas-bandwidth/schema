@@ -5680,6 +5680,9 @@ include $(wildcard make/*.mk)
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)
+# roadmap is not a compiler backend either: ROADMAP.md is generated from
+# docs/roadmap.sexp by tools/roadmap/render.lisp (make roadmap, roadmap-check).
+include $(wildcard tools/roadmap/roadmap.mk)
 include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk

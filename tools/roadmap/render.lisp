@@ -1,18 +1,34 @@
 ;;;; tools/roadmap/render.lisp
 ;;;;
 ;;;; Deterministic roadmap renderer and validator for Schema.
-;;;; Reads restricted S-expression data plists and updates ROADMAP.md
-;;;; between <!-- nova-work:fixed-tables:start --> and <!-- nova-work:fixed-tables:end -->.
+;;;;
+;;;; ROADMAP.md is generated end to end from data: the work graph in
+;;;; docs/roadmap.sexp (one restricted S-expression plist) and the evidence
+;;;; overlay in docs/roadmap-evidence/*.sexp (one form per task, written by
+;;;; the cards that proved the task). The page's prose, its order of tables
+;;;; and its closing sections are data too (the root form's :page and each
+;;;; roadmap node's :title and :text), so nothing in ROADMAP.md is written by
+;;;; hand. Each table sits between <!-- nova-work:<roadmap-id>:start --> and
+;;;; <!-- nova-work:<roadmap-id>:end -->; tools/roadmap/tally_test.go holds
+;;;; every table to those markers and, where sbcl is installed, holds the
+;;;; committed page to this renderer's output.
+;;;;
+;;;; A cell is ✅ only when every leaf task under its work node is :done, and a
+;;;; :done task must carry non-empty :evidence. An evidence overlay entry may
+;;;; move a task's :state and :evidence; it may not name a task the graph does
+;;;; not have, and it is held to the same rule.
 ;;;;
 ;;;; Usage:
-;;;;   sbcl --script tools/roadmap/render.lisp [--check] [roadmap.sexp] [ROADMAP.md]
+;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
 ;;;;   sbcl --script tools/roadmap/render.lisp --test
 
 (defpackage :roadmap-renderer
   (:use :cl)
   (:export #:main
            #:render-table-string
+           #:render-page-string
            #:update-roadmap-text
+           #:apply-evidence-overlay
            #:run-tests))
 
 (in-package :roadmap-renderer)
@@ -24,6 +40,8 @@
 
 (defparameter *start-marker* "<!-- nova-work:fixed-tables:start -->")
 (defparameter *end-marker* "<!-- nova-work:fixed-tables:end -->")
+
+(defparameter *evidence-subdirectory* "roadmap-evidence/")
 
 ;;; UTF-8 file I/O avoiding NUL padding or byte-vs-character length mismatches
 
@@ -39,7 +57,7 @@
               do (write-sequence buf out :end n))))))
 
 (defun write-string-to-file (pathname string)
-  (with-open-file (out pathname :direction :output :if-exists :supersede :if-does-not-exist :error :external-format :utf-8)
+  (with-open-file (out pathname :direction :output :if-exists :supersede :if-does-not-exist :create :external-format :utf-8)
     (write-string string out)))
 
 ;;; Restricted reader setup
@@ -84,6 +102,19 @@
             (error "Trailing data or multiple top-level forms in restricted reader input")))
         form))))
 
+(defun read-restricted-forms-from-string (str)
+  "Read every top-level form of STR under the restricted reader: the shape of
+an evidence overlay file, one plist per task."
+  (let ((*readtable* (make-restricted-readtable))
+        (*read-eval* nil)
+        (eof (gensym "EOF"))
+        (forms nil))
+    (with-input-from-string (s str)
+      (loop for form = (read s nil eof)
+            until (eq form eof)
+            do (push form forms)))
+    (nreverse forms)))
+
 (defun read-restricted-file (pathname)
   (let ((content (read-file-to-string pathname)))
     (read-restricted-from-string content)))
@@ -124,6 +155,21 @@
       (error "Node count ~D exceeds maximum allowed limit ~D" (length nodes) *max-node-count*))
     nodes))
 
+(defun non-blank-string-p (s)
+  (and (stringp s) (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) s)))))
+
+(defun validate-task-node (id node)
+  "The rule a task is held to: a known state, and evidence when it is done."
+  (let ((state (getf node :state))
+        (evidence (getf node :evidence)))
+    (unless (member state '(:unknown :todo :doing :done))
+      (error "Task ~s has invalid state: ~s" id state))
+    (when (eq state :done)
+      (unless (and (listp evidence)
+                   evidence
+                   (some #'non-blank-string-p evidence))
+        (error "Done task ~s has empty or missing required :evidence" id)))))
+
 (defun build-and-validate-node-table (nodes root-id)
   (let ((table (make-hash-table :test 'equal)))
     ;; Step 1: Ensure valid plists with no duplicate keys, unique IDs, known types
@@ -140,8 +186,7 @@
         (when (getf node :implementation)
           (unless (and (member (getf node :implementation) '(:implemented :partial :unsupported))
                        (getf node :implementation-evidence)
-                       (every (lambda (s) (and (stringp s) (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) s)))))
-                              (getf node :implementation-evidence)))
+                       (every #'non-blank-string-p (getf node :implementation-evidence)))
             (error "Invalid implementation assessment or missing source evidence in ~s" id)))
         (setf (gethash id table) node)))
 
@@ -164,16 +209,7 @@
                 (unless (gethash c table)
                   (error "Dangling reference: child ~s in work-set ~s does not exist" c id)))))
            (:task
-            (let ((state (getf node :state))
-                  (evidence (getf node :evidence)))
-              (unless (member state '(:unknown :todo :doing :done))
-                (error "Task ~s has invalid state: ~s" id state))
-              (when (eq state :done)
-                (unless (and (listp evidence)
-                             evidence
-                             (some (lambda (e) (and (stringp e) (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) e)) 0)))
-                                   evidence))
-                  (error "Done task ~s has empty or missing required :evidence" id)))))
+            (validate-task-node id node))
            (:roadmap
             (let ((rows (getf node :rows))
                   (cols (getf node :columns))
@@ -249,6 +285,75 @@
        table))
 
     table))
+
+;;; The evidence overlay: docs/roadmap-evidence/*.sexp
+;;;
+;;; Each file holds any number of top-level plists, one per task:
+;;;   (:id "go/F9" :state :done :evidence ("file_test.go: TestName") :tested-revision "..." :note "...")
+;;; The entry's :state replaces the task's; its :evidence replaces the task's
+;;; when present; :note replaces the task's when present. The task must exist
+;;; and be a :task, and the result is held to validate-task-node.
+
+(defun plist-put (plist key value)
+  "A copy of PLIST with KEY set to VALUE, replacing or appending."
+  (let ((out nil) (found nil))
+    (loop for (k v) on plist by #'cddr do
+      (if (eq k key)
+          (progn (push k out) (push value out) (setf found t))
+          (progn (push k out) (push v out))))
+    (unless found
+      (push key out) (push value out))
+    (nreverse out)))
+
+(defun apply-evidence-overlay (table forms &optional (context "evidence overlay"))
+  "Apply overlay FORMS onto the node TABLE in place. Returns the count applied."
+  (let ((applied 0))
+    (dolist (form forms)
+      (validate-plist-no-duplicates form context)
+      (let* ((id (getf form :id))
+             (node (and (stringp id) (gethash id table))))
+        (unless (non-blank-string-p id)
+          (error "~a: entry without a non-empty string :id: ~s" context form))
+        (unless node
+          (error "~a: id ~s is not a node of the roadmap" context id))
+        (unless (eq (getf node :type) :task)
+          (error "~a: id ~s is not a task (it is a ~s)" context id (getf node :type)))
+        (unless (getf form :state)
+          (error "~a: entry ~s carries no :state" context id))
+        (let ((updated (plist-put node :state (getf form :state))))
+          (when (getf form :evidence)
+            (setf updated (plist-put updated :evidence (getf form :evidence))))
+          (when (getf form :note)
+            (setf updated (plist-put updated :note (getf form :note))))
+          (when (getf form :tested-revision)
+            (setf updated (plist-put updated :tested-revision (getf form :tested-revision))))
+          (validate-task-node id updated)
+          (setf (gethash id table) updated)
+          (incf applied))))
+    applied))
+
+(defun evidence-files (dir)
+  "Every *.sexp under DIR whose name does not start with a dot, sorted by
+name; nil when DIR does not exist."
+  (when (and dir (probe-file dir))
+    (sort (remove-if (lambda (p) (let ((name (pathname-name p)))
+                                   (or (null name) (zerop (length name)) (char= (char name 0) #\.))))
+                     (copy-list (directory (merge-pathnames "*.sexp" dir))))
+          #'string< :key #'namestring)))
+
+(defun apply-evidence-directory (table dir)
+  "Apply every overlay file under DIR. Returns (values files-applied entries-applied)."
+  (let ((files 0) (entries 0))
+    (dolist (file (evidence-files dir))
+      (let ((forms (read-restricted-forms-from-string (read-file-to-string file))))
+        (incf entries (apply-evidence-overlay table forms (namestring file)))
+        (incf files)))
+    (values files entries)))
+
+(defun default-evidence-directory (sexp-path)
+  "docs/roadmap-evidence/ beside the sexp: the directory the cards write to."
+  (merge-pathnames *evidence-subdirectory*
+                   (make-pathname :name nil :type nil :defaults (pathname sexp-path))))
 
 ;;; DFS folding with cycle detection, depth bound, and memoization
 
@@ -430,7 +535,110 @@
 
     (get-output-stream-string out)))
 
-;;; Marker update in ROADMAP.md
+;;; Whole-page rendering
+;;;
+;;; The root form carries
+;;;   :page (:title "Schema roadmap"
+;;;          :roadmaps ("packet-wire" "fixed-tables" "variable-tables")
+;;;          :closing ((:title "..." :text ("paragraph" ...)) ...))
+;;; and each roadmap node carries :title (its heading) and :text (a paragraph
+;;; string or a list of paragraph strings). Whitespace runs inside a paragraph
+;;; collapse to one blank, so the data may be wrapped freely.
+
+(defun whitespace-char-p (c)
+  (member c '(#\Space #\Tab #\Newline #\Return #\Page)))
+
+(defun flat (s)
+  "S with every run of whitespace collapsed to one blank, trimmed."
+  (let ((out (make-string-output-stream))
+        (pending nil)
+        (started nil))
+    (loop for c across s do
+      (if (whitespace-char-p c)
+          (setf pending t)
+          (progn
+            (when (and pending started)
+              (write-char #\Space out))
+            (setf pending nil started t)
+            (write-char c out))))
+    (get-output-stream-string out)))
+
+(defun paragraphs (text context)
+  "TEXT as a list of flattened paragraphs; a string is one paragraph, a list
+of strings is several, nil is none."
+  (cond
+    ((null text) nil)
+    ((stringp text) (list (flat text)))
+    ((and (listp text) (every #'stringp text)) (mapcar #'flat text))
+    (t (error "~a: :text must be a string or a list of strings, got ~s" context text))))
+
+(defun start-marker (id) (format nil "<!-- nova-work:~a:start -->" id))
+(defun end-marker (id) (format nil "<!-- nova-work:~a:end -->" id))
+
+(defun validate-page (sexp table)
+  "The :page form, checked: a title, roadmap ids that are reachable roadmap
+nodes, and closing sections each with a title and text."
+  (let ((page (getf sexp :page))
+        (root-id (getf sexp :root)))
+    (unless page
+      (error "Root form lacks :page (the page title, the roadmaps in order and the closing sections)"))
+    (validate-plist-no-duplicates page ":page")
+    (unless (non-blank-string-p (getf page :title))
+      (error ":page lacks a non-empty :title"))
+    (let ((ids (getf page :roadmaps)))
+      (unless (and (listp ids) ids (every #'stringp ids))
+        (error ":page :roadmaps must be a non-empty list of roadmap ids"))
+      (let ((seen (make-hash-table :test 'equal)))
+        (dolist (id ids)
+          (when (gethash id seen)
+            (error ":page :roadmaps names ~s twice" id))
+          (setf (gethash id seen) t)
+          (let ((rm (find-reachable-roadmap root-id table id)))
+            (unless rm
+              (error ":page :roadmaps names ~s, which is no roadmap node reachable from root ~s" id root-id))
+            (unless (non-blank-string-p (getf rm :title))
+              (error "Roadmap ~s lacks a non-empty :title" id))
+            (paragraphs (getf rm :text) (format nil "roadmap ~a" id))))))
+    (let ((closing (getf page :closing)))
+      (unless (listp closing)
+        (error ":page :closing must be a list"))
+      (dolist (section closing)
+        (validate-plist-no-duplicates section ":page :closing section")
+        (unless (non-blank-string-p (getf section :title))
+          (error ":page :closing section lacks a non-empty :title: ~s" section))
+        (unless (paragraphs (getf section :text) ":page :closing section")
+          (error ":page :closing section ~s lacks :text" (getf section :title)))))
+    page))
+
+(defun render-page-string (sexp table sexp-path)
+  "The whole ROADMAP.md: title, generated-file notice, one section per roadmap
+in :page order (heading, prose, table between its markers), then the closing
+sections."
+  (let* ((page (validate-page sexp table))
+         (root-id (getf sexp :root))
+         (out (make-string-output-stream)))
+    (format out "# ~a~%~%" (flat (getf page :title)))
+    (format out "<!-- Generated from ~a and ~a~a by tools/roadmap/render.lisp. Do not edit this file: edit the data and run `make roadmap`. -->~%"
+            sexp-path
+            (directory-namestring (pathname sexp-path))
+            (string-right-trim "/" *evidence-subdirectory*))
+    (dolist (id (getf page :roadmaps))
+      (let ((rm (find-reachable-roadmap root-id table id)))
+        (format out "~%## ~a~%" (flat (getf rm :title)))
+        (dolist (p (paragraphs (getf rm :text) id))
+          (format out "~%~a~%" p))
+        (format out "~%~a~%~%~a~%~%~a~%"
+                (start-marker id)
+                (string-trim '(#\Newline #\Space #\Tab) (render-table-string rm table sexp-path))
+                (end-marker id))))
+    (dolist (section (getf page :closing))
+      (format out "~%## ~a~%" (flat (getf section :title)))
+      (dolist (p (paragraphs (getf section :text) (getf section :title)))
+        (format out "~%~a~%" p)))
+    (get-output-stream-string out)))
+
+;;; Marker update in ROADMAP.md (the single-block form; kept for callers and
+;;; tests that splice one table into an existing page)
 
 (defun update-roadmap-text (roadmap-text table-string)
   (let ((start-pos (search *start-marker* roadmap-text))
@@ -443,37 +651,38 @@
            (cleaned-table (string-trim '(#\Newline #\Space #\Tab) table-string)))
       (format nil "~a~%~%~a~%~%~a" prefix cleaned-table suffix))))
 
-(defun render-to-roadmap-file (sexp-path roadmap-path check-only &optional target-roadmap-id)
+(defun load-work-graph (sexp-path evidence-dir)
+  "Read the sexp, validate it, apply the evidence overlay. Returns
+(values sexp table files entries)."
   (unless (probe-file sexp-path)
     (error "Source file not found: ~a" sexp-path))
-  (unless (probe-file roadmap-path)
-    (error "Target roadmap file not found: ~a" roadmap-path))
-
   (let* ((sexp (read-restricted-file sexp-path))
          (nodes (validate-root sexp))
          (root-id (getf sexp :root))
-         (table (build-and-validate-node-table nodes root-id))
-         ;; Select target roadmap reachable from :root (ignoring unreachable decoys)
-         (roadmap (find-reachable-roadmap root-id table (or target-roadmap-id "fixed-tables"))))
-    (unless roadmap
-      (error "Roadmap ~s is not reachable from root ~s"
-             (or target-roadmap-id "fixed-tables") root-id))
+         (table (build-and-validate-node-table nodes root-id)))
+    (multiple-value-bind (files entries) (apply-evidence-directory table evidence-dir)
+      (values sexp table files entries))))
 
-    (let* ((table-string (render-table-string roadmap table sexp-path))
-           (existing-text (read-file-to-string roadmap-path))
-           (updated-text (update-roadmap-text existing-text table-string)))
-      (if check-only
-          (if (string= existing-text updated-text)
-              (progn
-                (format t "OK: ~a is up to date with ~a~%" roadmap-path sexp-path)
-                0)
-              (progn
-                (format *error-output* "DRIFT: ~a differs from generated roadmap table from ~a~%" roadmap-path sexp-path)
-                1))
-          (progn
-            (write-string-to-file roadmap-path updated-text)
-            (format t "Rendered roadmap table from ~a to ~a~%" sexp-path roadmap-path)
-            0)))))
+(defun render-to-roadmap-file (sexp-path roadmap-path check-only &optional evidence-dir)
+  (let ((evidence-dir (or evidence-dir (default-evidence-directory sexp-path))))
+    (multiple-value-bind (sexp table files entries) (load-work-graph sexp-path evidence-dir)
+      (let ((page (render-page-string sexp table sexp-path))
+            (existing (and (probe-file roadmap-path) (read-file-to-string roadmap-path))))
+        (if check-only
+            (if (and existing (string= existing page))
+                (progn
+                  (format t "OK: ~a is up to date with ~a (~D evidence files, ~D entries)~%"
+                          roadmap-path sexp-path files entries)
+                  0)
+                (progn
+                  (format *error-output* "DRIFT: ~a differs from the page rendered from ~a; run: make roadmap~%"
+                          roadmap-path sexp-path)
+                  1))
+            (progn
+              (write-string-to-file roadmap-path page)
+              (format t "Rendered ~a from ~a (~D evidence files, ~D entries)~%"
+                      roadmap-path sexp-path files entries)
+              0))))))
 
 ;;; Test Suite
 
@@ -840,28 +1049,144 @@
               (error () (setf caught t)))
             (unless caught (error "Failed to reject reader_payload.sexp")))))
 
+      ;; Test 18: The evidence overlay moves a task's state and evidence
+      (test "evidence overlay moves state and evidence"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "rm" :nodes
+                         ((:id "t1" :type :task :title "T1" :state :unknown :evidence nil)
+                          (:id "t2" :type :task :title "T2" :state :done :evidence ("old proof"))
+                          (:id "rm" :type :roadmap :title "RM"
+                           :rows (("r1" "Row 1")) :columns (("c1" "Col 1") ("c2" "Col 2"))
+                           :cells (("r1" "c1" "t1") ("r1" "c2" "t2"))))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "rm"))
+                 (forms (read-restricted-forms-from-string
+                         "(:id \"t1\" :state :done :evidence (\"a_test.go: TestOne\") :tested-revision \"abc\")
+                          (:id \"t2\" :state :unknown :note \"the corpus does not build here\")"))
+                 (applied (apply-evidence-overlay table forms "test overlay"))
+                 (rendered (render-table-string (gethash "rm" table) table "docs/roadmap.sexp")))
+            (unless (= applied 2) (error "Expected 2 entries applied, got ~D" applied))
+            (unless (search "| Row 1 | ✅ | ❌ |" rendered)
+              (error "Overlay did not move the cells: ~s" rendered))
+            (unless (equal (getf (gethash "t1" table) :evidence) '("a_test.go: TestOne"))
+              (error "Overlay did not replace the evidence"))
+            (unless (equal (getf (gethash "t2" table) :evidence) '("old proof"))
+              (error "An entry without :evidence must keep the task's evidence")))))
+
+      ;; Test 19: The overlay is refused for an unknown id, a non-task, and done without evidence
+      (test "evidence overlay refusals"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "ws" :nodes
+                         ((:id "t1" :type :task :title "T1" :state :unknown :evidence nil)
+                          (:id "ws" :type :work-set :children ("t1")))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "ws")))
+            (dolist (bad '("(:id \"nope\" :state :done :evidence (\"x\"))"
+                           "(:id \"ws\" :state :done :evidence (\"x\"))"
+                           "(:id \"t1\" :state :done)"
+                           "(:id \"t1\" :state :done :evidence (\" \"))"
+                           "(:id \"t1\" :state :finished)"
+                           "(:id \"t1\")"))
+              (let ((caught nil))
+                (handler-case
+                    (apply-evidence-overlay table (read-restricted-forms-from-string bad) "test overlay")
+                  (error () (setf caught t)))
+                (unless caught
+                  (error "Accepted a bad overlay entry: ~a" bad))))
+            (unless (eq (getf (gethash "t1" table) :state) :unknown)
+              (error "A refused overlay must leave the task as it was")))))
+
+      ;; Test 20: The multi-form reader keeps the restricted reader's refusals
+      (test "overlay reader is restricted too"
+        (lambda ()
+          (let ((caught nil))
+            (handler-case
+                (read-restricted-forms-from-string "(:id \"t1\" :state :done :evidence #.(list 1))")
+              (error () (setf caught t)))
+            (unless caught (error "Overlay reader accepted a #. payload")))
+          (unless (= 3 (length (read-restricted-forms-from-string (format nil "(:a 1) ; a comment~%(:b 2) (:c 3)"))))
+            (error "Overlay reader did not read every form"))))
+
+      ;; Test 21: The whole page is rendered from the data
+      (test "whole page from data"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "goal"
+                         :page (:title "  Schema   roadmap "
+                                :roadmaps ("alpha" "beta")
+                                :closing ((:title "Fund this work" :text ("Line one
+                                                                             wrapped." "Line two."))))
+                         :nodes
+                         ((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
+                          (:id "t-todo" :type :task :title "Todo" :state :todo :evidence nil)
+                          (:id "alpha" :type :roadmap :title "Alpha wire" :text "Alpha
+                            prose."
+                           :rows (("r1" "Row 1")) :columns (("c1" "c1") ("c2" "c2"))
+                           :cells (("r1" "c1" "t-done") ("r1" "c2" "t-todo")))
+                          (:id "beta" :type :roadmap :title "Beta tables" :text ("First." "Second.")
+                           :rows (("r1" "Row 1")) :columns (("c1" "c1"))
+                           :cells (("r1" "c1" "t-done")))
+                          (:id "goal" :type :work-set :children ("alpha" "beta")))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "goal"))
+                 (page (render-page-string sexp table "docs/roadmap.sexp"))
+                 (expected (format nil "# Schema roadmap~%~%<!-- Generated from docs/roadmap.sexp and docs/roadmap-evidence by tools/roadmap/render.lisp. Do not edit this file: edit the data and run `make roadmap`. -->~%~%## Alpha wire~%~%Alpha prose.~%~%<!-- nova-work:alpha:start -->~%~%| feature | c1 | c2 |~%|---|:---:|:---:|~%| Row 1 | ✅ | ❌ |~%| complete | 100% | 0% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:alpha:end -->~%~%## Beta tables~%~%First.~%~%Second.~%~%<!-- nova-work:beta:start -->~%~%| feature | c1 |~%|---|:---:|~%| Row 1 | ✅ |~%| complete | 100% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:beta:end -->~%~%## Fund this work~%~%Line one wrapped.~%~%Line two.~%")))
+            (unless (string= page expected)
+              (error "Page differs from the expected render:~%~a~%--- expected ---~%~a" page expected))
+            (unless (string= page (render-page-string sexp table "docs/roadmap.sexp"))
+              (error "Page render is not deterministic")))))
+
+      ;; Test 22: The page refuses a roadmap it cannot reach and a section without text
+      (test "page refusals"
+        (lambda ()
+          (let* ((nodes '((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
+                          (:id "alpha" :type :roadmap :title "Alpha"
+                           :rows (("r1" "Row 1")) :columns (("c1" "c1")) :cells (("r1" "c1" "t-done")))
+                          (:id "decoy" :type :roadmap :title "Decoy"
+                           :rows (("r1" "Row 1")) :columns (("c1" "c1")) :cells (("r1" "c1" "t-done")))
+                          (:id "goal" :type :work-set :children ("alpha"))))
+                 (table (build-and-validate-node-table nodes "goal")))
+            (dolist (page '((:title "P" :roadmaps ("decoy") :closing ())
+                            (:title "P" :roadmaps ("alpha" "alpha") :closing ())
+                            (:title "" :roadmaps ("alpha") :closing ())
+                            (:title "P" :roadmaps () :closing ())
+                            (:title "P" :roadmaps ("alpha") :closing ((:title "Closing")))
+                            nil))
+              (let ((caught nil))
+                (handler-case
+                    (render-page-string (list :schema 1 :root "goal" :page page :nodes nodes) table "docs/roadmap.sexp")
+                  (error () (setf caught t)))
+                (unless caught
+                  (error "Accepted a bad :page: ~s" page))))))))
+
     (format t "=== Results: ~D passed, ~D failed ===~%" pass-count fail-count)
     (if (zerop fail-count)
         0
-        1))))
+        1)))
 
 ;;; CLI entrypoint
 
 (defun main (argv)
   (let ((check-only nil)
         (test-mode nil)
+        (evidence-dir nil)
         (positional nil))
-    (dolist (arg argv)
-      (cond
-        ((string= arg "--check")
-         (setf check-only t))
-        ((string= arg "--test")
-         (setf test-mode t))
-        ((and (> (length arg) 2) (string= (subseq arg 0 2) "--"))
-         (format *error-output* "Unknown flag: ~a~%" arg)
-         (sb-ext:exit :code 2))
-        (t
-         (push arg positional))))
+    (loop while argv do
+      (let ((arg (pop argv)))
+        (cond
+          ((string= arg "--check")
+           (setf check-only t))
+          ((string= arg "--test")
+           (setf test-mode t))
+          ((string= arg "--evidence")
+           (unless argv
+             (format *error-output* "--evidence needs a directory~%")
+             (sb-ext:exit :code 2))
+           (setf evidence-dir (pop argv)))
+          ((and (> (length arg) 2) (string= (subseq arg 0 2) "--"))
+           (format *error-output* "Unknown flag: ~a~%" arg)
+           (sb-ext:exit :code 2))
+          (t
+           (push arg positional)))))
     (setf positional (nreverse positional))
 
     (when test-mode
@@ -871,7 +1196,11 @@
     (let ((sexp-path (or (first positional) "docs/roadmap.sexp"))
           (roadmap-path (or (second positional) "ROADMAP.md")))
       (handler-case
-          (let ((code (render-to-roadmap-file sexp-path roadmap-path check-only)))
+          (let ((code (render-to-roadmap-file sexp-path roadmap-path check-only
+                                              (and evidence-dir
+                                                   (pathname (if (char= (char evidence-dir (1- (length evidence-dir))) #\/)
+                                                                 evidence-dir
+                                                                 (concatenate 'string evidence-dir "/")))))))
             (sb-ext:exit :code code))
         (error (e)
           (format *error-output* "Error: ~a~%" e)
