@@ -734,7 +734,10 @@ test-java: packet-wide-java packet-wide-java-negative-control
 # make/cards-java.mk) because the wide-scalar refusal gate
 # (tables-ports-refuse-wide-scalars) discovers every make/*.mk as a live port,
 # and a fragment named cards-java.mk would be refused there as a phantom port.
-.PHONY: cards-java-generate cards-java-wire-fuzz
+# The retain arm (cards-java-retain-fuzz) lives here too, NOT in a separate
+# make/cards-java-retain.mk, for the same reason (the dart leg's own retain
+# fragment was reddened by the same wildcard: docs/SPEC-TABLES.md §6.6).
+.PHONY: cards-java-generate cards-java-wire-fuzz cards-java-retain-fuzz
 
 # cards-java-generate writes the cards unit's Java into build/ (test-only, never
 # part of the committed generated/ tree).
@@ -781,6 +784,30 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@grep -qE '[1-9][0-9]* mutants' build/cards-java-wire-fuzz.log
 
 test-java: cards-java-wire-fuzz
+
+# cards-java-retain-fuzz is the SAME fuzzer through the RETENTION ARM
+# (docs/SPEC-TABLES.md §6.6): every mutant is read and written back through the
+# Card codec's retaining pair, and the two retention counters ride beside the
+# six. The seed, count and coverage greps are cards-java-wire-fuzz's, plus
+# --retain, so a retained save is held to the Go reference leg byte for byte.
+cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stamp
+	@rm -f build/cards-java-retain-fuzz.log
+	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
+		while [ "$$#" -ge 2 ]; do \
+			seed=$$1; n=$$2; shift 2; \
+			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
+				>> build/cards-java-retain-fuzz.log 2>&1; \
+			status=$$?; \
+			if [ $$status -ne 0 ]; then cat build/cards-java-retain-fuzz.log; exit $$status; fi; \
+		done
+	@cat build/cards-java-retain-fuzz.log
+	@grep -q '0 divergences' build/cards-java-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-java-retain-fuzz.log
+	@grep -qE '[1-9][0-9]* mutants' build/cards-java-retain-fuzz.log
+
+test-java: cards-java-retain-fuzz
 
 # ---------------------------------------------------------------------------
 # THE CARD CONSTRUCTS' BOUNDARY CONTROL (docs/SPEC-TABLES.md §2, §11)

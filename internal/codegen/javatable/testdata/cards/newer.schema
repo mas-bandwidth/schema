@@ -1,11 +1,21 @@
 // The NEWER declaration of the cross-read pair: `renamed` keeps the wire id of
-// `old_name` through `was`, and `extra` is a field the older build cannot name
-// (docs/SPEC-TABLES.md §4, §5).
+// `old_name` through `was`, and `extra`, `extra_num`, `extra_str`, `extra_ptr`
+// and `extra_grade` are fields the older build cannot name — an unknown string,
+// an unknown int32 scalar, an unknown string, an unknown *string pointer and an
+// unknown enum field (docs/SPEC-TABLES.md §4, §5, §6.6). The enum field is the
+// case §6.6 retains BY RESOLVING the variant reference, distinct from an
+// unknown variant in a field the reader DOES name, which is an excluded class.
 package newpkg
+
+enum Grade { low, high }
 
 table Card
 {
-    id      string(16)
-    renamed int32      | was = "old_name"
-    extra   string(16)
+    id          string(16)
+    renamed     int32       | was = "old_name"
+    extra       string(16)
+    extra_num   int32
+    extra_str   string(16)
+    extra_ptr   *string
+    extra_grade Grade
 }

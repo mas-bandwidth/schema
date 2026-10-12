@@ -284,6 +284,21 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, variable)
+	// THE REFLECTION DESCRIPTORS (docs/SPEC-TABLES.md §8): a table type
+	// descriptor per card table and the unit registry, emitted beside the
+	// variable form whose fields they describe.
+	view, err := generateViewFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, view)
+	// THE RETAIN-UNKNOWN SURFACE (docs/SPEC-TABLES.md §6.6): the retained load,
+	// measure and save for the card's constructs.
+	retain, err := generateRetainFiles(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, retain)
 	return out, nil
 }
 
@@ -342,6 +357,7 @@ func runtimeFileNames() []string {
 		"TableBytes",
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout",
+		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
 		"BuildVersion",
 	}
 }
