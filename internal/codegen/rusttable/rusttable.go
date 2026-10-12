@@ -106,6 +106,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		if body := g.fixedModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
 		}
+		// THE MESSAGE FORM (§3.3) is a fixed table's, so its batch surface
+		// rides beside the fixed form's module for the same roots.
+		if body := g.messageModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_message.rs"] = body
+		}
 	}
 
 	// the BLOCK form: nothing declares it, every fixed table has one, and it
