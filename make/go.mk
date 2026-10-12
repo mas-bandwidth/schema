@@ -558,7 +558,7 @@ test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-con
 # requires the home to move.
 .PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
 tables-go-runtime-home:
-	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
 tables-go-runtime-home-negative-control: bin/schema
 	@mkdir -p build
 	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
