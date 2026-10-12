@@ -109,5 +109,9 @@ func init() {
 	// refused a schema the reference writes bytes for and this port reads.
 	valueDefaultTargets = append(valueDefaultTargets, "rust")
 	registerListCarrier("rust") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
-	registerBuiltin(rustTarget{}, true, false, false, true)
+	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
+	// *bytes stays a named refusal (§11), so rust registers as a string carrier
+	// alone and not as a byte-buffer carrier.
+	registerStringCarrier("rust")
+	registerBuiltin(rustTarget{}, true, false, false, false)
 }
