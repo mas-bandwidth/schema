@@ -327,6 +327,66 @@ function TableVariableSkip(r, kind, report) {
   }
 }
 
+// ---- the node-table FIRST PASS (docs/SPEC-TABLES.md §3.1) -----------------
+
+// TableVariableNodeTableScan reads the root body's reserved node-table field
+// BEFORE any value decode, so a body that stops on damage still holds the
+// pointer slots' records in hand — the numbering is positional and read once,
+// never re-derived mid-decode. A record whose type id this reader cannot name
+// keeps its index and counts ONE unknown at the record; every pointer naming it
+// reads null (§3.1). A *string blob's bytes are validated here too, one
+// malformed per bad record. The table is whole or it is nothing: a scan that
+// cannot frame the records leaves them empty and every pointer null.
+function TableVariableNodeTableScan(bytes, table, end, report) {
+  const records = [];
+  const w = new TableVariableReader(bytes, 1, end);
+  let payload = null, present = false, bad = false;
+  while (!bad) {
+    const ref = w.leb();
+    if (w.bad) { break; }
+    if (ref === 0) { break; }
+    if (ref > table.length) { break; }
+    if (w.at >= w.end) { break; }
+    const id = table[ref - 1];
+    const kind = w.u8();
+    if (id === TableNodeTableId) {
+      present = true;
+      if (kind !== 12) { report.malformed = true; bad = true; break; }
+      const L = w.leb();
+      if (w.bad || w.at + L > w.end) { bad = true; break; }
+      payload = bytes.slice(w.at, w.at + L);
+      w.at += L;
+      continue;
+    }
+    if (!TableVariableSkip(w, kind)) { break; }
+  }
+  if (present && bad) { report.malformed = true; return records; }
+  if (!present) { return records; }
+  const rec = new TableVariableReader(payload, 0, payload.length);
+  const count = rec.leb();
+  if (rec.bad) { report.malformed = true; return records; }
+  const raw = [];
+  let good = true;
+  for (let i = 0; i < count && good; i++) {
+    const tref = rec.leb();
+    if (rec.bad || tref === 0 || tref > table.length) { good = false; break; }
+    const tlen = rec.leb();
+    if (rec.bad || rec.at + tlen > rec.end) { good = false; break; }
+    raw.push({ ref: tref, body: payload.slice(rec.at, rec.at + tlen) });
+    rec.at += tlen;
+  }
+  if (good && rec.at !== rec.end) { good = false; }
+  if (!good) { report.malformed = true; return records; }
+  for (const r of raw) {
+    const tid = table[r.ref - 1];
+    if (tid !== TableStringBlobId) { report.unknown++; records.push(null); continue; }
+    const dec = TableVariableUtf8Decode(r.body);
+    if (!dec.ok) { report.malformed = true; records.push(null); continue; }
+    records.push(dec.s);
+  }
+  return records;
+}
+
 // ---- the text form's string escaping (docs/SPEC-TABLES.md §16) -------------
 
 function TableVariableJsonString(s) {
@@ -506,34 +566,26 @@ func (g *variableGen) emitBodyRead(st *ir.Struct) {
 	g.pf("    const id = table[ref - 1];\n")
 	g.pf("    if (r.at >= r.end) { report.malformed = true; break; }\n")
 	g.pf("    const kind = r.u8();\n")
+	// THE RESERVED BUILD-VERSION AND VOCABULARY IDS ride in the ANNOUNCEMENT
+	// and nowhere else (docs/SPEC-TABLES.md §3.3): a reference that resolves to
+	// one in any body but the announcement's own is malformed, the walk stops
+	// there and no field after it is read, never an unknown (§3.1).
+	g.pf("    if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.malformed = true; break; }\n")
 	g.pf("    let named = false;\n")
 	for _, f := range st.Fields {
 		g.emitReadField(st, f)
 	}
 	// the reserved node-table field (docs/SPEC-TABLES.md §3.1): it rides in a
 	// VARIABLE root body and nowhere else — a nested body naming it is damage.
+	// The records themselves were read by <T>Load's first pass (nodeTableScan),
+	// so this walk steps over the field and never counts it unknown.
 	g.pf("    if (id === TableNodeTableId) {\n")
 	g.pf("      named = true;\n")
 	g.pf("      if (nested) { report.malformed = true; break; }\n")
-	g.pf("      if (kind !== 12) { report.malformed = true; break; }\n")
-	g.pf("      const L = r.leb();\n")
-	g.pf("      const rec = new TableVariableReader(r.b, r.at, r.at + L);\n")
-	g.pf("      const count = rec.leb();\n")
-	g.pf("      let good = true;\n")
-	g.pf("      for (let i = 0; i < count; i++) {\n")
-	g.pf("        if (rec.at >= rec.end) { good = false; break; }\n")
-	g.pf("        const tref = rec.leb();\n")
-	g.pf("        const tlen = rec.leb();\n")
-	g.pf("        const tid = tref <= table.length ? table[tref - 1] : -1n;\n")
-	g.pf("        const body = r.b.slice(rec.at, rec.at + tlen);\n")
-	g.pf("        rec.at += tlen;\n")
-	g.pf("        records.push({ typeId: tid, body });\n")
-	g.pf("      }\n")
-	g.pf("      if (!good || rec.at !== rec.end) { report.malformed = true; records.length = 0; }\n")
-	g.pf("      r.at += L;\n")
+	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
+	g.pf("      continue;\n")
 	g.pf("    }\n")
 	g.pf("    if (!named) {\n")
-	g.pf("      if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.malformed = true; break; }\n")
 	g.pf("      report.unknown++;\n")
 	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
 	g.pf("    }\n")
@@ -816,7 +868,6 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	g.emitRootJson(st)
 }
 
-
 // emitRootSave emits <T>Save and <T>Measure: form byte 1, the body, the node
 // table field, then the id table in first-use order (docs/SPEC-TABLES.md §3).
 func (g *variableGen) emitRootSave(st *ir.Struct) {
@@ -906,7 +957,9 @@ func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  const ids = new TableVariableIds();\n")
 	g.pf("  const pending = [];\n")
-	g.pf("  const records = [];\n")
+	// the node table is read FIRST, before any value decode (docs/SPEC-TABLES.md
+	// §3.1): a body that stops on damage still has its pointer slots' records.
+	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report);\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
 	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false);\n", st.Name)
 	g.pf("  for (const p of pending) {\n")
@@ -915,10 +968,8 @@ func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("    if (index === 1) { report.kindMismatch++; continue; }\n")
 	g.pf("    const rec = records[index - 2];\n")
 	g.pf("    if (rec === undefined) { report.malformed = true; continue; }\n")
-	g.pf("    if (rec.typeId !== TableStringBlobId) { report.kindMismatch++; continue; }\n")
-	g.pf("    const dec = TableVariableUtf8Decode(rec.body);\n")
-	g.pf("    if (!dec.ok) { report.malformed = true; continue; }\n")
-	g.pf("    obj[slot] = dec.s;\n")
+	g.pf("    if (rec === null) { continue; }\n")
+	g.pf("    obj[slot] = rec;\n")
 	g.pf("  }\n")
 	g.pf("  return v;\n")
 	g.pf("}\n\n")
