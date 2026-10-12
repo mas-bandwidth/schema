@@ -61,9 +61,507 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	fmt.Fprintf(&b, "  @announcement <<%s>>\n", elixirBytes(ir.TableAnnouncement(u)))
 	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
 	b.WriteString(messageRuntimeBody)
+	b.WriteString(messageBatchRuntimeBody)
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
+
+// messageBatchRuntimeBody is the batch surface of docs/SPEC-TABLES.md §3.3: a
+// batch is the form byte 2, a one-byte count of bodies minus one, then the
+// bodies as ONE CONTINUOUS BIT STREAM ending at a zero reference each, then the
+// zero pad to the next byte boundary (§3.3's "THE WIRE, EXACTLY"). The verbs
+// are plural because the primitive is a batch and a single message is the batch
+// of one; the five answers are the two write-side refusals and the read-side
+// capacity refusal, damage inside a body delivering the bodies before it, and
+// bytes after the pad (§3.3's "THE BATCH SURFACE'S FIVE ANSWERS").
+//
+// THE BODY IS BITPACKED and reads through the ANNOUNCED VOCABULARY, which
+// announce_read already resolved into entries of {id, kind, shape}: a body is a
+// sequence of fields, each a REFERENCE (ref_bits wide, counting from one) and a
+// PAYLOAD at the width the announced shape states (§3.3's "A BODY IS A SEQUENCE
+// OF FIELDS"). No kind byte, no length and no alignment rides inside a body, so
+// a reader that has lost its position has lost it for the rest of the batch:
+// damage is terminal for the batch (§3.3's "DAMAGE IS TERMINAL FOR THE BATCH").
+const messageBatchRuntimeBody = `  @batch_max 256
+
+  @doc """
+  The batch's byte size for ` + "`" + `values` + "`" + `, or the refusal by name (docs/SPEC-TABLES.md §3.3).
+  """
+  def measure_messages(%__MODULE__{announced: true} = vocab, values) when is_list(values) do
+    n = length(values)
+
+    if n < 1 or n > @batch_max do
+      {:error, :batch_too_large}
+    else
+      case encode_bodies(vocab, values, {0, 0}) do
+        {:ok, {acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
+        :error -> {:error, :malformed}
+      end
+    end
+  end
+
+  def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  @doc """
+  Write ` + "`" + `values` + "`" + ` as one batch (docs/SPEC-TABLES.md §3.3).
+  """
+  def save_messages(%__MODULE__{announced: true} = vocab, values) when is_list(values) do
+    n = length(values)
+
+    if n < 1 or n > @batch_max do
+      {:error, :batch_too_large}
+    else
+      case encode_bodies(vocab, values, {0, 0}) do
+        {:ok, bits} -> {:ok, frame_batch(n, bits)}
+        :error -> {:error, :malformed}
+      end
+    end
+  end
+
+  def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  @doc """
+  Read one batch into at most ` + "`" + `capacity` + "`" + ` bodies (docs/SPEC-TABLES.md §3.3).
+  """
+  def load_messages(vocab, data, capacity \\ @batch_max)
+
+  def load_messages(%__MODULE__{announced: true} = vocab, <<2, m, rest::binary>>, capacity) do
+    count = m + 1
+
+    if count > capacity do
+      # "M above the caller's capacity on the read side is a refusal by name"
+      # and "the reader sets the returned count to the wire's M before it
+      # returns the refusal" (docs/SPEC-TABLES.md §3.3).
+      {:error, :batch_too_large, count}
+    else
+      case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
+        {:ok, bodies, r} ->
+          if batch_ends_clean?(r) do
+            {:ok, bodies}
+          else
+            # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
+            {:malformed, count, bodies}
+          end
+
+        # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
+        {:malformed, k, bodies} ->
+          {:malformed, k, bodies}
+      end
+    end
+  end
+
+  def load_messages(%__MODULE__{announced: true}, <<2>>, _capacity), do: {:error, :malformed}
+
+  def load_messages(%__MODULE__{announced: true}, <<_form, _::binary>>, _capacity),
+    do: {:error, :newer_form}
+
+  def load_messages(%__MODULE__{announced: true}, _data, _capacity), do: {:error, :malformed}
+
+  def load_messages(_vocab, _data, _capacity), do: {:error, :no_vocabulary}
+
+  # ---------------------------------------------------------------------------
+  # THE BATCH: form byte 2, a count of bodies minus one, then one bit stream
+  # ---------------------------------------------------------------------------
+
+  defp frame_batch(n, {acc, nbits}) do
+    <<2, n - 1, int_to_bytes(acc, div(nbits + 7, 8))::binary>>
+  end
+
+  # ---------------------------------------------------------------------------
+  # THE WRITER: one bit stream, low bit first (docs/SPEC-TABLES.md §3.3)
+  #
+  # The accumulator is ONE INTEGER and a bit count. A value's bit 0 lands at the
+  # stream's current bit and its bit i at current + i, which is the packet wire's
+  # own low-bit-first order; int_to_bytes spills it into bytes at the end.
+  # ---------------------------------------------------------------------------
+
+  defp put_bits({acc, nbits}, value, n), do: {acc ||| ((value &&& bit_mask(n)) <<< nbits), nbits + n}
+
+  defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
+
+  defp encode_bodies(_vocab, [], acc), do: {:ok, acc}
+
+  defp encode_bodies(vocab, [body | rest], acc) do
+    case encode_body(vocab, body, acc) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2)
+      :error -> :error
+    end
+  end
+
+  defp encode_body(vocab, body, acc) do
+    case encode_fields(vocab, body, acc) do
+      {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
+      :error -> :error
+    end
+  end
+
+  defp encode_fields(_vocab, [], acc), do: {:ok, acc}
+
+  defp encode_fields(vocab, [{ref, value} | rest], acc) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} ->
+        acc2 = put_bits(acc, ref, vocab.ref_bits)
+
+        case encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2) do
+          {:ok, acc3} -> encode_fields(vocab, rest, acc3)
+          :error -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp encode_value(_vocab, 0, _shape, _elem, _value, acc), do: {:ok, acc}
+  defp encode_value(_vocab, 32, _shape, _elem, _value, acc), do: {:ok, acc}
+
+  defp encode_value(_vocab, 1, _shape, _elem, value, acc), do: {:ok, put_bits(acc, value, 1)}
+
+  defp encode_value(_vocab, kind, shape, _elem, value, acc)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       do: {:ok, encode_scalar(kind, shape, value, acc)}
+
+  defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
+
+  defp encode_value(_vocab, 11, _shape, _elem, value, acc),
+    do: {:ok, put_bits(acc, f64_to_bits(value), 64)}
+
+  defp encode_value(_vocab, 12, shape, _elem, value, acc), do: encode_string(shape, value, acc)
+
+  defp encode_value(vocab, 13, _shape, _elem, value, acc), do: encode_body(vocab, value, acc)
+
+  defp encode_value(vocab, 14, shape, elem, value, acc),
+    do: encode_array(vocab, shape, elem, value, acc)
+
+  defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
+
+  defp encode_value(vocab, 30, _shape, _elem, value, acc),
+    do: {:ok, put_bits(acc, value, vocab.ref_bits)}
+
+  defp encode_value(_vocab, _kind, _shape, _elem, _value, _acc), do: :error
+
+  defp encode_scalar(kind, shape, value, acc) do
+    bits = scalar_bits(kind, shape)
+
+    raw =
+      case shape do
+        %{packing: 1, base: base} -> value - base
+        _ -> mask_bits(value, bits)
+      end
+
+    put_bits(acc, raw, bits)
+  end
+
+  defp encode_float(%{packing: 0}, value, acc),
+    do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
+
+  defp encode_float(_shape, _value, _acc), do: :error
+
+  defp encode_string(shape, value, acc) do
+    n = byte_size(value)
+    acc2 = put_bits(acc, n, bit_length(shape.max))
+    {:ok, put_bytes(align_write(acc2), value)}
+  end
+
+  defp encode_array(vocab, shape, elem, value, acc) do
+    count = length(value)
+    acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
+    acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
+    encode_elements(vocab, elem, value, acc3)
+  end
+
+  defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
+
+  defp encode_elements(vocab, elem, [v | rest], acc) do
+    case encode_value(vocab, elem.kind, elem.shape, nil, v, acc) do
+      {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
+      :error -> :error
+    end
+  end
+
+  defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
+
+  defp encode_union(vocab, {ref, value}, acc) do
+    acc2 = put_bits(acc, ref, vocab.ref_bits)
+
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
+      :error -> :error
+    end
+  end
+
+  # A byte run appended whole: the writer must be at a byte boundary, which the
+  # align that precedes a string or a bytes array guarantees.
+  defp put_bytes({acc, nbits}, bytes) do
+    n = byte_size(bytes)
+    {acc ||| (bytes_to_int(bytes) <<< nbits), nbits + n * 8}
+  end
+
+  # ---------------------------------------------------------------------------
+  # THE READER: one bit stream, low bit first, terminal damage (§3.3)
+  #
+  # The reader is the body as ONE LITTLE-ENDIAN INTEGER and a bit offset: value
+  # bit i sits at integer bit (offset + i), so reading n bits is a shift and a
+  # mask and never a byte-order question.
+  # ---------------------------------------------------------------------------
+
+  defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
+
+  defp read_bodies(vocab, r, n, acc) do
+    case read_body(vocab, r, []) do
+      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
+      :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
+    end
+  end
+
+  defp read_body(vocab, r, acc) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, 0, rest} ->
+        {:ok, Enum.reverse(acc), rest}
+
+      {:ok, ref, rest} ->
+        case entry_at(vocab, ref) do
+          {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
+            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
+              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
+              :malformed -> :malformed
+            end
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}
+  defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}
+
+  defp read_value(_vocab, 1, _shape, _elem, r), do: get_bits(r, 1)
+
+  defp read_value(_vocab, kind, shape, _elem, r)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       do: read_scalar(kind, shape, r)
+
+  defp read_value(_vocab, 10, shape, _elem, r), do: read_float(shape, r)
+
+  defp read_value(_vocab, 11, _shape, _elem, r) do
+    case get_bits(r, 64) do
+      {:ok, v, rest} -> {:ok, f64_from_bits(v), rest}
+      :error -> :malformed
+    end
+  end
+
+  defp read_value(_vocab, 12, shape, _elem, r), do: read_string(shape, r)
+
+  defp read_value(vocab, 13, _shape, _elem, r), do: read_body(vocab, r, [])
+
+  defp read_value(vocab, 14, shape, elem, r), do: read_array(vocab, shape, elem, r)
+
+  defp read_value(vocab, 15, _shape, _elem, r), do: read_union(vocab, r)
+
+  defp read_value(vocab, 30, _shape, _elem, r), do: read_enum(vocab, r)
+
+  defp read_value(_vocab, _kind, _shape, _elem, _r), do: :malformed
+
+  defp read_scalar(kind, shape, r) do
+    n = scalar_bits(kind, shape)
+
+    case get_bits(r, n) do
+      {:ok, raw, rest} -> {:ok, scalar_value(kind, shape, raw), rest}
+      :error -> :malformed
+    end
+  end
+
+  defp read_float(%{packing: 0}, r) do
+    case get_bits(r, 32) do
+      {:ok, v, rest} -> {:ok, f32_from_bits(v), rest}
+      :error -> :malformed
+    end
+  end
+
+  defp read_float(_shape, _r), do: :malformed
+
+  defp read_string(shape, r) do
+    with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
+         {:ok, rest2} <- align(rest),
+         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+      {:ok, bytes, rest3}
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp read_array(vocab, shape, elem, r) do
+    with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
+         {:ok, rest2} <- maybe_align(elem, rest) do
+      read_elements(vocab, elem, shape.min + offset, rest2, [])
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp maybe_align(%{kind: 6}, r), do: align(r)
+  defp maybe_align(_elem, r), do: {:ok, r}
+
+  defp read_elements(_vocab, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
+
+  defp read_elements(vocab, elem, n, r, acc) do
+    case read_value(vocab, elem.kind, elem.shape, nil, r) do
+      {:ok, v, rest} -> read_elements(vocab, elem, n - 1, rest, [v | acc])
+      :malformed -> :malformed
+    end
+  end
+
+  defp read_union(vocab, r) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, 0, rest} ->
+        {:ok, :none, rest}
+
+      {:ok, ref, rest} ->
+        case entry_at(vocab, ref) do
+          {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
+              {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
+              :malformed -> :malformed
+            end
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  defp read_enum(vocab, r) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, 0, rest} ->
+        {:ok, 0, rest}
+
+      {:ok, ref, rest} ->
+        case entry_at(vocab, ref) do
+          {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+            {:ok, ref, rest}
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  # ---- the shared bit helpers --------------------------------------------------
+
+  defp scalar_bits(kind, %{packing: 1, bits: b})
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       do: b
+
+  defp scalar_bits(kind, _shape), do: kind_bits(kind)
+
+  defp scalar_value(kind, %{packing: 1, base: base}, raw), do: base + raw
+
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18],
+    do: sign_extend(raw, kind_bits(kind))
+
+  defp scalar_value(_kind, _shape, raw), do: raw
+
+  defp sign_extend(raw, bits) do
+    if ((raw >>> (bits - 1)) &&& 1) == 1 do
+      raw - (1 <<< bits)
+    else
+      raw
+    end
+  end
+
+  defp mask_bits(value, bits), do: value &&& bit_mask(bits)
+
+  defp bit_mask(0), do: 0
+  defp bit_mask(n), do: (1 <<< n) - 1
+
+  defp get_bits({int, off, total}, n) do
+    if off + n > total do
+      :error
+    else
+      {:ok, (int >>> off) &&& bit_mask(n), {int, off + n, total}}
+    end
+  end
+
+  defp align({int, off, total}) do
+    pad = rem(8 - rem(off, 8), 8)
+
+    if off + pad > total or ((int >>> off) &&& bit_mask(pad)) != 0 do
+      :error
+    else
+      {:ok, {int, off + pad, total}}
+    end
+  end
+
+  # r is byte-aligned here (align precedes the call), so read n bytes whole.
+  defp take_bytes({int, off, total}, n) do
+    if off + n * 8 > total do
+      :error
+    else
+      bytes = for i <- 0..(n - 1), into: <<>>, do: <<(int >>> (off + 8 * i)) &&& 0xFF>>
+      {:ok, bytes, {int, off + n * 8, total}}
+    end
+  end
+
+  defp entry_at(vocab, ref) do
+    if ref >= 1 and ref <= length(vocab.entries) do
+      {:ok, Enum.at(vocab.entries, ref - 1)}
+    else
+      :error
+    end
+  end
+
+  # The batch ends at the pad to the byte boundary: no more than seven bits left,
+  # and all of them zero (docs/SPEC-TABLES.md §3.3).
+  defp batch_ends_clean?({int, off, total}) do
+    rem_bits = total - off
+    rem_bits < 8 and (rem_bits == 0 or ((int >>> off) &&& bit_mask(rem_bits)) == 0)
+  end
+
+  defp int_to_bytes(_int, 0), do: <<>>
+
+  defp int_to_bytes(int, nbytes) do
+    for i <- 0..(nbytes - 1), into: <<>>, do: <<(int >>> (8 * i)) &&& 0xFF>>
+  end
+
+  defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
+  defp bytes_to_int(<<>>, _i, acc), do: acc
+  defp bytes_to_int(<<b, rest::binary>>, i, acc), do: bytes_to_int(rest, i + 1, acc ||| (b <<< (8 * i)))
+
+  defp bit_length(0), do: 0
+  defp bit_length(n), do: bit_length(n, 0)
+  defp bit_length(n, b) when n > 0, do: bit_length(n >>> 1, b + 1)
+  defp bit_length(_n, b), do: b
+
+  defp f64_from_bits(v) do
+    <<f::little-float-64>> = <<v::little-64>>
+    f
+  end
+
+  defp f64_to_bits(f) do
+    <<v::little-64>> = <<f::little-float-64>>
+    v
+  end
+
+  defp f32_from_bits(v) do
+    <<f::little-float-32>> = <<v::little-32>>
+    f
+  end
+
+  defp f32_to_bits(f) do
+    <<v::little-32>> = <<f::little-float-32>>
+    v
+  end
+`
 
 // elixirBytes spells a byte run as an Elixir binary literal, low byte first.
 func elixirBytes(bytes []byte) string {
