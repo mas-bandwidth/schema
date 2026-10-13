@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "CardTable.h"
@@ -49,6 +50,17 @@ std::vector<uint8_t> CardWire(const Record & in);
 // CheckCard enforces the customer bounds and the well-formedness of the opaque
 // body and every collection element before bytes are published (§2.5, §2.9).
 bool CheckCard(const Card * root, bool & over_body, std::string & over_list);
+
+// Parse reads the admitted brief text and publishes a Record only on complete
+// checked success (tables/cards/parse.go; docs/SPEC-TABLES.md §2, §6.2). The
+// body is the exact suffix after the last header line's terminator. On refusal
+// refuse_class names the conformance reason class (FORMAT.md), empty on success.
+bool Parse(const char * text, size_t len, Record & out, std::string & refuse_class);
+
+// Render reads the record's wire into the informational text view: RESULT first,
+// the mapped keys in the fixed documented order, extras in stored order, then
+// the body bytes verbatim (tables/cards/render.go; docs/SPEC-TABLES.md §6.2, §16).
+bool Render(const Record & in, std::vector<char> & out, TableReport & report);
 
 } // namespace cards
 

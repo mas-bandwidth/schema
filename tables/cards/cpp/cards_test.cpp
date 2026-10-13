@@ -142,9 +142,61 @@ static void TestCardBoundsRefuseBeforePublishing() {
     std::printf("PASS TestCardBoundsRefuseBeforePublishing\n");
 }
 
+static void TestParseRenderMatchesGo() {
+    const char * renders[] = {
+        "card-populated", "initial-populated", "consumers-populated", "empty-consumers" };
+    for (const char * name : renders) {
+        std::string wire = readFile((std::string("tables/cards/conformance/cases/") + name + ".wire").c_str());
+        std::string exp = readFile((std::string("tables/cards/conformance/expected/") + name + ".txt").c_str());
+        CHECK(!wire.empty());
+        CHECK(!exp.empty());
+        cards::Record rec;
+        cards::TableReport rep;
+        CHECK(cards::CardLoad((const uint8_t *)wire.data(), wire.size(), rec, rep));
+        std::vector<char> out;
+        cards::TableReport rep2;
+        CHECK(cards::Render(rec, out, rep2));
+        if (out.size() != exp.size() || std::memcmp(out.data(), exp.data(), exp.size()) != 0) {
+            std::printf("FAIL render %s: got %zu bytes, want %zu\n", name, out.size(), exp.size());
+            ++gFailures;
+        }
+    }
+
+    {
+        std::string txt = readFile("tables/cards/conformance/cases/normalized-valid.md");
+        std::string exp = readFile("tables/cards/conformance/expected/normalized-valid.wire");
+        CHECK(!txt.empty());
+        CHECK(!exp.empty());
+        cards::Record rec;
+        std::string refuse;
+        CHECK(cards::Parse(txt.data(), txt.size(), rec, refuse));
+        std::vector<uint8_t> w = cards::CardWire(rec);
+        if (w.size() != exp.size() || std::memcmp(w.data(), exp.data(), exp.size()) != 0) {
+            std::printf("FAIL parse normalized-valid: got %zu bytes, want %zu\n", w.size(), exp.size());
+            ++gFailures;
+        }
+    }
+
+    {
+        std::string txt = readFile("tables/cards/conformance/cases/rejected-legacy.md");
+        CHECK(!txt.empty());
+        cards::Record rec;
+        std::string refuse;
+        bool ok = cards::Parse(txt.data(), txt.size(), rec, refuse);
+        CHECK(!ok);
+        if (refuse != "stranded-key PRIORITY") {
+            std::printf("FAIL parse rejected-legacy: refuse=%s\n", refuse.c_str());
+            ++gFailures;
+        }
+    }
+
+    std::printf("PASS TestParseRenderMatchesGo\n");
+}
+
 int main() {
     TestCardRoundTripsThePopulatedFixture();
     TestCardBoundsRefuseBeforePublishing();
+    TestParseRenderMatchesGo();
     if (gFailures != 0) {
         std::printf("cards_test: %d failure(s)\n", gFailures);
         return 1;
