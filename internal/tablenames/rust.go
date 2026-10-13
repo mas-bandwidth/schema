@@ -54,5 +54,20 @@ func init() {
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
+		// THE VARIABLE WIRE's runtime (docs/SPEC-TABLES.md §3, §3.1), emitted for
+		// a unit with a variable table the Rust leg carries: the save's node
+		// numbering, the load's node reader and its slots, the scalar ladder,
+		// the retention walk's cap, and the card descriptors.
+		Name{Name: "TableNodeGraph", What: "the save's node numbering: first-visit order over pointer edges (§3.1)"},
+		Name{Name: "TableNodeRecord", What: "one record of the save's numbering: a table node or a blob (§3.1, §2.5)"},
+		Name{Name: "TableNodeReader", What: "the node table a load gathers before any body (§3.1)"},
+		Name{Name: "TableNodeSlot", What: "one record's state in a load's numbering (§3.1)"},
+		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
+		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
+		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},
+		Name{Name: "TableWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
+		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
+		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
+		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},
 	)
 }

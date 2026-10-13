@@ -1048,6 +1048,10 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	isArray := false
 	arrayBound := int64(0)
 	switch {
+	case f.Type.Blob():
+		// a BYTE BUFFER's slot is a reference to a blob node, which is bytes and
+		// carries no record of its own (docs/SPEC-TABLES.md §2.5)
+		storage, elemSize = "TableCookStorage::Reference", 8
 	case f.Type.Pointer:
 		storage, elemSize = "TableCookStorage::Reference", 8
 		record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))

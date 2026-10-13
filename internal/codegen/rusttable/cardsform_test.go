@@ -64,6 +64,13 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		{"wide_int", &ir.Field{Name: "wide", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}, []string{"128-bit"}},
 		{"fixed", &ir.Field{Name: "ratio", Type: ir.FieldType{Kind: ir.TFixed, Width: 16}}, []string{"fixed-point"}},
 		{"union_arm", &ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TNamed, Ref: union}}, []string{"union arms"}},
+		{"wstring", &ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}}, []string{"wstring"}},
+		{"guarded", &ir.Field{Name: "when", Guard: "armed", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"guarded"}},
+		{"fixed_array", &ir.Field{Name: "slots", Array: ir.ArrayFixed, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"fixed-length array"}},
+		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
+		{"flags", &ir.Field{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}}, []string{"flags"}},
+		{"nested_type", &ir.Field{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}}, []string{"nested type"}},
+		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},
 	}
 
 	for _, tc := range cases {
