@@ -10,14 +10,19 @@
 // ToJSON, Wire, Parse and Render, each matching the Go leg byte for byte on the
 // shared corpus (tla/CardHops.tla — ImplementationsAgree, HopOrderIrrelevant).
 
+import { createHash } from "node:crypto";
 import {
   Card,
   CardLoad,
   CardLoadMeasure,
+  CardLoadRetain,
+  CardMeasureRetain,
   CardSave,
+  CardSaveRetain,
   CardToJson,
   CardFromJson,
   TableVariableReport,
+  TableVariableRetain,
 } from "../../../build/tables-generated-js/cards/CardsVariable.js";
 
 // MaxBodyBytes is the customer ceiling on one card's opaque body. The schema
@@ -702,4 +707,211 @@ function priorityString(p) {
     case "blocker": return "blocker";
   }
   return null;
+}
+
+// ---- upgrade and strict read (tables/cards/upgrade.go) -----------------------
+
+// MaxRetainBytes is the customer ceiling on the retained-record byte store and
+// MaxRetainIDs on the retained-id entry store; neither ever grows on demand
+// (docs/SPEC-TABLES.md §6.6).
+export const MaxRetainBytes = 1 << 20;
+export const MaxRetainIDs = 4096;
+
+// Upgrade rewrites wire through the generated retaining region path so every
+// field the current declaration cannot name is preserved at the end of its own
+// body (§6.6). It returns nil output and a named error when any value would be
+// lost — RetainLost, KindMismatch, Clamped or Malformed — or when the wire is
+// refused; the input wire is never mutated (tla/CardVersioning.tla:
+// NoFieldLost, BodyUnchanged, RefusalKeepsOriginal, ShippedUpgradeSucceeds).
+export function Upgrade(wire) {
+  return upgrade(wire, MaxRetainBytes, MaxRetainIDs);
+}
+
+function upgrade(wire, retainBytes, retainIDs) {
+  const report = new TableVariableReport();
+  const n = CardLoadMeasure(wire);
+  if (n < 0) {
+    CardLoad(wire, report);
+    return { out: null, report, error: new CardError("cards: upgrade: wire is not a card", "malformed") };
+  }
+  const retain = new TableVariableRetain(new Uint8Array(retainBytes), new Array(retainIDs));
+  const root = CardLoadRetain(wire, retain, report);
+  if (root === null) {
+    return { out: null, report, error: new CardError("cards: upgrade: wire is malformed", "malformed") };
+  }
+  const err = checkCard(root);
+  if (err !== null) return { out: null, report, error: err };
+  const size = CardMeasureRetain(root, retain);
+  if (size < 0) {
+    return { out: null, report, error: new CardError("cards: upgrade: measure refused the retained card", "malformed") };
+  }
+  const out = new Uint8Array(size);
+  const saved = CardSaveRetain(root, retain, out, report);
+  if (saved === null || saved.length !== size) {
+    return { out: null, report, error: new CardError("cards: upgrade: save did not fill the measured wire", "malformed") };
+  }
+  const lerr = lossErr(report);
+  if (lerr !== null) return { out: null, report, error: lerr };
+  return { out: saved, report, error: null };
+}
+
+// lossErr names the report events that make a rewrite unsafe (§6.6); Unknown,
+// Retained and Widened alone are not loss (§4).
+function lossErr(report) {
+  if (report.retainLost > 0) {
+    return new CardError(`cards: upgrade: ${report.retainLost} retained field(s) lost, refusing to replace`, "retain-lost");
+  }
+  if (report.kindMismatch > 0) {
+    return new CardError(`cards: upgrade: ${report.kindMismatch} kind mismatch(es), refusing to replace`, "malformed");
+  }
+  if (report.clamped > 0) {
+    return new CardError(`cards: upgrade: ${report.clamped} clamped value(s), refusing to replace`, "malformed");
+  }
+  if (report.malformed) {
+    return new CardError("cards: upgrade: malformed wire, refusing to replace", "malformed");
+  }
+  return null;
+}
+
+// ReadStrict reads wire and refuses any data the current declaration cannot
+// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
+// (docs/SPEC-TABLES.md §4).
+export function ReadStrict(wire) {
+  const { record, report, error } = Load(wire);
+  if (error !== null) return { record: null, report, error };
+  if (report.unknown > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.unknown} unknown field(s), unsupported data`, "unknown-present") };
+  if (report.kindMismatch > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.kindMismatch} kind mismatch(es), unsupported data`, "malformed") };
+  if (report.clamped > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.clamped} clamped value(s), unsupported data`, "malformed") };
+  if (report.malformed) return { record: null, report, error: new CardError("cards: strict: malformed wire, unsupported data", "malformed") };
+  return { record, report, error: null };
+}
+
+// ---- the task hash and field edits (tables/cards/edit.go) --------------------
+
+// refuseLossy names the read events that make a record unsafe to hash or
+// rewrite (docs/SPEC-TABLES.md §4, §6.6).
+function refuseLossy(report) {
+  if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0 || report.retainLost > 0 || report.malformed) {
+    throw new CardError(
+      `cards: record has loss events (unknown=${report.unknown} kindMismatch=${report.kindMismatch} clamped=${report.clamped} retainLost=${report.retainLost} malformed=${report.malformed}): refused, never hashed or rewritten`,
+      "unknown-present",
+    );
+  }
+}
+
+function hashU64(h, v) {
+  const b = new DataView(new ArrayBuffer(8));
+  b.setBigUint64(0, BigInt(v), true);
+  h.update(new Uint8Array(b.buffer));
+}
+
+function hashText(h, text) {
+  hashU64(h, text.length);
+  h.update(text);
+}
+
+function hashPathList(h, list, name) {
+  if (list === null || list === undefined) throw new CardError(`cards: ${name} list is malformed`, "malformed");
+  hashU64(h, list.length);
+  for (const e of list) hashText(h, utf8Bytes(e.s));
+}
+
+// TaskHash returns the hex digest of a record's TASK — body, paths, new,
+// shared, test and done in that order, each framed as an unsigned 64-bit
+// little-endian byte length then its bytes, each list as a count then its
+// length-prefixed elements; needs, tier, priority and machine fields are
+// excluded (docs/SPEC-TABLES.md §5; tla/CardHops.tla — TaskHashStable). A nil,
+// failed, malformed or lossy record is refused with an error, never hashed.
+export function TaskHash(record) {
+  if (record === null || record._root === null) throw new CardError("cards: nil record", "malformed");
+  refuseLossy(record._report);
+  const h = createHash("sha256");
+  hashText(h, utf8Bytes(record._root.body ?? ""));
+  hashPathList(h, record._root.paths, "paths");
+  hashPathList(h, record._root._new, "_new");
+  hashPathList(h, record._root.shared, "shared");
+  hashText(h, utf8Bytes(record._root.test ?? ""));
+  hashText(h, utf8Bytes(record._root.done ?? ""));
+  return h.digest("hex");
+}
+
+function validateStrings(name, values, bound) {
+  for (const s of values) {
+    if (utf8Length(s) > bound) {
+      throw new CardError(`cards: ${name} element is ${utf8Length(s)} bytes, past its ${bound}-byte bound`, "malformed");
+    }
+    if (!isWellFormedUtf8(s) || hasNul(s)) {
+      throw new CardError(`cards: ${name} has an element that is not well-formed UTF-8 without NUL`, "malformed");
+    }
+  }
+}
+
+function checkListCeiling(name, n) {
+  if (n > MaxListEntries) {
+    throw new CardError(`cards: ${name} has ${n} entries, past the ${MaxListEntries}-entry ceiling (docs/SPEC-TABLES.md §2.9)`, `list-bound ${name} 512`);
+  }
+}
+
+// edit is the shared atomic rewrite: check the current record is safe, reload
+// it into a fresh independent decode, apply mutate to the root, validate the
+// whole rebuilt card, pack it, and only on complete success swap the record's
+// owned wire (docs/SPEC-TABLES.md §6.2). Any refusal leaves the original wire
+// untouched (tla/CardHops.tla — EditDropsUnknown, BodyUnchanged).
+function edit(record, mutate) {
+  if (record === null || record._root === null) throw new CardError("cards: nil record", "malformed");
+  refuseLossy(record._report);
+  const report = new TableVariableReport();
+  const root = CardLoad(record._wire, report);
+  if (root === null) throw new CardError("cards: reload into the fresh decode failed", "malformed");
+  refuseLossy(report);
+  mutate(root);
+  const err = checkCard(root);
+  if (err !== null) throw err;
+  const wire = CardSave(root);
+  if (wire === null) throw new CardError("cards: save did not fill the measured wire", "malformed");
+  record._wire = wire;
+  record._root = root;
+  record._report = report;
+}
+
+export function SetNeeds(record, needs) {
+  validateStrings("needs", needs, 64);
+  checkListCeiling("needs", needs.length);
+  edit(record, (root) => {
+    root.needs = needs.map((s) => ({ s }));
+  });
+}
+
+export function SetPaths(record, paths) {
+  validateStrings("paths", paths, 192);
+  checkListCeiling("paths", paths.length);
+  edit(record, (root) => {
+    root.paths = paths.map((s) => ({ s }));
+  });
+}
+
+export function SetTier(record, tier) {
+  if (!["flash", "pro", "heavy", "frontier"].includes(tier)) {
+    throw new CardError(`cards: tier ${tier} is not a declared variant (docs/SPEC-TABLES.md §8)`, "malformed");
+  }
+  edit(record, (root) => { root.tier = tier; });
+}
+
+export function SetPriority(record, priority) {
+  if (!["normal", "high", "critical", "blocker"].includes(priority)) {
+    throw new CardError(`cards: priority ${priority} is not a declared variant (docs/SPEC-TABLES.md §8)`, "malformed");
+  }
+  edit(record, (root) => { root.priority = priority; });
+}
+
+export function SetColumn(record, column) {
+  if (!["waiting", "ready", "working", "review", "merging", "landed", "plan", "check"].includes(column)) {
+    throw new CardError(`cards: column ${column} is not a declared variant (docs/SPEC-TABLES.md §8)`, "malformed");
+  }
+  edit(record, (root) => { root.column = column; });
+}
+
+export function SetHolder(record, holder) {
+  validateStrings("holder", [holder], 32);
+  edit(record, (root) => { root.holder = holder; });
 }
