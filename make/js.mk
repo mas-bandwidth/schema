@@ -494,6 +494,27 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# THE BLOCK FORM'S BUILD SIDE ON THE JAVASCRIPT LEG (docs/SPEC-TABLES.md §19.1).
+# internal/codegen/jstable/blockbuild_test.go generates ONE block module, builds
+# an extent with $(NODE) — this leg's own toolchain, reached through jsNode — and
+# holds the whole extent byte for byte against the Go builder's own numbers for
+# the same counts (internal/codegen/gotable/blockbuild_test.go, which runs the Go
+# builder): §19.1's prologue, one triple per array at the layout's own offsets,
+# and zero everywhere else, because Begin writes neither a row nor the padding.
+# This leg's own reader then opens what this leg built and every accessor answers
+# the counts written, and a count past its declared maximum is refused with the
+# extent untouched.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the test takes
+# node through jsNode, so a bare `go test` skips it by name, and SCHEMA_REQUIRE_CORPUS=1
+# makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-block-build
+tables-js-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^TestBlockBuildAndCookWriteJavaScript$$'
+	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
+
+test-js: tables-js-block-build
+
 # THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
 # §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
 # by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
