@@ -485,6 +485,23 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
+# row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
+# §3.4: "A second layout for a hash already held is refused by name"). The test
+# builds a valid file for the held layout and two copies — one whose layout bytes
+# differ under the same hash, one whose held layout length differs — and proves
+# both are refused layout_malformed before any record lands. It rides the
+# versioning target's pattern and SCHEMA_REQUIRE_CORPUS=1 keeps a missing node a
+# FAILURE rather than a skip, but it needs no C++ oracle: its files are built in
+# memory, so it does not take build/fixedform-corpus/.stamp (whose C++ serialize
+# sibling is absent on this bench).
+.PHONY: tables-js-fixed-roadmap
+tables-js-fixed-roadmap:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$'
+	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
+
+test-js: tables-js-fixed-roadmap
+
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Swap the ONE NAME a
 # file OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes — the two
