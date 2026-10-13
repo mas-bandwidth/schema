@@ -665,3 +665,50 @@ cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.sta
 	@grep -qE '[1-9][0-9]* mutants' build/cards-elixir-retain-fuzz.log
 
 test-elixir: cards-elixir-retain-fuzz
+
+# cards-elixir-test compiles the facade (tables/cards/elixir/cards.ex) against
+# the generated codec ebin and runs the ExUnit tests (cards_test.exs). The
+# facade is the owning layer over Cards.Table, ported from tables/cards/cards.go.
+build/elixir-cards-facade/.stamp: build/elixir-cards-ebin/.stamp tables/cards/elixir/cards.ex
+	@rm -rf build/elixir-cards-facade && mkdir -p build/elixir-cards-facade
+	$(ELIXIRC) -pa build/elixir-cards-ebin -o build/elixir-cards-facade tables/cards/elixir/cards.ex
+	@touch $@
+
+.PHONY: cards-elixir-test
+cards-elixir-test: build/elixir-cards-facade/.stamp
+	$(ELIXIR) -pa build/elixir-cards-ebin -pa build/elixir-cards-facade tables/cards/elixir/cards_test.exs
+
+test-elixir: cards-elixir-test
+
+# The card conformance driver, compiled against the facade and the codec.
+build/elixir-cards-driver/.stamp: build/elixir-cards-facade/.stamp tables/cards/elixir/driver.exs
+	@rm -rf build/elixir-cards-driver && mkdir -p build/elixir-cards-driver
+	$(ELIXIRC) -pa build/elixir-cards-ebin -pa build/elixir-cards-facade -o build/elixir-cards-driver tables/cards/elixir/driver.exs
+	@touch $@
+
+# cards-elixir-conformance runs the harness's cards subcommand over the Elixir
+# driver, requiring the five surfaces this card implements (tables/cards/
+# conformance/FORMAT.md). upgrade, edit, taskhash and view are a later card.
+.PHONY: cards-elixir-conformance
+cards-elixir-conformance: build/conformance-harness build/elixir-cards-driver/.stamp
+	./build/conformance-harness cards --corpus tables/cards/conformance \
+		--driver tables/cards/elixir/driver --require load,save,render,parse,bounds
+
+# cards-elixir-conformance-negative-control flips one rendered byte through a
+# test-only environment switch and requires the check to fail on render while
+# load, save, parse and bounds pass.
+.PHONY: cards-elixir-conformance-negative-control
+cards-elixir-conformance-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver --require load,save,render,parse,bounds \
+			> build/cards-elixir-conformance-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a changed render byte left the check green"; exit 1; fi
+	@grep -q 'cards render FAIL' build/cards-elixir-conformance-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-negative.log
+	@echo 'cards Elixir negative control: one changed render byte reds render while load, save, parse and bounds pass'
+
+test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
