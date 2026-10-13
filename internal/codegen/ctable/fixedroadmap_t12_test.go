@@ -259,7 +259,11 @@ func cT12W8(t *testing.T) {
 // zeros. Only a RUN can show the zeros, so this subtest is a FUNCTIONAL check:
 // it compiles and runs a probe through fixedroadmap_t11_test.go's harness
 // (cT11Run). The union's widest arm is Wide (12 bytes), the live arm is Narrow
-// (1 byte), so bytes 2..12 of the 13-byte body must be zero.
+// (1 byte), so bytes 2..12 of the 13-byte body must be zero. The destination
+// buffer is DIRTIED to 0xFF before the single save, so the zeros the probe
+// reads can only come from the emitter's record zero-fill and not from a
+// freshly zero-initialized static buffer: with the save's memset removed the
+// probe fails at byte 2.
 func cT12W3(t *testing.T) {
 	const src = `package t12w3
 
@@ -295,6 +299,7 @@ fixed table URoot
         @SNAKE@_reset( &v );
         v.tag.type = SEL_TYPE_B;   /* the narrower arm */
         v.tag.as.b.z = 0x7F;
+        memset( buf, 0xFF, sizeof( buf ) );   /* dirty the destination first */
         n = @SNAKE@_fixed_save( &v, 1, buf, sizeof( buf ) );
         if ( n <= 0 ) { printf( "w3: save n=%lld\n", (long long) n ); return 1; }
         base = n - 13; /* the one record: hash(8) + body(13) */
