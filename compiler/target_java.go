@@ -116,11 +116,11 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) — FORM 1, the one this refusal was written for —
-	// is NOT emitted for this backend at all, so its elision rule is not this
-	// port's to carry today; the day that codec lands here it has to keep this
-	// claim true. Registered the way go and rust register (target_go.go,
-	// target_rust.go): the append IS the registration.
+	// The id-table wire (§3) — FORM 1 — is now emitted as the VARIABLE FORM
+	// (internal/codegen/javatable/variableform.go), and its elision rule keeps
+	// this claim true: an absent field answers the declared value. Registered
+	// the way go and rust register (target_go.go, target_rust.go): the append
+	// IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
 	registerWideTextCarrier("java")
 	registerListCarrier("java")
