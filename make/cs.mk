@@ -573,3 +573,29 @@ packet-wide-cs-negative-control: packet-wide-cs
 	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'
 
 test-cs: packet-wide-cs packet-wide-cs-negative-control
+
+# THE CARDS UNIT'S C# LEG (docs/SPEC-TABLES.md §2): the card record as a
+# generated variable table with an owning facade (tables/cards/cs) and the
+# brief text parsed once and rendered many times. These targets live in
+# make/cs.mk (NOT a separate make/cards-cs.mk) because the root Makefile's
+# port registry treats every make/*.mk as a language, so a cards-only fragment
+# would be refused there as a phantom port.
+
+# cards-cs-generate produces ONLY build/tables-generated-cs/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+.PHONY: cards-cs-generate
+cards-cs-generate: bin/schema
+	@rm -rf build/tables-generated-cs/cards
+	@mkdir -p build/tables-generated-cs/cards
+	./bin/schema generate --lang cs --out build/tables-generated-cs/cards tables/cards
+
+# cards-cs-test builds the generated unit with the facade in Debug and
+# Release and runs the facade test program in both. It depends on bin/schema
+# and cards-cs-generate only, never on build/tables-generated-cs/.stamp or
+# build-conformance-cs, so a red elsewhere in the leg cannot hold it.
+.PHONY: cards-cs-test
+cards-cs-test: bin/schema cards-cs-generate
+	$(DOTNET) build tables/cards/cs/Cards.csproj -c Debug --nologo -v quiet
+	$(DOTNET) build tables/cards/cs/Cards.csproj -c Release --nologo -v quiet
+	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
+	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
