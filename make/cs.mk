@@ -452,6 +452,11 @@ tables-cs-versioning: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
+.PHONY: tables-cs-fixed-t13
+tables-cs-fixed-t13:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
+	@echo 'tables C# fixed-t13: cs/F12 a second layout for a held hash is refused layout_malformed'
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
