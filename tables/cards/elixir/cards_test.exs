@@ -7,6 +7,8 @@ ExUnit.start()
 defmodule Cards.CardsTest do
   use ExUnit.Case, async: true
 
+  import Bitwise
+
   alias Cards.Cards
 
   @fuzz_wire "tables/cards/fuzz/card-populated.wire"
@@ -139,4 +141,102 @@ defmodule Cards.CardsTest do
   # for a caller mutating its own buffer (docs/SPEC-TABLES.md §6.2).
   defp mutate(<<b, rest::binary>>), do: <<Bitwise.bxor(b, 0xFF), rest::binary>>
   defp mutate(<<>>), do: <<>>
+
+  # TestUpgradeMatchesGo is the retained-upgrade proof (docs/SPEC-TABLES.md §6.6;
+  # tla/CardVersioning.tla NoFieldLost, BodyUnchanged, RefusalKeepsOriginal).
+  # Every upgrade case in the conformance corpus yields the expected wire and
+  # report, or the expected refusal class. An upgrade of an upgraded record is
+  # byte-identical. Retention storage one id short refuses with retain-lost and
+  # leaves the input unchanged.
+  test "TestUpgradeMatchesGo" do
+    for [name, input] <- manifest_rows("upgrade") do
+      wire = File.read!(input)
+      expected_wire = Path.join([@conformance, "expected", name <> ".wire"])
+      expected_report = Path.join([@conformance, "expected", name <> ".report"])
+      expected_refused = Path.join([@conformance, "expected", name <> ".refused"])
+
+      case Cards.upgrade(wire) do
+        {:ok, out, report} ->
+          assert File.exists?(expected_wire), "#{name} upgraded but the corpus expects a refusal"
+          assert out == File.read!(expected_wire), "upgrade wire of #{name} differs"
+          assert report_text(report) == File.read!(expected_report), "upgrade report of #{name} differs"
+          {:ok, again, _} = Cards.upgrade(out)
+          assert again == out, "upgrade of an upgraded #{name} is not byte-identical"
+
+        {:error, reason, _report} ->
+          assert File.exists?(expected_refused), "#{name} refused (#{reason}) but the corpus expects a wire"
+          assert refusal_class(reason) == String.trim(File.read!(expected_refused))
+          assert wire == File.read!(input)
+      end
+    end
+
+    future = File.read!(Path.join([@conformance, "cases", "future-note.wire"]))
+    n = retain_ids_used(future)
+    assert n >= 1
+    snapshot = future
+    assert {:error, reason, report} = Cards.upgrade(future, 1 <<< 20, n - 1)
+    assert reason =~ "retained field"
+    assert report.retain_lost > 0
+    assert future == snapshot
+
+    {:ok, strict_ok} = Cards.read_strict(File.read!(Path.join([@conformance, "cases", "empty-consumers.wire"])))
+    assert Cards.wire(strict_ok) != nil
+    assert {:error, _} = Cards.read_strict(future)
+  end
+
+  defp manifest_rows(surface) do
+    File.read!(Path.join(@conformance, "MANIFEST.txt"))
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(fn line -> line == "" or String.starts_with?(line, "#") end)
+    |> Enum.map(&String.split(&1, ~r/[ \t]+/))
+    |> Enum.filter(fn [s | _] -> s == surface end)
+    |> Enum.map(fn [_s, name, input | rest] -> [name, input | rest] end)
+  end
+
+  defp report_text(report) do
+    [
+      "Retained=#{Map.get(report, :retained, 0)}\n",
+      "RetainLost=#{Map.get(report, :retain_lost, 0)}\n",
+      "Widened=#{Map.get(report, :widened, 0)}\n",
+      "Unknown=#{Map.get(report, :unknown, 0)}\n",
+      "KindMismatch=#{Map.get(report, :kind_mismatch, 0)}\n",
+      "Clamped=#{Map.get(report, :clamped, 0)}\n",
+      "Duplicate=#{Map.get(report, :duplicate, 0)}\n",
+      "Malformed=#{Map.get(report, :malformed, false)}\n"
+    ]
+    |> IO.iodata_to_binary()
+  end
+
+  defp refusal_class(reason) do
+    cond do
+      String.contains?(reason, "past the 65536-byte ceiling") -> "body-bound 65536"
+      String.contains?(reason, "past the 512-entry ceiling") -> "list-bound " <> field_name(reason) <> " 512"
+      String.contains?(reason, "stranded header key") -> "stranded-key " <> quoted_word(reason)
+      String.contains?(reason, "retained field") -> "retain-lost"
+      String.contains?(reason, "loss events") -> "unknown-present"
+      true -> "malformed"
+    end
+  end
+
+  defp field_name(reason) do
+    reason |> String.replace_prefix("cards: ", "") |> String.split(" has ", parts: 2) |> hd()
+  end
+
+  defp quoted_word(reason) do
+    case Regex.run(~r/"([^"]*)"/, reason) do
+      [_, word] -> word
+      _ -> ""
+    end
+  end
+
+  defp retain_ids_used(wire) do
+    retain = %{records: [], used: 0, cap: 1 <<< 20, ids: [], id_cap: 4096}
+    report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+
+    codec = :"Elixir.Cards.Table"
+    {:ok, value, report, retain} = codec.load_retain("Card", wire, retain, report)
+    {:ok, _out, _report, retain} = codec.save_retain("Card", value, retain, report)
+    length(retain.ids)
+  end
 end
