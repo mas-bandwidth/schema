@@ -485,6 +485,18 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# THE ROADMAP ROWS OF THE FIXED FORM ON THE JAVASCRIPT LEG (ROADMAP.md "NEW Fixed
+# Tables", docs/roadmap.sexp's `fixed-tables` node): one Go test per task cluster,
+# each generating its fixture's module and running the capability through the
+# leg's own node (jsNode, $NODE). Under SCHEMA_REQUIRE_CORPUS=1 a missing node is
+# a FAILURE, never a skip.
+.PHONY: tables-js-fixed-roadmap
+tables-js-fixed-roadmap:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT12GuardsWideText)$$'
+	@echo 'tables JS fixed roadmap: the js fixed-tables rows this stream owns, over the leg node'
+
+test-js: tables-js-fixed-roadmap
+
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Swap the ONE NAME a
 # file OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes — the two
