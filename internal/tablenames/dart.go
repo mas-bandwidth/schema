@@ -88,5 +88,9 @@ func init() {
 		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
 		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
 		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
+		Name{Name: "TableMessageBatchOpen", What: "the message form: open a batch read over an announced vocabulary (§3.3)"},
+		Name{Name: "TableMessageBatchClose", What: "the message form: close a batch read and report its leftover (§3.3)"},
+		Name{Name: "TableMessageRefBits", What: "the message form: the reference width of an n-entry vocabulary, emitted beside the vocabulary (§3.3)"},
+		Name{Name: "TableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (§3.4)"},
 	)
 }
