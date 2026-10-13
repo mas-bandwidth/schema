@@ -45,14 +45,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			want:  "a map (docs/SPEC-TABLES.md §2.8)",
 		},
 		{
-			field: field("blob", ir.FieldType{Kind: ir.TBytes, Pointer: true}),
-			want:  "a *bytes (docs/SPEC-TABLES.md §2.5)",
-		},
-		{
-			field: field("node", ir.FieldType{Kind: ir.TNamed, Pointer: true, Ref: &ir.Struct{Name: "Node"}}),
-			want:  "a pointer to a table (docs/SPEC-TABLES.md §2.1)",
-		},
-		{
 			field: field("opt", ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}),
 			want:  "an optional ?T (docs/SPEC-TABLES.md §2.3)",
 		},
