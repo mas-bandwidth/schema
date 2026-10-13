@@ -119,7 +119,8 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
         if (body.length > CARDS_MAX_BODY_BYTES)
             return failf(err, err_cap,
                          "cards: body is %lld bytes, past the %lld-byte ceiling",
-                         NULL, body.length, CARDS_MAX_BODY_BYTES);
+                         (long long)body.length,
+                         (long long)CARDS_MAX_BODY_BYTES);
         if (!utf8_valid((const uint8_t *)body.data, body.length))
             return fail(err, err_cap,
                         "cards: body is not well-formed UTF-8 without NUL");
@@ -138,8 +139,9 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
                 lists[li].list->count > CARDS_MAX_LIST_ENTRIES)
                 return failf(err, err_cap,
                              "cards: %s has %lld entries, past the %lld-entry ceiling",
-                             lists[li].name, lists[li].list->count,
-                             CARDS_MAX_LIST_ENTRIES);
+                             lists[li].name,
+                             (long long)lists[li].list->count,
+                             (long long)CARDS_MAX_LIST_ENTRIES);
         }
     }
     /* Element well-formedness: every collection element is valid UTF-8

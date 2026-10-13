@@ -186,8 +186,112 @@ static void test_round_trip(void) {
     if (failures == 0) printf("PASS %s\n", name);
 }
 
+
+/* Builds {"id":"x",<field>:[<elem>,...]} with count copies of elem. */
+static uint8_t *build_list_json(const char *field, const char *elem, int count,
+                                int64_t *out_len) {
+    size_t cap = 128 + (strlen(elem) + 1) * (size_t)(count + 1);
+    uint8_t *buf = (uint8_t *)malloc(cap);
+    int n = snprintf((char *)buf, cap, "{\"id\":\"x\",\"%s\":[", field);
+    int i;
+    for (i = 0; i < count; i++) {
+        n += snprintf((char *)buf + n, cap - (size_t)n, "%s%s", i ? "," : "", elem);
+    }
+    n += snprintf((char *)buf + n, cap - (size_t)n, "]}");
+    *out_len = n;
+    return buf;
+}
+
+static void expect_bound(const char *name, const char *field, const char *elem,
+                         const char *want_field) {
+    int64_t len = 0;
+    uint8_t *json;
+    uint8_t *before;
+    CardsRecord rec;
+    char err[256];
+    err[0] = '\0';
+    json = build_list_json(field, elem, 512, &len);
+    before = (uint8_t *)malloc((size_t)len);
+    memcpy(before, json, (size_t)len);
+    check(cards_from_json(json, len, &rec, err, sizeof(err)), name,
+          err[0] ? err : "512 entries accepted");
+    check(memcmp(before, json, (size_t)len) == 0, name, "input unchanged on accept");
+    cards_record_clear(&rec);
+    free(json);
+    free(before);
+    err[0] = '\0';
+    json = build_list_json(field, elem, 513, &len);
+    before = (uint8_t *)malloc((size_t)len);
+    memcpy(before, json, (size_t)len);
+    check(!cards_from_json(json, len, &rec, err, sizeof(err)), name,
+          "513 entries refused");
+    check(strstr(err, want_field) != NULL && strstr(err, "512") != NULL, name,
+          err[0] ? err : "refusal names the field and 512");
+    check(memcmp(before, json, (size_t)len) == 0, name,
+          "refused write leaves its input unchanged");
+    free(json);
+    free(before);
+}
+
+/* TestCCardBoundsRefuseBeforePublishing pins the customer ceilings:
+   65536 body bytes accepted, 65537 refused naming body and 65536; 512 entries
+   accepted and 513 refused naming the field, for each collection
+   (docs/SPEC-TABLES.md §2.5, §2.9). */
+static void test_bounds(void) {
+    const char *name = "TestCCardBoundsRefuseBeforePublishing";
+    int before_failures = failures;
+    /* Body at and over the ceiling. */
+    {
+        size_t body_n = 65536;
+        size_t cap = body_n + 128;
+        uint8_t *json = (uint8_t *)malloc(cap);
+        int n = snprintf((char *)json, cap, "{\"id\":\"x\",\"body\":\"");
+        CardsRecord rec;
+        char err[256];
+        err[0] = '\0';
+        memset(json + n, 'y', body_n);
+        n += (int)body_n;
+        n += snprintf((char *)json + n, cap - (size_t)n, "\"}");
+        check(cards_from_json(json, n, &rec, err, sizeof(err)), name,
+              err[0] ? err : "65536 body bytes accepted");
+        cards_record_clear(&rec);
+        free(json);
+    }
+    {
+        size_t body_n = 65537;
+        size_t cap = body_n + 128;
+        uint8_t *json = (uint8_t *)malloc(cap);
+        uint8_t *copy;
+        int n = snprintf((char *)json, cap, "{\"id\":\"x\",\"body\":\"");
+        CardsRecord rec;
+        char err[256];
+        err[0] = '\0';
+        memset(json + n, 'y', body_n);
+        n += (int)body_n;
+        n += snprintf((char *)json + n, cap - (size_t)n, "\"}");
+        copy = (uint8_t *)malloc((size_t)n);
+        memcpy(copy, json, (size_t)n);
+        check(!cards_from_json(json, n, &rec, err, sizeof(err)), name,
+              "65537 body bytes refused");
+        check(strstr(err, "body") != NULL && strstr(err, "65536") != NULL, name,
+              err[0] ? err : "refusal names body and 65536");
+        check(memcmp(copy, json, (size_t)n) == 0, name,
+              "refused body write leaves its input unchanged");
+        free(copy);
+        free(json);
+    }
+    expect_bound(name, "paths", "{\"s\":\"p\"}", "paths");
+    expect_bound(name, "_new", "{\"s\":\"n\"}", "_new");
+    expect_bound(name, "shared", "{\"s\":\"s\"}", "shared");
+    expect_bound(name, "needs", "{\"s\":\"d\"}", "needs");
+    expect_bound(name, "extra", "{\"key\":\"K\",\"value\":\"v\"}", "extra");
+    expect_bound(name, "consumers", "{\"kind\":\"k\"}", "consumers");
+    if (failures == before_failures) printf("PASS %s\n", name);
+}
+
 int main(void) {
     test_round_trip();
+    test_bounds();
     if (failures != 0) {
         printf("cards_test: %d failure(s)\n", failures);
         return 1;
