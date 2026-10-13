@@ -9,11 +9,12 @@
 // parses a wire, so both reach every fixed table of the unit whatever its
 // closure declares. The TABLE WIRE itself — measure, save, load, the reflection
 // descriptors and the JSON text form of docs/SPEC-TABLES.md §3, §4, §8 and §16
-// in their id-table form — is not emitted for Dart. The port that once stood
-// here wrote the form that preceded the id-table wire, which the current
-// specification does not describe and the C++ reference does not open; it was
-// removed rather than carried (schema#514 is the row that brings the wire to
-// Dart). ROADMAP.md marks the cells.
+// in their id-table form — is emitted in two forms below: the VARIABLE form
+// (form byte 1) for the card record's closure it owns, and the FIXED form
+// (form byte 3) for fixed tables. The full variable class — the remaining
+// scalar kinds, blobs, unbounded scalar/string/enum arrays and arrays of
+// pointers — is carried by the variable-class card, byte for byte against the
+// Go oracle. ROADMAP.md marks the cells.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE for the two
 // forms that remain: this port mirrors its prologue and header checks, its
@@ -162,9 +163,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		maps.Copy(out, cooks)
 	}
-	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table wire. Form 1 is still deferred to schema#514 and nothing
-	// here reads or writes one.
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: emitted for a
+	// unit that declares a fixed table, beside the VARIABLE FORM (form byte 1)
+	// emitted for the unit the variable form owns (below).
 	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err
