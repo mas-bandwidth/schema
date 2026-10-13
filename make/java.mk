@@ -330,7 +330,7 @@ tables-java-versioning: tables-fixedform-corpus
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestEscapeKind31SkippedAndCountedJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
