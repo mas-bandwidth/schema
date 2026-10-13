@@ -100,3 +100,55 @@ fn parse_render_matches_go() {
     let err = parse(&rejected).err().expect("a stranded key must refuse");
     assert!(err.contains("PRIORITY") && err.contains("line 5"), "{err}");
 }
+
+#[test]
+fn upgrade_matches_go() {
+    use crate::{upgrade, upgrade_with_capacity, read_strict, format_report, refusal_class, MAX_RETAIN_BYTES};
+
+    for (name, is_refused) in [
+        ("initial-populated", false),
+        ("consumers-populated", false),
+        ("empty-consumers", false),
+        ("future-note", false),
+        ("truncated", true),
+    ] {
+        let input_path = conformance(&format!("cases/{name}.wire"));
+        let wire = fs::read(&input_path).unwrap();
+        let snapshot = wire.clone();
+        match upgrade(&wire) {
+            Ok((out, report)) => {
+                assert!(!is_refused, "{name} was expected to be refused");
+                let expected_wire = fs::read(conformance(&format!("expected/{name}.wire"))).unwrap();
+                assert_eq!(out, expected_wire, "wire mismatch for {name}");
+                let expected_report = fs::read_to_string(conformance(&format!("expected/{name}.report"))).unwrap();
+                let actual_report = format_report(&report);
+                assert_eq!(actual_report, expected_report, "report mismatch for {name}");
+
+                // Upgrade of an upgraded record is byte-identical (SPEC-TABLES §6.6; tla/CardVersioning.tla ShippedUpgradeSucceeds).
+                let (out2, _) = upgrade(&out).unwrap();
+                assert_eq!(out, out2, "upgrade is not idempotent for {name}");
+            }
+            Err(e) => {
+                assert!(is_refused, "{name} was refused unexpectedly: {e}");
+                assert_eq!(wire, snapshot, "refused upgrade mutated input for {name}");
+                let expected_refused = fs::read_to_string(conformance(&format!("expected/{name}.refused"))).unwrap();
+                assert_eq!(refusal_class(&e), expected_refused.trim(), "refusal class mismatch for {name}");
+            }
+        }
+    }
+
+    // Retention storage one id short refuses with retain-lost and leaves the input unchanged (docs/SPEC-TABLES.md §6.6).
+    let future_wire = fs::read(conformance("cases/future-note.wire")).unwrap();
+    let snapshot = future_wire.clone();
+    let res = upgrade_with_capacity(&future_wire, MAX_RETAIN_BYTES, 0);
+    assert!(res.is_err(), "upgrade with zero id capacity should fail");
+    let err = res.err().unwrap();
+    assert_eq!(refusal_class(&err), "retain-lost", "error should be retain-lost: {err}");
+    assert_eq!(future_wire, snapshot, "input wire was mutated on retain-lost refusal");
+
+    // Strict read accepts compatible card and refuses future unknown fields (SPEC-TABLES §4).
+    let empty_wire = fs::read(conformance("cases/empty-consumers.wire")).unwrap();
+    assert!(read_strict(&empty_wire).is_ok());
+    let strict_err = read_strict(&future_wire).err().expect("strict read should refuse future fields");
+    assert!(strict_err.contains("unknown field"), "{strict_err}");
+}

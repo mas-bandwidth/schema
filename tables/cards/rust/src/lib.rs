@@ -98,6 +98,165 @@ pub fn from_json(text: &str) -> Result<Record, String> {
 }
 
 /// ToJSON writes the record's known-field JSON text and returns its load report.
+/// The customer ceiling on the retained-record byte store (docs/SPEC-TABLES.md §6.6).
+pub const MAX_RETAIN_BYTES: usize = 1 << 20;
+
+/// The customer ceiling on the retained-id entry store (docs/SPEC-TABLES.md §6.6).
+pub const MAX_RETAIN_IDS: usize = 4096;
+
+/// Upgrade rewrites wire through the generated retaining path so that every
+/// field the current declaration cannot name is preserved, byte for byte, at
+/// the end of its own body (docs/SPEC-TABLES.md §6.6). It returns an error when
+/// any value would be lost — RetainLost, KindMismatch, Clamped or Malformed —
+/// or when the wire is refused; the input wire is never mutated and no Record
+/// replacement occurs on error. The result is idempotent: upgrading an
+/// already-upgraded wire is byte-for-byte the same (tla/CardVersioning.tla NoFieldLost,
+/// BodyUnchanged, RefusalKeepsOriginal, ShippedUpgradeSucceeds; ports tables/cards/upgrade.go Upgrade).
+pub fn upgrade(wire: &[u8]) -> Result<(Vec<u8>, TableReport), String> {
+    upgrade_with_capacity(wire, MAX_RETAIN_BYTES, MAX_RETAIN_IDS)
+}
+
+/// upgrade_with_capacity is the package-private retention seam (ports tables/cards/upgrade.go upgrade):
+/// upgrade fixes the two customer capacities, and refusal probes drive smaller caller-owned
+/// storage through the same path so a tiny capacity can be shown to name RetainLost and
+/// return Err while the input is preserved (docs/SPEC-TABLES.md §6.6).
+pub fn upgrade_with_capacity(
+    wire: &[u8],
+    retain_bytes: usize,
+    retain_ids: usize,
+) -> Result<(Vec<u8>, TableReport), String> {
+    let mut report = TableReport::default();
+    if card_load_measure(wire) < 0 {
+        return Err("cards: upgrade: wire is not a card".to_string());
+    }
+    let mut retain = TableRetain {
+        bytes: Vec::with_capacity(retain_bytes),
+        ids: Vec::with_capacity(retain_ids),
+    };
+    let card = card_load_retain(wire, &mut retain, &mut report)
+        .ok_or_else(|| "cards: upgrade: wire is malformed".to_string())?;
+    check_card(&card).map_err(|e| format!("cards: upgrade: {e}"))?;
+    let out = card_save_retain(&card, &mut retain, &mut report);
+    loss_err(&report)?;
+    Ok((out, report))
+}
+
+fn loss_err(report: &TableReport) -> Result<(), String> {
+    if report.retain_lost > 0 {
+        return Err(format!(
+            "cards: upgrade: {} retained field(s) lost, refusing to replace",
+            report.retain_lost
+        ));
+    }
+    if report.kind_mismatch > 0 {
+        return Err(format!(
+            "cards: upgrade: {} kind mismatch(es), refusing to replace",
+            report.kind_mismatch
+        ));
+    }
+    if report.clamped > 0 {
+        return Err(format!(
+            "cards: upgrade: {} clamped value(s), refusing to replace",
+            report.clamped
+        ));
+    }
+    if report.malformed {
+        return Err("cards: upgrade: malformed wire, refusing to replace".to_string());
+    }
+    Ok(())
+}
+
+/// ReadStrict reads wire and refuses any data the current declaration cannot
+/// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
+/// (docs/SPEC-TABLES.md §4; ports tables/cards/upgrade.go ReadStrict).
+pub fn read_strict(wire: &[u8]) -> Result<Record, String> {
+    let (rec, report) = load(wire)?;
+    if report.unknown > 0 {
+        return Err(format!(
+            "cards: strict: {} unknown field(s), unsupported data",
+            report.unknown
+        ));
+    }
+    if report.kind_mismatch > 0 {
+        return Err(format!(
+            "cards: strict: {} kind mismatch(es), unsupported data",
+            report.kind_mismatch
+        ));
+    }
+    if report.clamped > 0 {
+        return Err(format!(
+            "cards: strict: {} clamped value(s), unsupported data",
+            report.clamped
+        ));
+    }
+    if report.malformed {
+        return Err("cards: strict: malformed wire, unsupported data".to_string());
+    }
+    Ok(rec)
+}
+
+/// format_report formats a TableReport as Name=value lines in declaration order
+/// (tables/cards/conformance/FORMAT.md "The read report").
+pub fn format_report(r: &TableReport) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("Retained={}
+", r.retained));
+    s.push_str(&format!("RetainLost={}
+", r.retain_lost));
+    s.push_str(&format!("Widened={}
+", r.widened));
+    s.push_str(&format!("Unknown={}
+", r.unknown));
+    s.push_str(&format!("KindMismatch={}
+", r.kind_mismatch));
+    s.push_str(&format!("Clamped={}
+", r.clamped));
+    s.push_str(&format!("Duplicate={}
+", r.duplicate));
+    s.push_str(&format!("Malformed={}
+", r.malformed));
+    s
+}
+
+/// refusal_class maps a facade error to one class of the closed list FORMAT.md
+/// fixes, never free text, so every language can spell the same refusal
+/// (tables/cards/conformance/FORMAT.md "Refusals").
+pub fn refusal_class(err: &str) -> String {
+    if err.contains("past the 65536-byte ceiling") {
+        return "body-bound 65536".to_string();
+    }
+    if err.contains("past the 512-entry ceiling") {
+        let field = err
+            .strip_prefix("cards: ")
+            .unwrap_or(err)
+            .split(" has ")
+            .next()
+            .unwrap_or("");
+        return format!("list-bound {field} 512");
+    }
+    if err.contains("stranded header key") {
+        return format!("stranded-key {}", quoted_word(err));
+    }
+    if err.contains("retained field(s) lost") {
+        return "retain-lost".to_string();
+    }
+    if err.contains("record has loss events") {
+        return "unknown-present".to_string();
+    }
+    "malformed".to_string()
+}
+
+fn quoted_word(msg: &str) -> String {
+    let Some(i) = msg.find('"') else {
+        return String::new();
+    };
+    let rest = &msg[i + 1..];
+    let Some(j) = rest.find('"') else {
+        return String::new();
+    };
+    rest[..j].to_string()
+}
+
 /// A value the writer cannot name refuses rather than emitting "???" (§16).
 pub fn to_json(record: &Record) -> Result<(String, TableReport), String> {
     let text = card_to_json_checked(&record.card)
