@@ -170,6 +170,25 @@ pub struct TableBlockInfo {
     pub num_fields: i32,
     pub fields: &'static [TableBlockFieldInfo],
 }
+
+// TableBlockRefusal names the producer count that violates its declared bound
+// (docs/SPEC-TABLES.md §19.1). Begin fills it and writes no byte of the extent.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct TableBlockRefusal {
+    pub array: &'static str,
+    pub count: i64,
+    pub maximum: i64,
+}
+
+// TableBlockAllocator supplies exactly one allocation per storage lifetime
+// (docs/SPEC-TABLES.md §19.1). Both functions are required; the free receives
+// the original, unsliced buffer. Rust storage keeps the Vec and aligns inside
+// it, so the pair is the same contract the other legs spell, held here so a
+// caller can supply its own.
+pub struct TableBlockAllocator {
+    pub alloc: fn(i64) -> *mut u8,
+    pub free: fn(*mut u8),
+}
 `
 
 type blockGen struct {
@@ -260,8 +279,8 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	}
 	b.pf("\n")
 	b.emitBlockOpen(bl)
-	b.emitBlockBuild(bl)
-	b.pf("\n    pub fn base(&self) -> *const u8 {\n        self.base\n    }\n\n")
+	b.pf("\n    pub fn fresh() -> Self {\n        Self { base: core::ptr::null(), bytes: 0 }\n    }\n\n")
+	b.pf("    pub fn base(&self) -> *const u8 {\n        self.base\n    }\n\n")
 	b.pf("    pub fn bytes(&self) -> i64 {\n        self.bytes\n    }\n\n")
 	b.pf("    pub fn projection(&self) -> &%sBlockProjection {\n", name)
 	b.pf("        unsafe { &*(self.base as *const %sBlockProjection) }\n    }\n", name)
@@ -270,54 +289,113 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	}
 	b.emitBlockTypeInfo(bl)
 	b.pf("}\n\n")
+	b.emitBlockBuild(bl)
 	b.emitRecordInfos(bl)
 }
 
 // emitBlockBuild is the block form's producer side (docs/SPEC-TABLES.md
-// §19.1): the counts struct, and a Begin that writes only the prologue and the
-// triples — never rows or padding — checking every count against its declared
-// bound before any byte of the extent changes. It is the Rust spelling of
-// gotable/blockbuild.go's <T>BlockBegin, pin for pin.
+// §19.1): the counts struct, the storage, and a Begin that writes only the
+// prologue and the triples — never rows or padding — checking every count
+// against its declared bound before any byte of the extent changes. It is the
+// Rust spelling of gotable/blockbuild.go's <T>Counts, <T>BlockStorage and
+// <T>BlockBegin, pin for pin.
 func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name
-	b.pf("\n    // ---- the fill path (docs/SPEC-TABLES.md §19.1) ----\n")
-	b.pf("    // %sCounts is gathered before Begin; clamping is the caller's policy.\n", n)
-	b.pf("    #[derive(Clone, Copy)]\n    pub struct %sCounts {\n", n)
+	snake := ir.RustSnake(n)
+	b.pf("// ---- the fill path (docs/SPEC-TABLES.md §19.1) ----\n")
+	b.pf("// %sCounts is gathered before Begin; clamping is the caller's policy.\n", n)
+	b.pf("#[derive(Clone, Copy, Default)]\npub struct %sCounts {\n", n)
 	for _, a := range bl.Arrays {
-		b.pf("        pub %s: i32,\n", a.Field.Name)
+		b.pf("    pub %s: i32,\n", a.Field.Name)
 	}
+	b.pf("}\n\n")
+	b.pf("// %sBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.\n", n)
+	b.pf("pub struct %sBlockStorage {\n", n)
+	b.pf("    pub base: *mut u8,\n")
+	b.pf("    allocation: Vec<u8>,\n")
+	b.pf("}\n\n")
+	b.pf("impl %sBlockStorage {\n", n)
+	b.pf("    pub fn new() -> Self {\n")
+	b.pf("        Self { base: core::ptr::null_mut(), allocation: Vec::new() }\n")
 	b.pf("    }\n")
-	b.pf("    impl Default for %sCounts {\n        fn default() -> Self {\n", n)
-	b.pf("        unsafe { core::mem::zeroed() }\n    }\n")
-	b.pf("    // %sBlockBegin writes only the prologue and the triples. Storage and all\n", n)
-	b.pf("    // counts are checked before any byte of the extent changes. It returns the\n")
-	b.pf("    // used extent, rounded to 64, or None on a refusal.\n")
-	b.pf("    pub unsafe fn %sBlockBegin(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", n, n)
-	b.pf("        if buf.is_null() || capacity < %d {\n            return None;\n        }\n", bl.Projection.Size)
+	b.pf("    /// Create allocates %s_BLOCK_MAX_BYTES + 63 bytes and aligns the base to 64\n", ir.RustConstName(n))
+	b.pf("    /// (docs/SPEC-TABLES.md §19.1). The extent is zero: a caller that needs a\n")
+	b.pf("    /// byte-stable artifact has it, and Begin still writes only the prologue and\n")
+	b.pf("    /// the triples.\n")
+	b.pf("    pub fn create(&mut self) -> bool {\n")
+	b.pf("        if !self.allocation.is_empty() {\n            return false;\n        }\n")
+	b.pf("        let n = (%s_BLOCK_MAX_BYTES + 63) as usize;\n", ir.RustConstName(n))
+	b.pf("        self.allocation = vec![0u8; n];\n")
+	b.pf("        let raw = self.allocation.as_mut_ptr() as usize;\n")
+	b.pf("        self.base = ((raw + 63) & !63) as *mut u8;\n")
+	b.pf("        true\n")
+	b.pf("    }\n")
+	b.pf("    pub fn destroy(&mut self) {\n")
+	b.pf("        self.allocation.clear();\n")
+	b.pf("        self.base = core::ptr::null_mut();\n")
+	b.pf("    }\n")
+	b.pf("}\n\n")
+	b.pf("// %s_block_begin writes only the prologue and the triples, never rows or\n", snake)
+	b.pf("// padding (docs/SPEC-TABLES.md §19.1). Storage and all counts are checked\n")
+	b.pf("// before any byte of the extent changes. It is the Rust spelling of\n")
+	b.pf("// %sBlockBegin.\n", n)
+	b.pf("#[allow(clippy::needless_borrow)]\n")
+	b.pf("pub unsafe fn %s_block_begin(block: &mut %sBlock, storage: &%sBlockStorage, counts: &%sCounts, mut refusal: Option<&mut TableBlockRefusal>) -> bool {\n", snake, n, n, n)
+	b.pf("    if let Some(ref mut r) = refusal {\n        **r = TableBlockRefusal::default();\n    }\n")
 	for _, a := range bl.Arrays {
-		f := ir.RustConstName(a.Field.Name)
-		b.pf("        let %s = counts.%s;\n", a.Field.Name, f)
-		b.pf("        if %s < 0 || %s as i64 > %d {\n            return None;\n        }\n", a.Field.Name, a.Field.Name, a.Max)
+		b.pf("    if counts.%s < 0 || counts.%s as i64 > %d {\n", a.Field.Name, a.Field.Name, a.Max)
+		b.pf("        if let Some(r) = refusal {\n")
+		b.pf("            *r = TableBlockRefusal { array: %q, count: counts.%s as i64, maximum: %d };\n", a.Field.Name, a.Field.Name, a.Max)
+		b.pf("        }\n")
+		b.pf("        return false;\n")
+		b.pf("    }\n")
 	}
-	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
-	b.pf("        let mut used: i64 = %d;\n", bl.Projection.Size)
+	if len(bl.Arrays) == 0 {
+		b.pf("    let _ = counts;\n")
+	}
+	b.pf("    if storage.base.is_null() {\n        return false;\n    }\n")
+	b.pf("    unsafe {\n")
+	b.pf("        let p = storage.base;\n")
+	b.pf("        core::ptr::write_unaligned(p.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
+	b.pf("        core::ptr::write_unaligned(p.add(8).cast::<u64>(), BUILD_VERSION);\n")
+	b.pf("        core::ptr::write_unaligned(p.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
+	b.pf("        let mut offset: i64 = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		align := int64(ir.BlockAlign)
 		if a.ElemAlign() > align {
 			align = a.ElemAlign()
 		}
-		f := ir.RustConstName(a.Field.Name)
-		b.pf("        used = (used + %d - 1) / %d * %d;\n", align, align, align)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), used as u64);\n", a.TripleOffset)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, f)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
-		b.pf("        used += counts.%s as i64 * %d;\n", f, a.Stride)
+		b.pf("        offset = (offset + %d - 1) & !(%d - 1); // max(64, alignof %s) (§19.1)\n", align, align, a.ElemName)
+		b.pf("        core::ptr::write_unaligned(p.add(%d).cast::<u64>(), offset as u64);\n", a.TripleOffset)
+		b.pf("        core::ptr::write_unaligned(p.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, a.Field.Name)
+		b.pf("        core::ptr::write_unaligned(p.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
+		b.pf("        offset += counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
 	}
-	b.pf("        used = (used + 63) / 64 * 64;\n")
-	b.pf("        if used > capacity {\n            return None;\n        }\n")
-	b.pf("        Some(used)\n    }\n")
+	b.pf("        let bytes = (offset + 63) & !63;\n")
+	b.pf("        block.base = p as *const u8;\n")
+	b.pf("        block.bytes = bytes;\n")
+	b.pf("    }\n")
+	b.pf("    true\n")
+	b.pf("}\n\n")
+	b.pf("// %s_block_bytes is the used extent: the greatest offset_of + count * stride,\n", snake)
+	b.pf("// rounded up to 64, never less than the projection (docs/SPEC-TABLES.md §19.1).\n")
+	b.pf("pub fn %s_block_bytes(block: &%sBlock) -> i64 {\n", snake, n)
+	b.pf("    if block.base.is_null() {\n        return 0;\n    }\n")
+	b.pf("    unsafe {\n")
+	b.pf("        let p = block.base;\n")
+	b.pf("        let mut used: i64 = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		b.pf("        {\n")
+		b.pf("            let offset_of = core::ptr::read_unaligned(p.add(%d).cast::<u64>()) as i64;\n", a.TripleOffset)
+		b.pf("            let count = core::ptr::read_unaligned(p.add(%d).cast::<u32>()) as i64;\n", a.TripleOffset+8)
+		b.pf("            let stride = core::ptr::read_unaligned(p.add(%d).cast::<u32>()) as i64;\n", a.TripleOffset+12)
+		b.pf("            let end = offset_of + count * stride;\n")
+		b.pf("            if end > used {\n                used = end;\n            }\n")
+		b.pf("        }\n")
+	}
+	b.pf("        (used + 63) & !63\n")
+	b.pf("    }\n")
+	b.pf("}\n\n")
 }
 
 // emitBlockTypeInfo is the block's own descriptor: the PROJECTION as data

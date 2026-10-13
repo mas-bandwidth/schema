@@ -46,6 +46,7 @@ func (g *gen) cookModule() []byte {
 	for _, st := range roots {
 		g.emitCookHandle(st)
 	}
+	g.emitCookWrite(roots)
 	b.WriteString(g.body.String())
 	return []byte(b.String())
 }
@@ -128,6 +129,7 @@ func cookRuntimeModule(u *ir.Unit) []byte {
 	// module (§20), so this runtime reaches it through the crate root
 	b.WriteString("use crate::*;\n\n")
 	b.WriteString(cookRuntime)
+	b.WriteString(cookWriteRuntime)
 	b.WriteString(cookDescriptorRuntime)
 	b.WriteString("// a bool in a cooked record is ONE byte, in this runtime as in the model\n")
 	b.WriteString("const _: () = assert!(core::mem::size_of::<bool>() == 1);\n")

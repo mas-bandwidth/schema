@@ -548,6 +548,18 @@ tables-rust-variable-class:
 
 test-rust: tables-rust-variable-class
 
+# THE BLOCK BUILDER AND THE COOK WRITER (docs/SPEC-TABLES.md §19.1, §7.6).
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP. The C++ reader then opens the Rust-built block.
+.PHONY: tables-rust-block-build
+tables-rust-block-build: build/schema_test_block
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run TestBlockBuildAndCookWriteRust -v
+	./build/schema_test_block
+
+test-rust: tables-rust-block-build
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle

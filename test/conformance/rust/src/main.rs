@@ -751,6 +751,58 @@ unsafe fn open_cook(root: &str, base: *mut u8, length: u64) -> (*const u8, u64, 
     }
 }
 
+// cook-write (docs/SPEC-TABLES.md §7.6): load the instance, CookFrom it in each
+// byte order, and the bytes are `schema cook`'s. A row whose constructs this
+// leg does not carry (fixed form-1 wires, maps, optional arrays, the message
+// form) writes `<case>.absent`.
+fn surface_cook_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook-write") {
+        let inst = manifest.lines.iter().find(|c| c[0] == "instance" && c[1] == f[1]);
+        let Some(inst) = inst else {
+            spill_absent(out, &f[1]);
+            spill_absent(out, &format!("{}-be", f[1]));
+            continue;
+        };
+        let wire = slurp(&inst[4]);
+        let wrote = cook_write_root(inst[2].as_str(), inst[3].as_str(), &wire);
+        match wrote {
+            Some((little, big)) => {
+                spill(out, &f[1], &little);
+                spill(out, &format!("{}-be", f[1]), &big);
+            }
+            None => {
+                spill_absent(out, &f[1]);
+                spill_absent(out, &format!("{}-be", f[1]));
+            }
+        }
+    }
+}
+
+fn cook_write_root(unit: &str, root: &str, wire: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    match (unit, root) {
+        ("graphdemo", "Scene") => {
+            use graphdemo::{
+                scene_cook_from, scene_cook_measure, scene_load, TableByteOrder,
+            };
+            let mut report = Default::default();
+            let v = scene_load(wire, &mut report)?;
+            let need = scene_cook_measure(&v);
+            if need < 1 {
+                fail("scene cook measure refused");
+            }
+            let mut little = vec![0u8; need as usize];
+            let mut big = vec![0u8; need as usize];
+            if !scene_cook_from(&v, &mut little, TableByteOrder::Little)
+                || !scene_cook_from(&v, &mut big, TableByteOrder::Big)
+            {
+                fail("scene cook from refused");
+            }
+            Some((little, big))
+        }
+        _ => None,
+    }
+}
+
 fn surface_cook(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook") {
         // cook <case> <unit> <root> <file>: the CASE names the dump and the
@@ -909,7 +961,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }
@@ -924,6 +976,7 @@ fn main() {
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
