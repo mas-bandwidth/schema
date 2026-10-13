@@ -275,8 +275,9 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 
 // emitBlockBuild is the block form's producer side (docs/SPEC-TABLES.md
 // §19.1): the counts struct, and a Begin that writes only the prologue and the
-// triples — never rows or padding — checking every count against its declared
-// bound before any byte of the extent changes. It is the Rust spelling of
+// triples — never rows or padding — checking storage, every count against its
+// declared bound, and the whole extent against the capacity, all BEFORE any
+// byte of the extent changes. It is the Rust spelling of
 // gotable/blockbuild.go's <T>BlockBegin, pin for pin.
 func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name
@@ -288,35 +289,43 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	}
 	b.pf("    }\n")
 	b.pf("    impl Default for %sCounts {\n        fn default() -> Self {\n", n)
-	b.pf("        unsafe { core::mem::zeroed() }\n    }\n")
-	b.pf("    // %sBlockBegin writes only the prologue and the triples. Storage and all\n", n)
-	b.pf("    // counts are checked before any byte of the extent changes. It returns the\n")
-	b.pf("    // used extent, rounded to 64, or None on a refusal.\n")
-	b.pf("    pub unsafe fn %sBlockBegin(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", n, n)
-	b.pf("        if buf.is_null() || capacity < %d {\n            return None;\n        }\n", bl.Projection.Size)
+	b.pf("            unsafe { core::mem::zeroed() }\n        }\n    }\n")
+	b.pf("    // %s writes only the prologue and the triples (docs/SPEC-TABLES.md\n", fn(n, "block_begin"))
+	b.pf("    // §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
+	b.pf("    // storage, every count and the whole extent are checked before any byte\n")
+	b.pf("    // of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("    pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
+	b.pf("        if buf.is_null() {\n            return None;\n        }\n")
 	for _, a := range bl.Arrays {
-		f := ir.RustConstName(a.Field.Name)
-		b.pf("        let %s = counts.%s;\n", a.Field.Name, f)
-		b.pf("        if %s < 0 || %s as i64 > %d {\n            return None;\n        }\n", a.Field.Name, a.Field.Name, a.Max)
+		f := a.Field.Name
+		b.pf("        if counts.%s < 0 || counts.%s as i64 > %d {\n            return None;\n        }\n", f, f, a.Max)
 	}
-	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
-	b.pf("        let mut used: i64 = %d;\n", bl.Projection.Size)
+	b.pf("        let mut off: i64 = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		align := int64(ir.BlockAlign)
 		if a.ElemAlign() > align {
 			align = a.ElemAlign()
 		}
-		f := ir.RustConstName(a.Field.Name)
-		b.pf("        used = (used + %d - 1) / %d * %d;\n", align, align, align)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), used as u64);\n", a.TripleOffset)
+		b.pf("        off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("        off += counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
+	}
+	b.pf("        let used = (off + 63) / 64 * 64;\n")
+	b.pf("        if used > capacity {\n            return None;\n        }\n")
+	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
+	for _, a := range bl.Arrays {
+		align := int64(ir.BlockAlign)
+		if a.ElemAlign() > align {
+			align = a.ElemAlign()
+		}
+		f := a.Field.Name
+		b.pf("        off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), off as u64);\n", a.TripleOffset)
 		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, f)
 		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
-		b.pf("        used += counts.%s as i64 * %d;\n", f, a.Stride)
+		b.pf("        off += counts.%s as i64 * %d;\n", f, a.Stride)
 	}
-	b.pf("        used = (used + 63) / 64 * 64;\n")
-	b.pf("        if used > capacity {\n            return None;\n        }\n")
 	b.pf("        Some(used)\n    }\n")
 }
 
