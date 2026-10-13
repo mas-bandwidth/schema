@@ -727,7 +727,11 @@ export function Upgrade(wire) {
   return upgrade(wire, MaxRetainBytes, MaxRetainIDs);
 }
 
-function upgrade(wire, retainBytes, retainIDs) {
+// upgrade is the retention seam Upgrade fixes the two customer capacities
+// through; the refusal probes drive smaller caller-owned storage through the
+// same path so a tiny capacity can be shown to name RetainLost and return nil
+// while the input is preserved (tables/cards/upgrade.go).
+export function upgrade(wire, retainBytes, retainIDs) {
   const report = new TableVariableReport();
   const n = CardLoadMeasure(wire);
   if (n < 0) {
@@ -745,8 +749,7 @@ function upgrade(wire, retainBytes, retainIDs) {
   if (size < 0) {
     return { out: null, report, error: new CardError("cards: upgrade: measure refused the retained card", "malformed") };
   }
-  const out = new Uint8Array(size);
-  const saved = CardSaveRetain(root, retain, out, report);
+  const saved = CardSaveRetain(root, retain, report);
   if (saved === null || saved.length !== size) {
     return { out: null, report, error: new CardError("cards: upgrade: save did not fill the measured wire", "malformed") };
   }

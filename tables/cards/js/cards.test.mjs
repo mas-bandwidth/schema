@@ -8,6 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -174,6 +175,15 @@ test("TestUpgradeMatchesGo", () => {
   assert.strictEqual(error, null);
   assert.ok(bytesEqual(wire, before), "upgrade mutated its input");
   assert.ok(out.length > 0);
+
+  // Retention storage one id short of the future-note card's single retained
+  // field refuses with retain-lost and leaves the input unchanged.
+  const future = read("tables/cards/conformance/cases/future-note.wire");
+  const futureBefore = new Uint8Array(future);
+  const short = cards.upgrade(future, cards.MaxRetainBytes, 0);
+  assert.ok(short.error !== null, "one-id-short retention was accepted");
+  assert.strictEqual(short.error.class, "retain-lost", "one-id-short retention did not name retain-lost");
+  assert.ok(bytesEqual(future, futureBefore), "one-id-short retention mutated its input");
 });
 
 // TestTaskHashFramesLogicalFields pins the frame with an independently written
@@ -182,18 +192,15 @@ test("TestUpgradeMatchesGo", () => {
 // tla/CardHops.tla — TaskHashStable).
 test("TestTaskHashFramesLogicalFields", () => {
   const enc = new TextEncoder();
-  const { record, error } = cards.FromJSON(enc.encode(JSON.stringify({ id: "x" })));
-  assert.strictEqual(error, null);
 
-  const bodyAB = JSON.stringify({ id: "x", body: "ab" });
-  const bodyA = JSON.stringify({ id: "x", body: "a" });
-  const { record: ra, error: ea } = cards.FromJSON(enc.encode(bodyA));
-  const { record: rb, error: eb } = cards.FromJSON(enc.encode(bodyAB));
-  assert.strictEqual(ea, null);
-  assert.strictEqual(eb, null);
-  const hA = cards.TaskHash(ra);
-  const hB = cards.TaskHash(rb);
-  assert.notStrictEqual(hA, hB, "different bodies hashed the same");
+  // The frame is pinned with an independently written byte vector: body "a"
+  // with paths ["bc"] and body "ab" with paths ["c"] are different frames that
+  // would collide if the length framing were dropped.
+  const recA = cards.FromJSON(enc.encode(JSON.stringify({ id: "x", body: "a", paths: [{ s: "bc" }] }))).record;
+  const recB = cards.FromJSON(enc.encode(JSON.stringify({ id: "x", body: "ab", paths: [{ s: "c" }] }))).record;
+  assert.strictEqual(cards.TaskHash(recA), frameDigest("a", ["bc"], [], [], "", ""), "body a / paths [bc] frame mismatch");
+  assert.strictEqual(cards.TaskHash(recB), frameDigest("ab", ["c"], [], [], "", ""), "body ab / paths [c] frame mismatch");
+  assert.notStrictEqual(cards.TaskHash(recA), cards.TaskHash(recB), "a body/paths boundary change hashed the same");
 
   for (const name of ["card-populated", "initial-populated", "empty-consumers"]) {
     const wire = read(`tables/cards/conformance/cases/${name}.wire`);
@@ -292,6 +299,24 @@ test("TestFieldEditLeavesTheTaskHashAlone", () => {
 function encBytes(s) {
   if (s === null || s === undefined) return "";
   return new TextEncoder().encode(s).length;
+}
+
+function u64le(n) {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, BigInt(n), true);
+  return b;
+}
+
+// frameDigest builds the task-hash frame independently of cards.mjs: each text
+// as an unsigned 64-bit little-endian byte length then its bytes, each list as
+// a count then its length-prefixed elements, in body, paths, _new, shared,
+// test, done order (docs/SPEC-TABLES.md §5).
+function frameDigest(body, paths, _new, shared, test, done) {
+  const h = createHash("sha256");
+  const text = (s) => { const b = new TextEncoder().encode(s); h.update(u64le(b.length)); h.update(b); };
+  const list = (l) => { h.update(u64le(l.length)); for (const e of l) text(e); };
+  text(body); list(paths); list(_new); list(shared); text(test); text(done);
+  return h.digest("hex");
 }
 
 // TestViewWalksEveryField compares the generated view with an explicit

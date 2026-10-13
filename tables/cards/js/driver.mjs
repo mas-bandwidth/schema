@@ -2,10 +2,9 @@
 // (tables/cards/conformance/FORMAT.md, test/conformance/README.md "The shape").
 //
 // It answers the driver contract — `<driver> <manifest> list` and
-// `<driver> <manifest> <surface> <outdir>` — over the five surfaces this leg
-// implements (load, save, render, parse, bounds) through the facade in
-// cards.mjs. upgrade, edit, taskhash and view are the follow-up card's
-// (a-js-card-upgrades-edits-and-walks-the-shared-corpus) and answer exit 2.
+// `<driver> <manifest> <surface> <outdir>` — over the nine surfaces this leg
+// implements (load, save, render, parse, bounds, upgrade, edit, taskhash, view)
+// through the facade in cards.mjs.
 //
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
