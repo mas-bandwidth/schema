@@ -40,7 +40,8 @@ import (
 //     unit whose wires and texts the oracle writes here;
 //   - blob identity (§2.5, §3.1): two *string and two *bytes slots holding
 //     equal bytes, empty and not, are two records, as the oracle writes them,
-//     while one blob two slots name (blob_shared) stays one record;
+//     while one blob two slots name (blob_shared) stays one record on the
+//     wire and the text writer REFUSES it, as the oracle's does (§16.7);
 //   - the escape kind 31 (§3): at a field the reader cannot name (unknown), at
 //     a field it names and as an array's element kind (kind_mismatch each), the
 //     report compared with the oracle's.
@@ -68,6 +69,9 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 	type vcCase struct {
 		name, root string
 		wire, text []byte // text nil: a wire-only instance (no-text)
+		// refuseText: the oracle's writer REFUSES this value (a blob two
+		// slots name has no text spelling, §16.7), and so must the leg's
+		refuseText bool
 	}
 	type vcUnit struct {
 		module string
@@ -99,7 +103,7 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 			corpus("blob_small", "Catalog", true),
 			corpus("blob_empty", "Catalog", true),
 			corpus("blob_large", "Catalog", true),
-			corpus("blob_shared", "Catalog", false),
+			func() vcCase { c := corpus("blob_shared", "Catalog", false); c.refuseText = true; return c }(),
 			corpus("blob_str8", "Catalog", true),
 			corpus("blob_str16", "Catalog", true),
 		}},
@@ -129,6 +133,11 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 			again, err := tablewire.Encode(m, inst)
 			if err != nil || !bytes.Equal(again, c.wire) {
 				t.Fatalf("%s: the oracle does not re-encode the committed wire (%v)", c.name, err)
+			}
+			if c.refuseText {
+				if _, err := m.Write(inst); err == nil {
+					t.Fatalf("%s: the oracle's writer did not refuse the value", c.name)
+				}
 			}
 			if c.text != nil {
 				// the canonical text ends with exactly one newline (§16.1)
@@ -250,6 +259,11 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 				want = append(want, "JSONW "+c.name+" OK", "JSONR "+c.name+" OK")
 			}
 			snake := ir.RustSnake(c.root)
+			if c.refuseText {
+				want = append(want, "JSONREFUSE "+c.name+" OK")
+				fmt.Fprintf(&main, "    refuse_case!(%q, %q, crate::%s::%s, %s_load, %s_to_json_checked);\n",
+					c.name, wirePath, u.module, table, snake, snake)
+			}
 			fmt.Fprintf(&main, "    run_case!(%q, %q, %s, crate::%s::%s, %s_load, %s_save, %s_to_json_checked, %s_from_json);\n",
 				c.name, wirePath, jsonPath, u.module, table, snake, snake, snake, snake)
 		}
@@ -464,6 +478,21 @@ macro_rules! run_case {
                     }
                 }
             }
+        }
+    }};
+}
+
+macro_rules! refuse_case {
+    ($case:expr, $wire:expr, $m:path, $load:ident, $to:ident) => {{
+        use $m as table;
+        let wire = std::fs::read($wire).unwrap();
+        let mut r = Default::default();
+        match table::$load(&wire, &mut r) {
+            None => println!("JSONREFUSE {} LOAD REFUSED", $case),
+            Some(v) => match table::$to(&v) {
+                None => println!("JSONREFUSE {} OK", $case),
+                Some(t) => println!("JSONREFUSE {} WROTE {} bytes", $case, t.len()),
+            },
         }
     }};
 }

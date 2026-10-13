@@ -617,6 +617,11 @@ func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 	for _, f := range st.Fields {
 		x := "v." + ir.RustSnake(f.Name)
 		switch classOf(f) {
+		case vBlob:
+			// A BLOB IS A STRING IN THE TEXT AND TAKES NO LABEL (§16.7): a blob
+			// two slots name has no spelling this form can carry, so the writer
+			// refuses the graph, as the oracle does
+			fmt.Fprintf(b, "    if let Some(n) = &%s { let c = w.counts.entry(Rc::as_ptr(n) as *const u8 as usize).or_insert(0); *c += 1; if *c > 1 { w.refused = true; } }\n", x)
 		case vPointer:
 			visit := func(e string) string {
 				return fmt.Sprintf("if let Some(n) = %s { let c = w.counts.entry(Rc::as_ptr(n) as *const () as usize).or_insert(0); *c += 1; if *c == 1 { %s(n, w); } }", e, fn(f.Type.Name, "json_count"))
