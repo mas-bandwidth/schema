@@ -78,13 +78,22 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
-	# the POINTERED unit: its JS WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's JS read side comes from.
+	# the POINTERED unit: its FIXED surface is refused by name for every
+	# pointered table (§3.4, §11), its two ACCELERATORS are emitted all the same
+	# (§7, §19) — this is where the cook's JS read side comes from — and its
+	# VARIABLE wire (GraphdemoVariable.js, §3.1) carries Scene and the tables it
+	# reaches, which the conformance driver's wire surfaces answer.
 	./bin/schema generate --lang js --out build/tables-generated-js/pointers tables/pointers
+	# the BYTE-BUFFER unit (§2.5): *bytes and *string on the variable wire
+	# (BlobdemoVariable.js). tables/lists is NOT generated here: the compiler
+	# refuses the unit whole for js because Mixed holds an array of unions
+	# (compiler/target_javascript.go refuseUnionArrays, vt/union-arrays/js), so
+	# its rows answer absent and the lists corpus rides
+	# TestVariableClassBeyondCardConstructsJavaScript instead.
+	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -484,6 +493,22 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 	@echo 'tables JS versioning: every row of §5.7 over the reference own bytes, both columns'
 
 test-js: tables-js-versioning
+
+# THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
+# §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
+# by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
+# enum, table and pointer elements, the rest of the scalar kinds, bytes(N), the
+# escape kind and the text form's &node sharing — held byte for byte against the
+# Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
+# the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
+# construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-class
+tables-js-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable class: the class beyond the card constructs round-trips the oracle bytes and the rest is refused by name'
+
+test-js: tables-js-variable-class
 
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
