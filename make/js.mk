@@ -767,8 +767,40 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-js-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-js-retain-fuzz.log
 
+# THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
+# cards-js-test runs the facade's node:test cases against the generated unit;
+# cards-js-conformance runs the harness `cards` subcommand over the JS driver;
+# the negative control flips one rendered byte through a test-only environment
+# switch and requires render to go red while load/save/parse/bounds stay green.
+# They live in make/js.mk (NOT a separate make/cards-js.mk) for the same reason
+# the wire-fuzz targets do: the wide-scalar refusal gate discovers every
+# make/*.mk as a live port (docs/SPEC-TABLES.md §11).
+.PHONY: cards-js-test cards-js-conformance cards-js-conformance-negative-control
+
+# cards-js-test runs the facade's node:test cases (ES modules loaded by node
+# with no npm dependency), against the generated unit cards-js-generate emits.
+cards-js-test: cards-js-generate
+	$(NODE) --test tables/cards/js/cards.test.mjs
+
+# cards-js-conformance runs the harness `cards` subcommand over the JS driver,
+# requiring the five surfaces this card implements (upgrade/edit/taskhash/view
+# are the follow-up card's and answer exit 2).
+cards-js-conformance: build/conformance-harness cards-js-generate
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds
+
+# cards-js-conformance-negative-control runs the same check with the driver's
+# test-only render sabotage switch set, and requires render to go red while the
+# other four surfaces stay green.
+cards-js-conformance-negative-control: build/conformance-harness cards-js-generate
+	@if CARDS_JS_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds > build/cards-js-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-js-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-neg.log; exit 1; }
+	@echo 'cards JS negative control: one changed rendered byte turns exactly render red'
+
 test-js: cards-js-wire-fuzz
 test-js: cards-js-retain-fuzz
+test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-control
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
