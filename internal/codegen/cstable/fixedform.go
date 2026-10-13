@@ -81,6 +81,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Union:
 			widest := int64(0)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if n := fixedFieldBytes(v.F); n > widest {
 					widest = n
 				}
@@ -178,6 +181,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -384,6 +390,9 @@ func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
 		case *ir.Union:
 			n := 1
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				n += b.countFieldSlots(v.F)
 			}
 			return n
@@ -585,6 +594,19 @@ func (b *fixedRootBuild) pushElementBlockOnly(f *ir.Field, id uint64, note strin
 			})
 			b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 			for _, v := range r.Variants {
+				if v.F == nil {
+					// a payload-free arm names no type: the tag alone is its
+					// whole storage (§2.6)
+					b.entries = append(b.entries, fixedBlockEntry{
+						id:       ir.TableWireId(v.WireName()),
+						kind:     ir.TableKindNoPayload,
+						size:     0,
+						children: 0,
+						note:     v.Name,
+					})
+					b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
+					continue
+				}
 				b.pushElementBlockOnly(v.F, ir.TableWireId(v.WireName()), v.Name)
 			}
 			return
@@ -985,7 +1007,9 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
 				at := len(b.plan)
-				b.buildElement(v.F, armExpr, armBase, armID, v.Name, kFixedNoGuard, 0, wireOff)
+				if v.F != nil {
+					b.buildElement(v.F, armExpr, armBase, armID, v.Name, kFixedNoGuard, 0, wireOff)
+				}
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1112,7 +1136,9 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
 				at := len(b.plan)
-				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+				if v.F != nil {
+					b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+				}
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1540,8 +1566,12 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			for _, v := range r.Variants {
 				armProp := ir.GoExportName(v.Name)
 				g.pf("%s        case %s.%s:\n", ind, tagType, armProp)
-				armSlice := fmt.Sprintf("%s.Slice(%d)", slice, tagBytes)
-				g.emitFixedWriteElement(v.F, 0, armSlice, fmt.Sprintf("%s.%s", expr, armProp), indent+12)
+				if v.F != nil {
+					// a payload-free arm's tag is its whole storage (§2.6):
+					// the case carries no store, only the break.
+					armSlice := fmt.Sprintf("%s.Slice(%d)", slice, tagBytes)
+					g.emitFixedWriteElement(v.F, 0, armSlice, fmt.Sprintf("%s.%s", expr, armProp), indent+12)
+				}
 				g.pf("%s            break;\n", ind)
 			}
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
