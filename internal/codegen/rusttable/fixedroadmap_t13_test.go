@@ -32,6 +32,19 @@ package rusttable
 // versionCorpus: a suite that skips itself under a target that promised the
 // toolchain reports green over §5 having never run). It uses no real time,
 // sockets, network or outside services beyond the compiler it must run.
+//
+// THE REVERSED WITNESS: with the byte comparison removed from the emitted load
+// (the `if block != known.layout` arm of fixedform.go's fixed_load emit, a
+// planted edit restored and never committed) every refusal stops and the test
+// goes red at
+//
+//	--- FAIL: TestFixedRoadmapRustT13LayoutHashCollision/bytes-differ (0.00s)
+//	    fixedroadmap_t13_test.go:278: rust/F12 (bytes-differ): a held hash over
+//	    layout bytes differing by one must refuse layout_malformed before any
+//	    record: T13 bytes-differ BAD a held hash over different layout bytes was
+//	    not layout_malformed before any record
+//
+// so each case pins the refusal itself and not a reader that refuses everything.
 
 import (
 	"fmt"
