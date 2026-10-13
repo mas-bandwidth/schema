@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::{from_json, load, to_json, MAX_BODY_BYTES, MAX_LIST_ENTRIES};
+use crate::{from_json, load, parse, render, to_json, MAX_BODY_BYTES, MAX_LIST_ENTRIES};
 
 fn fixture(name: &str) -> String {
     let root = if fs::metadata("tables").is_ok() {
@@ -9,6 +9,15 @@ fn fixture(name: &str) -> String {
         "../../"
     };
     format!("{root}tables/cards/fuzz/{name}")
+}
+
+fn conformance(path: &str) -> String {
+    let root = if fs::metadata("tables").is_ok() {
+        ""
+    } else {
+        "../../"
+    };
+    format!("{root}tables/cards/conformance/{path}")
 }
 
 #[test]
@@ -74,4 +83,20 @@ fn card_bounds_refuse_before_publishing() {
         let err = from_json(&big_list).err().unwrap();
         assert!(err.contains(field) && err.contains(&MAX_LIST_ENTRIES.to_string()), "{err}");
     }
+}
+
+#[test]
+fn parse_render_matches_go() {
+    let text = fs::read(conformance("cases/normalized-valid.md")).unwrap();
+    let expected_wire = fs::read(conformance("expected/normalized-valid.wire")).unwrap();
+
+    let record = parse(&text).unwrap();
+    assert_eq!(record.wire(), expected_wire);
+
+    let rendered = render(&record).unwrap();
+    assert_eq!(rendered, text);
+
+    let rejected = fs::read(conformance("cases/rejected-legacy.md")).unwrap();
+    let err = parse(&rejected).err().expect("a stranded key must refuse");
+    assert!(err.contains("PRIORITY") && err.contains("line 5"), "{err}");
 }
