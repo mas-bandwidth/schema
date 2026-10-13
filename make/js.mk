@@ -503,6 +503,34 @@ tables-js-fixed-roadmap:
 test-js: tables-js-fixed-roadmap
 
 # ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
+# nobody has seen fail may be comparing a file with itself"). Drop the held
+# layout's byte comparison from the generated reader's step 7 (fixedmodule.go:
+# "the layout bytes are compared one by one") and the second layout under a held
+# hash — same header hash, same length, DIFFERENT bytes — is walked as if it were
+# the held layout, so TestFixedRoadmapJsT13LayoutHashCollision must go red. The
+# sabotage rides through `go test -overlay`, the same instrument the versioning
+# control below uses.
+.PHONY: tables-js-fixed-roadmap-negative-control
+tables-js-fixed-roadmap-negative-control:
+	@rm -rf build/js-roadmap-sabotage && mkdir -p build/js-roadmap-sabotage
+	@sed 's|bytes\[layoutAt + i\] !== known.layout\[i\]|false /* SABOTAGED */|' \
+		internal/codegen/jstable/fixedmodule.go > build/js-roadmap-sabotage/fixedmodule.go.txt
+	@grep -q SABOTAGED build/js-roadmap-sabotage/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
+			-count=1 ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$' \
+			> build/js-roadmap-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
+		cat build/js-roadmap-sabotage/log; exit 1; \
+	fi
+	@grep -q "TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the roadmap gate went red for another reason"; \
+		  cat build/js-roadmap-sabotage/log; exit 1; }
+	@echo 'tables JS fixed roadmap negative control: the second layout under a held hash reds without the byte comparison'
+
+# ITS NEGATIVE CONTROL (§5.9 #11: each gate owes one, "because a byte comparison
 # nobody has seen fail may be comparing a file with itself"). Swap the ONE NAME a
 # file OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes — the two
 # answers §5.2 keeps distinct, "ship the reader" and "upgrade the client" — and
@@ -739,6 +767,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fixed-slack-negative-control
 	$(MAKE) tables-js-versioning
 	$(MAKE) tables-js-versioning-negative-control
+	$(MAKE) tables-js-fixed-roadmap-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
