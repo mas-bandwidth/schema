@@ -61,8 +61,37 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			want:  "a uint128",
 		},
 		{
+			// a TABLE nested by value is carried (§3); a nested `type` is not
 			field: field("byval", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Kid"}}),
-			want:  "a table field by value (docs/SPEC-TABLES.md §3.1)",
+			want:  "a nested type (docs/SPEC-TABLES.md §2)",
+		},
+		{
+			field: &ir.Field{Name: "grid", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Array: ir.ArrayFixed, ArrayBound: 4},
+			want:  "a fixed-length array [N]T (docs/SPEC-TABLES.md §3)",
+		},
+		{
+			field: &ir.Field{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
+			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
+		},
+		{
+			field: field("perms", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}),
+			want:  "a flags (docs/SPEC-TABLES.md §16)",
+		},
+		{
+			field: field("title", ir.FieldType{Kind: ir.TWString, Size: 8}),
+			want:  "a wstring(N) (docs/SPEC-TABLES.md §16)",
+		},
+		{
+			field: field("money", ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32}),
+			want:  "a fixed/ufixed (docs/SPEC-TABLES.md §15)",
+		},
+		{
+			field: &ir.Field{Name: "gated", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Guard: "mode == 1"},
+			want:  "a guarded field, an if group (docs/SPEC-TABLES.md §16.2)",
+		},
+		{
+			field: &ir.Field{Name: "squeezed", Type: ir.FieldType{Kind: ir.TFloat32}, HasFloatRange: true, FMin: 0, FMax: 1},
+			want:  "a compressed float (docs/SPEC-TABLES.md §3)",
 		},
 	} {
 		st := &ir.Struct{Name: "Probe", IsTable: true, Fields: []*ir.Field{tc.field}}
@@ -96,13 +125,36 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		{Name: "tier", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Enum{Name: "Tier"}}},
 		{Name: "s", Type: ir.FieldType{Kind: ir.TString, Size: 64}},
 		{Name: "note", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		{Name: "paths", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText"}}, Array: ir.ArrayList},
+		{Name: "paths", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}, Array: ir.ArrayList},
 	}}
 	if got := tableVariableRefusals(cardish); len(got) != 0 {
 		t.Errorf("the card construct set must not be refused, got: %q", got)
 	}
 	if _, err := generateVariableFiles(unitWith(cardish), nil); err != nil {
 		t.Errorf("generateVariableFiles refused the card construct set: %v", err)
+	}
+
+	// THE CLASS BEYOND THE CARD CONSTRUCTS is carried, not refused: a pointer
+	// to a table, a *bytes, a table nested by value, a bounded array, the rest
+	// of the scalar kinds and bytes(N) (docs/SPEC-TABLES.md §2.1, §2.5, §2.9, §3)
+	node := &ir.Struct{Name: "Node", IsTable: true}
+	beyond := &ir.Struct{Name: "Beyond", IsTable: true, Fields: []*ir.Field{
+		{Name: "next", Type: ir.FieldType{Kind: ir.TNamed, Pointer: true, Ref: node}},
+		{Name: "blob", Type: ir.FieldType{Kind: ir.TBytes, Pointer: true}},
+		{Name: "byval", Type: ir.FieldType{Kind: ir.TNamed, Ref: node}},
+		{Name: "some", Type: ir.FieldType{Kind: ir.TNamed, Ref: node}, Array: ir.ArrayCounted, ArrayBound: 4},
+		// a declared minimum moves nothing on the table wire (internal/tablewire
+		// reads ArrayMin nowhere): [1..4]T is [..4]T's bytes
+		{Name: "least", Type: ir.FieldType{Kind: ir.TInt, Width: 8}, Array: ir.ArrayCounted, ArrayBound: 4, ArrayMin: 1},
+		{Name: "ptrs", Type: ir.FieldType{Kind: ir.TNamed, Pointer: true, Ref: node}, Array: ir.ArrayList},
+		{Name: "u", Type: ir.FieldType{Kind: ir.TInt, Width: 16}},
+		{Name: "f", Type: ir.FieldType{Kind: ir.TFloat32}},
+		{Name: "b", Type: ir.FieldType{Kind: ir.TBits, Width: 10}},
+		{Name: "raw", Type: ir.FieldType{Kind: ir.TBytes, Size: 6}},
+		{Name: "nums", Type: ir.FieldType{Kind: ir.TFloat64}, Array: ir.ArrayList},
+	}}
+	if got := tableVariableRefusals(beyond); len(got) != 0 {
+		t.Errorf("the variable class beyond the card constructs must not be refused, got: %q", got)
 	}
 
 	// The committed card corpus end to end: the card set generates its codec and

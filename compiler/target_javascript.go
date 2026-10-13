@@ -39,8 +39,10 @@ func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 	// (internal/codegen/jstable/fixedRefusal, fixedRoots), so a unit that
 	// declares a union with table arms keeps every table the form reaches — the
 	// `backend` unit's three message roots among them — instead of losing the
-	// whole unit to one union. The refusals that remain are this leg's own: an
-	// array of unions and a byte buffer, which its fixed form does not carry.
+	// whole unit to one union. The refusal that remains is this leg's own: an
+	// array of unions, which neither of its table wires carries. A byte buffer
+	// (*bytes, *string) is carried by the variable wire (docs/SPEC-TABLES.md
+	// §2.5), so refuseBytes and refuseStrings pass for js (the blobs flag below).
 	if err := refuseValueDefaults(u, "js"); err != nil {
 		return nil, err
 	}
@@ -134,6 +136,6 @@ func init() {
 	registerListCarrier("js")
 	// The variable wire carries BOTH blobs (§2.5) — *string and *bytes — so js
 	// registers as a full byte-buffer carrier through registerBuiltin's blobs
-	// flag, which lifts refuseBytes in GenerateLineage (§11).
+	// flag, which lifts refuseBytes and refuseStrings in GenerateLineage (§11).
 	registerBuiltin(jsTarget{}, true, false, false, true)
 }

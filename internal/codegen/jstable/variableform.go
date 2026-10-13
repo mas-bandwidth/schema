@@ -1,25 +1,32 @@
-// THE VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1, in JavaScript:
-// the codec for exactly the card constructs. This file is the WORK of the
-// slice js-carries-the-variable-form-for-card-constructs: a JavaScript Load and
-// Save that carry a card byte for byte as the Go, C, C++ and C# backends do,
-// for the card set — plain `table` roots and tables as list elements; bool,
-// int32 and int64 scalars with their defaults and min/max; enums; string(N);
-// *string (docs/SPEC-TABLES.md §2.5, the string kind); and unbounded lists of
-// tables []T (§2.9). Reading is wire tolerance (§4): unknown ids are skipped
-// and counted, absent fields read their defaults, kind mismatch and clamp are
-// reported, and identity rides the name hash (§5). Every other variable-class
-// construct is refused by name (§11) in fixedform.go's variableFieldRefusal.
+// THE VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1, in JavaScript: a
+// Load and Save that carry a table byte for byte as the Go reference engine
+// (internal/tablewire) does, and the text form (§16) beside them, for the
+// variable class this leg carries — table roots and pointers *T over the flat
+// node table (§2.1, §3.1), tables nested by value, *string and *bytes blobs
+// (§2.5), bool and every int/uint/float/bits width, string(N) and bytes(N),
+// enums, and unbounded []T and bounded [..N]T arrays of scalar, enum, table and
+// pointer elements (§2.9). Reading is wire tolerance (§4): unknown ids are
+// skipped and counted, absent fields read their defaults, kind mismatch, clamp
+// and widening are reported, and identity rides the name hash (§5). Every other
+// variable-class construct is refused by name (§11) in fixedform.go's
+// variableFieldRefusal, and a table that reaches one is refused with it.
 //
-// THE WALK IS DUPLICATED FROM THE GO REFERENCE (internal/codegen/gotable) ON
-// PURPOSE, as this package's wire kinds already are (jstable.go): a port that
-// derived the framing from the reference emitter's private helpers would break
-// the day the two files disagree, and this way a disagreement shows up in the
-// SHARED GOLDEN BYTES instead — card-populated.wire (tables/cards/fuzz).
+// THE WALK IS A PORT OF THE GO REFERENCE ENGINE (internal/tablewire,
+// internal/tabletext), held to it by the reference bytes: the card corpus
+// (tables/cards/fuzz) and the variable-class corpus (tables/pointers,
+// tables/blobs, tables/lists) in TestVariableClassBeyondCardConstructsJavaScript.
+// The emitter writes one CODEC DESCRIPTOR per table (TableVariableCodecs) and
+// the walk in variableruntime.go reads it, so every rule is spelled once.
 package jstable
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"math"
+	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -37,19 +44,14 @@ func jsId(id uint64) string { return fmt.Sprintf("0x%016xn", id) }
 // refuseCardUnsupportedVariableConstructs — the variable form's own boundary —
 // does not bind it (§11): a variable table beside a declared fixed one is not
 // mis-encoded by anything this leg writes, and refusing the whole unit would
-// take the fixed form's surfaces down with it. In such a unit the rest of the
-// variable class stays absent and unclaimed.
+// take the fixed form's surfaces down with it. In such a unit a table the
+// variable wire does not carry stays absent and unclaimed.
 //
 // THE PREDICATE IS THE DECLARATION, NOT THE SERVICE. A plain `table` is the
-// VARIABLE wire whatever its fields happen to be (§2.2), so a `?T`, a `[E]T`
-// or a union arm it holds is a variable-class construct this leg does not
-// carry — but fixedRefusal(st) == "" names a table the fixed form COULD serve
-// (a scalar-and-string body, §3.4), not a table the DECLARATION serves, so
-// that predicate is true for almost every plain table and would swallow the
-// refusal. The predicate scopes on !ir.VariableTables(u)[name], the same
-// predicate the Elixir leg holds (internal/codegen/elixirtable/
-// variablerefusal.go), so only a unit whose closure declares a `fixed table`
-// is the unit the boundary does not bind.
+// VARIABLE wire whatever its fields happen to be (§2.2), so the predicate
+// scopes on !ir.VariableTables(u)[name], the same predicate the Elixir leg
+// holds (internal/codegen/elixirtable/variablerefusal.go), so only a unit whose
+// closure declares a `fixed table` is the unit the boundary does not bind.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 	variable := ir.VariableTables(u)
 	for name := range closure {
@@ -61,51 +63,47 @@ func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // refuseCardUnsupportedVariableConstructs is docs/SPEC-TABLES.md §11's refusal
-// at generation: it refuses, BY NAME, every variable-class construct this
-// backend does not carry on the table wire, while the card record's slice
-// passes. The rest of the class stays absent and is refused rather than
-// mis-encoded or silently dropped.
-//
-// A construct this backend does not carry is named as `<table>.<field>: <what>`
-// (variableFieldRefusal), so the message names the table, the field and the
-// construct together, which is what a refusal by name owes (§11).
+// at generation: it refuses, BY NAME, every variable table this backend does
+// not carry on the table wire — a table holding a construct outside the class
+// this leg carries, or reaching one that does (newVariableClass). The rest of
+// the class stays absent and is refused rather than mis-encoded or silently
+// dropped. The message is `<table>.<field>: <what>`, which is what a refusal
+// by name owes (§11).
 func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 	variable := ir.VariableTables(u)
 	if len(variable) == 0 {
 		return nil
 	}
+	vc := newVariableClass(u)
 	names := make([]string, 0, len(variable))
 	for name := range variable {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		st := u.Tables[name]
-		if st == nil {
-			continue
-		}
-		if refusals := tableVariableRefusals(st); len(refusals) != 0 {
-			return fmt.Errorf("js variable form: %s (docs/SPEC-TABLES.md §11)", refusals[0])
+		if why := vc.reason[name]; why != "" {
+			return fmt.Errorf("js variable form: %s (docs/SPEC-TABLES.md §11)", why)
 		}
 	}
 	return nil
 }
 
 // variableEmit generates the WHOLE variable-form module for a unit: the shared
-// runtime, then one class and its Load/Measure/Save per variable root, plus the
-// body codecs of every table in the root's closure (the []T list elements).
+// runtime, one class and one codec descriptor per carried table, and the
+// Load/Measure/Save/LoadMeasure/ToJson/FromJson surface of every carried root.
 // Everything lands in ONE self-contained module, <Package>Variable.js, so a
-// consumer imports one name and the module never imports another generated file.
+// consumer imports one name and the module never imports another generated
+// file.
 func variableEmit(u *ir.Unit) map[string][]byte {
+	vc := newVariableClass(u)
 	roots := []*ir.Struct{}
 	for _, f := range u.Files {
 		for _, st := range variableRoots(u, f.Tables) {
 			// THE FILTER IS THE REFUSAL ITSELF (docs/SPEC-TABLES.md §11), as
-			// fixedRoots filters on fixedRefusal: a table the card set does not
-			// include carries no codec, and the refusal names it in fixedform.go's
-			// variableFieldRefusal. It is never mis-encoded and never dropped
-			// silently.
-			if len(tableVariableRefusals(st)) != 0 {
+			// fixedRoots filters on fixedRefusal: a table this leg does not carry
+			// gets no codec, and the refusal names it. It is never mis-encoded
+			// and never dropped silently.
+			if !vc.carried(st.Name) {
 				continue
 			}
 			roots = append(roots, st)
@@ -114,14 +112,14 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	if len(roots) == 0 {
 		return map[string][]byte{}
 	}
-	// the closure, dependency-first, so a list element's codec exists before the
-	// root that names it
+	// the closure: every table a root reaches by value, by element or by
+	// pointer, dependency-first
 	seen := map[string]bool{}
 	var closure []*ir.Struct
 	for _, r := range roots {
 		variableCollectTypes(r, seen, &closure)
 	}
-	g := &variableGen{unit: u}
+	g := &variableGen{unit: u, variable: ir.VariableTables(u)}
 	g.pf("// Code generated by the schema compiler for package %s. DO NOT EDIT.\n", u.Package)
 	g.pf("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	g.pf("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
@@ -129,30 +127,23 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// package %s — the VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1.\n", u.Package)
 	g.pf("//\n")
 	g.pf("// A saved table is a form byte, a root body of fields (id reference, kind,\n")
-	g.pf("// payload), and an id table as the trailer (docs/SPEC-TABLES.md §3). A\n")
-	g.pf("// *string field rides as a node index into a node table of blob records\n")
-	g.pf("// (docs/SPEC-TABLES.md §3.1). Reading is tolerant: an unknown id is skipped\n")
-	g.pf("// and counted, an absent field reads its declared default, and a kind\n")
-	g.pf("// mismatch is reported (§4).\n")
+	g.pf("// payload), and an id table as the trailer (docs/SPEC-TABLES.md §3). A pointer\n")
+	g.pf("// *T, a *string and a *bytes ride as a node index into the flat node table the\n")
+	g.pf("// root body carries last (docs/SPEC-TABLES.md §3.1). Reading is tolerant: an\n")
+	g.pf("// unknown id is skipped and counted, an absent field reads its declared\n")
+	g.pf("// default, and a kind mismatch is reported (§4).\n")
 	g.pf("\n")
 	g.emitRuntime()
 	g.emitRetainRuntime()
+	g.pf("%s", jsVariableCodecRuntime)
+	g.pf("%s", jsVariableTextRuntime)
 	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)
 	}
-	for _, st := range closure {
-		g.emitBodyCodec(st)
-	}
-	g.emitNodeHelpers(closure)
-	for _, st := range closure {
-		g.emitNumberFields(st)
-	}
+	g.emitCodecs(closure)
 	for _, st := range closure {
 		g.emitExtentWalk(st)
-	}
-	for _, st := range closure {
-		g.emitJsonCodec(st)
 	}
 	for _, r := range roots {
 		g.emitRootCodec(r)
@@ -162,18 +153,14 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 }
 
 type variableGen struct {
-	unit *ir.Unit
-	body strings.Builder
+	unit     *ir.Unit
+	variable map[string]bool
+	body     strings.Builder
 }
 
 func (g *variableGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
 
-// fieldKindName is the wire kind byte a field's own header carries on this form
-// (docs/SPEC-TABLES.md §3): a list is kind 14, a pointer (*string) kind 17, an
-// enum kind 30, and every other card scalar its own kind.
-func fieldKindName(f *ir.Field) int { return ir.TableWireFieldKind(f) }
-
-// enumFields lists the enum-typed fields of a table, in declaration order.
+// enumOf returns the enum a field's values come from, or nil.
 func enumOf(f *ir.Field) *ir.Enum {
 	if f.Type.Kind != ir.TNamed {
 		return nil
@@ -184,15 +171,26 @@ func enumOf(f *ir.Field) *ir.Enum {
 	return nil
 }
 
-// listElement returns the table a []T field's elements are, or nil.
-func listElement(f *ir.Field) *ir.Struct {
-	if !f.IsList() || f.Type.Kind != ir.TNamed {
+// tableOf returns the table a field names — by value, by pointer or as an
+// array's element — or nil.
+func tableOf(f *ir.Field) *ir.Struct {
+	if f.Type.Kind != ir.TNamed {
 		return nil
 	}
 	if st, ok := f.Type.Ref.(*ir.Struct); ok {
 		return st
 	}
 	return nil
+}
+
+// listElement returns the table an unbounded []T field's elements are, held
+// BY VALUE, or nil: the elements whose storage the region measure lays out
+// (§6.5).
+func listElement(f *ir.Field) *ir.Struct {
+	if !f.IsList() || f.Type.Pointer {
+		return nil
+	}
+	return tableOf(f)
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +243,8 @@ export class TableVariableReport {
 // order, so byte-identical output against the reference requires the same walk.
 // With a retention store attached, a NON-NAMEABLE id (docs/SPEC-TABLES.md §6.6)
 // first used here takes an entry from the caller's id list, and a full list
-// answers -1 rather than growing.
+// answers -1 rather than growing. mark and rollback are how a writer decides
+// ELISION without spending an entry (internal/tablewire ids.go).
 class TableVariableIds {
   constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
   ref(id, retained) {
@@ -259,44 +258,10 @@ class TableVariableIds {
     if (isRetained && this.retain !== null) { this.retain.ids[this.retain.idUsed++] = { id, slot: n }; }
     return n;
   }
-}
-
-// THE NODE NUMBERING (docs/SPEC-TABLES.md §3.1): one record per unique node, in
-// first-visit depth-first order. A *string interns by content (two fields holding
-// one text share a record); a *bytes and a *table intern by identity (two slots
-// naming one object are one node). A table record's body is written AFTER the
-// root body, so its pointer edges' children were numbered by the descent the
-// first visit ran (numberFields). Record bodies: 'body' for a blob (bytes at the
-// ready), 'value' for a table (its instance, written later).
-class TableVariableNodes {
-  constructor() { this.list = []; this.byContent = new Map(); this.byObject = new Map(); }
-  stringRef(content) {
-    let idx = this.byContent.get(content);
-    if (idx === undefined) {
-      this.list.push({ typeId: TableStringBlobId, body: TableVariableUtf8Encode(content) });
-      idx = this.list.length + 1;
-      this.byContent.set(content, idx);
-    }
-    return idx;
-  }
-  bytesRef(obj) {
-    let idx = this.byObject.get(obj);
-    if (idx === undefined) {
-      this.list.push({ typeId: TableBytesBlobId, body: obj });
-      idx = this.list.length + 1;
-      this.byObject.set(obj, idx);
-    }
-    return idx;
-  }
-  tableRef(obj, typeId, numberFields) {
-    let idx = this.byObject.get(obj);
-    if (idx === undefined) {
-      this.list.push({ typeId: typeId, value: obj });
-      idx = this.list.length + 1;
-      this.byObject.set(obj, idx);
-      numberFields(obj, this);
-    }
-    return idx;
+  mark() { return { n: this.list.length, used: this.retain === null ? 0 : this.retain.idUsed }; }
+  rollback(m) {
+    while (this.list.length > m.n) { this.index.delete(this.list.pop()); }
+    if (this.retain !== null) { this.retain.idUsed = m.used; }
   }
 }
 
@@ -313,13 +278,13 @@ class TableVariableWriter {
   }
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
-  i8(v) { this.u8(v & 0xff); }
-  i16(v) { this.u16(v & 0xffff); }
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
-  i64(v) { this.u64(BigInt.asUintN(64, v)); }
-  f32(v) { this.u32(TableVariableF32Bits(v)); }
-  f64(v) { this.u64(TableVariableF64Bits(v)); }
+  f64(v) {
+    const d = TableVariableScratch;
+    d.setFloat64(0, v, true);
+    for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
+  }
   toArray() { return new Uint8Array(this.b); }
 }
 
@@ -357,50 +322,19 @@ class TableVariableReader {
   i32() { return this.u32() | 0; }
   i8() { const v = this.b[this.at]; this.at += 1; return (v & 0x80) ? (v - 0x100) : v; }
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
-  f32() { return TableVariableF32FromBits(this.u32()); }
-  f64() { return TableVariableF64FromBits(this.u64()); }
   u64() {
     let v = 0n;
     for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
     this.at += 8;
     return v;
   }
-  i64() {
-    let v = 0n;
-    for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+  i64() { return BigInt.asIntN(64, this.u64()); }
+  f64() {
+    const d = TableVariableScratch;
+    for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
     this.at += 8;
-    return (this.b[this.at - 1] & 0x80) !== 0 ? v - (1n << 64n) : v;
+    return d.getFloat64(0, true);
   }
-}
-
-// ---- floats ride as their IEEE-754 bit pattern (docs/SPEC-TABLES.md §3) -----
-// A float32 held in JavaScript's float64 cell carries its pattern bit for bit,
-// never through a float conversion (the hardware conversion sets the quiet bit
-// on a signalling NaN and drops a payload). The scratch array is a fresh typed
-// view per call, so no state survives between codecs.
-
-function TableVariableF32Bits(v) {
-  const f = new Float32Array(1);
-  f[0] = v;
-  return new Uint32Array(f.buffer)[0];
-}
-
-function TableVariableF32FromBits(b) {
-  const u = new Uint32Array(1);
-  u[0] = b;
-  return new Float32Array(u.buffer)[0];
-}
-
-function TableVariableF64Bits(v) {
-  const f = new Float64Array(1);
-  f[0] = v;
-  return new BigUint64Array(f.buffer)[0];
-}
-
-function TableVariableF64FromBits(b) {
-  const u = new BigUint64Array(1);
-  u[0] = b;
-  return new Float64Array(u.buffer)[0];
 }
 
 // ---- UTF-8, byte-exact and validating (docs/SPEC-TABLES.md §3) -------------
@@ -465,18 +399,16 @@ function TableVariableSkip(r, kind, report) {
   }
 }
 
-// ---- the node-table FIRST PASS (docs/SPEC-TABLES.md §3.1) -----------------
+// ---- the node table's records (docs/SPEC-TABLES.md §3.1) ------------------
 
-// TableVariableNodeTableScan reads the root body's reserved node-table field
-// BEFORE any value decode, so a body that stops on damage still holds the
-// pointer slots' records in hand — the numbering is positional and read once,
-// never re-derived mid-decode. A record whose type id this reader cannot name
-// keeps its index and counts ONE unknown at the record; every pointer naming it
-// reads null (§3.1). A *string blob's bytes are validated here too, one
-// malformed per bad record. The table is whole or it is nothing: a scan that
-// cannot frame the records leaves them empty and every pointer null.
-function TableVariableNodeTableScan(bytes, table, end, report, retain) {
-  const records = [];
+// TableVariableNodeTableScan finds the root body's reserved node-table field and
+// scans its records, BEFORE any value decode: the numbering is positional and
+// read once. The table is whole or it is nothing — a field under another kind,
+// a length past the body, a record that cannot be framed or a count the scan
+// does not match is one malformed and answers null, and every pointer in the
+// save then reads null (internal/tablewire nodetable.go). No node table at all
+// is an empty numbering.
+function TableVariableNodeTableScan(bytes, table, end, report) {
   const w = new TableVariableReader(bytes, 1, end);
   let payload = null, present = false, bad = false;
   while (!bad) {
@@ -489,7 +421,7 @@ function TableVariableNodeTableScan(bytes, table, end, report, retain) {
     const kind = w.u8();
     if (id === TableNodeTableId) {
       present = true;
-      if (kind !== 12) { report.malformed = true; bad = true; break; }
+      if (kind !== 12) { bad = true; break; }
       const L = w.leb();
       if (w.bad || w.at + L > w.end) { bad = true; break; }
       payload = bytes.slice(w.at, w.at + L);
@@ -498,56 +430,46 @@ function TableVariableNodeTableScan(bytes, table, end, report, retain) {
     }
     if (!TableVariableSkip(w, kind)) { break; }
   }
-  if (present && bad) { report.malformed = true; return records; }
-  if (!present) { return records; }
+  if (present && bad) { report.malformed = true; return null; }
+  if (!present) { return []; }
   const rec = new TableVariableReader(payload, 0, payload.length);
   const count = rec.leb();
-  if (rec.bad) { report.malformed = true; return records; }
+  if (rec.bad) { report.malformed = true; return null; }
   const raw = [];
-  let good = true;
-  for (let i = 0; i < count && good; i++) {
+  while (rec.at < rec.end) {
     const tref = rec.leb();
-    if (rec.bad || tref === 0 || tref > table.length) { good = false; break; }
+    if (rec.bad || tref === 0 || tref > table.length) { report.malformed = true; return null; }
     const tlen = rec.leb();
-    if (rec.bad || rec.at + tlen > rec.end) { good = false; break; }
-    raw.push({ ref: tref, body: payload.slice(rec.at, rec.at + tlen) });
+    if (rec.bad || rec.at + tlen > rec.end) { report.malformed = true; return null; }
+    raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
-  if (good && rec.at !== rec.end) { good = false; }
-  if (!good) { report.malformed = true; return records; }
-  for (const r of raw) {
-    const tid = table[r.ref - 1];
-    if (tid === TableStringBlobId) {
-      const dec = TableVariableUtf8Decode(r.body);
-      if (!dec.ok) { report.malformed = true; records.push(null); continue; }
-      records.push({ blob: dec.s });
-    } else if (tid === TableBytesBlobId) {
-      records.push({ blob: r.body });
-    } else if (TableVariableKnownType(tid)) {
-      records.push({ typeId: tid, body: r.body });
-    } else {
-      report.unknown++; if (retain !== null) { report.retainLost++; } records.push(null);
-    }
-  }
-  return records;
+  if (count !== raw.length) { report.malformed = true; return null; }
+  return raw;
 }
 
-// ---- the text form's string escaping (docs/SPEC-TABLES.md §16) -------------
+// ---- the text form's string (docs/SPEC-TABLES.md §16.3; tabletext writeString)
 
 function TableVariableJsonString(s) {
   let out = '"';
-  for (const c of s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
+    }
+    if (c >= 0xd800 && c <= 0xdfff) { out += "�"; continue; }
     switch (c) {
-      case '"': out += '\\"'; break;
-      case '\\': out += '\\\\'; break;
-      case '\n': out += '\\n'; break;
-      case '\r': out += '\\r'; break;
-      case '\t': out += '\\t'; break;
-      default: {
-        const cp = c.codePointAt(0);
-        if (cp < 0x20) { out += '\\u' + cp.toString(16).padStart(4, '0'); }
-        else { out += c; }
-      }
+      case 0x22: out += '\\"'; break;
+      case 0x5c: out += '\\\\'; break;
+      case 0x08: out += '\\b'; break;
+      case 0x0c: out += '\\f'; break;
+      case 0x0a: out += '\\n'; break;
+      case 0x0d: out += '\\r'; break;
+      case 0x09: out += '\\t'; break;
+      default:
+        if (c < 0x20) { out += '\\u00' + (c < 16 ? '0' : '') + c.toString(16); }
+        else { out += s[i]; }
     }
   }
   return out + '"';
@@ -560,28 +482,33 @@ function TableVariableJsonString(s) {
 // ---------------------------------------------------------------------------
 
 // fieldShape is a field's STORAGE SHAPE (docs/SPEC-TABLES.md §8.1): "value"
-// for a scalar, a string or an enum; "list" for an unbounded array of tables
-// ([]T, §2.9); and "blob" for a *string byte buffer (§2.5). A walker reads the
-// shape beside the kind to know whether a field holds one value, a counted
-// sequence or a node-indexed blob, without a per-version struct.
+// for a scalar, a string, a bytes(N), an enum or a table nested by value;
+// "list" for an array ([]T and [..N]T, §2.9); "blob" for a *string or *bytes
+// byte buffer (§2.5); and "pointer" for a *T (§2.1). A walker reads the shape
+// beside the kind to know whether a field holds one value, a counted sequence,
+// a node-indexed blob or a node index, without a per-version struct.
 func fieldShape(f *ir.Field) string {
-	if f.IsList() {
+	switch {
+	case f.Array != ir.ArrayNone:
 		return "list"
-	}
-	if f.Type.Pointer && f.Type.Blob() {
+	case f.Type.Pointer && f.Type.Blob():
 		return "blob"
+	case f.Type.Pointer:
+		return "pointer"
 	}
 	return "value"
 }
 
 // fieldBound is a field's DECLARED BOUND (docs/SPEC-TABLES.md §8.1): a
-// string(N) or bytes(N) declares N, and every other card construct is
-// unbounded or bounded by its own kind, so it declares 0.
+// string(N) or bytes(N) declares N, a bounded array [..N]T declares N, and
+// every other construct is unbounded or bounded by its own kind, so it
+// declares 0.
 func fieldBound(f *ir.Field) int64 {
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		if !f.Type.Blob() {
-			return f.Type.Size
-		}
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayBound
+	}
+	if f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Blob() {
+		return f.Type.Size
 	}
 	return 0
 }
@@ -617,6 +544,9 @@ func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 // THE STORAGE CLASS
 // ---------------------------------------------------------------------------
 
+// emitTableClass emits a table's storage class: every field at its DECLARED
+// DEFAULT (SPEC.md §4.2), which is also the value the writer elides against and
+// the value an absent field reads (docs/SPEC-TABLES.md §3, §4).
 func (g *variableGen) emitTableClass(st *ir.Struct) {
 	g.pf("export class %s {\n  constructor() {\n", st.Name)
 	for _, f := range st.Fields {
@@ -627,17 +557,15 @@ func (g *variableGen) emitTableClass(st *ir.Struct) {
 
 // defaultExpr is a field's declared default in JavaScript storage.
 func (g *variableGen) defaultExpr(f *ir.Field) string {
-	if e := enumOf(f); e != nil {
-		if f.HasDefault && f.DefVariant != "" {
-			return `"` + f.DefVariant + `"`
-		}
-		return "null"
-	}
-	if f.Type.Pointer {
-		return "null"
-	}
-	if f.IsList() {
+	switch {
+	case f.Array != ir.ArrayNone:
 		return "[]"
+	case f.Type.Pointer:
+		return "null"
+	case enumOf(f) != nil:
+		return enumDefault(f)
+	case tableOf(f) != nil:
+		return "new " + tableOf(f).Name + "()"
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -645,933 +573,262 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 			return "true"
 		}
 		return "false"
-	case ir.TInt:
-		if f.Type.Width == 64 {
-			return "0n"
-		}
-		return "0"
 	case ir.TString:
-		return `""`
+		return jsStr(string(f.DefBytes))
 	case ir.TBytes:
-		return "new Uint8Array(0)"
+		return "new Uint8Array(" + jsByteList(f.DefBytes) + ")"
+	case ir.TFloat32, ir.TFloat64:
+		return floatDefault(f)
 	}
-	return "0"
+	return intDefault(f)
+}
+
+// jsStr renders a JavaScript string literal: JSON's spelling, which is a
+// subset of JavaScript's.
+func jsStr(s string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func jsByteList(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = strconv.Itoa(int(c))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func enumDefault(f *ir.Field) string {
+	if f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
+		return jsStr(f.DefVariant)
+	}
+	return "null"
+}
+
+func floatDefault(f *ir.Field) string {
+	if !f.HasDefault {
+		return "0"
+	}
+	return jsFloat(f.DefFloat)
+}
+
+func jsFloat(v float64) string {
+	switch {
+	case math.IsNaN(v):
+		return "NaN"
+	case math.IsInf(v, 1):
+		return "Infinity"
+	case math.IsInf(v, -1):
+		return "-Infinity"
+	}
+	return strconv.FormatFloat(v, 'g', -1, 64)
+}
+
+// intIsBig reports whether an integer-shaped field (an int or a bits(N)) is
+// stored as a BigInt: exactly when its wire kind is eight bytes wide, the one
+// width a JavaScript number cannot hold whole.
+func intIsBig(f *ir.Field) bool { return ir.TableKindWidth(ir.TableWireScalarKind(f)) == 8 }
+
+// intLit renders an integer literal in the field's storage: a BigInt for an
+// eight-byte kind and a number otherwise.
+func intLit(v *big.Int, isBig bool) string {
+	if isBig {
+		return v.String() + "n"
+	}
+	return v.String()
+}
+
+func intDefault(f *ir.Field) string {
+	v := big.NewInt(0)
+	if f.HasDefault && f.DefInt != nil {
+		v = f.DefInt
+	}
+	return intLit(v, intIsBig(f))
 }
 
 // ---------------------------------------------------------------------------
-// THE BODY CODEC: one walk shared by a root and a list element
+// THE CODEC DESCRIPTORS (variableruntime.go reads them)
 // ---------------------------------------------------------------------------
 
-// emitBodyCodec emits <T>BodyWrite and <T>BodyRead, which carry a table's fields
-// as a body (docs/SPEC-TABLES.md §3): fields in declaration order, a zero
-// reference the terminator. A root's body is identical; the root codec adds the
-// form byte and the id table around it.
-func (g *variableGen) emitBodyCodec(st *ir.Struct) {
-	g.emitBodyWrite(st)
-	g.emitBodyRead(st)
+// emitCodecs emits TableVariableCodecs, one descriptor per carried table: its
+// name, its constructor, its wire type id (docs/SPEC-TABLES.md §3.1), whether
+// it is VARIABLE by declaration (§2.2), its fields in declaration order, and
+// the node types a load rooted at it can PLACE — the tables a pointer below it
+// targets and the blob kinds below it (decodenodes.go's placeable set).
+func (g *variableGen) emitCodecs(closure []*ir.Struct) {
+	g.pf("const TableVariableCodecs = {\n")
+	for _, st := range closure {
+		g.pf("  %s: {\n", st.Name)
+		g.pf("    name: %s,\n", jsStr(st.Name))
+		g.pf("    make: () => new %s(),\n", st.Name)
+		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
+		g.pf("    variable: %v,\n", g.variable[st.Name])
+		g.pf("    fields: [\n")
+		for i, f := range st.Fields {
+			g.pf("      %s,\n", g.fieldDesc(f, i))
+		}
+		g.pf("    ],\n")
+		var placeable []string
+		for _, t := range ir.PointerReachable(st) {
+			placeable = append(placeable, jsStr(t.Name))
+		}
+		sort.Strings(placeable)
+		bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
+		g.pf("    place: { tables: [%s], str: %v, bytes: %v },\n", strings.Join(placeable, ", "), stringEdge, bytesEdge)
+		g.pf("  },\n")
+	}
+	g.pf("};\n")
+	g.pf("TableVariableLink(TableVariableCodecs);\n\n")
 }
 
-func (g *variableGen) emitBodyWrite(st *ir.Struct) {
-	g.pf("function %sFieldsWrite(w, ids, nodes, v, retain, path, report) {\n", st.Name)
-	for i, f := range st.Fields {
-		g.emitWriteField(st, f, i)
+// fieldDesc renders one field's descriptor: its property name, its text key,
+// its wire id, its ordinal (the retain path's step, §6.6), the kind its header
+// carries, its shape and the JSON shape its text takes (§16.2), and what the
+// shape needs.
+func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, k: %d, ",
+		jsStr(f.Name), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	switch {
+	case f.Array != ir.ArrayNone:
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, bound: %d, ek: %d, e: %s }",
+			f.Array == ir.ArrayList, f.ArrayBound, ir.TableWireElemKind(f), g.elemDesc(f))
+	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
+		b.WriteString("s: \"sblob\", js: \"s\" }")
+	case f.Type.Pointer && f.Type.Blob():
+		b.WriteString("s: \"bblob\", js: \"s\" }")
+	case f.Type.Pointer:
+		fmt.Fprintf(&b, "s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+	case enumOf(f) != nil:
+		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
+	case tableOf(f) != nil:
+		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+	case f.Type.Kind == ir.TString:
+		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(&b, "s: \"bytes\", js: \"s\", list: false, bound: %d, ek: %d, def: new Uint8Array(%s) }",
+			f.Type.Size, ir.TableKindU8, jsByteList(f.DefBytes))
+	case f.Type.Kind == ir.TBool:
+		def := "false"
+		if f.HasDefault && f.DefBool {
+			def = "true"
+		}
+		fmt.Fprintf(&b, "s: \"bool\", js: \"b\", def: %s }", def)
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		fmt.Fprintf(&b, "s: \"float\", js: \"n\", f32: %v, def: %s }", f.Type.Kind == ir.TFloat32, floatDefault(f))
+	default:
+		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
 	}
-	g.pf("  return true;\n}\n\n")
-	g.pf("function %sBodyWrite(w, ids, nodes, v, retain, path, report) {\n", st.Name)
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, retain, path, report)) { return false; }\n", st.Name)
-	g.pf("  if (!TableVariableRetainTail(w, ids, retain, path, report)) { return false; }\n")
-	g.pf("  w.u8(0);\n")
-	g.pf("  return true;\n}\n\n")
+	return b.String()
 }
 
-// emitWriteField emits the header and payload of ONE field of a body's write
-// walk, eliding the field at its default (docs/SPEC-TABLES.md §3, §4).
-// `ordinal` is the field's position in its body's declaration order, the first
-// half of the retain path step (§6.6).
-func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field, ordinal int) {
-	name := "v." + f.Name
-	kind := fieldKindName(f)
-	if e := enumOf(f); e != nil {
-		g.pf("  if (%s !== null) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(30);\n")
-		g.pf("    let vref;\n")
-		g.pf("    switch (%s) {\n", name)
-		for i := range e.Variants {
-			g.pf("      case %q: vref = ids.ref(%s); break;\n", e.Variants[i], jsId(ir.TableWireId(e.VariantWireName(i))))
-		}
-		g.pf("      default: return false;\n")
-		g.pf("    }\n")
-		g.pf("    w.leb(vref);\n")
-		g.pf("  }\n")
-		return
+// elemDesc renders an array's ELEMENT descriptor: the same facts a field of
+// the element's type carries, at its zero (§2.9; tabletext elementZero).
+func (g *variableGen) elemDesc(f *ir.Field) string {
+	switch {
+	case f.Type.Pointer:
+		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+	case enumOf(f) != nil:
+		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
+	case tableOf(f) != nil:
+		return fmt.Sprintf("{ s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+	case f.Type.Kind == ir.TBool:
+		return "{ s: \"bool\", js: \"b\" }"
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		return fmt.Sprintf("{ s: \"float\", js: \"n\", f32: %v }", f.Type.Kind == ir.TFloat32)
 	}
-	if f.Type.Pointer && f.Type.Blob() {
-		// *string and *bytes are both kind 17 into the node table (§2.5, §3.1);
-		// they differ only in which reserved type id their record rides under.
-		if f.Type.Kind == ir.TString {
-			g.pf("  if (%s !== null) {\n", name)
-			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-			g.pf("    w.leb(ref); w.u8(17);\n")
-			g.pf("    w.leb(nodes.stringRef(%s));\n", name)
-			g.pf("  }\n")
-		} else {
-			g.pf("  if (%s !== null) {\n", name)
-			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-			g.pf("    w.leb(ref); w.u8(17);\n")
-			g.pf("    w.leb(nodes.bytesRef(%s));\n", name)
-			g.pf("  }\n")
-		}
-		return
-	}
-	if f.Type.Pointer {
-		// a pointer to a TABLE (§2.1): kind 17, the node index of the target.
-		if ts, ok := f.Type.Ref.(*ir.Struct); ok {
-			g.pf("  if (%s !== null) {\n", name)
-			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-			g.pf("    w.leb(ref); w.u8(17);\n")
-			g.pf("    w.leb(nodes.tableRef(%s, %s, %sNumberFields));\n", name, jsId(ir.TableWireId(ts.WireName())), ts.Name)
-			g.pf("  }\n")
-			return
-		}
-	}
-	if el := listElement(f); el != nil {
-		g.emitWriteListOfTables(f, el, ordinal)
-		return
-	}
-	if f.IsList() {
-		g.emitWriteList(st, f, ordinal)
-		return
-	}
-	if f.Type.Kind == ir.TBytes {
-		// bytes(N) rides as an array of u8: kind 14, element kind 6 (§3).
-		g.pf("  if (%s.length > 0) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(14);\n")
-		g.pf("    const sub = new TableVariableWriter();\n")
-		g.pf("    sub.u8(6); sub.leb(%s.length); sub.raw(%s);\n", name, name)
-		g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
-		g.pf("  }\n")
-		return
-	}
-	g.emitWriteScalar(f, kind)
+	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
 }
 
-// scalarWriteCall is the writer call that stores one scalar value at its own
-// kind's width and signedness (docs/SPEC-TABLES.md §3). Floats ride as their
-// IEEE-754 bit pattern, a float32 held in a float64 cell never converted.
-func (g *variableGen) scalarWriteCall(f *ir.Field, name string) string {
+// enumVariants renders an enum's variants as [name, wire id] pairs: identity
+// is the variant NAME's hash (docs/SPEC-TABLES.md §5).
+func enumVariants(e *ir.Enum) string {
+	parts := make([]string, len(e.Variants))
+	for i := range e.Variants {
+		parts[i] = fmt.Sprintf("[%s, %s]", jsStr(e.Variants[i]), jsId(ir.TableWireId(e.VariantWireName(i))))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// intProps renders what an integer-shaped value needs: its storage (big), its
+// kind's width (kw), the declared range a wire read clamps to (lo/hi, §4), the
+// bits(N) clamp (bits/bmax, §15), and for the text form the range it clamps to
+// first (tlo/thi: the declared range, or bits(N)'s implied one) and the storage
+// domain after it (dlo/dhi), the reader's order (tabletext placeInteger).
+func intProps(f *ir.Field) string {
+	isBig := intIsBig(f)
 	kind := ir.TableWireScalarKind(f)
-	switch kind {
-	case ir.TableKindF32:
-		return fmt.Sprintf("w.f32(%s)", name)
-	case ir.TableKindF64:
-		return fmt.Sprintf("w.f64(%s)", name)
+	lo, hi := "null", "null"
+	tlo, thi := "null", "null"
+	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+		lo, hi = intLit(f.IntMin, isBig), intLit(f.IntMax, isBig)
+		tlo, thi = f.IntMin.String()+"n", f.IntMax.String()+"n"
 	}
-	m := "u8"
-	switch ir.TableKindWidth(kind) {
-	case 2:
-		m = "u16"
-	case 4:
-		m = "u32"
-	case 8:
-		m = "u64"
-	}
-	if ir.TableKindSigned(kind) {
-		switch ir.TableKindWidth(kind) {
-		case 1:
-			m = "i8"
-		case 2:
-			m = "i16"
-		case 4:
-			m = "i32"
-		case 8:
-			m = "i64"
-		}
-	}
-	return fmt.Sprintf("w.%s(%s)", m, name)
-}
-
-func (g *variableGen) emitWriteScalar(f *ir.Field, kind int) {
-	name := "v." + f.Name
-	switch f.Type.Kind {
-	case ir.TBool:
-		g.pf("  if (%s !== false) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(1);\n")
-		g.pf("    w.u8(%s ? 1 : 0);\n", name)
-		g.pf("  }\n")
-	case ir.TFloat32, ir.TFloat64:
-		g.pf("  if (%s !== 0) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(%d);\n", kind)
-		g.pf("    %s;\n", g.scalarWriteCall(f, name))
-		g.pf("  }\n")
-	case ir.TInt, ir.TBits:
-		ride := " !== 0"
-		if ir.TableKindWidth(kind) == 8 {
-			ride = " !== 0n"
-		}
-		g.pf("  if (%s%s) {\n", name, ride)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(%d);\n", kind)
-		g.pf("    %s;\n", g.scalarWriteCall(f, name))
-		g.pf("  }\n")
-	case ir.TString:
-		g.pf("  if (%s.length > 0) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(12);\n")
-		g.pf("    const bytes = TableVariableUtf8Encode(%s);\n", name)
-		g.pf("    w.leb(bytes.length);\n")
-		g.pf("    w.raw(bytes);\n")
-		g.pf("  }\n")
-	}
-}
-
-// emitWriteListOfTables emits an unbounded []T of TABLE elements: kind 14 over
-// element kind 13, each element its own body (§2.9, §3).
-func (g *variableGen) emitWriteListOfTables(f *ir.Field, el *ir.Struct, ordinal int) {
-	name := "v." + f.Name
-	g.pf("  if (%s.length > 0) {\n", name)
-	g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-	g.pf("    w.leb(ref); w.u8(14);\n")
-	g.pf("    const sub = new TableVariableWriter();\n")
-	g.pf("    sub.u8(13);\n")
-	g.pf("    sub.leb(%s.length);\n", name)
-	g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
-	g.pf("      const e = %s[i];\n", name)
-	g.pf("      const body = new TableVariableWriter();\n")
-	g.pf("      path.push({ o: %d, i: i });\n", ordinal)
-	g.pf("      if (!%sBodyWrite(body, ids, nodes, e, retain, path, report)) { return false; }\n", el.Name)
-	g.pf("      path.pop();\n")
-	g.pf("      sub.leb(body.len);\n")
-	g.pf("      sub.raw(body.b);\n")
-	g.pf("    }\n")
-	g.pf("    w.leb(sub.len);\n")
-	g.pf("    w.raw(sub.b);\n")
-	g.pf("  }\n")
-}
-
-// emitWriteList emits an unbounded []T of a NON-table element — a scalar, a
-// string, an enum or a pointer: kind 14 over the element's own kind, elements
-// back to back (§2.9, §3).
-func (g *variableGen) emitWriteList(st *ir.Struct, f *ir.Field, ordinal int) {
-	name := "v." + f.Name
-	elemKind := ir.TableWireElemKind(f)
-	g.pf("  if (%s.length > 0) {\n", name)
-	g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-	g.pf("    w.leb(ref); w.u8(14);\n")
-	g.pf("    const sub = new TableVariableWriter();\n")
-	g.pf("    sub.u8(%d);\n", elemKind)
-	g.pf("    sub.leb(%s.length);\n", name)
-	g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
-	g.pf("      const e = %s[i];\n", name)
-	g.emitWriteListElement(f, elemKind)
-	g.pf("    }\n")
-	g.pf("    w.leb(sub.len);\n")
-	g.pf("    w.raw(sub.b);\n")
-	g.pf("  }\n")
-}
-
-func (g *variableGen) emitWriteListElement(f *ir.Field, elemKind int) {
-	switch {
-	case elemKind == ir.TableKindEnum:
-		g.pf("      if (e === null) { sub.leb(0); continue; }\n")
-		if e, ok := f.Type.Ref.(*ir.Enum); ok {
-			g.pf("      let vref = 0;\n")
-			g.pf("      switch (e) {\n")
-			for i := range e.Variants {
-				g.pf("        case %q: vref = ids.ref(%s); break;\n", e.Variants[i], jsId(ir.TableWireId(e.VariantWireName(i))))
+	bits, bmax := 0, "0"
+	if f.Type.Kind == ir.TBits {
+		bits = f.Type.Width
+		if bits < 64 {
+			m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+			bmax = intLit(m, isBig)
+			if !f.HasIntRange {
+				tlo, thi = "0n", m.String()+"n"
 			}
-			g.pf("        default: return false;\n")
-			g.pf("      }\n")
-			g.pf("      sub.leb(vref);\n")
 		}
-	case elemKind == ir.TableKindString:
-		g.pf("      const bytes = TableVariableUtf8Encode(e);\n")
-		g.pf("      sub.leb(bytes.length); sub.raw(bytes);\n")
-	case elemKind == ir.TableKindPointer:
-		if ts, ok := f.Type.Ref.(*ir.Struct); ok {
-			g.pf("      if (e === null) { sub.leb(0); continue; }\n")
-			g.pf("      sub.leb(nodes.tableRef(e, %s, %sNumberFields));\n", jsId(ir.TableWireId(ts.WireName())), ts.Name)
+	}
+	// THE STORAGE DOMAIN (tabletext StorageBytes): an integer's own width, and a
+	// bits(N)'s four or eight bytes, unsigned
+	storage, signed := f.Type.Width/8, f.Type.Signed
+	if f.Type.Kind == ir.TBits {
+		storage, signed = 4, false
+		if f.Type.Width > 32 {
+			storage = 8
 		}
-	default:
-		// scalar element: same call as a field of that kind.
-		g.pf("      %s;\n", g.scalarWriteCall(f, "e"))
 	}
-}
-
-
-func (g *variableGen) emitBodyRead(st *ir.Struct) {
-	g.pf("function %sBodyRead(r, ids, table, v, report, pending, records, nested, retain, path) {\n", st.Name)
-	g.pf("  while (true) {\n")
-	g.pf("    const ref = r.leb();\n")
-	g.pf("    if (r.bad) { report.malformed = true; break; }\n")
-	g.pf("    if (ref === 0) { break; }\n")
-	g.pf("    if (ref > table.length) { report.malformed = true; break; }\n")
-	g.pf("    const id = table[ref - 1];\n")
-	g.pf("    if (r.at >= r.end) { report.malformed = true; break; }\n")
-	g.pf("    const kind = r.u8();\n")
-	// THE RESERVED BUILD-VERSION AND VOCABULARY IDS ride in the ANNOUNCEMENT
-	// and nowhere else (docs/SPEC-TABLES.md §3.3): a reference that resolves to
-	// one in any body but the announcement's own is malformed, the walk stops
-	// there and no field after it is read, never an unknown (§3.1).
-	g.pf("    if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.malformed = true; break; }\n")
-	g.pf("    let named = false;\n")
-	for i, f := range st.Fields {
-		g.emitReadField(st, f, i)
-	}
-	// the reserved node-table field (docs/SPEC-TABLES.md §3.1): it rides in a
-	// VARIABLE root body and nowhere else — a nested body naming it is damage.
-	// The records themselves were read by <T>Load's first pass (nodeTableScan),
-	// so this walk steps over the field and never counts it unknown.
-	g.pf("    if (id === TableNodeTableId) {\n")
-	g.pf("      named = true;\n")
-	g.pf("      if (nested) { report.malformed = true; break; }\n")
-	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
-	g.pf("      continue;\n")
-	g.pf("    }\n")
-	g.pf("    if (!named) {\n")
-	g.pf("      report.unknown++;\n")
-	g.pf("      const rstart = r.at;\n")
-	g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
-	g.pf("      if (retain !== null) { TableVariableRetainCapture(r.b, rstart, r.at, id, kind, table, retain, path, report); }\n")
-	g.pf("    }\n")
-	g.pf("  }\n")
-	g.pf("  return true;\n}\n\n")
-}
-
-// emitReadField emits the decode of ONE field of a body's read walk, matching
-// the id resolved from the id table against the field's compile-time id
-// (docs/SPEC-TABLES.md §3, §4). `ordinal` is the field's position in its body's
-// declaration order (docs/SPEC-TABLES.md §6.6).
-func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
-	name := "v." + f.Name
-	kind := fieldKindName(f)
-	g.pf("    if (id === %s) {\n", jsId(ir.TableFieldWireId(f)))
-	g.pf("      named = true;\n")
-	if variableFieldRefusal(st, f) != "" {
-		// A construct this leg still refuses appears in a closure table reached
-		// as a list element or a pointer target (a map, a union arm, an
-		// optional): it rides as its field's own kind and is skipped whole here,
-		// never decoded (§11). It is never a root, so no value depends on it.
-		g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-		return
-	}
-	if e := enumOf(f); e != nil {
-		g.pf("      if (kind !== 30) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-		g.pf("      const vref = r.leb();\n")
-		g.pf("      if (r.bad) { report.malformed = true; break; }\n")
-		g.pf("      if (vref === 0) { %s = null; }\n", name)
-		g.pf("      else if (vref > table.length) { report.malformed = true; break; }\n")
-		g.pf("      else {\n")
-		g.pf("        const eid = table[vref - 1];\n")
-		g.pf("        %s = null;\n", name)
-		for i := range e.Variants {
-			g.pf("        if (eid === %s) { %s = %q; }\n", jsId(ir.TableWireId(e.VariantWireName(i))), name, e.Variants[i])
-		}
-		g.pf("        if (%s === null) { report.unknown++; if (retain !== null) { report.retainLost++; } }\n", name)
-		g.pf("      }\n")
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-		return
-	}
-	if f.Type.Pointer {
-		// *T naming a table, *bytes or *string are all kind 17, a node index
-		// deferred to Load's resolution against the node records (§2.1, §2.5,
-		// §3.1). Null is index 0 and elides on the wire, so a present field is
-		// always non-null here.
-		g.pf("      if (kind !== 17) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-		g.pf("      const index = r.leb();\n")
-		g.pf("      if (r.bad) { report.malformed = true; break; }\n")
-		g.pf("      pending.push([v, %q, index]);\n", f.Name)
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-		return
-	}
-	if el := listElement(f); el != nil {
-		g.pf("      if (kind !== 14) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-		g.pf("      const L = r.leb();\n")
-		g.pf("      if (r.bad || r.at + L > r.end) { report.malformed = true; break; }\n")
-		g.pf("      const sub = new TableVariableReader(r.b, r.at, r.at + L);\n")
-		g.pf("      if (sub.at + 2 > sub.end) { report.malformed = true; r.at += L; continue; }\n")
-		g.pf("      const ek = sub.u8();\n")
-		g.pf("      const n = sub.leb();\n")
-		g.pf("      if (sub.bad) { report.malformed = true; r.at += L; continue; }\n")
-		g.pf("      if (ek !== 13) { report.kindMismatch++; r.at += L; continue; }\n")
-		g.pf("      %s = [];\n", name)
-		g.pf("      for (let i = 0; i < n; i++) {\n")
-		g.pf("        if (sub.at >= sub.end) { report.malformed = true; break; }\n")
-		g.pf("        const elen = sub.leb();\n")
-		g.pf("        if (sub.bad || sub.at + elen > sub.end) { report.malformed = true; break; }\n")
-		g.pf("        let e = new %s();\n", el.Name)
-		g.pf("        const er = new TableVariableReader(r.b, sub.at, sub.at + elen);\n")
-		g.pf("        const pstart = pending.length;\n")
-		g.pf("        path.push({ o: %d, i: i });\n", ordinal)
-		g.pf("        %sBodyRead(er, ids, table, e, report, pending, records, true, retain, path);\n", el.Name)
-		g.pf("        path.pop();\n")
-		g.pf("        if (er.at !== er.end) { report.malformed = true; e = new %s(); pending.length = pstart; }\n", el.Name)
-		g.pf("        sub.at += elen;\n")
-		g.pf("        %s.push(e);\n", name)
-		g.pf("      }\n")
-		g.pf("      r.at += L;\n")
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-		return
-	}
-	if f.Type.Kind == ir.TBytes || f.IsList() {
-		g.emitReadList(f, ordinal)
-		return
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		g.pf("      if (kind !== 1) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-		g.pf("      %s = r.u8() !== 0;\n", name)
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-	case ir.TInt, ir.TBits:
-		g.emitReadInt(f, kind)
-	case ir.TFloat32, ir.TFloat64:
-		g.emitReadFloat(f, kind)
-	case ir.TString:
-		g.pf("      if (kind !== 12) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-		g.pf("      const L = r.leb();\n")
-		g.pf("      if (r.bad || r.at + L > r.end) { report.malformed = true; break; }\n")
-		g.pf("      const bytes = r.b.slice(r.at, r.at + L);\n")
-		g.pf("      r.at += L;\n")
-		g.pf("      const dec = TableVariableUtf8Decode(bytes);\n")
-		g.pf("      if (!dec.ok) { report.malformed = true; %s = %s; continue; }\n", name, g.defaultExpr(f))
-		g.pf("      if (bytes.length > %d) {\n", f.Type.Size)
-		g.pf("        report.clamped++;\n")
-		g.pf("        let cut = %d;\n", f.Type.Size)
-		g.pf("        while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) { cut--; }\n")
-		g.pf("        %s = TableVariableUtf8Decode(bytes.slice(0, cut)).s;\n", name)
-		g.pf("      } else { %s = dec.s; }\n", name)
-		g.pf("      continue;\n")
-		g.pf("    }\n")
-	}
-}
-
-// readScalarCall is the reader expression that decodes a scalar at the WIRE
-// kind, sign-extended where the kind is signed (docs/SPEC-TABLES.md §3).
-func (g *variableGen) readScalarCall(kindExpr string, signed bool, width int) string {
-	switch width {
-	case 1:
-		if signed {
-			return "r.i8()"
-		}
-		return "r.u8()"
-	case 2:
-		if signed {
-			return "r.i16()"
-		}
-		return "r.u16()"
-	case 4:
-		if signed {
-			return "r.i32()"
-		}
-		return "r.u32()"
-	default:
-		if signed {
-			return "r.i64()"
-		}
-		return "r.u64()"
-	}
-}
-
-// emitReadInt decodes an integer- or bits-shaped field, widening a narrower
-// same-signedness kind (§4) and reporting a kind mismatch otherwise.
-func (g *variableGen) emitReadInt(f *ir.Field, kind int) {
-	name := "v." + f.Name
-	signed := ir.TableKindSigned(kind)
-	base := 2
-	if !signed {
-		base = 6
-	}
-	g.pf("      if (kind !== %d) {\n", kind)
-	g.pf("        if (kind >= %d && kind < %d) {\n", base, kind)
-	g.pf("          report.widened++;\n")
-	// a narrower signed kind widens by its sign bit; a narrower unsigned kind
-	// reads as its own width.
+	var dlo, dhi *big.Int
 	if signed {
-		if ir.TableKindWidth(kind) == 8 {
-			g.pf("          %s = kind === 4 ? BigInt(r.i32()) : kind === 3 ? BigInt(r.i16()) : BigInt(r.i8());\n", name)
-		} else {
-			g.pf("          %s = kind === 3 ? r.i16() : r.i8();\n", name)
-		}
+		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8-1)), big.NewInt(1))
+		dlo = new(big.Int).Neg(new(big.Int).Add(dhi, big.NewInt(1)))
 	} else {
-		if ir.TableKindWidth(kind) == 8 {
-			g.pf("          %s = kind === 8 ? BigInt(r.u32()) : kind === 7 ? BigInt(r.u16()) : BigInt(r.u8());\n", name)
-		} else {
-			g.pf("          %s = kind === 7 ? r.u16() : r.u8();\n", name)
-		}
+		dlo = big.NewInt(0)
+		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8)), big.NewInt(1))
 	}
-	g.pf("          continue;\n")
-	g.pf("        }\n")
-	g.pf("        report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue;\n")
-	g.pf("      }\n")
-	g.pf("      %s = %s;\n", name, g.readScalarCall("kind", signed, ir.TableKindWidth(kind)))
-	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-		max := uint64(1)<<f.Type.Width - 1
-		g.pf("      if (%s > %dn) { %s = %dn; report.clamped++; }\n", name, max, name, max)
-	}
-	g.pf("      continue;\n")
-	g.pf("    }\n")
-}
-
-// emitReadFloat decodes a float field, widening f32 into f64 on §4's float rung.
-func (g *variableGen) emitReadFloat(f *ir.Field, kind int) {
-	name := "v." + f.Name
-	g.pf("      if (kind !== %d) {\n", kind)
-	if kind == ir.TableKindF64 {
-		g.pf("        if (kind === 10) { report.widened++; %s = r.f32(); continue; }\n", name)
-	}
-	g.pf("        report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue;\n")
-	g.pf("      }\n")
-	if kind == ir.TableKindF64 {
-		g.pf("      %s = r.f64();\n", name)
-	} else {
-		g.pf("      %s = r.f32();\n", name)
-	}
-	g.pf("      continue;\n")
-	g.pf("    }\n")
-}
-
-// emitReadList decodes bytes(N) and an unbounded []T of scalar, string, enum or
-// pointer elements: kind 14 over the element kind (§2.9, §3).
-func (g *variableGen) emitReadList(f *ir.Field, ordinal int) {
-	name := "v." + f.Name
-	elemKind := ir.TableWireElemKind(f)
-	g.pf("      if (kind !== 14) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
-	g.pf("      const L = r.leb();\n")
-	g.pf("      if (r.bad || r.at + L > r.end) { report.malformed = true; break; }\n")
-	g.pf("      const sub = new TableVariableReader(r.b, r.at, r.at + L);\n")
-	g.pf("      if (sub.at + 2 > sub.end) { report.malformed = true; r.at += L; continue; }\n")
-	g.pf("      const ek = sub.u8();\n")
-	g.pf("      const n = sub.leb();\n")
-	g.pf("      if (sub.bad) { report.malformed = true; r.at += L; continue; }\n")
-	g.pf("      if (ek !== %d) { report.kindMismatch++; r.at += L; continue; }\n", elemKind)
-	g.pf("      %s = [];\n", name)
-	g.pf("      for (let i = 0; i < n; i++) {\n")
-	g.pf("        if (sub.at >= sub.end) { report.malformed = true; break; }\n")
-	g.emitReadListElement(f, elemKind)
-	g.pf("      }\n")
-	g.pf("      r.at += L;\n")
-	g.pf("      continue;\n")
-	g.pf("    }\n")
-}
-
-func (g *variableGen) emitReadListElement(f *ir.Field, elemKind int) {
-	name := "v." + f.Name
-	switch {
-	case elemKind == ir.TableKindEnum:
-		g.pf("        const vref = sub.leb();\n")
-		g.pf("        if (sub.bad) { report.malformed = true; break; }\n")
-		g.pf("        if (vref === 0) { %s.push(null); continue; }\n", name)
-		g.pf("        if (vref > table.length) { report.malformed = true; break; }\n")
-		g.pf("        const eid = table[vref - 1];\n")
-		g.pf("        let ev = null;\n")
-		if e, ok := f.Type.Ref.(*ir.Enum); ok {
-			for i := range e.Variants {
-				g.pf("        if (eid === %s) { ev = %q; }\n", jsId(ir.TableWireId(e.VariantWireName(i))), e.Variants[i])
-			}
-		}
-		g.pf("        if (ev === null) { report.unknown++; }\n")
-		g.pf("        %s.push(ev);\n", name)
-	case elemKind == ir.TableKindString:
-		g.pf("        const len = sub.leb();\n")
-		g.pf("        if (sub.bad || sub.at + len > sub.end) { report.malformed = true; break; }\n")
-		g.pf("        const bytes = sub.b.slice(sub.at, sub.at + len);\n")
-		g.pf("        sub.at += len;\n")
-		g.pf("        const dec = TableVariableUtf8Decode(bytes);\n")
-		g.pf("        if (!dec.ok) { report.malformed = true; %s.push(\"\"); continue; }\n", name)
-		g.pf("        %s.push(dec.s);\n", name)
-	case elemKind == ir.TableKindPointer:
-		g.pf("        const index = sub.leb();\n")
-		g.pf("        if (sub.bad) { report.malformed = true; break; }\n")
-		g.pf("        %s.push(null);\n", name)
-		g.pf("        pending.push([%s, %s.length - 1, index]);\n", name, name)
-	default:
-		// scalar element: same read as a field of that kind, at that width.
-		signed := ir.TableKindSigned(elemKind)
-		width := ir.TableKindWidth(elemKind)
-		g.pf("        const ev = %s;\n", g.readScalarCall("ek", signed, width))
-		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			max := uint64(1)<<f.Type.Width - 1
-			g.pf("        let v = ev; if (v > %dn) { v = %dn; report.clamped++; }\n", max, max)
-			g.pf("        %s.push(v);\n", name)
-		} else {
-			g.pf("        %s.push(ev);\n", name)
-		}
-	}
+	return fmt.Sprintf("big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
+		isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, tlo, thi, dlo.String(), dhi.String())
 }
 
 // ---------------------------------------------------------------------------
-// THE NODE-TABLE DISPATCHERS (docs/SPEC-TABLES.md §3.1): the three switches
-// that turn a record's type id into a verdict, a body or a value. They are
-// emitted once per unit over the closure, so a node record whose type id is a
-// table this unit declares is written and read, and any other is unknown.
+// THE ROOT SURFACE
 // ---------------------------------------------------------------------------
-
-// emitNodeHelpers emits TableVariableKnownType, TableVariableWriteNodeBody and
-// TableVariableDecodeNode.
-func (g *variableGen) emitNodeHelpers(closure []*ir.Struct) {
-	g.pf("function TableVariableKnownType(id) {\n")
-	g.pf("  switch (id) {\n")
-	for _, st := range closure {
-		g.pf("    case %s: return true;\n", jsId(ir.TableWireId(st.WireName())))
-	}
-	g.pf("  }\n")
-	g.pf("  return false;\n")
-	g.pf("}\n\n")
-
-	g.pf("function TableVariableWriteNodeBody(w, ids, nodes, n, retain, path, report) {\n")
-	g.pf("  if (n.body !== undefined) { w.leb(n.body.length); w.raw(n.body); return true; }\n")
-	g.pf("  const body = new TableVariableWriter();\n")
-	g.pf("  switch (n.typeId) {\n")
-	for _, st := range closure {
-		g.pf("    case %s: if (!%sBodyWrite(body, ids, nodes, n.value, retain, path, report)) { return false; } break;\n", jsId(ir.TableWireId(st.WireName())), st.Name)
-	}
-	g.pf("    default: return false;\n")
-	g.pf("  }\n")
-	g.pf("  w.leb(body.len); w.raw(body.b);\n")
-	g.pf("  return true;\n")
-	g.pf("}\n\n")
-
-	g.pf("function TableVariableDecodeNode(rec, ids, table, report, pending, records, retain, path) {\n")
-	g.pf("  switch (rec.typeId) {\n")
-	for _, st := range closure {
-		g.pf("    case %s: {\n", jsId(ir.TableWireId(st.WireName())))
-		g.pf("      const v = new %s();\n", st.Name)
-		g.pf("      const er = new TableVariableReader(rec.body, 0, rec.body.length);\n")
-		g.pf("      %sBodyRead(er, ids, table, v, report, pending, records, true, retain, path);\n", st.Name)
-		g.pf("      return v;\n")
-		g.pf("    }\n")
-	}
-	g.pf("  }\n")
-	g.pf("  report.unknown++;\n")
-	g.pf("  return null;\n")
-	g.pf("}\n\n")
-}
-
-// emitNumberFields emits <T>NumberFields, the DESCENT half of the numbering
-// walk (docs/SPEC-TABLES.md §3.1): a first visit of a *table node runs it, and
-// it interns the node's own pointer and blob fields in declaration order, which
-// is the depth-first pre-order the numbering is defined as. Blobs have no
-// descent; a *table descends into its target.
-func (g *variableGen) emitNumberFields(st *ir.Struct) {
-	g.pf("function %sNumberFields(v, nodes) {\n", st.Name)
-	for _, f := range st.Fields {
-		if e := enumOf(f); e != nil {
-			continue
-		}
-		if f.Type.Pointer && f.Type.Blob() {
-			if f.Type.Kind == ir.TString {
-				g.pf("  if (v.%s !== null) { nodes.stringRef(v.%s); }\n", f.Name, f.Name)
-			} else {
-				g.pf("  if (v.%s !== null) { nodes.bytesRef(v.%s); }\n", f.Name, f.Name)
-			}
-			continue
-		}
-		if f.Type.Pointer {
-			if ts, ok := f.Type.Ref.(*ir.Struct); ok {
-				g.pf("  if (v.%s !== null) { nodes.tableRef(v.%s, %s, %sNumberFields); }\n", f.Name, f.Name, jsId(ir.TableWireId(ts.WireName())), ts.Name)
-			}
-			continue
-		}
-	}
-	g.pf("}\n\n")
-}
-
-// ---------------------------------------------------------------------------
-// THE TEXT FORM (docs/SPEC-TABLES.md §16): JSON in and out, card constructs only
-// ---------------------------------------------------------------------------
-
-// jsonValueExpr is the JavaScript expression that renders a field's JSON value,
-// `d` the key's indentation depth. Every field is written, defaults included
-// (§16.2: "a text that elides is a text a reader has to know the schema to
-// complete").
-func (g *variableGen) jsonValueExpr(f *ir.Field, expr, d string) string {
-	if e := enumOf(f); e != nil {
-		return "(" + expr + " === null ? '\"None\"' : TableVariableJsonString(" + expr + "))"
-	}
-	if f.Type.Pointer && f.Type.Blob() {
-		return "(" + expr + " === null ? \"null\" : TableVariableJsonString(" + expr + "))"
-	}
-	if el := listElement(f); el != nil {
-		return el.Name + "ListJson(" + expr + ", " + d + ")"
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "(" + expr + " ? \"true\" : \"false\")"
-	case ir.TInt:
-		return "String(" + expr + ")"
-	case ir.TString:
-		return "TableVariableJsonString(" + expr + ")"
-	}
-	return "\"null\""
-}
-
-func (g *variableGen) emitJsonCodec(st *ir.Struct) {
-	// <T>JsonValue renders one instance as a JSON object, its closing brace at
-	// `depth` indentation levels.
-	g.pf("function %sJsonValue(v, depth) {\n", st.Name)
-	g.pf("  let s = \"{\";\n")
-	// fields, joined by a comma and a newline at the key's indentation
-	g.pf("  const ind = \"  \".repeat(depth + 1);\n")
-	g.pf("  let first = true;\n")
-	for _, f := range st.Fields {
-		key := ir.TableFieldJsonKey(f)
-		val := g.jsonValueExpr(f, "v."+f.Name, "depth + 1")
-		g.pf("  if (!first) { s += \",\"; }\n")
-		g.pf("  first = false;\n")
-		g.pf("  s += \"\\n\" + ind + %s + \": \" + %s;\n", jsJsonKey(key), val)
-	}
-	g.pf("  s += \"\\n\" + \"  \".repeat(depth) + \"}\";\n")
-	g.pf("  return s;\n")
-	g.pf("}\n\n")
-
-	// <T>ListJson renders a []T, its closing bracket at `d` indentation levels.
-	g.pf("function %sListJson(list, d) {\n", st.Name)
-	g.pf("  if (list.length === 0) { return \"[]\"; }\n")
-	g.pf("  let s = \"[\";\n")
-	g.pf("  for (let i = 0; i < list.length; i++) {\n")
-	g.pf("    if (i > 0) { s += \",\"; }\n")
-	g.pf("    s += \"\\n\" + \"  \".repeat(d + 1) + %sJsonValue(list[i], d + 1);\n", st.Name)
-	g.pf("  }\n")
-	g.pf("  s += \"\\n\" + \"  \".repeat(d) + \"]\";\n")
-	g.pf("  return s;\n")
-	g.pf("}\n\n")
-
-	// <T>FromObject places a parsed JSON object into a fresh instance, key by
-	// key; a key the table cannot name is skipped and counted (§16.2).
-	g.pf("function %sFromObject(data, report) {\n", st.Name)
-	g.pf("  const v = new %s();\n", st.Name)
-	g.pf("  for (const key of Object.keys(data)) {\n")
-	g.pf("    const value = data[key];\n")
-	for i, f := range st.Fields {
-		g.emitFromJsonField(st, f, i == 0)
-	}
-	g.pf("    else { report.unknown++; }\n")
-	g.pf("  }\n")
-	g.pf("  return v;\n")
-	g.pf("}\n\n")
-}
-
-// emitFromJsonField emits the placement of ONE field from a parsed JSON object.
-// `first` emits `if`; the rest emit `else if`, so the chain closes on the
-// caller's trailing `else { report.unknown++; }`. Every branch closes its own
-// brace: a field this port cannot place from JSON (a pointer-to-table, a map, a
-// union arm) counts one unknown rather than leaving the chain dangling.
-func (g *variableGen) emitFromJsonField(st *ir.Struct, f *ir.Field, first bool) {
-	key := ir.TableFieldJsonKey(f)
-	prefix := "if"
-	if !first {
-		prefix = "else if"
-	}
-	g.pf("    %s (key === %s) {\n", prefix, jsString(key))
-	name := "v." + f.Name
-	if e := enumOf(f); e != nil {
-		g.pf("      if (value === null) { %s = null; }\n", name)
-		g.pf("      else if (typeof value !== \"string\") { report.kindMismatch++; }\n")
-		g.pf("      else { %s = value; }\n", name)
-		g.pf("    }\n")
-		return
-	}
-	if f.Type.Pointer && f.Type.Blob() {
-		g.pf("      if (value === null) { %s = null; }\n", name)
-		g.pf("      else if (typeof value !== \"string\") { report.kindMismatch++; }\n")
-		g.pf("      else { %s = value; }\n", name)
-		g.pf("    }\n")
-		return
-	}
-	if f.Type.Pointer {
-		g.pf("      report.unknown++;\n")
-		g.pf("    }\n")
-		return
-	}
-	if el := listElement(f); el != nil {
-		g.pf("      if (!Array.isArray(value)) { report.kindMismatch++; }\n")
-		g.pf("      else { for (const item of value) { %s.push(%sFromObject(item, report)); } }\n", name, el.Name)
-		g.pf("    }\n")
-		return
-	}
-	if f.IsList() || f.Type.Kind == ir.TBytes {
-		g.pf("      if (!Array.isArray(value)) { report.kindMismatch++; }\n")
-		g.pf("      else { for (const item of value) { %s.push(item); } }\n", name)
-		g.pf("    }\n")
-		return
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		g.pf("      if (typeof value !== \"boolean\") { report.kindMismatch++; }\n")
-		g.pf("      else { %s = value; }\n", name)
-		g.pf("    }\n")
-	case ir.TInt, ir.TBits:
-		g.pf("      if (typeof value !== \"number\") { report.kindMismatch++; }\n")
-		if f.Type.Width == 64 {
-			g.pf("      else { %s = BigInt(value); }\n", name)
-		} else {
-			g.pf("      else { %s = value | 0; }\n", name)
-		}
-		g.pf("    }\n")
-	case ir.TFloat32, ir.TFloat64:
-		g.pf("      if (typeof value !== \"number\") { report.kindMismatch++; }\n")
-		g.pf("      else { %s = value; }\n", name)
-		g.pf("    }\n")
-	case ir.TString:
-		g.pf("      if (typeof value !== \"string\") { report.kindMismatch++; }\n")
-		g.pf("      else { %s = value; }\n", name)
-		g.pf("    }\n")
-	default:
-		g.pf("      report.unknown++;\n")
-		g.pf("    }\n")
-	}
-}
-
-func jsString(s string) string {
-	return fmt.Sprintf("%q", s)
-}
-
-// jsJsonKey renders a JSON object key as a JavaScript string literal WITH its
-// surrounding quotes (docs/SPEC-TABLES.md §16), so the emitted text is `"key"`.
-func jsJsonKey(s string) string {
-	return fmt.Sprintf("%q", fmt.Sprintf("%q", s))
-}
-
-// emitRootJson emits <T>ToJson and <T>FromJson, the root's text-form surface.
-func (g *variableGen) emitRootJson(st *ir.Struct) {
-	g.pf("export function %sToJson(v) {\n", st.Name)
-	g.pf("  return %sJsonValue(v, 0) + \"\\n\";\n", st.Name)
-	g.pf("}\n\n")
-	g.pf("export function %sFromJson(text, report) {\n", st.Name)
-	g.pf("  let data;\n")
-	g.pf("  try { data = JSON.parse(text); } catch (e) { report.malformed = true; return new %s(); }\n", st.Name)
-	g.pf("  if (data === null || typeof data !== \"object\") { report.kindMismatch++; return new %s(); }\n", st.Name)
-	g.pf("  return %sFromObject(data, report);\n", st.Name)
-	g.pf("}\n\n")
-}
 
 // emitRootCodec emits a variable root's whole surface: the wire Save/Measure,
 // the tolerant Load, the LoadMeasure the oracle fuzzer compares, and the text
-// ToJson/FromJson (docs/SPEC-TABLES.md §3, §16).
+// ToJson/FromJson (docs/SPEC-TABLES.md §3, §16). Save answers null and Measure
+// -1 for a value the wire cannot carry: a data cycle (§3.1) or an enum value no
+// variant names (§5). ToJson answers null for a value the text cannot spell: a
+// cycle, a non-finite float, a blob two slots name, a nesting past the depth
+// cap (§16.3, §16.7).
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
-	g.emitRootSave(st)
-	g.emitRootLoad(st)
-	g.emitRootLoadMeasure(st)
-	g.emitRootJson(st)
-}
-
-// emitRootSave emits <T>Save and <T>Measure: form byte 1, the body, the node
-// table field, then the id table in first-use order (docs/SPEC-TABLES.md §3).
-func (g *variableGen) emitRootSave(st *ir.Struct) {
+	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
-	g.pf("  const w = new TableVariableWriter();\n")
-	g.pf("  w.u8(TableVariableForm);\n")
-	g.pf("  const ids = new TableVariableIds();\n")
-	g.pf("  const nodes = new TableVariableNodes();\n")
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, null, [], null)) { return -1; }\n", st.Name)
-	g.pf("  if (nodes.list.length > 0) {\n")
-	g.pf("    const ref = ids.ref(TableNodeTableId);\n")
-	g.pf("    w.leb(ref); w.u8(12);\n")
-	g.pf("    const sub = new TableVariableWriter();\n")
-	g.pf("    sub.leb(nodes.list.length);\n")
-	g.pf("    for (const n of nodes.list) {\n")
-	g.pf("      const tref = ids.ref(n.typeId);\n")
-	g.pf("      sub.leb(tref);\n")
-	g.pf("      if (!TableVariableWriteNodeBody(sub, ids, nodes, n, null, [], null)) { return -1; }\n")
-	g.pf("    }\n")
-	g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
-	g.pf("  }\n")
-	g.pf("  w.u8(0);\n")
-	g.pf("  for (const id of ids.list) { w.u64(id); }\n")
-	g.pf("  w.u64(BigInt(ids.list.length));\n")
-	g.pf("  return w.len;\n")
+	g.pf("  const b = TableVariableSave(%s, v, null, null);\n", c)
+	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sSave(v) {\n", st.Name)
-	g.pf("  const n = %sMeasure(v);\n", st.Name)
-	g.pf("  if (n < 0) { return null; }\n")
-	g.pf("  const w = new TableVariableWriter();\n")
-	g.pf("  w.u8(TableVariableForm);\n")
-	g.pf("  const ids = new TableVariableIds();\n")
-	g.pf("  const nodes = new TableVariableNodes();\n")
-	g.pf("  if (!%sFieldsWrite(w, ids, nodes, v, null, [], null)) { return null; }\n", st.Name)
-	g.pf("  if (nodes.list.length > 0) {\n")
-	g.pf("    const ref = ids.ref(TableNodeTableId);\n")
-	g.pf("    w.leb(ref); w.u8(12);\n")
-	g.pf("    const sub = new TableVariableWriter();\n")
-	g.pf("    sub.leb(nodes.list.length);\n")
-	g.pf("    for (const n of nodes.list) {\n")
-	g.pf("      const tref = ids.ref(n.typeId);\n")
-	g.pf("      sub.leb(tref);\n")
-	g.pf("      if (!TableVariableWriteNodeBody(sub, ids, nodes, n, null, [], null)) { return null; }\n")
-	g.pf("    }\n")
-	g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
-	g.pf("  }\n")
-	g.pf("  w.u8(0);\n")
-	g.pf("  for (const id of ids.list) { w.u64(id); }\n")
-	g.pf("  w.u64(BigInt(ids.list.length));\n")
-	g.pf("  return w.toArray();\n")
+	g.pf("  return TableVariableSave(%s, v, null, null);\n", c)
 	g.pf("}\n\n")
-}
-
-// emitRootLoad emits <T>Load: the form byte, the id table resolved from the
-// trailer, the tolerant body read, then the deferred *string node indices
-// resolved against the node records (docs/SPEC-TABLES.md §3, §3.1, §4). The
-// refusal and damage verdicts match the engine's decode (internal/tablewire):
-// a form byte this reader does not carry is a refusal, and any framing the
-// id table or the terminator cannot close is damage, both returning no root.
-func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
-	g.pf("  const v = new %s();\n", st.Name)
-	g.pf("  if (bytes.length < 1) { report.malformed = true; return null; }\n")
-	g.pf("  if (bytes[0] !== TableVariableForm) { report.refused = 1; return null; }\n")
-	g.pf("  if (bytes.length < 9) { report.malformed = true; return null; }\n")
-	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
-	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }\n")
-	g.pf("  const entriesStart = bytes.length - 8 - Number(count) * 8;\n")
-	g.pf("  const table = [];\n")
-	g.pf("  const seenIds = new Set();\n")
-	g.pf("  for (let i = 0; i < Number(count); i++) {\n")
-	g.pf("    const id = dv.getBigUint64(entriesStart + i * 8, true);\n")
-	g.pf("    if (seenIds.has(id)) { report.malformed = true; return null; }\n")
-	g.pf("    seenIds.add(id);\n")
-	g.pf("    table.push(id);\n")
-	g.pf("  }\n")
-	g.pf("  {\n")
-	g.pf("    const w = new TableVariableReader(bytes, 1, entriesStart);\n")
-	g.pf("    while (true) {\n")
-	g.pf("      const ref = w.leb();\n")
-	g.pf("      if (w.bad) { break; }\n")
-	g.pf("      if (ref === 0) { if (w.at !== w.end) { report.malformed = true; return null; } break; }\n")
-	g.pf("      if (ref > table.length) { break; }\n")
-	g.pf("      if (w.at >= w.end) { break; }\n")
-	g.pf("      const kind = w.u8();\n")
-	g.pf("      if (!TableVariableSkip(w, kind)) { break; }\n")
-	g.pf("    }\n")
-	g.pf("  }\n")
-	g.pf("  const ids = new TableVariableIds();\n")
-	g.pf("  const pending = [];\n")
-	// the node table is read FIRST, before any value decode (docs/SPEC-TABLES.md
-	// §3.1): a body that stops on damage still has its pointer slots' records.
-	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report, null);\n")
-	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
-	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false, null, []);\n", st.Name)
-	g.pf("  for (let i = 0; i < pending.length; i++) {\n")
-	g.pf("    const [obj, slot, index] = pending[i];\n")
-	g.pf("    if (index === 0) { continue; }\n")
-	g.pf("    if (index === 1) { report.kindMismatch++; continue; }\n")
-	g.pf("    const rec = records[index - 2];\n")
-	g.pf("    if (rec === undefined) { report.malformed = true; continue; }\n")
-	g.pf("    if (rec === null) { continue; }\n")
-	g.pf("    if (rec.blob !== undefined) { obj[slot] = rec.blob; continue; }\n")
-	g.pf("    obj[slot] = TableVariableDecodeNode(rec, ids, table, report, pending, records, null, []);\n")
-	g.pf("  }\n")
-	g.pf("  return v;\n")
+	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
 	g.pf("}\n\n")
+	g.pf("export function %sToJson(v) {\n", st.Name)
+	g.pf("  return TableVariableToJson(%s, v);\n", c)
+	g.pf("}\n\n")
+	g.pf("export function %sFromJson(text, report) {\n", st.Name)
+	g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+	g.pf("}\n\n")
+	g.emitRootLoadMeasure(st)
 }
 
 // emitExtentWalk emits <T>Extent, the region-storage walk a LoadMeasure runs
@@ -1636,9 +893,11 @@ func (g *variableGen) emitExtentListField(st *ir.Struct, f *ir.Field, el *ir.Str
 
 // emitRootLoadMeasure emits <T>LoadMeasure: the region size a caller owes a
 // root, derived from framing alone (docs/SPEC-TABLES.md §6.5) and equal, for a
-// whole wire, to internal/tablewire's FileRegionMeasure answer. A refusal to
-// frame (unknown form, damaged id table, an early terminator, a list count that
-// cannot fit, or a blob past the size cap) answers -1.
+// whole wire of the card constructs, to internal/tablewire's FileRegionMeasure
+// answer. A refusal to frame (unknown form, damaged id table, an early
+// terminator, a list count that cannot fit, or a blob past the size cap)
+// answers -1. The region a pointer node, a byte buffer or a non-table array
+// takes is not measured here: that is the cook's (§7), not this card's.
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
