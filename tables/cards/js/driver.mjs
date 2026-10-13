@@ -2,24 +2,29 @@
 // (tables/cards/conformance/FORMAT.md, test/conformance/README.md "The shape").
 //
 // It answers the driver contract — `<driver> <manifest> list` and
-// `<driver> <manifest> <surface> <outdir>` — over the five surfaces this leg
-// implements (load, save, render, parse, bounds) through the facade in
-// cards.mjs. upgrade, edit, taskhash and view are the follow-up card's
-// (a-js-card-upgrades-edits-and-walks-the-shared-corpus) and answer exit 2.
+// `<driver> <manifest> <surface> <outdir>` — over the nine surfaces this leg
+// implements (load, save, render, parse, bounds, upgrade, edit, taskhash, view)
+// through the facade in cards.mjs.
 //
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { CardsUnitRegistry } from "../../../build/tables-generated-js/cards/CardsVariable.js";
 import * as cards from "./cards.mjs";
 
-const surfaces = ["load", "save", "render", "parse", "bounds"];
+const surfaces = ["load", "save", "render", "parse", "bounds", "upgrade", "edit", "taskhash", "view"];
 
 // CARDS_JS_SABOTAGE_RENDER is the test-only environment switch the negative
 // control sets: it changes one rendered byte so the check must go red on
 // render while the other four surfaces stay green.
 const sabotageRender = process.env.CARDS_JS_SABOTAGE_RENDER === "1";
+
+// CARDS_JS_SABOTAGE_UPGRADE drops one retained byte so upgrade alone goes red;
+// CARDS_JS_SABOTAGE_HASH adds needs to the hash frame so taskhash alone does.
+const sabotageUpgrade = process.env.CARDS_JS_SABOTAGE_UPGRADE === "1";
+const sabotageHash = process.env.CARDS_JS_SABOTAGE_HASH === "1";
 
 function readManifest(path) {
   const lines = [];
@@ -103,7 +108,134 @@ function one(surface, c, outdir) {
       writeFileSync(join(outdir, name + ".wire"), record.Wire());
       break;
     }
+    case "upgrade": {
+      const wire = new Uint8Array(readFileSync(input));
+      const { out, report, error } = cards.Upgrade(wire);
+      if (error) {
+        refuse(outdir, name, error.class);
+        break;
+      }
+      if (sabotageUpgrade) out[0] ^= 0xff;
+      writeFileSync(join(outdir, name + ".wire"), out);
+      writeFileSync(join(outdir, name + ".report"), reportText(report));
+      break;
+    }
+    case "edit": {
+      const wire = new Uint8Array(readFileSync(input));
+      const { record, error } = cards.Load(wire);
+      if (error) fail(error.message);
+      try {
+        applyEdit(record, c.slice(3));
+      } catch (e) {
+        refuse(outdir, name, refusalClass(e));
+        break;
+      }
+      writeFileSync(join(outdir, name + ".wire"), record.Wire());
+      break;
+    }
+    case "taskhash": {
+      const wire = new Uint8Array(readFileSync(input));
+      const { record, error } = cards.Load(wire);
+      if (error) fail(error.message);
+      let hex;
+      try {
+        hex = cards.TaskHash(record);
+      } catch (e) {
+        fail(e.message);
+      }
+      if (sabotageHash) hex = "0".repeat(64);
+      writeFileSync(join(outdir, name + ".hex"), hex);
+      break;
+    }
+    case "view": {
+      writeFileSync(join(outdir, name + ".txt"), view());
+      break;
+    }
   }
+}
+
+// refusalClass maps a facade error to one class of the closed list FORMAT.md
+// fixes, mirroring the Go reference driver's refusalClass.
+function refusalClass(err) {
+  const msg = err.message;
+  if (msg.includes("past the 65536-byte ceiling")) return "body-bound 65536";
+  if (msg.includes("past the 512-entry ceiling")) return "list-bound " + fieldName(msg) + " 512";
+  if (msg.includes("stranded header key")) return "stranded-key " + quotedWord(msg);
+  if (msg.includes("retained field(s) lost")) return "retain-lost";
+  if (msg.includes("record has loss events")) return "unknown-present";
+  return "malformed";
+}
+
+function fieldName(msg) {
+  const rest = msg.replace(/^cards: /, "");
+  return rest.split(" has ")[0];
+}
+
+function quotedWord(msg) {
+  const i = msg.indexOf('"');
+  if (i < 0) return "";
+  const j = msg.indexOf('"', i + 1);
+  if (j < 0) return "";
+  return msg.slice(i + 1, j);
+}
+
+function applyEdit(record, edit) {
+  if (edit.length !== 1) throw new cards.CardError("cards-driver: an edit line carries exactly one edit", "malformed");
+  const [key, value] = edit[0].split("=");
+  if (value === undefined) throw new cards.CardError(`cards-driver: edit ${edit[0]} has no =`, "malformed");
+  switch (key) {
+    case "needs": return cards.SetNeeds(record, splitList(value));
+    case "paths": return cards.SetPaths(record, splitList(value));
+    case "tier": return cards.SetTier(record, value);
+    case "priority": return cards.SetPriority(record, value);
+    case "column": return cards.SetColumn(record, value);
+    case "holder": return cards.SetHolder(record, value);
+  }
+  throw new cards.CardError(`cards-driver: unknown edit ${key}`, "malformed");
+}
+
+function splitList(v) {
+  if (v === "") return [];
+  return v.split(",");
+}
+
+// The enum/list type names the generated view spells, keyed by the declared
+// field name (docs/SPEC-TABLES.md §8); the bounded value and blob kinds are
+// spelled from the kind number itself.
+const enumTypeName = { tier: "Tier", priority: "Priority", column: "Column" };
+const listElemType = {
+  paths: "PathText", _new: "PathText", shared: "PathText",
+  needs: "CardID", extra: "KeyValue", consumers: "Consumer",
+};
+
+function typeOf(f) {
+  switch (f.kind) {
+    case 12: return "string";
+    case 4: return "int32";
+    case 5: return "int64";
+    case 30: return enumTypeName[f.name];
+    case 17: return "string";
+    case 14: return listElemType[f.name];
+    default: return "?";
+  }
+}
+
+// view renders the generated view: every field of every table in the unit, in
+// table-name order then declaration order, one line each (docs/SPEC-TABLES.md
+// §8; FORMAT.md "The view"), byte-identical to the Go reference leg.
+function view() {
+  const tables = [...CardsUnitRegistry.tables].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  let out = "";
+  for (const t of tables) {
+    for (const f of t.fields) {
+      const shape = f.shape;
+      let bound = "-";
+      if (shape === "value" && f.bound > 0) bound = String(f.bound);
+      out += `${t.name} ${f.name} ${typeOf(f)} ${shape} ${bound}\n`;
+    }
+  }
+  const b = new Uint8Array(Buffer.from(out, "ascii"));
+  return b;
 }
 
 function answer(surface, cases, outdir) {
