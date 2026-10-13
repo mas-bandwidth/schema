@@ -1,27 +1,28 @@
 // cards-driver — the Rust leg of the card conformance set
 // (tables/cards/conformance/FORMAT.md). It answers the driver contract
 // test/conformance/README.md states — `<driver> <manifest> list` and
-// `<driver> <manifest> <surface> <outdir>` — over the five card surfaces this
-// leg implements (load, save, render, parse, bounds) through the facade in
-// tables/cards/rust (Load, ToJSON, FromJSON, Render, Parse). The four surfaces
-// the leg does not implement (upgrade, edit, taskhash, view) answer absent
-// (exit 2), as the harness contract spells.
+// `<driver> <manifest> <surface> <outdir>` — over the nine card surfaces
+// through the facade in tables/cards/rust (Load, ToJSON, FromJSON, Render,
+// Parse, Upgrade, the Set* edits, TaskHash and the generated view).
 
 use std::env;
 use std::fs;
 use std::process::exit;
 
-use cards::{from_json, load, parse, render, to_json, TableReport};
+use cards::{apply_edit, from_json, load, parse, refusal_class, render, task_hash, to_json, upgrade, view, TableReport};
 
-// surfaces is the five card surfaces this leg implements, in the order a leg
-// lists and answers them.
-const SURFACES: [&str; 5] = ["load", "save", "render", "parse", "bounds"];
+// surfaces is the nine card surfaces, in the order a leg lists and answers
+// them.
+const SURFACES: [&str; 9] = [
+    "load", "save", "render", "parse", "bounds", "upgrade", "edit", "taskhash", "view",
+];
 
-// aCase is one manifest line.
+// aCase is one manifest line; edit carries the one edit token after the input.
 struct Case {
     surface: String,
     name: String,
     input: String,
+    edit: String,
 }
 
 fn main() {
@@ -44,11 +45,6 @@ fn main() {
     }
     let surface = verb;
     let outdir = &args[3];
-
-    // The four surfaces this leg does not implement answer absent.
-    if matches!(surface.as_str(), "upgrade" | "edit" | "taskhash" | "view") {
-        exit(2);
-    }
 
     let cases = read_manifest(manifest);
     if let Err(e) = fs::create_dir_all(outdir) {
@@ -85,6 +81,7 @@ fn read_manifest(path: &str) -> Vec<Case> {
             surface: f[0].to_string(),
             name: f[1].to_string(),
             input: f[2].to_string(),
+            edit: f[3..].join(" "),
         });
     }
     out
@@ -147,6 +144,47 @@ fn one(surface: &str, c: &Case, outdir: &str) -> Result<(), String> {
                 Err(e) => refuse(outdir, &c.name, &refusal_class(&e)),
             }
         }
+        "upgrade" => {
+            let wire = fs::read(&c.input).map_err(|e| e.to_string())?;
+            match upgrade(&wire) {
+                Ok((out, report)) => {
+                    let mut out = out;
+                    if env::var("CARDS_RUST_SABOTAGE_UPGRADE").is_ok() {
+                        // the negative control's test-only switch: drop one byte.
+                        if let Some(b) = out.first_mut() {
+                            *b ^= 0xff;
+                        }
+                    }
+                    write_file(outdir, &c.name, "wire", &out)?;
+                    write_report(outdir, &c.name, &report)
+                }
+                Err(e) => refuse(outdir, &c.name, &refusal_class(&e)),
+            }
+        }
+        "edit" => {
+            let wire = fs::read(&c.input).map_err(|e| e.to_string())?;
+            let (mut record, _) = match load(&wire) {
+                Ok(r) => r,
+                Err(e) => return refuse(outdir, &c.name, &refusal_class(&e)),
+            };
+            if let Err(e) = apply_edit(&mut record, &c.edit) {
+                return refuse(outdir, &c.name, &refusal_class(&e));
+            }
+            write_file(outdir, &c.name, "wire", &record.wire())
+        }
+        "taskhash" => {
+            let wire = fs::read(&c.input).map_err(|e| e.to_string())?;
+            let (record, _) = load(&wire)?;
+            let mut hex = task_hash(&record)?.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            if env::var("CARDS_RUST_SABOTAGE_HASH").is_ok() {
+                // the negative control's test-only switch: change one hex digit.
+                if let Some(b) = unsafe { hex.as_bytes_mut() }.first_mut() {
+                    *b = if *b == b'a' { b'b' } else { b'a' };
+                }
+            }
+            write_file(outdir, &c.name, "hex", hex.as_bytes())
+        }
+        "view" => write_file(outdir, &c.name, "txt", view().as_bytes()),
         _ => Err(format!("unknown surface {surface:?}")),
     }
 }
@@ -166,36 +204,4 @@ fn write_report(outdir: &str, name: &str, r: &TableReport) -> Result<(), String>
     write_file(outdir, name, "report", s.as_bytes())
 }
 
-// refusalClass maps a facade error to one class of the closed list FORMAT.md
-// fixes, never free text, so every language can spell the same refusal.
-fn refusal_class(err: &str) -> String {
-    if err.contains("past the 65536-byte ceiling") {
-        return "body-bound 65536".to_string();
-    }
-    if err.contains("past the 512-entry ceiling") {
-        let field = err
-            .strip_prefix("cards: ")
-            .unwrap_or(err)
-            .split(" has ")
-            .next()
-            .unwrap_or("");
-        return format!("list-bound {field} 512");
-    }
-    if err.contains("stranded header key") {
-        return format!("stranded-key {}", quoted_word(err));
-    }
-    "malformed".to_string()
-}
 
-// quotedWord reads the first double-quoted token of an error, the stranded
-// header key a parse refusal names.
-fn quoted_word(msg: &str) -> String {
-    let Some(i) = msg.find('"') else {
-        return String::new();
-    };
-    let rest = &msg[i + 1..];
-    let Some(j) = rest.find('"') else {
-        return String::new();
-    };
-    rest[..j].to_string()
-}
