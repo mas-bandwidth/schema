@@ -1494,7 +1494,7 @@ func TestOldArgLaneControl(t *testing.T) {
 			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
 		}
 		// OLD ENCODING: flavour in Arg, Meta unused
-		plan[i].Arg = uint32(plan[i].Meta)
+		plan[i].Arg = uint64(plan[i].Meta)
 		plan[i].Meta = 0
 	}
 	if !found {
