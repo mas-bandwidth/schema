@@ -257,13 +257,17 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "bytes":
       if (!TableVariableSameBytes(val, fd.def)) {
-        // bytes ride as an array of u8 (§2.5), framed exactly as the reference
-        // frames them (internal/tablewire encode.go: L = 2 + the byte count)
+        // bytes ride as an array of u8 (§2.5): the body is the element kind,
+        // the count and the bytes, and L is that body's length — the count's
+        // LEB128 is two bytes from 128 on, so L is never a constant plus the
+        // byte count (internal/tablewire encode.go)
         TableVariableHeader(w, ids, fd, 14);
-        w.leb(2 + val.length);
-        w.u8(6);
-        w.leb(val.length);
-        w.raw(val);
+        const body = new TableVariableWriter();
+        body.u8(6);
+        body.leb(val.length);
+        body.raw(val);
+        w.leb(body.len);
+        w.raw(body.b);
       }
       return true;
     case "enum":

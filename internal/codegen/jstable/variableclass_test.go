@@ -2,6 +2,7 @@ package jstable
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -50,6 +51,8 @@ import (
 //   - a DATA CYCLE (§3.1, §16.7): a Leaf naming itself and two naming each other
 //     refuse the save, the measure and the text, as the oracle refuses them, and
 //     a label named inside its own definition is a text the reader refuses;
+//   - a bytes(16384) of 127, 128, 129 and 16384 bytes: a bytes(N) body's L is
+//     the body's own length, whatever width the count's LEB128 takes;
 //   - LONG CHAINS of 5,000 and 100,000 Leaves, as the oracle saves them: the
 //     load, the save and the measure never throw (the numbering and the text's
 //     count hold their own stack), the bytes are the oracle's, and ToJson
@@ -233,6 +236,36 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	// writer refuses.
 	for _, n := range []int{5000, 100000} {
 		probeCases = append(probeCases, variableClassChain(t, pm, n))
+	}
+	// A bytes(N) BODY'S L IS ITS OWN LENGTH (§2.5, §3): at 127 bytes the count
+	// is one LEB128 byte, at 128 and past it two, and at 16384 three, so L is
+	// never the byte count plus a constant. Each held to the oracle's wire and
+	// text (internal/tablewire bytesframing_test.go pins the oracle's own).
+	for _, n := range []int{127, 128, 129, 16384} {
+		data := make([]byte, n)
+		for i := range data {
+			data[i] = byte(i % 251)
+		}
+		inst := pm.New(pm.Lookup("Probe"))
+		var rep tabletext.Report
+		text := `{"wide": "` + base64.StdEncoding.EncodeToString(data) + `"}`
+		if !pm.Read(inst, []byte(text), &rep) || rep != (tabletext.Report{}) {
+			t.Fatalf("probe_wide_%d: the oracle did not read the text cleanly: %+v", n, rep)
+		}
+		wire, err := tablewire.Encode(pm, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		back := pm.New(pm.Lookup("Probe"))
+		var backRep tabletext.Report
+		if ok, err := tablewire.Decode(pm, back, wire, &backRep); !ok || err != nil || backRep != (tabletext.Report{}) {
+			t.Fatalf("probe_wide_%d: the oracle does not read back its own wire cleanly: %v %+v", n, err, backRep)
+		}
+		written, err := pm.Write(inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		probeCases = append(probeCases, &vcCase{Name: fmt.Sprintf("probe_wide_%d", n), Root: "Probe", wire: wire, text: append(written, '\n')})
 	}
 	units = append(units, &vcUnit{"classprobe", probe, probeCases})
 
@@ -567,6 +600,7 @@ table Probe
     head   *Leaf
     tail   int32
     least  [2..4]uint8
+    wide   bytes(16384)
 }
 `
 
