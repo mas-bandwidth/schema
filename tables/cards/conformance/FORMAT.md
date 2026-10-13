@@ -8,6 +8,26 @@ and `HopOrderIrrelevant`: every leg reads, writes, renders, upgrades and hashes
 one card to the same bytes. This check is that claim's concrete side, and the
 harness subcommand cites both properties in its comment.
 
+## The make targets
+
+`CARDS_REQUIRE` (make/go.mk) defaults to all nine surfaces:
+
+```
+CARDS_REQUIRE ?= load,save,render,parse,bounds,upgrade,edit,taskhash,view
+```
+
+| target | what it does |
+|---|---|
+| `cards-driver-go` | copies the handwritten driver into the generated cards module and builds `build/cards-driver-go` |
+| `cards-conformance-create` | generates the large bounds inputs and the future-declaration wire, then writes the Go reference answers into `expected/`, refusing to overwrite an existing expected file; never run by a test |
+| `cards-conformance-go` | runs the harness `cards` subcommand over the Go driver with `--require $(CARDS_REQUIRE)` |
+| `cards-conformance-negative-control` | copies `expected/` into `build/`, flips one byte of one render answer and one taskhash answer, and requires the check to fail naming those two surfaces while the rest pass |
+
+`test-go` runs `cards-conformance-go` and `cards-conformance-negative-control`
+beside the existing card targets. Every leg's `cards-<lang>-conformance` target
+runs the harness `cards` subcommand with `--require $(CARDS_REQUIRE)`, and its
+card targets live in that leg's own make fragment.
+
 The driver contract is the existing one (test/conformance/README.md, "The
 shape"): a driver is a command run from the repository root as
 

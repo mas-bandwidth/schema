@@ -330,10 +330,10 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 cards-conformance-negative-control: build/conformance-harness cards-driver-go
 	@rm -rf build/cards-conformance-neg && mkdir -p build/cards-conformance-neg/expected
 	cp tables/cards/conformance/expected/* build/cards-conformance-neg/expected/
-	@printf '\000' | dd of=build/cards-conformance-neg/expected/render-card-populated.txt bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
-	@c=$$(head -c 1 build/cards-conformance-neg/expected/taskhash-card-populated.hex); \
+	@printf '\000' | dd of=build/cards-conformance-neg/expected/card-populated.txt bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
+	@c=$$(head -c 1 build/cards-conformance-neg/expected/card-populated.hex); \
 	if [ "$$c" = "0" ]; then v=1; else v=0; fi; \
-	printf '%s' "$$v" | dd of=build/cards-conformance-neg/expected/taskhash-card-populated.hex bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
+	printf '%s' "$$v" | dd of=build/cards-conformance-neg/expected/card-populated.hex bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
 	@if ./build/conformance-harness cards --corpus tables/cards/conformance --expected build/cards-conformance-neg/expected --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE) > build/cards-conformance-neg/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one render and one taskhash answer byte changed'; exit 1; fi
 	@grep -qE 'cards render .*FAIL' build/cards-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-conformance-neg/log; exit 1; }
