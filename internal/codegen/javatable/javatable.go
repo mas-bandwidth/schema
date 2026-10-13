@@ -10,13 +10,11 @@
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
 // parses a wire, so both reach every table of the unit whatever its closure
 // declares — a pointered unit's cooks open in full. In Java both are read at
-// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE itself —
-// measure, save, load, the reflection descriptors and the JSON text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Java. The port that once stood here wrote the form that preceded
-// the id-table wire, which the current specification does not describe and the
-// C++ reference does not open; it was removed rather than carried (schema#517
-// is the row that brings the wire to Java). ROADMAP.md marks the cells.
+// explicit offsets out of a byte[] the consumer owns. The TABLE WIRE — measure,
+// save, load, the reflection descriptors and the JSON text form of
+// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — rides the
+// FIXED form (§3.4) for every table, and the VARIABLE form (§3, form byte 1)
+// and MESSAGE form (§3.3) beside it (schema#517). ROADMAP.md marks the cells.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
 // backend (internal/codegen/cstable) is the worked managed-language port for
