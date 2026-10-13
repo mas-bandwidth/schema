@@ -74,21 +74,6 @@ table BadWide { w uint128 }
 `,
 			wantRefuses: []string{"int128"},
 		},
-		{
-			name: "unbounded scalar array",
-			definition: `package probe
-table BadScalarList { s []int32 }
-`,
-			wantRefuses: []string{"BadScalarList", "s", "unbounded array"},
-		},
-		{
-			name: "unbounded enum array",
-			definition: `package probe
-enum Grade { A, B }
-table BadEnumList { g []Grade }
-`,
-			wantRefuses: []string{"BadEnumList", "g", "unbounded array of enums"},
-		},
 	}
 
 	for _, tc := range refused {

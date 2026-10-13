@@ -503,20 +503,22 @@ func variableFormRefusal(f *ir.Field) string {
 			return "a union (docs/SPEC-TABLES.md §2.6)"
 		}
 	}
-	// An UNBOUNDED ARRAY whose element is not a table (§2.9): a scalar, a
-	// string, an enum or a flags mask. Only lists of tables ([]T) are carried;
-	// every other element class is refused by name rather than mis-encoded as
-	// a single value.
+	// An UNBOUNDED ARRAY (§2.9) is carried for scalar, string, enum and flags
+	// elements, and for lists of tables ([]T). The element classes the
+	// variable form does not yet carry — bytes(N), fixed(I, F), wstring(N) and
+	// a 128-bit kind — are refused by name rather than mis-encoded as a single
+	// value. A union element is refused by the union rule above, array or not.
 	if f.Array == ir.ArrayList {
 		switch f.Type.Kind {
-		case ir.TBool, ir.TInt, ir.TFloat32, ir.TFloat64, ir.TBits, ir.TBytes, ir.TString, ir.TFixed, ir.TWString:
-			return "an unbounded array of scalars (docs/SPEC-TABLES.md §2.9)"
-		case ir.TNamed:
-			switch f.Type.Ref.(type) {
-			case *ir.Enum:
-				return "an unbounded array of enums (docs/SPEC-TABLES.md §2.9)"
-			case *ir.Flags:
-				return "an unbounded array of flags (docs/SPEC-TABLES.md §2.9)"
+		case ir.TBytes:
+			return "an unbounded array of bytes (docs/SPEC-TABLES.md §2.9)"
+		case ir.TFixed:
+			return "an unbounded array of a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
+		case ir.TWString:
+			return "an unbounded array of a wstring(N) kind (docs/SPEC-TABLES.md §15)"
+		case ir.TInt:
+			if f.Type.Width > 64 {
+				return "an unbounded array of a wide int128 kind (docs/SPEC-TABLES.md §15)"
 			}
 		}
 	}
