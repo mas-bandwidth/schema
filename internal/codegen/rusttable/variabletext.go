@@ -397,15 +397,22 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, expr, ind stri
 		fmt.Fprintf(b, "%s    out.push(']');\n", ind)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case f.Type.Blob():
-		fmt.Fprintf(b, "%smatch &%s {\n", ind, expr)
-		fmt.Fprintf(b, "%s    Some(s) => json_escape(s, out),\n", ind)
-		fmt.Fprintf(b, "%s    None => out.push_str(\"null\"),\n", ind)
-		fmt.Fprintf(b, "%s}\n", ind)
+		if f.Type.Kind == ir.TString {
+			fmt.Fprintf(b, "%smatch &%s {\n", ind, expr)
+			fmt.Fprintf(b, "%s    Some(s) => json_escape(s, out),\n", ind)
+			fmt.Fprintf(b, "%s    None => out.push_str(\"null\"),\n", ind)
+			fmt.Fprintf(b, "%s}\n", ind)
+		} else {
+			fmt.Fprintf(b, "%smatch &%s {\n", ind, expr)
+			fmt.Fprintf(b, "%s    Some(v) => { out.push('['); let mut first = true; for b in v { if !first { out.push(','); } first = false; out.push_str(&b.to_string()); } out.push(']'); },\n", ind)
+			fmt.Fprintf(b, "%s    None => out.push_str(\"null\"),\n", ind)
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "%sjson_escape(&%s, out);\n", ind, expr)
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "%sout.push_str(if %s { \"true\" } else { \"false\" });\n", ind, expr)
-	case f.Type.Kind == ir.TInt:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "%sout.push_str(&%s.to_string());\n", ind, expr)
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -467,10 +474,28 @@ func (g *gen) emitTextReadField(b *strings.Builder, f *ir.Field, field, ind stri
 		fmt.Fprintf(b, "%s    }\n", inner)
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", inner)
 	case f.Type.Blob():
-		fmt.Fprintf(b, "%sjr.space();\n", inner)
-		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", inner, field)
-		fmt.Fprintf(b, "%selse if jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = Some(s); } }\n", inner, field)
-		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", inner)
+		if f.Type.Kind == ir.TString {
+			fmt.Fprintf(b, "%sjr.space();\n", inner)
+			fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", inner, field)
+			fmt.Fprintf(b, "%selse if jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = Some(s); } }\n", inner, field)
+			fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", inner)
+		} else {
+			fmt.Fprintf(b, "%sjr.space();\n", inner)
+			fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", inner, field)
+			fmt.Fprintf(b, "%selse if jr.peek() == b'[' {\n", inner)
+			fmt.Fprintf(b, "%s    jr.p += 1; let mut bytes = Vec::new();\n", inner)
+			fmt.Fprintf(b, "%s    loop {\n", inner)
+			fmt.Fprintf(b, "%s        jr.space();\n", inner)
+			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", inner)
+			fmt.Fprintf(b, "%s        if let Some(n) = jr.read_number() { bytes.push(n as u8); }\n", inner)
+			fmt.Fprintf(b, "%s        jr.space();\n", inner)
+			fmt.Fprintf(b, "%s        if jr.peek() == b',' { jr.p += 1; continue; }\n", inner)
+			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", inner)
+			fmt.Fprintf(b, "%s        jr.malformed = true; break;\n", inner)
+			fmt.Fprintf(b, "%s    }\n", inner)
+			fmt.Fprintf(b, "%s    %s = Some(bytes);\n", inner, field)
+			fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", inner)
+		}
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "%sif let Some(s) = jr.read_string() { %s = json_clamp(s, %d, &mut jr.clamped); }\n", inner, field, f.Type.Size)
 	case f.Type.Kind == ir.TBool:
@@ -485,7 +510,7 @@ func (g *gen) emitTextReadField(b *strings.Builder, f *ir.Field, field, ind stri
 			fmt.Fprintf(b, "%s    if x < %s { x = %s; jr.clamped += 1; }\n", inner, f.IntMin.String(), f.IntMin.String())
 			fmt.Fprintf(b, "%s    if x > %s { x = %s; jr.clamped += 1; }\n", inner, f.IntMax.String(), f.IntMax.String())
 		}
-		fmt.Fprintf(b, "%s    %s = x as %s;\n", inner, field, rustInt(f.Type.Width))
+		fmt.Fprintf(b, "%s    %s = x as %s;\n", inner, field, variableFieldType(f))
 		fmt.Fprintf(b, "%s}\n", inner)
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
