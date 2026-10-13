@@ -26,14 +26,15 @@ function bytesEqual(a, b) {
   return true;
 }
 
-// TestCardRoundTripsThePopulatedFixture loads the committed populated wire,
-// compares every field with card-populated.json (the body byte for byte), and
-// proves ToJSON and FromJSON reproduce both files exactly; it also mutates the
-// caller's input and a Wire result and shows the record unchanged
-// (docs/SPEC-TABLES.md §6.2, §16).
+// TestCardRoundTripsThePopulatedFixture loads the committed populated wire from
+// the shared conformance corpus (tables/cards/conformance/cases, the fixtures
+// this card's PATHS name), compares every field with card-populated.json (the
+// body byte for byte), and proves ToJSON and FromJSON reproduce both files
+// exactly; it also mutates the caller's input and a Wire result and shows the
+// record unchanged (docs/SPEC-TABLES.md §6.2, §16).
 test("TestCardRoundTripsThePopulatedFixture", () => {
-  const wire = read("tables/cards/fuzz/card-populated.wire");
-  const json = read("tables/cards/fuzz/card-populated.json");
+  const wire = read("tables/cards/conformance/cases/card-populated.wire");
+  const json = read("tables/cards/conformance/cases/card-populated.json");
 
   const { record, report, error } = cards.Load(wire);
   assert.strictEqual(error, null);
@@ -73,6 +74,7 @@ test("TestCardBoundsRefuseBeforePublishing", () => {
   const overBody = cards.FromJSON(body(cards.MaxBodyBytes + 1)).error;
   assert.ok(overBody !== null, "64 KiB + 1 body was accepted");
   assert.match(overBody.message, /body/);
+  assert.match(overBody.message, /65537/);
   assert.match(overBody.message, /65536/);
 
   const collections = [
@@ -92,6 +94,7 @@ test("TestCardBoundsRefuseBeforePublishing", () => {
     const over = cards.FromJSON(mk(cards.MaxListEntries + 1)).error;
     assert.ok(over !== null, `513 entries in ${field} was accepted`);
     assert.match(over.message, new RegExp(field), `refusal did not name ${field}`);
+    assert.match(over.message, /513/, `refusal did not name the 513-entry size for ${field}`);
   }
 });
 
