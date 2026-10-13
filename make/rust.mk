@@ -287,6 +287,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blobdemo:tables/blobs \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
@@ -526,6 +527,26 @@ packet-wide-rust-negative-control: packet-wide-rust
 	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
 
 test-rust: packet-wide-rust packet-wide-rust-negative-control
+
+# THE RUST VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1,
+# §16.7): the constructs the card record does not use but the variable class
+# carries — table pointers over the flat node table, tables nested by value,
+# blobs, unbounded and bounded arrays of scalar, enum, table and pointer
+# elements, the rest of the scalar kinds, bytes(N), the escape kind and the
+# text form's &node sharing — held byte for byte against the Go oracle over
+# tables/pointers, tables/blobs and tables/lists by
+# TestVariableClassBeyondCardConstructsRust, and every construct the leg still
+# refuses named by TestOtherVariableConstructsAreRefusedByName.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-variable-class
+tables-rust-variable-class:
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run 'TestVariableClassBeyondCardConstructsRust|TestOtherVariableConstructsAreRefusedByName' -v
+	@echo 'tables Rust variable class: the class beyond the card constructs round-trips and the rest is refused by name'
+
+test-rust: tables-rust-variable-class
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
