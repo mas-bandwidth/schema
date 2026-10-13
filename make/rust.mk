@@ -639,26 +639,51 @@ cards-rust-test: cards-rust-generate
 	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --manifest-path build/cards-rust/Cargo.toml -- -D warnings
 
 # THE CARD CONFORMANCE CHECK (tables/cards/conformance/FORMAT.md): the Rust
-# leg's driver over the five surfaces it implements (load, save, render, parse,
-# bounds), compared byte for byte against the committed Go answers. The driver
-# binary rides build/cards-rust/target/debug/cards-driver, built by the
-# cards-rust-test cargo build above; upgrade, edit, taskhash and view answer
-# absent (exit 2) and are not required.
+# leg's driver over all nine surfaces it implements (load, save, render, parse,
+# bounds, upgrade, edit, taskhash, view), compared byte for byte against the
+# committed Go answers. The driver binary rides
+# build/cards-rust/target/debug/cards-driver, built by the cards-rust-test cargo
+# build above.
 .PHONY: cards-rust-conformance
 cards-rust-conformance: build/conformance-harness cards-rust-test
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
 # THE NEGATIVE CONTROL: the same check with a test-only environment switch
 # (CARDS_RUST_SABOTAGE_RENDER) that changes one rendered byte, required to FAIL
-# on render while the other four surfaces pass.
+# on render while the other eight surfaces pass.
 .PHONY: cards-rust-conformance-negative-control
 cards-rust-conformance-negative-control: build/conformance-harness cards-rust-test
 	@mkdir -p build/cards-rust-conformance-neg
-	@if CARDS_RUST_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds > build/cards-rust-conformance-neg/log 2>&1; then \
+	@if CARDS_RUST_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-neg/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
 	@grep -qE 'cards render .*FAIL' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-rust-conformance-neg/log; exit 1; }
-	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg/log; exit 1; }
 	@echo 'cards Rust negative control: one changed rendered byte turns exactly render red'
 
-test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
+# THE UPGRADE NEGATIVE CONTROL: the same check with a test-only environment
+# switch (CARDS_RUST_SABOTAGE_UPGRADE) that drops retained fields on upgrade,
+# required to FAIL on upgrade while the other eight surfaces pass.
+.PHONY: cards-rust-conformance-upgrade-negative-control
+cards-rust-conformance-upgrade-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-upgrade-neg
+	@if CARDS_RUST_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-upgrade-neg/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: upgrade stayed green with one retained field dropped'; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-rust-conformance-upgrade-neg/log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-rust-conformance-upgrade-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-rust-conformance-upgrade-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-upgrade-neg/log; exit 1; }
+	@echo 'cards Rust upgrade negative control: one dropped retained field turns exactly upgrade red'
+
+# THE HASH NEGATIVE CONTROL: the same check with a test-only environment
+# switch (CARDS_RUST_SABOTAGE_HASH) that adds needs to the task hash,
+# required to FAIL on taskhash while the other eight surfaces pass.
+.PHONY: cards-rust-conformance-hash-negative-control
+cards-rust-conformance-hash-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-hash-neg
+	@if CARDS_RUST_SABOTAGE_HASH=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-rust-conformance-hash-neg/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: taskhash stayed green with needs added to the hash'; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-rust-conformance-hash-neg/log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-rust-conformance-hash-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-rust-conformance-hash-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-hash-neg/log; exit 1; }
+	@echo 'cards Rust hash negative control: needs added to the hash turns exactly taskhash red'
+
+test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control \
+	cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
