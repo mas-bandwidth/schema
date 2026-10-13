@@ -1,8 +1,13 @@
 // THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, in Dart: load
 // (tolerant, §4) and save (the canonical byte layout the other backends write)
-// for exactly the card record's constructs — a plain `table` root, tables as
-// unbounded list elements, bool/int32/int64/enum fields, `string(N)`, `*string`
-// (the string kind of §2.5) and `[]T` of tables (§2.9).
+// for the card record's constructs and the remaining SCALAR KINDS — a plain
+// `table` root, tables as unbounded list elements, bool/int8/int16/int32/int64
+// and uint8/uint16/uint32/uint64 fields, `bits(N)`, `float32`/`float64`,
+// `string(N)`/`bytes(N)`, `*string` (the string kind of §2.5) and `[]T` of
+// tables (§2.9). Every other variable-class construct — a map, a union, a
+// bounded/counted array, an optional, a keyed array, the wide kinds, wstring,
+// `*bytes` and arrays of scalars/strings/enums/pointers — is refused by name in
+// checkUnsupportedConstructs (§11), and nothing here reads or writes one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
 // committed byte oracle tables/cards/fuzz/card-populated.wire: the form byte,
@@ -56,12 +61,13 @@ func dartU64Literal(id uint64) string {
 }
 
 // cardWireField reports whether a field is one of the card record's
-// constructs (docs/SPEC-TABLES.md §2.5, §2.9, §3): bool, int32, int64, enum,
-// string(N), *string (the string kind) and an unbounded []T of table elements.
-// Every other variable-class construct — a map, a union, a bounded/counted
-// array, an optional, a keyed array, bytes, the wide kinds, wstring — is NOT a
-// card construct: the wire form is not claimed for it, and the emitter must
-// never mis-encode it (§11).
+// constructs or a carried scalar kind (docs/SPEC-TABLES.md §2.1, §2.5, §2.9,
+// §3): bool, the integer/bits kinds of width below 128, float32/float64,
+// enum, string(N), bytes(N), *string (the string kind) and an unbounded []T of
+// table elements. Every other variable-class construct — a map, a union, a
+// bounded/counted array, an optional, a keyed array, *bytes, the wide kinds,
+// wstring — is NOT a card construct: the wire form is not claimed for it, and
+// the emitter must never mis-encode it (§11).
 func cardWireField(f *ir.Field) bool {
 	switch {
 	case f.Type.Blob():
