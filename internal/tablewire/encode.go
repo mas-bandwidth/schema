@@ -274,9 +274,13 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
-		w.leb(uint64(2 + len(fv.Cell.Str)))
+		// L IS THE ARRAY BODY'S LENGTH (§3): the element-kind byte, the
+		// count's own LEB128 bytes, then the count's bytes. The count takes
+		// two LEB bytes from 128, so L is never a constant plus the count.
+		n := uint64(len(fv.Cell.Str))
+		w.leb(1 + uint64(len(appendLeb(nil, n))) + n)
 		w.u8(uint8(ir.TableKindU8)) // bytes ride as an array of u8 (§2.5)
-		w.leb(uint64(len(fv.Cell.Str)))
+		w.leb(n)
 		w.raw(fv.Cell.Str)
 		return nil
 
