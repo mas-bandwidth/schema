@@ -1257,3 +1257,27 @@ build/cards-test-c-asan: cards-c-generate tables/cards/c/cards.h tables/cards/c/
 cards-c-test: build/cards-test-c build/cards-test-c-asan
 	./build/cards-test-c
 	./build/cards-test-c-asan
+
+build/cards-driver-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/driver.c
+	@mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -Werror -Ibuild/tables-generated-c/cards -Itables/cards/c tables/cards/c/driver.c tables/cards/c/cards.c build/tables-generated-c/cards/CardTable.c build/tables-generated-c/cards/CardsView.c -o $@ -lm
+
+# cards-c-conformance runs the harness `cards` subcommand over the C driver
+# with the five surfaces this card owns required; upgrade, edit, taskhash and
+# view belong to a later card and are answered absent.
+.PHONY: cards-c-conformance
+cards-c-conformance: build/conformance-harness build/cards-driver-c
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds
+
+# cards-c-conformance-negative-control: the same check against the driver
+# with a test-only environment switch that changes one rendered byte,
+# required to FAIL on render while the other four surfaces pass.
+.PHONY: cards-c-conformance-negative-control
+cards-c-conformance-negative-control: build/conformance-harness build/cards-driver-c
+	@if CARDS_C_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds > build/cards-c-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@echo 'cards C negative control: one changed rendered byte turns exactly render red'
+
+test-c: cards-c-test cards-c-conformance cards-c-conformance-negative-control
