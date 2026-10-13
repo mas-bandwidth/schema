@@ -1,0 +1,68 @@
+# THE CARD CONFORMANCE MANIFEST (tables/cards/conformance/FORMAT.md).
+#
+# One line per case: <surface> <name> <input> [edit...]. The input is a
+# repo-relative path to the case's wire, JSON or brief text; `view` takes `-`.
+# `edit` lines carry one edit after the input. The expected answers live in
+# expected/, keyed by <name>, and never reach a driver: the harness writes a
+# derived manifest into build/ with every answer removed.
+
+# load: wire -> X.json + X.report
+load card-populated tables/cards/conformance/cases/card-populated.wire
+load initial-populated tables/cards/conformance/cases/initial-populated.wire
+load consumers-populated tables/cards/conformance/cases/consumers-populated.wire
+load empty-consumers tables/cards/conformance/cases/empty-consumers.wire
+
+# save: JSON -> X.wire
+save card-populated tables/cards/conformance/cases/card-populated.json
+save initial-populated tables/cards/conformance/cases/initial-populated.json
+save consumers-populated tables/cards/conformance/cases/consumers-populated.json
+save empty-consumers tables/cards/conformance/cases/empty-consumers.json
+
+# render: wire -> X.txt
+render card-populated tables/cards/conformance/cases/card-populated.wire
+render initial-populated tables/cards/conformance/cases/initial-populated.wire
+render consumers-populated tables/cards/conformance/cases/consumers-populated.wire
+render empty-consumers tables/cards/conformance/cases/empty-consumers.wire
+
+# parse: brief text -> X.wire or X.refused
+parse normalized-valid tables/cards/conformance/cases/normalized-valid.md
+parse rejected-legacy tables/cards/conformance/cases/rejected-legacy.md
+
+# bounds: JSON at and over the customer bounds -> X.wire or X.refused
+bounds body-65536 tables/cards/conformance/cases/bounds-body-65536.json
+bounds body-65537 tables/cards/conformance/cases/bounds-body-65537.json
+bounds paths-512 tables/cards/conformance/cases/bounds-paths-512.json
+bounds paths-513 tables/cards/conformance/cases/bounds-paths-513.json
+bounds new-512 tables/cards/conformance/cases/bounds-new-512.json
+bounds new-513 tables/cards/conformance/cases/bounds-new-513.json
+bounds shared-512 tables/cards/conformance/cases/bounds-shared-512.json
+bounds shared-513 tables/cards/conformance/cases/bounds-shared-513.json
+bounds needs-512 tables/cards/conformance/cases/bounds-needs-512.json
+bounds needs-513 tables/cards/conformance/cases/bounds-needs-513.json
+bounds consumers-512 tables/cards/conformance/cases/bounds-consumers-512.json
+bounds consumers-513 tables/cards/conformance/cases/bounds-consumers-513.json
+
+# upgrade: historical wire -> X.wire + X.report or X.refused
+upgrade initial-populated tables/cards/conformance/cases/initial-populated.wire
+upgrade consumers-populated tables/cards/conformance/cases/consumers-populated.wire
+upgrade empty-consumers tables/cards/conformance/cases/empty-consumers.wire
+upgrade future-note tables/cards/conformance/cases/future-note.wire
+upgrade truncated tables/cards/conformance/cases/truncated.wire
+
+# edit: wire + one edit line -> X.wire or X.refused
+edit needs tables/cards/conformance/cases/card-populated.wire needs=a,b
+edit tier tables/cards/conformance/cases/card-populated.wire tier=heavy
+edit priority tables/cards/conformance/cases/card-populated.wire priority=blocker
+edit paths tables/cards/conformance/cases/card-populated.wire paths=x,y
+edit column tables/cards/conformance/cases/card-populated.wire column=landed
+edit holder tables/cards/conformance/cases/card-populated.wire holder=h
+edit empty-to-growing tables/cards/conformance/cases/empty-consumers.wire paths=x
+edit unknown tables/cards/conformance/cases/future-note.wire needs=a
+
+# taskhash: wire -> X.hex
+taskhash card-populated tables/cards/conformance/cases/card-populated.wire
+taskhash initial-populated tables/cards/conformance/cases/initial-populated.wire
+taskhash empty-consumers tables/cards/conformance/cases/empty-consumers.wire
+
+# view: the generated view, one file
+view view -

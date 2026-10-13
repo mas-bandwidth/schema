@@ -1,0 +1,8 @@
+Retained=1
+RetainLost=0
+Widened=0
+Unknown=1
+KindMismatch=0
+Clamped=0
+Duplicate=0
+Malformed=false

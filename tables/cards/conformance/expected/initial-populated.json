@@ -1,0 +1,54 @@
+{
+  "id": "initial-card",
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tier": "heavy",
+  "repo": "mas-bandwidth/schema",
+  "_base": "sprint/schema-finish",
+  "kind": "feature",
+  "priority": "high",
+  "stream": "schema-cards",
+  "paths": [
+    {
+      "s": "tables/cards/Card.schema"
+    },
+    {
+      "s": "make/go.mk"
+    }
+  ],
+  "_new": [
+    {
+      "s": "tables/cards/upgrade.go"
+    }
+  ],
+  "shared": [
+    {
+      "s": "tables/cards/cards.go"
+    }
+  ],
+  "needs": [
+    {
+      "s": "dep-alpha"
+    },
+    {
+      "s": "dep-beta"
+    }
+  ],
+  "test": "TestEveryCorpusRecordReadsWithTheCurrentModel",
+  "done_when": "make cards-test",
+  "deadline_minutes": 90,
+  "source": "docs/CONTRIBUTING.md résumé→世界",
+  "epoch": 17,
+  "column": "review",
+  "holder": "bench",
+  "attempt": 3,
+  "head": "9999999999999999999999999999999999999999",
+  "branch": "sprint/schema-cards-c03",
+  "body": "compatibility body →世界 with \"quotes\" and\ttabs\nand lines🚀—exact",
+  "extra": [
+    {
+      "key": "x-extra",
+      "value": "extra value →世界"
+    }
+  ],
+  "consumers": []
+}
