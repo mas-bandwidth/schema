@@ -84,6 +84,68 @@ int cards_parse(const uint8_t *text, int64_t text_len, CardsRecord *out,
 int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
                  char *err, size_t err_cap);
 
+/* CARDS_MAX_RETAIN_BYTES and CARDS_MAX_RETAIN_IDS are the customer ceilings
+   on the retained-record store (docs/SPEC-TABLES.md §6.6); Upgrade fixes them
+   and never grows. */
+#define CARDS_MAX_RETAIN_BYTES (1 << 20)
+#define CARDS_MAX_RETAIN_IDS 4096
+
+/* cards_retain_load/measure/save are the generated retained round trip,
+   re-published by retain_bridge.c from the file-local generated functions
+   (docs/SPEC-TABLES.md §6.6). The caller owns the region, retain bytes and
+   retain id list. */
+const Card *cards_retain_load(uint8_t *region, int64_t region_bytes,
+                              const uint8_t *wire, int64_t wire_bytes,
+                              TableRetain *retain, TableReport *report);
+int64_t cards_retain_measure(const Card *root, TableRetain *retain);
+int64_t cards_retain_save(const Card *root, TableRetain *retain,
+                          uint8_t *buffer, int64_t capacity,
+                          TableReport *report);
+
+/* cards_upgrade rewrites wire through the generated retained region path
+   (tla/CardVersioning.tla NoFieldLost, BodyUnchanged, RefusalKeepsOriginal;
+   docs/SPEC-TABLES.md §6.6): every field the current declaration cannot name
+   is kept at the end of its own body. Any loss event returns 0 with a named
+   error and no output; the input is never mutated. */
+int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
+                  int64_t *out_len, TableReport *report, char *err,
+                  size_t err_cap);
+
+/* cards_upgrade_ex is the retention seam Upgrade fixes at the customer
+   capacities; the refusal probe drives smaller caller-owned storage through
+   the same path so a tiny capacity can be shown to name retain-lost while the
+   input is preserved. */
+int cards_upgrade_ex(const uint8_t *wire, int64_t wire_len, uint8_t **out,
+                     int64_t *out_len, TableReport *report, int64_t retain_bytes,
+                     int retain_ids, char *err, size_t err_cap);
+
+/* cards_task_hash writes 64 lowercase hex digits plus a terminator into
+   out_hex for the record's task fields (DESIGN L3; edit.go). A lossy record
+   is refused, never hashed. */
+int cards_task_hash(const CardsRecord *record, uint8_t out_hex[65], char *err,
+                    size_t err_cap);
+
+/* The six Set* edits replace one field atomically (DESIGN L4; edit.go §139).
+   Each validates through the shared policy, rebuilds independently and
+   publishes only on complete success; a refusal leaves the wire byte-equal. */
+int cards_set_needs(CardsRecord *record, const char *const *values, int count,
+                    char *err, size_t err_cap);
+int cards_set_paths(CardsRecord *record, const char *const *values, int count,
+                    char *err, size_t err_cap);
+int cards_set_tier(CardsRecord *record, Tier tier, char *err, size_t err_cap);
+int cards_set_priority(CardsRecord *record, Priority priority, char *err,
+                       size_t err_cap);
+int cards_set_column(CardsRecord *record, Column column, char *err,
+                     size_t err_cap);
+int cards_set_holder(CardsRecord *record, const char *holder, char *err,
+                     size_t err_cap);
+
+/* cards_view writes the unit's vocabulary, one line per field of every table,
+   tables in the generated view's order and fields in declaration order
+   (DESIGN L4; docs/SPEC-TABLES.md §8). The caller owns the buffer and frees
+   it with cards_free_buf. */
+int cards_view(uint8_t **out, int64_t *out_len, char *err, size_t err_cap);
+
 /* cards_record_clear releases every allocation a Record owns. */
 void cards_record_clear(CardsRecord *record);
 
