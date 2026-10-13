@@ -818,7 +818,7 @@ test-java: cards-java-retain-fuzz
 # These targets live in make/java.mk's cards section, never a separate
 # make/cards-java.mk (the widest-scalar gate probes every make/*.mk as a port).
 # ---------------------------------------------------------------------------
-CARDS_JAVA_REQUIRE ?= load,save,render,parse,bounds
+CARDS_JAVA_REQUIRE ?= load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
 build/cards-java-facade/.stamp: cards-java-generate \
 		tables/cards/java/src/cards/Cards.java tables/cards/java/src/cards/Driver.java \
@@ -852,7 +852,36 @@ cards-java-conformance-negative-control: build/conformance-harness build/cards-j
 		{ echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-java-conformance-neg.log; exit 1; }
 	@echo 'cards Java negative control: one changed render byte turns exactly render red'
 
-test-java: cards-java-test cards-java-conformance cards-java-conformance-negative-control
+.PHONY: cards-java-conformance-upgrade-negative-control
+cards-java-conformance-upgrade-negative-control: build/conformance-harness build/cards-java-facade/.stamp
+	@rm -f build/cards-java-conformance-upgrade-neg.log
+	@if CARDS_JAVA_NEGATIVE_UPGRADE=1 ./build/conformance-harness cards \
+			--corpus tables/cards/conformance --driver tables/cards/java/driver \
+			--require $(CARDS_JAVA_REQUIRE) > build/cards-java-conformance-upgrade-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: upgrade stayed green with one retained field dropped'; \
+		cat build/cards-java-conformance-upgrade-neg.log; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-java-conformance-upgrade-neg.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-java-conformance-upgrade-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-java-conformance-upgrade-neg.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: another surface went red'; cat build/cards-java-conformance-upgrade-neg.log; exit 1; }
+	@echo 'cards Java upgrade negative control: one dropped retained field turns exactly upgrade red'
+
+.PHONY: cards-java-conformance-hash-negative-control
+cards-java-conformance-hash-negative-control: build/conformance-harness build/cards-java-facade/.stamp
+	@rm -f build/cards-java-conformance-hash-neg.log
+	@if CARDS_JAVA_NEGATIVE_HASH=1 ./build/conformance-harness cards \
+			--corpus tables/cards/conformance --driver tables/cards/java/driver \
+			--require $(CARDS_JAVA_REQUIRE) > build/cards-java-conformance-hash-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: taskhash stayed green with needs added to the hash'; \
+		cat build/cards-java-conformance-hash-neg.log; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-java-conformance-hash-neg.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-java-conformance-hash-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-java-conformance-hash-neg.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: another surface went red'; cat build/cards-java-conformance-hash-neg.log; exit 1; }
+	@echo 'cards Java hash negative control: needs added to the hash turns exactly taskhash red'
+
+test-java: cards-java-test cards-java-conformance cards-java-conformance-negative-control \
+	cards-java-conformance-upgrade-negative-control cards-java-conformance-hash-negative-control
 
 # ---------------------------------------------------------------------------
 # THE CARD CONSTRUCTS' BOUNDARY CONTROL (docs/SPEC-TABLES.md §2, §11)
