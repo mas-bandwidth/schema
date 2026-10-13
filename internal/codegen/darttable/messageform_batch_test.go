@@ -473,10 +473,15 @@ fixed table T
 		}
 	}
 
-	// Never a double in the int bit lane: the exact red the probe hit.
+	// Never a double in the int bit lane: the exact red the probe hit. The
+	// widened pair pins that a float32 is never widened to 64 bits and that a
+	// float64 is never truncated to 32 (docs/SPEC-TABLES.md §3.3, kind 10's
+	// message width is 32).
 	for _, bad := range []string{
 		"w.put(value.b, 32)",
 		"w.put(value.d, 64)",
+		"w.put(value.b, 64)",
+		"w.put(value.d, 32)",
 		"value.b = r.bits.get(32)",
 		"value.d = r.bits.get(64)",
 	} {
