@@ -289,9 +289,98 @@ static void test_bounds(void) {
     if (failures == before_failures) printf("PASS %s\n", name);
 }
 
+
+/* TestCParseRenderMatchesGo pins parse once, render many: every parse case in
+   the shared corpus parses to its expected wire, every render case renders to
+   its expected text byte for byte, and the rejected case refuses with the
+   stranded key (DESIGN L2). */
+static void test_parse_render(void) {
+    const char *name = "TestCParseRenderMatchesGo";
+    int before_failures = failures;
+    static const char *const render_cases[4] = {"card-populated", "initial-populated",
+                                                "consumers-populated",
+                                                "empty-consumers"};
+    int ci;
+    for (ci = 0; ci < 4; ci++) {
+        char wire_path[256], want_path[256];
+        int64_t wire_len = 0, want_len = 0;
+        uint8_t *wire, *want;
+        CardsRecord rec;
+        TableReport report;
+        char err[256];
+        uint8_t *out = NULL;
+        int64_t out_len = 0;
+        err[0] = '\0';
+        snprintf(wire_path, sizeof(wire_path), "tables/cards/conformance/cases/%s.wire",
+                 render_cases[ci]);
+        snprintf(want_path, sizeof(want_path), "tables/cards/conformance/expected/%s.txt",
+                 render_cases[ci]);
+        wire = read_file(wire_path, &wire_len);
+        want = read_file(want_path, &want_len);
+        check(wire != NULL && want != NULL, name, "render case files read");
+        if (wire == NULL || want == NULL) { free(wire); free(want); continue; }
+        check(cards_load(wire, wire_len, &rec, &report, err, sizeof(err)), name,
+              err[0] ? err : "load render case");
+        check(cards_render(&rec, &out, &out_len, err, sizeof(err)), name,
+              err[0] ? err : "render case");
+        check(out != NULL && out_len == want_len &&
+                  memcmp(out, want, (size_t)want_len) == 0,
+              name, "render matches expected text byte for byte");
+        cards_free_buf(out);
+        cards_record_clear(&rec);
+        free(wire);
+        free(want);
+    }
+    /* The accepted parse case parses to the expected wire and renders back. */
+    {
+        int64_t text_len = 0, want_len = 0;
+        uint8_t *text = read_file("tables/cards/conformance/cases/normalized-valid.md", &text_len);
+        uint8_t *want = read_file("tables/cards/conformance/expected/normalized-valid.wire", &want_len);
+        CardsRecord rec;
+        char err[256];
+        uint8_t *out = NULL;
+        int64_t out_len = 0;
+        err[0] = '\0';
+        check(text != NULL && want != NULL, name, "parse case files read");
+        if (text != NULL && want != NULL) {
+            check(cards_parse(text, text_len, &rec, err, sizeof(err)), name,
+                  err[0] ? err : "parse normalized-valid");
+            check(rec.wire_len == want_len && memcmp(rec.wire, want, (size_t)want_len) == 0,
+                  name, "parse matches expected wire byte for byte");
+            check(cards_render(&rec, &out, &out_len, err, sizeof(err)), name,
+                  err[0] ? err : "render parsed card");
+            check(out != NULL && out_len == text_len &&
+                      memcmp(out, text, (size_t)text_len) == 0,
+                  name, "render of parsed card reproduces the brief byte for byte");
+            cards_free_buf(out);
+            cards_record_clear(&rec);
+        }
+        free(text);
+        free(want);
+    }
+    /* The rejected case refuses with the stranded key. */
+    {
+        int64_t text_len = 0;
+        uint8_t *text = read_file("tables/cards/conformance/cases/rejected-legacy.md", &text_len);
+        CardsRecord rec;
+        char err[256];
+        err[0] = '\0';
+        check(text != NULL, name, "rejected case read");
+        if (text != NULL) {
+            check(!cards_parse(text, text_len, &rec, err, sizeof(err)), name,
+                  "rejected-legacy refused");
+            check(strstr(err, "stranded") != NULL && strstr(err, "PRIORITY") != NULL,
+                  name, err[0] ? err : "refusal names the stranded key");
+        }
+        free(text);
+    }
+    if (failures == before_failures) printf("PASS %s\n", name);
+}
+
 int main(void) {
     test_round_trip();
     test_bounds();
+    test_parse_render();
     if (failures != 0) {
         printf("cards_test: %d failure(s)\n", failures);
         return 1;
