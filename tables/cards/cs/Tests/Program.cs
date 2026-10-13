@@ -167,6 +167,42 @@ internal static class Program
         }
     }
 
+
+    // TestParseRenderMatchesGo proves Parse and Render match the Go leg's
+    // expected bytes on the shared corpus: every parse case parses to the
+    // expected wire, the rejected case refuses with the stranded key, and
+    // every render case renders to the expected text byte for byte
+    // (tables/cards/conformance; tables/cards/parse.go, render.go).
+    private static void TestParseRenderMatchesGo()
+    {
+        byte[] text = File.ReadAllBytes("tables/cards/conformance/cases/normalized-valid.md");
+        Record rec = Record.Parse(text);
+        SameBytes(rec.Wire(),
+            File.ReadAllBytes("tables/cards/conformance/expected/normalized-valid.wire"),
+            "normalized-valid parses to the expected wire");
+
+        byte[] legacy = File.ReadAllBytes("tables/cards/conformance/cases/rejected-legacy.md");
+        try
+        {
+            Record.Parse(legacy);
+            Check(false, "rejected-legacy refuses with the stranded key");
+        }
+        catch (CardException e)
+        {
+            Check(e.Message.Contains("stranded header key") && e.Message.Contains("PRIORITY"),
+                "rejected-legacy refuses with the stranded key PRIORITY (" + e.Message + ")");
+        }
+
+        foreach (string name in new[] { "card-populated", "initial-populated", "consumers-populated", "empty-consumers" })
+        {
+            byte[] wire = File.ReadAllBytes("tables/cards/conformance/cases/" + name + ".wire");
+            Record r = Record.Load(wire, out _);
+            SameBytes(r.Render(),
+                File.ReadAllBytes("tables/cards/conformance/expected/" + name + ".txt"),
+                name + " renders to the expected text");
+        }
+    }
+
     private static string Join(string elem, int n)
     {
         var parts = new string[n];
@@ -178,6 +214,7 @@ internal static class Program
     {
         TestCardRoundTripsThePopulatedFixture();
         TestCardBoundsRefuseBeforePublishing();
+        TestParseRenderMatchesGo();
         if (_failed)
         {
             Console.WriteLine("cards tests: FAILED");
