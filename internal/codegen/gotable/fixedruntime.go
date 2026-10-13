@@ -79,6 +79,12 @@ type TableFixedDst struct {
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count int32
+	// Split IS WHERE THE SECOND HALF STARTS (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// the NUMBER OF UNGUARDED ENTRIES, the index the guarded half begins at —
+	// not a count of guarded ones. It is carried HERE rather than read off the
+	// entries, and a plan with no guarded entry has its split at the END, not
+	// at zero.
+	Split int32
 }
 
 func tableFixedWidens(from, to uint8) bool {
@@ -244,8 +250,8 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		out++
 	}
 	n = out
-	tableFixedPartition(raw, int32(n))
-	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
+	split := tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
 func tableFixedPut8(b []byte, v uint8) { b[0] = v }
@@ -284,10 +290,21 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4): the
+	// first split entries are UNGUARDED — every one of them runs, and none
+	// tests a guard — and only the guarded half from split on tests one. The
+	// split is the first guarded index, so a plan with no guarded entry runs
+	// whole without a single guard test.
+	split := int32(0)
+	for split < count && plan[split].Guard == tableFixedNoGuard {
+		split++
+	}
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). It is
+		// tested ONLY on the guarded half: an entry before split carries no
+		// guard by construction, so the test is dead there.
+		if i >= split && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
