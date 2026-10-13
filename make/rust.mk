@@ -613,4 +613,25 @@ cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-retain-fuzz.log
 
+# THE CARDS FACADE'S RUST LEG (docs/SPEC-TABLES.md §2): L1 is the owning
+# facade and the customer bounds (table/cards/cards.go), L2 parse once and
+# render many (parse.go/render.go). cards-rust-test builds and tests the facade
+# beside the generated card modules copied into build/cards-rust/, with no
+# crate dependency beyond the standard library and the generated modules;
+# clippy runs over the facade with warnings denied.
+.PHONY: cards-rust-test
+cards-rust-test: cards-rust-generate
+	@mkdir -p build/cards-rust
+	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
+	@cp tables/cards/rust/Cargo.toml build/cards-rust/
+	@cp tables/cards/rust/src/lib.rs build/cards-rust/lib.rs
+	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy -- -D warnings --manifest-path build/cards-rust/Cargo.toml
+
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
