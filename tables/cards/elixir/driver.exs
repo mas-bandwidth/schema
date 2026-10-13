@@ -1,11 +1,11 @@
 # driver.exs — the Elixir card conformance driver (tables/cards/conformance/
 # FORMAT.md). It answers the driver contract test/conformance/README.md states —
 # `<driver> <manifest> list` and `<driver> <manifest> <surface> <outdir>` — over
-# the five card surfaces this card implements (load, save, render, parse, bounds)
-# through the facade in tables/cards/elixir/cards.ex. upgrade, edit, taskhash and
-# view are a later card and answer absent (exit 2).
+# the nine card surfaces (load, save, render, parse, bounds, upgrade, edit,
+# taskhash, view) through the facade in tables/cards/elixir/cards.ex. Absence
+# is not an answer: every surface is listed and run.
 defmodule Cards.Driver do
-  @surfaces ~w(load save render parse bounds)
+  @surfaces ~w(load save render parse bounds upgrade edit taskhash view)
 
   def main([_manifest, "list"]) do
     Enum.each(@surfaces, &IO.puts/1)
@@ -40,12 +40,12 @@ defmodule Cards.Driver do
   defp run(surface, rows, outdir) do
     File.mkdir_p!(outdir)
 
-    for [s, name, input | _] <- rows, s == surface do
-      one(surface, name, input, outdir)
+    for [s, name, input | rest] <- rows, s == surface do
+      one(surface, name, input, rest, outdir)
     end
   end
 
-  defp one("load", name, input, outdir) do
+  defp one("load", name, input, _edit, outdir) do
     wire = File.read!(input)
     {:ok, record, report} = Cards.Cards.load(wire)
     {:ok, json, _} = Cards.Cards.to_json(record)
@@ -53,7 +53,7 @@ defmodule Cards.Driver do
     write(outdir, name, "report", format_report(report))
   end
 
-  defp one("save", name, input, outdir) do
+  defp one("save", name, input, _edit, outdir) do
     text = File.read!(input)
 
     case Cards.Cards.from_json(text) do
@@ -62,14 +62,14 @@ defmodule Cards.Driver do
     end
   end
 
-  defp one("render", name, input, outdir) do
+  defp one("render", name, input, _edit, outdir) do
     wire = File.read!(input)
     {:ok, record, _} = Cards.Cards.load(wire)
     {:ok, txt, _} = Cards.Cards.render(record)
     write(outdir, name, "txt", negative(txt))
   end
 
-  defp one("parse", name, input, outdir) do
+  defp one("parse", name, input, _edit, outdir) do
     text = File.read!(input)
 
     case Cards.Cards.parse(text) do
@@ -78,7 +78,7 @@ defmodule Cards.Driver do
     end
   end
 
-  defp one("bounds", name, input, outdir) do
+  defp one("bounds", name, input, _edit, outdir) do
     text = File.read!(input)
 
     case Cards.Cards.from_json(text) do
@@ -87,8 +87,64 @@ defmodule Cards.Driver do
     end
   end
 
+  defp one("upgrade", name, input, _edit, outdir) do
+    wire = File.read!(input)
+
+    case Cards.Cards.upgrade(wire) do
+      {:ok, out, report} ->
+        write(outdir, name, "wire", out)
+        write(outdir, name, "report", format_report(report))
+
+      {:error, reason, _report} ->
+        refuse(outdir, name, refusal_class(reason))
+
+      {:error, reason} ->
+        refuse(outdir, name, refusal_class(reason))
+    end
+  end
+
+  defp one("edit", name, input, edit, outdir) do
+    wire = File.read!(input)
+    {:ok, record, _} = Cards.Cards.load(wire)
+
+    case apply_edit(record, edit) do
+      {:ok, edited} -> write(outdir, name, "wire", Cards.Cards.wire(edited))
+      {:error, reason} -> refuse(outdir, name, refusal_class(reason))
+    end
+  end
+
+  defp one("taskhash", name, input, _edit, outdir) do
+    wire = File.read!(input)
+    {:ok, record, _} = Cards.Cards.load(wire)
+    {:ok, hash} = Cards.Cards.task_hash(record)
+    write(outdir, name, "hex", Base.encode16(hash, case: :lower))
+  end
+
+  defp one("view", name, _input, _edit, outdir) do
+    write(outdir, name, "txt", Cards.Cards.view())
+  end
+
+  # apply_edit applies one edit line through the Set* edit of the same name
+  # (tables/cards/edit.go; tables/cards/cmd/cards-driver/main.go: applyEdit).
+  defp apply_edit(record, [edit]) do
+    case String.split(edit, "=", parts: 2) do
+      ["needs", v] -> Cards.Cards.set_needs(record, split_list(v))
+      ["paths", v] -> Cards.Cards.set_paths(record, split_list(v))
+      ["tier", v] -> Cards.Cards.set_tier(record, v)
+      ["priority", v] -> Cards.Cards.set_priority(record, v)
+      ["column", v] -> Cards.Cards.set_column(record, v)
+      ["holder", v] -> Cards.Cards.set_holder(record, v)
+      _ -> {:error, "cards-driver: unknown edit"}
+    end
+  end
+
+  defp apply_edit(_record, _), do: {:error, "cards-driver: an edit line carries exactly one edit"}
+
+  defp split_list(""), do: []
+  defp split_list(v), do: String.split(v, ",")
+
   # negative flips one rendered byte under the test-only switch, so the negative
-  # control can require render to go red while the other four surfaces pass.
+  # control can require render to go red while the other surfaces pass.
   defp negative(txt) do
     if System.get_env("CARDS_ELIXIR_NEGATIVE") == "1" do
       <<b, rest::binary>> = txt
@@ -133,6 +189,12 @@ defmodule Cards.Driver do
 
       String.contains?(reason, "stranded header key") ->
         "stranded-key " <> quoted_word(reason)
+
+      String.contains?(reason, "retained field") ->
+        "retain-lost"
+
+      String.contains?(reason, "loss events") ->
+        "unknown-present"
 
       true ->
         "malformed"
