@@ -343,6 +343,89 @@ defmodule Cards.CardsTest do
     end
   end
 
+  # The vocabulary is written here, not read back from the descriptors
+  # (docs/SPEC-TABLES.md §8). Adding a field without updating it must fail.
+  @vocabulary [
+    {"Card", "id", "string", "value", "64"},
+    {"Card", "sha", "string", "value", "40"},
+    {"Card", "tier", "Tier", "value", "-"},
+    {"Card", "repo", "string", "value", "96"},
+    {"Card", "_base", "string", "value", "96"},
+    {"Card", "kind", "string", "value", "24"},
+    {"Card", "priority", "Priority", "value", "-"},
+    {"Card", "stream", "string", "value", "32"},
+    {"Card", "paths", "PathText", "list", "-"},
+    {"Card", "_new", "PathText", "list", "-"},
+    {"Card", "shared", "PathText", "list", "-"},
+    {"Card", "needs", "CardID", "list", "-"},
+    {"Card", "test", "string", "value", "192"},
+    {"Card", "done", "string", "blob", "-"},
+    {"Card", "deadline_minutes", "int32", "value", "-"},
+    {"Card", "source", "string", "blob", "-"},
+    {"Card", "epoch", "int32", "value", "-"},
+    {"Card", "column", "Column", "value", "-"},
+    {"Card", "holder", "string", "value", "32"},
+    {"Card", "attempt", "int32", "value", "-"},
+    {"Card", "head", "string", "value", "40"},
+    {"Card", "branch", "string", "value", "128"},
+    {"Card", "body", "string", "blob", "-"},
+    {"Card", "extra", "KeyValue", "list", "-"},
+    {"Card", "consumers", "Consumer", "list", "-"},
+    {"CardID", "s", "string", "value", "64"},
+    {"Consumer", "kind", "string", "value", "16"},
+    {"Consumer", "who", "string", "value", "32"},
+    {"Consumer", "route", "string", "value", "48"},
+    {"Consumer", "model", "string", "value", "64"},
+    {"Consumer", "started", "int64", "value", "-"},
+    {"Consumer", "ended", "int64", "value", "-"},
+    {"Consumer", "outcome", "string", "value", "16"},
+    {"Consumer", "line", "string", "value", "200"},
+    {"Consumer", "cost_micro_usd", "int64", "value", "-"},
+    {"KeyValue", "key", "string", "value", "32"},
+    {"KeyValue", "value", "string", "blob", "-"},
+    {"PathText", "s", "string", "value", "192"}
+  ]
+
+  # TestViewWalksEveryField compares the descriptor walk with the vocabulary
+  # above and with the conformance view.txt, then walks a loaded and an edited
+  # record's scalar, list and body values through the descriptors
+  # (docs/SPEC-TABLES.md §8; tla/CardHops.tla ImplementationsAgree).
+  test "TestViewWalksEveryField" do
+    got = Cards.view()
+    want = File.read!(Path.join([@conformance, "expected", "view.txt"]))
+    assert got == want
+
+    lines = String.split(got, "\n", trim: true)
+    assert length(lines) == length(@vocabulary)
+
+    for {line, {table, field, kind, shape, bound}} <- Enum.zip(lines, @vocabulary) do
+      assert line == "#{table} #{field} #{kind} #{shape} #{bound}"
+    end
+
+    {:ok, rec} =
+      Cards.from_json(
+        ~s({"id":"x","body":"body","paths":[{"s":"one"},{"s":"two"}],"holder":"h","test":"T"})
+      )
+
+    card = :"Elixir.Cards.Table".descriptors()["Card"]
+    body = Enum.find(card.fields, &(&1.name == "body"))
+    paths = Enum.find(card.fields, &(&1.name == "paths"))
+    holder = Enum.find(card.fields, &(&1.name == "holder"))
+    assert body.shape == :blob
+    assert paths.shape == :list
+    assert holder.shape == :value
+    assert walked(rec, body) == "body"
+    assert length(walked(rec, paths)) == 2
+    assert walked(rec, holder) == "h"
+
+    {:ok, edited} = Cards.set_paths(rec, ["one", "two", "three"])
+    assert length(walked(edited, paths)) == 3
+    assert walked(edited, body) == "body"
+    {:ok, _} = Cards.task_hash(edited)
+  end
+
+  defp walked(record, field), do: Map.get(record.value, field.name)
+
   # frame_bytes is the task-hash frame written independently of the hasher:
   # each text is an unsigned 64-bit little-endian length then its bytes, and
   # each list is a count then its length-prefixed texts (tables/cards/edit.go).

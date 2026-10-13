@@ -993,6 +993,40 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
     end)
   end
 
+  # view walks descriptors/0 of the generated Card unit: tables in name order,
+  # fields in declaration order, one line each (docs/SPEC-TABLES.md §8;
+  # tables/cards/conformance/FORMAT.md). The kind column is the schema element
+  # type the descriptor names. tla/CardHops.tla ImplementationsAgree.
+  def view do
+    Cards.Table.descriptors()
+    |> Enum.sort_by(fn {name, _desc} -> name end)
+    |> Enum.flat_map(fn {table, desc} ->
+      Enum.map(desc.fields, fn f ->
+        "#{table} #{f.name} #{schema_kind(f)} #{f.shape} #{view_bound(f)}\n"
+      end)
+    end)
+    |> IO.iodata_to_binary()
+  end
+
+  defp schema_kind(%{t: :list, elem: elem}), do: elem
+  defp schema_kind(%{t: :string}), do: "string"
+  defp schema_kind(%{t: :blob}), do: "string"
+  defp schema_kind(%{t: :int, width: width}), do: "int#{width * 8}"
+
+  defp schema_kind(%{t: :enum, by_name: by_name}) do
+    names = MapSet.new(Map.keys(by_name))
+
+    cond do
+      names == MapSet.new(~w(flash pro heavy frontier)) -> "Tier"
+      names == MapSet.new(~w(normal high critical blocker)) -> "Priority"
+      names == MapSet.new(~w(waiting ready working review merging landed plan check)) -> "Column"
+      true -> "enum"
+    end
+  end
+
+  defp view_bound(%{t: :string, bound: n}) when is_integer(n), do: Integer.to_string(n)
+  defp view_bound(_field), do: "-"
+
   defp framed_text(nil), do: <<0::little-unsigned-64>>
   defp framed_text(s) when is_binary(s), do: <<byte_size(s)::little-unsigned-64, s::binary>>
 
