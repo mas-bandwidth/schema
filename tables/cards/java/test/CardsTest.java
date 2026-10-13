@@ -81,6 +81,18 @@ public final class CardsTest {
         byte[] w1 = owned.wire();
         w1[0] ^= 0x7f;
         require(Arrays.equals(owned.wire(), wire), "Wire returned an alias of the record's wire");
+
+        // FromJSON also owns a private copy of the caller's text.
+        byte[] jsonCaller = Arrays.copyOf(json, json.length);
+        Cards.Record fromJsonOwned = Cards.fromJSON(jsonCaller);
+        jsonCaller[0] ^= 0x7f;
+        require(Arrays.equals(fromJsonOwned.wire(), wire),
+            "FromJSON aliased the caller's text");
+
+        // A save/load round trip reproduces the wire byte for byte.
+        Cards.Record reloaded = Cards.load(again.wire());
+        require(Arrays.equals(reloaded.wire(), wire),
+            "save/load does not reproduce the wire");
     }
 
     // TestCardBoundsRefuseBeforePublishing: the customer bounds accept exactly
