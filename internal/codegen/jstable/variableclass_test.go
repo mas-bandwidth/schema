@@ -43,7 +43,13 @@ import (
 //     and the text writer REFUSES it, as the oracle's does (§16.7);
 //   - the ESCAPE KIND 31 (§3): at a field the reader cannot name (unknown), at a
 //     field it names and as an array's element kind (kind_mismatch each), the
-//     report compared with the oracle's and the re-save with the oracle's.
+//     report compared with the oracle's and the re-save with the oracle's;
+//   - a DECLARED MINIMUM, [2..4]uint8, at 0, 1 and 4 elements (the bytes of a
+//     [..4]) and at 5 from the wire and from the text (one clamped, the prefix
+//     kept), each against the oracle's report and save;
+//   - a DATA CYCLE (§3.1, §16.7): a Leaf naming itself and two naming each other
+//     refuse the save, the measure and the text, as the oracle refuses them, and
+//     a label named inside its own definition is a text the reader refuses.
 //
 // Each wire is loaded and saved back (the bytes must not move and the report
 // must be clean), written as text (the text must be the oracle's), and read
@@ -232,6 +238,71 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// FIVE ELEMENTS IN A [2..4]uint8 (§4): on the wire the bounded prefix is kept
+	// and one clamped counts, and from the text the same; both against the
+	// oracle's report and the oracle's save of what it kept.
+	repCount := func(r tabletext.Report) string {
+		return fmt.Sprintf("%d,%d,%d,%d,%d,%v", r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+	}
+	leastWire := variableClassLeastWire(t, probe)
+	leastInst := pm.New(pm.Lookup("Probe"))
+	var leastRep tabletext.Report
+	if ok, err := tablewire.Decode(pm, leastInst, leastWire, &leastRep); !ok || err != nil {
+		t.Fatalf("the oracle refused the five-element wire: %v", err)
+	}
+	if leastRep.Clamped != 1 || leastRep.Malformed {
+		t.Fatalf("the oracle does not clamp five elements of a [2..4] array once: %+v", leastRep)
+	}
+	leastSaved, err := tablewire.Encode(pm, leastInst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const leastText = `{"least": [1, 2, 3, 4, 5]}`
+	leastTextInst := pm.New(pm.Lookup("Probe"))
+	var leastTextRep tabletext.Report
+	if !pm.Read(leastTextInst, []byte(leastText), &leastTextRep) || leastTextRep.Clamped != 1 {
+		t.Fatalf("the oracle does not read five elements of a [2..4] array as one clamp: %+v", leastTextRep)
+	}
+	leastTextWire, err := tablewire.Encode(pm, leastTextInst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A DATA CYCLE (§3.1, §16.7): the oracle refuses a Leaf whose next is itself
+	// at save and at write, and so must the JavaScript leg (built in the driver)
+	{
+		inst := pm.New(pm.Lookup("Probe"))
+		var rep tabletext.Report
+		if !pm.Read(inst, []byte(`{"head": {"id": 1, "name": "a", "next": null}}`), &rep) {
+			t.Fatalf("the oracle did not read the cycle's seed: %+v", rep)
+		}
+		var leaf *tabletext.Instance
+		for i := range inst.Fields {
+			if inst.Fields[i].Def.Name == "head" {
+				leaf = inst.Fields[i].Cell.Node
+			}
+		}
+		for i := range leaf.Fields {
+			if leaf.Fields[i].Def.Name == "next" {
+				leaf.Fields[i].Cell.Node = leaf
+			}
+		}
+		if _, err := tablewire.Encode(pm, inst); err == nil {
+			t.Fatal("the oracle saved a data cycle")
+		}
+		if _, err := pm.Write(inst); err == nil {
+			t.Fatal("the oracle wrote a data cycle as text")
+		}
+	}
+
+	// A LABEL NAMED INSIDE ITS OWN DEFINITION is the cycle the text spells, and
+	// the reader refuses it (§16.7): the oracle's verdict, and the leg's below
+	const selfRefText = `{"head": {"&node": 1, "id": 1, "next": {"&node": 1}}}`
+	var selfRefRep tabletext.Report
+	if pm.Read(pm.New(pm.Lookup("Probe")), []byte(selfRefText), &selfRefRep) || !selfRefRep.Malformed {
+		t.Fatalf("the oracle did not refuse a label named inside its own definition: %+v", selfRefRep)
+	}
+
 	// THE JAVASCRIPT PROBE: every unit's generated module, one driver over all
 	// of them, the cases as data.
 	var all []*vcCase
@@ -285,10 +356,28 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	}
 	want = append(want, fmt.Sprintf("ESCAPE %d,%d,%d,%d,%d,%v SAVED OK",
 		escRep.Unknown, escRep.KindMismatch, escRep.Widened, escRep.Clamped, escRep.Duplicate, escRep.Malformed))
+	files := map[string][]byte{
+		"least5.wire": leastWire, "least5_saved.wire": leastSaved, "least5_text.wire": leastTextWire,
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(work, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want = append(want,
+		"LEASTWIRE "+repCount(leastRep)+" SAVED OK",
+		"LEASTTEXT "+repCount(leastTextRep)+" SAVED OK",
+		"CYCLE self save OK", "CYCLE self measure OK", "CYCLE self text OK",
+		"CYCLE pair save OK", "CYCLE pair text OK",
+		fmt.Sprintf("SELFREF malformed %v", selfRefRep.Malformed))
 
+	probeModule := filepath.Join(work, "classprobe", runtimeHome(probe)+"Variable.js")
 	spec, err := json.Marshal(map[string]any{
 		"cases":  all,
-		"escape": map[string]string{"module": filepath.Join(work, "classprobe", runtimeHome(probe)+"Variable.js"), "wire": escPath, "saved": escSavedPath},
+		"escape": map[string]string{"module": probeModule, "wire": escPath, "saved": escSavedPath},
+		"least": map[string]string{"module": probeModule, "wire": filepath.Join(work, "least5.wire"),
+			"saved": filepath.Join(work, "least5_saved.wire"), "text": leastText, "textWire": filepath.Join(work, "least5_text.wire")},
+		"cycle": map[string]string{"module": probeModule, "selfRef": selfRefText},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -355,6 +444,27 @@ func variableClassEscapeWire(t *testing.T, u *ir.Unit) []byte {
 	return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
 }
 
+// variableClassLeastWire builds one Probe wire whose [2..4]uint8 `least`
+// carries FIVE elements (docs/SPEC-TABLES.md §4): kind 14, element kind u8, a
+// count of 5, then the five bytes.
+func variableClassLeastWire(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	var least *ir.Field
+	for _, f := range u.Tables["Probe"].Fields {
+		if f.Name == "least" {
+			least = f
+		}
+	}
+	if least == nil {
+		t.Fatal("the probe declares no least")
+	}
+	w := []byte{byte(ir.TableWireForm)}
+	w = append(w, 1, byte(ir.TableKindArray), 7, byte(ir.TableKindU8), 5, 1, 2, 3, 4, 5)
+	w = append(w, 0)
+	w = binary.LittleEndian.AppendUint64(w, ir.TableFieldWireId(least))
+	return binary.LittleEndian.AppendUint64(w, 1)
+}
+
 // variableClassProbeSrc is the variable class the corpus does not reach.
 const variableClassProbeSrc = `package classprobe
 
@@ -401,6 +511,7 @@ table Probe
     leaves []*Leaf
     head   *Leaf
     tail   int32
+    least  [2..4]uint8
 }
 `
 
@@ -417,8 +528,13 @@ var variableClassProbeTexts = []struct{ name, text string }{
   "spot": {"x": -4, "y": 1.5, "tag": 9},
   "leaves": [{"&node": 1, "id": 1, "name": "one", "next": {"id": 2, "name": "two", "next": null}}, null, {"&node": 1}],
   "head": {"&node": 1},
-  "tail": -7
+  "tail": -7,
+  "least": [1, 2, 3, 4]
 }`},
+	// A DECLARED MINIMUM MOVES NOTHING ON THE TABLE WIRE: [2..4]T holding one
+	// element is [..4]T's bytes (the oracle reads ArrayMin nowhere); none is
+	// probe_edges, four is probe_full, and five is the clamp case below
+	{"probe_least_one", `{"least": [9]}`},
 	// A BLOB IS A NODE, NUMBERED BY OBJECT (docs/SPEC-TABLES.md §2.5, §3.1):
 	// two slots holding EQUAL bytes in two blobs are two records, which the
 	// oracle writes and a by-content numbering would merge into one
@@ -430,7 +546,8 @@ var variableClassProbeTexts = []struct{ name, text string }{
   "u8v": 0, "f32v": 0, "flag": true, "b10": 0, "raw": "", "blob": "", "note": "",
   "mood": "None", "nums": [], "spots": [{"x": 0, "y": 1.5, "tag": 0}],
   "spot": {"x": 0, "y": 1.5, "tag": 0},
-  "leaves": [null], "head": {"id": 0, "name": "", "next": null}
+  "leaves": [null], "head": {"id": 0, "name": "", "next": null},
+  "least": []
 }`},
 }
 
@@ -491,5 +608,45 @@ for (const c of spec.cases) {
     const again = m.ProbeSave(v);
     console.log("ESCAPE " + [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed].join(",") + " SAVED " + (same(again, want) ? "OK" : "DIFF " + firstDiff(again, want)));
   }
+}
+
+const counts = (r) => [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed].join(",");
+
+{
+  // five elements of a [2..4]uint8: from the wire and from the text
+  const e = spec.least;
+  const m = await import(pathToFileURL(e.module).href);
+  const want = new Uint8Array(readFileSync(e.saved));
+  const r = new m.TableVariableReport();
+  const v = m.ProbeLoad(new Uint8Array(readFileSync(e.wire)), r);
+  if (v === null) { console.log("LEASTWIRE REFUSED"); }
+  else { const again = m.ProbeSave(v); console.log("LEASTWIRE " + counts(r) + " SAVED " + (same(again, want) ? "OK" : "DIFF " + firstDiff(again, want))); }
+  const tw = new Uint8Array(readFileSync(e.textWire));
+  const r2 = new m.TableVariableReport();
+  const s2 = m.ProbeSave(m.ProbeFromJson(e.text, r2));
+  console.log("LEASTTEXT " + counts(r2) + " SAVED " + (same(s2, tw) ? "OK" : "DIFF " + firstDiff(s2, tw)));
+}
+
+{
+  // a data cycle refuses the save and the text; a label named inside its own
+  // definition is a text the reader refuses
+  const e = spec.cycle;
+  const m = await import(pathToFileURL(e.module).href);
+  const p = new m.Probe();
+  const a = new m.Leaf();
+  a.id = 1; a.name = "a"; a.next = a;
+  p.head = a;
+  console.log("CYCLE self save " + (m.ProbeSave(p) === null ? "OK" : "WROTE"));
+  console.log("CYCLE self measure " + (m.ProbeMeasure(p) === -1 ? "OK" : "MEASURED"));
+  console.log("CYCLE self text " + (m.ProbeToJson(p) === null ? "OK" : "WROTE"));
+  const q = new m.Probe();
+  const b = new m.Leaf(), c = new m.Leaf();
+  b.next = c; c.next = b;
+  q.leaves = [b];
+  console.log("CYCLE pair save " + (m.ProbeSave(q) === null ? "OK" : "WROTE"));
+  console.log("CYCLE pair text " + (m.ProbeToJson(q) === null ? "OK" : "WROTE"));
+  const r = new m.TableVariableReport();
+  m.ProbeFromJson(e.selfRef, r);
+  console.log("SELFREF malformed " + r.malformed);
 }
 `
