@@ -632,6 +632,6 @@ cards-rust-test: cards-rust-generate
 	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --offline --manifest-path build/cards-rust/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --offline --manifest-path build/cards-rust/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy -- -D warnings --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --manifest-path build/cards-rust/Cargo.toml -- -D warnings
 
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
