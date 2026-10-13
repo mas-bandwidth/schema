@@ -613,4 +613,50 @@ cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/cards-rust-retain-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/cards-rust-retain-fuzz.log
 
+# THE CARDS FACADE'S RUST LEG (docs/SPEC-TABLES.md §2): L1 is the owning
+# facade and the customer bounds (table/cards/cards.go), L2 parse once and
+# render many (parse.go/render.go). cards-rust-test builds and tests the facade
+# beside the generated card modules copied into build/cards-rust/, with no
+# crate dependency beyond the standard library and the generated modules;
+# clippy runs over the facade with warnings denied.
+.PHONY: cards-rust-test
+cards-rust-test: cards-rust-generate
+	@mkdir -p build/cards-rust
+	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
+	@cp tables/cards/rust/Cargo.toml build/cards-rust/
+	@cp tables/cards/rust/src/lib.rs build/cards-rust/lib.rs
+	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
+	@mkdir -p build/cards-rust/src/bin
+	@cp tables/cards/rust/src/bin/cards-driver.rs build/cards-rust/src/bin/cards-driver.rs
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --offline --manifest-path build/cards-rust/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --manifest-path build/cards-rust/Cargo.toml -- -D warnings
+
+# THE CARD CONFORMANCE CHECK (tables/cards/conformance/FORMAT.md): the Rust
+# leg's driver over the five surfaces it implements (load, save, render, parse,
+# bounds), compared byte for byte against the committed Go answers. The driver
+# binary rides build/cards-rust/target/debug/cards-driver, built by the
+# cards-rust-test cargo build above; upgrade, edit, taskhash and view answer
+# absent (exit 2) and are not required.
+.PHONY: cards-rust-conformance
+cards-rust-conformance: build/conformance-harness cards-rust-test
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds
+
+# THE NEGATIVE CONTROL: the same check with a test-only environment switch
+# (CARDS_RUST_SABOTAGE_RENDER) that changes one rendered byte, required to FAIL
+# on render while the other four surfaces pass.
+.PHONY: cards-rust-conformance-negative-control
+cards-rust-conformance-negative-control: build/conformance-harness cards-rust-test
+	@mkdir -p build/cards-rust-conformance-neg
+	@if CARDS_RUST_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/rust/driver' --require load,save,render,parse,bounds > build/cards-rust-conformance-neg/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-rust-conformance-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-rust-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-rust-conformance-neg/log; exit 1; }
+	@echo 'cards Rust negative control: one changed rendered byte turns exactly render red'
+
+test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
