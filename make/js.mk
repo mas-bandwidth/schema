@@ -485,6 +485,20 @@ tables-js-versioning: build/fixedform-corpus/.stamp
 
 test-js: tables-js-versioning
 
+# THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
+# §2.9, §3, §3.1, §16.7): pointers to tables and the flat node table, *bytes
+# blobs, unbounded arrays of scalar/string/enum elements, arrays of pointers, the
+# id-table wire and the remaining scalar kinds. Both tests ride the leg's gate:
+# the round trip over tables/pointers, tables/blobs and tables/lists against the
+# Go oracle's bytes, and the refusal boundary that shrinks to exactly the carried
+# set. SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-class
+tables-js-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	@echo 'tables JS variable class: pointers, blobs, lists and the scalar kinds round-trip the node table'
+
+test-js: tables-js-variable-class
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test

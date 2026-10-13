@@ -144,6 +144,10 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	for _, st := range closure {
 		g.emitBodyCodec(st)
 	}
+	g.emitNodeHelpers(closure)
+	for _, st := range closure {
+		g.emitNumberFields(st)
+	}
 	for _, st := range closure {
 		g.emitExtentWalk(st)
 	}
@@ -257,17 +261,40 @@ class TableVariableIds {
   }
 }
 
-// THE NODE NUMBERING (docs/SPEC-TABLES.md §3.1): one record per unique blob, in
-// first-use order. Two *string fields holding the same text share one record and
-// one node index, exactly as the reference's Number interns a shared blob.
+// THE NODE NUMBERING (docs/SPEC-TABLES.md §3.1): one record per unique node, in
+// first-visit depth-first order. A *string interns by content (two fields holding
+// one text share a record); a *bytes and a *table intern by identity (two slots
+// naming one object are one node). A table record's body is written AFTER the
+// root body, so its pointer edges' children were numbered by the descent the
+// first visit ran (numberFields). Record bodies: 'body' for a blob (bytes at the
+// ready), 'value' for a table (its instance, written later).
 class TableVariableNodes {
-  constructor() { this.list = []; this.index = new Map(); }
-  ref(content) {
-    let idx = this.index.get(content);
+  constructor() { this.list = []; this.byContent = new Map(); this.byObject = new Map(); }
+  stringRef(content) {
+    let idx = this.byContent.get(content);
     if (idx === undefined) {
-      this.list.push(TableVariableUtf8Encode(content));
+      this.list.push({ typeId: TableStringBlobId, body: TableVariableUtf8Encode(content) });
       idx = this.list.length + 1;
-      this.index.set(content, idx);
+      this.byContent.set(content, idx);
+    }
+    return idx;
+  }
+  bytesRef(obj) {
+    let idx = this.byObject.get(obj);
+    if (idx === undefined) {
+      this.list.push({ typeId: TableBytesBlobId, body: obj });
+      idx = this.list.length + 1;
+      this.byObject.set(obj, idx);
+    }
+    return idx;
+  }
+  tableRef(obj, typeId, numberFields) {
+    let idx = this.byObject.get(obj);
+    if (idx === undefined) {
+      this.list.push({ typeId: typeId, value: obj });
+      idx = this.list.length + 1;
+      this.byObject.set(obj, idx);
+      numberFields(obj, this);
     }
     return idx;
   }
@@ -278,6 +305,7 @@ class TableVariableWriter {
   constructor() { this.b = []; }
   get len() { return this.b.length; }
   u8(v) { this.b.push(v & 0xff); }
+  u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
   leb(v) {
     v = Number(v);
     while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
@@ -285,8 +313,13 @@ class TableVariableWriter {
   }
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
+  i8(v) { this.u8(v & 0xff); }
+  i16(v) { this.u16(v & 0xffff); }
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  i64(v) { this.u64(BigInt.asUintN(64, v)); }
+  f32(v) { this.u32(TableVariableF32Bits(v)); }
+  f64(v) { this.u64(TableVariableF64Bits(v)); }
   toArray() { return new Uint8Array(this.b); }
 }
 
@@ -316,6 +349,7 @@ class TableVariableReader {
     this.at = start;
     return 0;
   }
+  u16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return v; }
   u32() {
     const b = this.b, a = this.at; this.at += 4;
     return (b[a] | (b[a + 1] << 8) | (b[a + 2] << 16) | (b[a + 3] << 24)) >>> 0;
@@ -323,6 +357,8 @@ class TableVariableReader {
   i32() { return this.u32() | 0; }
   i8() { const v = this.b[this.at]; this.at += 1; return (v & 0x80) ? (v - 0x100) : v; }
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
+  f32() { return TableVariableF32FromBits(this.u32()); }
+  f64() { return TableVariableF64FromBits(this.u64()); }
   u64() {
     let v = 0n;
     for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
@@ -335,6 +371,36 @@ class TableVariableReader {
     this.at += 8;
     return (this.b[this.at - 1] & 0x80) !== 0 ? v - (1n << 64n) : v;
   }
+}
+
+// ---- floats ride as their IEEE-754 bit pattern (docs/SPEC-TABLES.md §3) -----
+// A float32 held in JavaScript's float64 cell carries its pattern bit for bit,
+// never through a float conversion (the hardware conversion sets the quiet bit
+// on a signalling NaN and drops a payload). The scratch array is a fresh typed
+// view per call, so no state survives between codecs.
+
+function TableVariableF32Bits(v) {
+  const f = new Float32Array(1);
+  f[0] = v;
+  return new Uint32Array(f.buffer)[0];
+}
+
+function TableVariableF32FromBits(b) {
+  const u = new Uint32Array(1);
+  u[0] = b;
+  return new Float32Array(u.buffer)[0];
+}
+
+function TableVariableF64Bits(v) {
+  const f = new Float64Array(1);
+  f[0] = v;
+  return new BigUint64Array(f.buffer)[0];
+}
+
+function TableVariableF64FromBits(b) {
+  const u = new BigUint64Array(1);
+  u[0] = b;
+  return new Float64Array(u.buffer)[0];
 }
 
 // ---- UTF-8, byte-exact and validating (docs/SPEC-TABLES.md §3) -------------
@@ -451,10 +517,17 @@ function TableVariableNodeTableScan(bytes, table, end, report, retain) {
   if (!good) { report.malformed = true; return records; }
   for (const r of raw) {
     const tid = table[r.ref - 1];
-    if (tid !== TableStringBlobId) { report.unknown++; if (retain !== null) { report.retainLost++; } records.push(null); continue; }
-    const dec = TableVariableUtf8Decode(r.body);
-    if (!dec.ok) { report.malformed = true; records.push(null); continue; }
-    records.push(dec.s);
+    if (tid === TableStringBlobId) {
+      const dec = TableVariableUtf8Decode(r.body);
+      if (!dec.ok) { report.malformed = true; records.push(null); continue; }
+      records.push({ blob: dec.s });
+    } else if (tid === TableBytesBlobId) {
+      records.push({ blob: r.body });
+    } else if (TableVariableKnownType(tid)) {
+      records.push({ typeId: tid, body: r.body });
+    } else {
+      report.unknown++; if (retain !== null) { report.retainLost++; } records.push(null);
+    }
   }
   return records;
 }
@@ -560,7 +633,7 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		}
 		return "null"
 	}
-	if f.Type.Pointer && f.Type.Blob() {
+	if f.Type.Pointer {
 		return "null"
 	}
 	if f.IsList() {
@@ -579,6 +652,8 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return "0"
 	case ir.TString:
 		return `""`
+	case ir.TBytes:
+		return "new Uint8Array(0)"
 	}
 	return "0"
 }
@@ -632,54 +707,115 @@ func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field, ordinal int) {
 		return
 	}
 	if f.Type.Pointer && f.Type.Blob() {
-		g.pf("  if (%s !== null) {\n", name)
-		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(17);\n")
-		g.pf("    w.leb(nodes.ref(%s));\n", name)
-		g.pf("  }\n")
+		// *string and *bytes are both kind 17 into the node table (§2.5, §3.1);
+		// they differ only in which reserved type id their record rides under.
+		if f.Type.Kind == ir.TString {
+			g.pf("  if (%s !== null) {\n", name)
+			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+			g.pf("    w.leb(ref); w.u8(17);\n")
+			g.pf("    w.leb(nodes.stringRef(%s));\n", name)
+			g.pf("  }\n")
+		} else {
+			g.pf("  if (%s !== null) {\n", name)
+			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+			g.pf("    w.leb(ref); w.u8(17);\n")
+			g.pf("    w.leb(nodes.bytesRef(%s));\n", name)
+			g.pf("  }\n")
+		}
 		return
 	}
+	if f.Type.Pointer {
+		// a pointer to a TABLE (§2.1): kind 17, the node index of the target.
+		if ts, ok := f.Type.Ref.(*ir.Struct); ok {
+			g.pf("  if (%s !== null) {\n", name)
+			g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+			g.pf("    w.leb(ref); w.u8(17);\n")
+			g.pf("    w.leb(nodes.tableRef(%s, %s, %sNumberFields));\n", name, jsId(ir.TableWireId(ts.WireName())), ts.Name)
+			g.pf("  }\n")
+			return
+		}
+	}
 	if el := listElement(f); el != nil {
+		g.emitWriteListOfTables(f, el, ordinal)
+		return
+	}
+	if f.IsList() {
+		g.emitWriteList(st, f, ordinal)
+		return
+	}
+	if f.Type.Kind == ir.TBytes {
+		// bytes(N) rides as an array of u8: kind 14, element kind 6 (§3).
 		g.pf("  if (%s.length > 0) {\n", name)
 		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
 		g.pf("    w.leb(ref); w.u8(14);\n")
 		g.pf("    const sub = new TableVariableWriter();\n")
-		g.pf("    sub.u8(13);\n")
-		g.pf("    sub.leb(%s.length);\n", name)
-		g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
-		g.pf("      const e = %s[i];\n", name)
-		g.pf("      const body = new TableVariableWriter();\n")
-		g.pf("      path.push({ o: %d, i: i });\n", ordinal)
-		g.pf("      if (!%sBodyWrite(body, ids, nodes, e, retain, path, report)) { return false; }\n", el.Name)
-		g.pf("      path.pop();\n")
-		g.pf("      sub.leb(body.len);\n")
-		g.pf("      sub.raw(body.b);\n")
-		g.pf("    }\n")
-		g.pf("    w.leb(sub.len);\n")
-		g.pf("    w.raw(sub.b);\n")
+		g.pf("    sub.u8(6); sub.leb(%s.length); sub.raw(%s);\n", name, name)
+		g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
 		g.pf("  }\n")
 		return
 	}
+	g.emitWriteScalar(f, kind)
+}
+
+// scalarWriteCall is the writer call that stores one scalar value at its own
+// kind's width and signedness (docs/SPEC-TABLES.md §3). Floats ride as their
+// IEEE-754 bit pattern, a float32 held in a float64 cell never converted.
+func (g *variableGen) scalarWriteCall(f *ir.Field, name string) string {
+	kind := ir.TableWireScalarKind(f)
+	switch kind {
+	case ir.TableKindF32:
+		return fmt.Sprintf("w.f32(%s)", name)
+	case ir.TableKindF64:
+		return fmt.Sprintf("w.f64(%s)", name)
+	}
+	m := "u8"
+	switch ir.TableKindWidth(kind) {
+	case 2:
+		m = "u16"
+	case 4:
+		m = "u32"
+	case 8:
+		m = "u64"
+	}
+	if ir.TableKindSigned(kind) {
+		switch ir.TableKindWidth(kind) {
+		case 1:
+			m = "i8"
+		case 2:
+			m = "i16"
+		case 4:
+			m = "i32"
+		case 8:
+			m = "i64"
+		}
+	}
+	return fmt.Sprintf("w.%s(%s)", m, name)
+}
+
+func (g *variableGen) emitWriteScalar(f *ir.Field, kind int) {
+	name := "v." + f.Name
 	switch f.Type.Kind {
 	case ir.TBool:
 		g.pf("  if (%s !== false) {\n", name)
 		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
-		g.pf("    w.leb(ref); w.u8(%d);\n", kind)
+		g.pf("    w.leb(ref); w.u8(1);\n")
 		g.pf("    w.u8(%s ? 1 : 0);\n", name)
 		g.pf("  }\n")
-	case ir.TInt:
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("  if (%s !== 0) {\n", name)
+		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+		g.pf("    w.leb(ref); w.u8(%d);\n", kind)
+		g.pf("    %s;\n", g.scalarWriteCall(f, name))
+		g.pf("  }\n")
+	case ir.TInt, ir.TBits:
 		ride := " !== 0"
-		if f.Type.Width == 64 {
+		if ir.TableKindWidth(kind) == 8 {
 			ride = " !== 0n"
 		}
 		g.pf("  if (%s%s) {\n", name, ride)
 		g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
 		g.pf("    w.leb(ref); w.u8(%d);\n", kind)
-		if f.Type.Width == 64 {
-			g.pf("    w.u64(BigInt.asUintN(64, %s));\n", name)
-		} else {
-			g.pf("    w.i32(%s);\n", name)
-		}
+		g.pf("    %s;\n", g.scalarWriteCall(f, name))
 		g.pf("  }\n")
 	case ir.TString:
 		g.pf("  if (%s.length > 0) {\n", name)
@@ -691,6 +827,80 @@ func (g *variableGen) emitWriteField(st *ir.Struct, f *ir.Field, ordinal int) {
 		g.pf("  }\n")
 	}
 }
+
+// emitWriteListOfTables emits an unbounded []T of TABLE elements: kind 14 over
+// element kind 13, each element its own body (§2.9, §3).
+func (g *variableGen) emitWriteListOfTables(f *ir.Field, el *ir.Struct, ordinal int) {
+	name := "v." + f.Name
+	g.pf("  if (%s.length > 0) {\n", name)
+	g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+	g.pf("    w.leb(ref); w.u8(14);\n")
+	g.pf("    const sub = new TableVariableWriter();\n")
+	g.pf("    sub.u8(13);\n")
+	g.pf("    sub.leb(%s.length);\n", name)
+	g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
+	g.pf("      const e = %s[i];\n", name)
+	g.pf("      const body = new TableVariableWriter();\n")
+	g.pf("      path.push({ o: %d, i: i });\n", ordinal)
+	g.pf("      if (!%sBodyWrite(body, ids, nodes, e, retain, path, report)) { return false; }\n", el.Name)
+	g.pf("      path.pop();\n")
+	g.pf("      sub.leb(body.len);\n")
+	g.pf("      sub.raw(body.b);\n")
+	g.pf("    }\n")
+	g.pf("    w.leb(sub.len);\n")
+	g.pf("    w.raw(sub.b);\n")
+	g.pf("  }\n")
+}
+
+// emitWriteList emits an unbounded []T of a NON-table element — a scalar, a
+// string, an enum or a pointer: kind 14 over the element's own kind, elements
+// back to back (§2.9, §3).
+func (g *variableGen) emitWriteList(st *ir.Struct, f *ir.Field, ordinal int) {
+	name := "v." + f.Name
+	elemKind := ir.TableWireElemKind(f)
+	g.pf("  if (%s.length > 0) {\n", name)
+	g.pf("    const ref = ids.ref(%s);\n", jsId(ir.TableFieldWireId(f)))
+	g.pf("    w.leb(ref); w.u8(14);\n")
+	g.pf("    const sub = new TableVariableWriter();\n")
+	g.pf("    sub.u8(%d);\n", elemKind)
+	g.pf("    sub.leb(%s.length);\n", name)
+	g.pf("    for (let i = 0; i < %s.length; i++) {\n", name)
+	g.pf("      const e = %s[i];\n", name)
+	g.emitWriteListElement(f, elemKind)
+	g.pf("    }\n")
+	g.pf("    w.leb(sub.len);\n")
+	g.pf("    w.raw(sub.b);\n")
+	g.pf("  }\n")
+}
+
+func (g *variableGen) emitWriteListElement(f *ir.Field, elemKind int) {
+	switch {
+	case elemKind == ir.TableKindEnum:
+		g.pf("      if (e === null) { sub.leb(0); continue; }\n")
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			g.pf("      let vref = 0;\n")
+			g.pf("      switch (e) {\n")
+			for i := range e.Variants {
+				g.pf("        case %q: vref = ids.ref(%s); break;\n", e.Variants[i], jsId(ir.TableWireId(e.VariantWireName(i))))
+			}
+			g.pf("        default: return false;\n")
+			g.pf("      }\n")
+			g.pf("      sub.leb(vref);\n")
+		}
+	case elemKind == ir.TableKindString:
+		g.pf("      const bytes = TableVariableUtf8Encode(e);\n")
+		g.pf("      sub.leb(bytes.length); sub.raw(bytes);\n")
+	case elemKind == ir.TableKindPointer:
+		if ts, ok := f.Type.Ref.(*ir.Struct); ok {
+			g.pf("      if (e === null) { sub.leb(0); continue; }\n")
+			g.pf("      sub.leb(nodes.tableRef(e, %s, %sNumberFields));\n", jsId(ir.TableWireId(ts.WireName())), ts.Name)
+		}
+	default:
+		// scalar element: same call as a field of that kind.
+		g.pf("      %s;\n", g.scalarWriteCall(f, "e"))
+	}
+}
+
 
 func (g *variableGen) emitBodyRead(st *ir.Struct) {
 	g.pf("function %sBodyRead(r, ids, table, v, report, pending, records, nested, retain, path) {\n", st.Name)
@@ -740,6 +950,16 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
 	kind := fieldKindName(f)
 	g.pf("    if (id === %s) {\n", jsId(ir.TableFieldWireId(f)))
 	g.pf("      named = true;\n")
+	if variableFieldRefusal(st, f) != "" {
+		// A construct this leg still refuses appears in a closure table reached
+		// as a list element or a pointer target (a map, a union arm, an
+		// optional): it rides as its field's own kind and is skipped whole here,
+		// never decoded (§11). It is never a root, so no value depends on it.
+		g.pf("      if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; }\n")
+		g.pf("      continue;\n")
+		g.pf("    }\n")
+		return
+	}
 	if e := enumOf(f); e != nil {
 		g.pf("      if (kind !== 30) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
 		g.pf("      const vref = r.leb();\n")
@@ -758,7 +978,11 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
 		g.pf("    }\n")
 		return
 	}
-	if f.Type.Pointer && f.Type.Blob() {
+	if f.Type.Pointer {
+		// *T naming a table, *bytes or *string are all kind 17, a node index
+		// deferred to Load's resolution against the node records (§2.1, §2.5,
+		// §3.1). Null is index 0 and elides on the wire, so a present field is
+		// always non-null here.
 		g.pf("      if (kind !== 17) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
 		g.pf("      const index = r.leb();\n")
 		g.pf("      if (r.bad) { report.malformed = true; break; }\n")
@@ -797,40 +1021,20 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
 		g.pf("    }\n")
 		return
 	}
+	if f.Type.Kind == ir.TBytes || f.IsList() {
+		g.emitReadList(f, ordinal)
+		return
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		g.pf("      if (kind !== 1) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
 		g.pf("      %s = r.u8() !== 0;\n", name)
 		g.pf("      continue;\n")
 		g.pf("    }\n")
-	case ir.TInt:
-		// A WIDENED integer (§4): a wire kind below this field's on its own
-		// signedness ladder decodes at its own width, sign-extended, and one
-		// `widened` counts. Down the ladder or across the two ladders is a kind
-		// mismatch, skipped whole.
-		base := 2
-		if !f.Type.Signed {
-			base = 6
-		}
-		g.pf("      if (kind !== %d) {\n", kind)
-		g.pf("        if (kind >= %d && kind < %d) {\n", base, kind)
-		g.pf("          report.widened++;\n")
-		if f.Type.Width == 64 {
-			g.pf("          %s = kind === 4 ? BigInt(r.i32()) : kind === 3 ? BigInt(r.i16()) : BigInt(r.i8());\n", name)
-		} else {
-			g.pf("          %s = kind === 3 ? r.i16() : r.i8();\n", name)
-		}
-		g.pf("          continue;\n")
-		g.pf("        }\n")
-		g.pf("        report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue;\n")
-		g.pf("      }\n")
-		if f.Type.Width == 64 {
-			g.pf("      %s = r.i64();\n", name)
-		} else {
-			g.pf("      %s = r.i32();\n", name)
-		}
-		g.pf("      continue;\n")
-		g.pf("    }\n")
+	case ir.TInt, ir.TBits:
+		g.emitReadInt(f, kind)
+	case ir.TFloat32, ir.TFloat64:
+		g.emitReadFloat(f, kind)
 	case ir.TString:
 		g.pf("      if (kind !== 12) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
 		g.pf("      const L = r.leb();\n")
@@ -848,6 +1052,237 @@ func (g *variableGen) emitReadField(st *ir.Struct, f *ir.Field, ordinal int) {
 		g.pf("      continue;\n")
 		g.pf("    }\n")
 	}
+}
+
+// readScalarCall is the reader expression that decodes a scalar at the WIRE
+// kind, sign-extended where the kind is signed (docs/SPEC-TABLES.md §3).
+func (g *variableGen) readScalarCall(kindExpr string, signed bool, width int) string {
+	switch width {
+	case 1:
+		if signed {
+			return "r.i8()"
+		}
+		return "r.u8()"
+	case 2:
+		if signed {
+			return "r.i16()"
+		}
+		return "r.u16()"
+	case 4:
+		if signed {
+			return "r.i32()"
+		}
+		return "r.u32()"
+	default:
+		if signed {
+			return "r.i64()"
+		}
+		return "r.u64()"
+	}
+}
+
+// emitReadInt decodes an integer- or bits-shaped field, widening a narrower
+// same-signedness kind (§4) and reporting a kind mismatch otherwise.
+func (g *variableGen) emitReadInt(f *ir.Field, kind int) {
+	name := "v." + f.Name
+	signed := ir.TableKindSigned(kind)
+	base := 2
+	if !signed {
+		base = 6
+	}
+	g.pf("      if (kind !== %d) {\n", kind)
+	g.pf("        if (kind >= %d && kind < %d) {\n", base, kind)
+	g.pf("          report.widened++;\n")
+	// a narrower signed kind widens by its sign bit; a narrower unsigned kind
+	// reads as its own width.
+	if signed {
+		if ir.TableKindWidth(kind) == 8 {
+			g.pf("          %s = kind === 4 ? BigInt(r.i32()) : kind === 3 ? BigInt(r.i16()) : BigInt(r.i8());\n", name)
+		} else {
+			g.pf("          %s = kind === 3 ? r.i16() : r.i8();\n", name)
+		}
+	} else {
+		if ir.TableKindWidth(kind) == 8 {
+			g.pf("          %s = kind === 8 ? BigInt(r.u32()) : kind === 7 ? BigInt(r.u16()) : BigInt(r.u8());\n", name)
+		} else {
+			g.pf("          %s = kind === 7 ? r.u16() : r.u8();\n", name)
+		}
+	}
+	g.pf("          continue;\n")
+	g.pf("        }\n")
+	g.pf("        report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue;\n")
+	g.pf("      }\n")
+	g.pf("      %s = %s;\n", name, g.readScalarCall("kind", signed, ir.TableKindWidth(kind)))
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		max := uint64(1)<<f.Type.Width - 1
+		g.pf("      if (%s > %dn) { %s = %dn; report.clamped++; }\n", name, max, name, max)
+	}
+	g.pf("      continue;\n")
+	g.pf("    }\n")
+}
+
+// emitReadFloat decodes a float field, widening f32 into f64 on §4's float rung.
+func (g *variableGen) emitReadFloat(f *ir.Field, kind int) {
+	name := "v." + f.Name
+	g.pf("      if (kind !== %d) {\n", kind)
+	if kind == ir.TableKindF64 {
+		g.pf("        if (kind === 10) { report.widened++; %s = r.f32(); continue; }\n", name)
+	}
+	g.pf("        report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue;\n")
+	g.pf("      }\n")
+	if kind == ir.TableKindF64 {
+		g.pf("      %s = r.f64();\n", name)
+	} else {
+		g.pf("      %s = r.f32();\n", name)
+	}
+	g.pf("      continue;\n")
+	g.pf("    }\n")
+}
+
+// emitReadList decodes bytes(N) and an unbounded []T of scalar, string, enum or
+// pointer elements: kind 14 over the element kind (§2.9, §3).
+func (g *variableGen) emitReadList(f *ir.Field, ordinal int) {
+	name := "v." + f.Name
+	elemKind := ir.TableWireElemKind(f)
+	g.pf("      if (kind !== 14) { report.kindMismatch++; if (!TableVariableSkip(r, kind, report)) { report.malformed = true; break; } continue; }\n")
+	g.pf("      const L = r.leb();\n")
+	g.pf("      if (r.bad || r.at + L > r.end) { report.malformed = true; break; }\n")
+	g.pf("      const sub = new TableVariableReader(r.b, r.at, r.at + L);\n")
+	g.pf("      if (sub.at + 2 > sub.end) { report.malformed = true; r.at += L; continue; }\n")
+	g.pf("      const ek = sub.u8();\n")
+	g.pf("      const n = sub.leb();\n")
+	g.pf("      if (sub.bad) { report.malformed = true; r.at += L; continue; }\n")
+	g.pf("      if (ek !== %d) { report.kindMismatch++; r.at += L; continue; }\n", elemKind)
+	g.pf("      %s = [];\n", name)
+	g.pf("      for (let i = 0; i < n; i++) {\n")
+	g.pf("        if (sub.at >= sub.end) { report.malformed = true; break; }\n")
+	g.emitReadListElement(f, elemKind)
+	g.pf("      }\n")
+	g.pf("      r.at += L;\n")
+	g.pf("      continue;\n")
+	g.pf("    }\n")
+}
+
+func (g *variableGen) emitReadListElement(f *ir.Field, elemKind int) {
+	name := "v." + f.Name
+	switch {
+	case elemKind == ir.TableKindEnum:
+		g.pf("        const vref = sub.leb();\n")
+		g.pf("        if (sub.bad) { report.malformed = true; break; }\n")
+		g.pf("        if (vref === 0) { %s.push(null); continue; }\n", name)
+		g.pf("        if (vref > table.length) { report.malformed = true; break; }\n")
+		g.pf("        const eid = table[vref - 1];\n")
+		g.pf("        let ev = null;\n")
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			for i := range e.Variants {
+				g.pf("        if (eid === %s) { ev = %q; }\n", jsId(ir.TableWireId(e.VariantWireName(i))), e.Variants[i])
+			}
+		}
+		g.pf("        if (ev === null) { report.unknown++; }\n")
+		g.pf("        %s.push(ev);\n", name)
+	case elemKind == ir.TableKindString:
+		g.pf("        const len = sub.leb();\n")
+		g.pf("        if (sub.bad || sub.at + len > sub.end) { report.malformed = true; break; }\n")
+		g.pf("        const bytes = sub.b.slice(sub.at, sub.at + len);\n")
+		g.pf("        sub.at += len;\n")
+		g.pf("        const dec = TableVariableUtf8Decode(bytes);\n")
+		g.pf("        if (!dec.ok) { report.malformed = true; %s.push(\"\"); continue; }\n", name)
+		g.pf("        %s.push(dec.s);\n", name)
+	case elemKind == ir.TableKindPointer:
+		g.pf("        const index = sub.leb();\n")
+		g.pf("        if (sub.bad) { report.malformed = true; break; }\n")
+		g.pf("        %s.push(null);\n", name)
+		g.pf("        pending.push([%s, %s.length - 1, index]);\n", name, name)
+	default:
+		// scalar element: same read as a field of that kind, at that width.
+		signed := ir.TableKindSigned(elemKind)
+		width := ir.TableKindWidth(elemKind)
+		g.pf("        const ev = %s;\n", g.readScalarCall("ek", signed, width))
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			max := uint64(1)<<f.Type.Width - 1
+			g.pf("        let v = ev; if (v > %dn) { v = %dn; report.clamped++; }\n", max, max)
+			g.pf("        %s.push(v);\n", name)
+		} else {
+			g.pf("        %s.push(ev);\n", name)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// THE NODE-TABLE DISPATCHERS (docs/SPEC-TABLES.md §3.1): the three switches
+// that turn a record's type id into a verdict, a body or a value. They are
+// emitted once per unit over the closure, so a node record whose type id is a
+// table this unit declares is written and read, and any other is unknown.
+// ---------------------------------------------------------------------------
+
+// emitNodeHelpers emits TableVariableKnownType, TableVariableWriteNodeBody and
+// TableVariableDecodeNode.
+func (g *variableGen) emitNodeHelpers(closure []*ir.Struct) {
+	g.pf("function TableVariableKnownType(id) {\n")
+	g.pf("  switch (id) {\n")
+	for _, st := range closure {
+		g.pf("    case %s: return true;\n", jsId(ir.TableWireId(st.WireName())))
+	}
+	g.pf("  }\n")
+	g.pf("  return false;\n")
+	g.pf("}\n\n")
+
+	g.pf("function TableVariableWriteNodeBody(w, ids, nodes, n, retain, path, report) {\n")
+	g.pf("  if (n.body !== undefined) { w.leb(n.body.length); w.raw(n.body); return true; }\n")
+	g.pf("  const body = new TableVariableWriter();\n")
+	g.pf("  switch (n.typeId) {\n")
+	for _, st := range closure {
+		g.pf("    case %s: if (!%sBodyWrite(body, ids, nodes, n.value, retain, path, report)) { return false; } break;\n", jsId(ir.TableWireId(st.WireName())), st.Name)
+	}
+	g.pf("    default: return false;\n")
+	g.pf("  }\n")
+	g.pf("  w.leb(body.len); w.raw(body.b);\n")
+	g.pf("  return true;\n")
+	g.pf("}\n\n")
+
+	g.pf("function TableVariableDecodeNode(rec, ids, table, report, pending, records, retain, path) {\n")
+	g.pf("  switch (rec.typeId) {\n")
+	for _, st := range closure {
+		g.pf("    case %s: {\n", jsId(ir.TableWireId(st.WireName())))
+		g.pf("      const v = new %s();\n", st.Name)
+		g.pf("      const er = new TableVariableReader(rec.body, 0, rec.body.length);\n")
+		g.pf("      %sBodyRead(er, ids, table, v, report, pending, records, true, retain, path);\n", st.Name)
+		g.pf("      return v;\n")
+		g.pf("    }\n")
+	}
+	g.pf("  }\n")
+	g.pf("  report.unknown++;\n")
+	g.pf("  return null;\n")
+	g.pf("}\n\n")
+}
+
+// emitNumberFields emits <T>NumberFields, the DESCENT half of the numbering
+// walk (docs/SPEC-TABLES.md §3.1): a first visit of a *table node runs it, and
+// it interns the node's own pointer and blob fields in declaration order, which
+// is the depth-first pre-order the numbering is defined as. Blobs have no
+// descent; a *table descends into its target.
+func (g *variableGen) emitNumberFields(st *ir.Struct) {
+	g.pf("function %sNumberFields(v, nodes) {\n", st.Name)
+	for _, f := range st.Fields {
+		if e := enumOf(f); e != nil {
+			continue
+		}
+		if f.Type.Pointer && f.Type.Blob() {
+			if f.Type.Kind == ir.TString {
+				g.pf("  if (v.%s !== null) { nodes.stringRef(v.%s); }\n", f.Name, f.Name)
+			} else {
+				g.pf("  if (v.%s !== null) { nodes.bytesRef(v.%s); }\n", f.Name, f.Name)
+			}
+			continue
+		}
+		if f.Type.Pointer {
+			if ts, ok := f.Type.Ref.(*ir.Struct); ok {
+				g.pf("  if (v.%s !== null) { nodes.tableRef(v.%s, %s, %sNumberFields); }\n", f.Name, f.Name, jsId(ir.TableWireId(ts.WireName())), ts.Name)
+			}
+			continue
+		}
+	}
+	g.pf("}\n\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -927,7 +1362,9 @@ func (g *variableGen) emitJsonCodec(st *ir.Struct) {
 
 // emitFromJsonField emits the placement of ONE field from a parsed JSON object.
 // `first` emits `if`; the rest emit `else if`, so the chain closes on the
-// caller's trailing `else { report.unknown++; }`.
+// caller's trailing `else { report.unknown++; }`. Every branch closes its own
+// brace: a field this port cannot place from JSON (a pointer-to-table, a map, a
+// union arm) counts one unknown rather than leaving the chain dangling.
 func (g *variableGen) emitFromJsonField(st *ir.Struct, f *ir.Field, first bool) {
 	key := ir.TableFieldJsonKey(f)
 	prefix := "if"
@@ -950,9 +1387,20 @@ func (g *variableGen) emitFromJsonField(st *ir.Struct, f *ir.Field, first bool) 
 		g.pf("    }\n")
 		return
 	}
+	if f.Type.Pointer {
+		g.pf("      report.unknown++;\n")
+		g.pf("    }\n")
+		return
+	}
 	if el := listElement(f); el != nil {
 		g.pf("      if (!Array.isArray(value)) { report.kindMismatch++; }\n")
 		g.pf("      else { for (const item of value) { %s.push(%sFromObject(item, report)); } }\n", name, el.Name)
+		g.pf("    }\n")
+		return
+	}
+	if f.IsList() || f.Type.Kind == ir.TBytes {
+		g.pf("      if (!Array.isArray(value)) { report.kindMismatch++; }\n")
+		g.pf("      else { for (const item of value) { %s.push(item); } }\n", name)
 		g.pf("    }\n")
 		return
 	}
@@ -961,7 +1409,7 @@ func (g *variableGen) emitFromJsonField(st *ir.Struct, f *ir.Field, first bool) 
 		g.pf("      if (typeof value !== \"boolean\") { report.kindMismatch++; }\n")
 		g.pf("      else { %s = value; }\n", name)
 		g.pf("    }\n")
-	case ir.TInt:
+	case ir.TInt, ir.TBits:
 		g.pf("      if (typeof value !== \"number\") { report.kindMismatch++; }\n")
 		if f.Type.Width == 64 {
 			g.pf("      else { %s = BigInt(value); }\n", name)
@@ -969,9 +1417,16 @@ func (g *variableGen) emitFromJsonField(st *ir.Struct, f *ir.Field, first bool) 
 			g.pf("      else { %s = value | 0; }\n", name)
 		}
 		g.pf("    }\n")
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("      if (typeof value !== \"number\") { report.kindMismatch++; }\n")
+		g.pf("      else { %s = value; }\n", name)
+		g.pf("    }\n")
 	case ir.TString:
 		g.pf("      if (typeof value !== \"string\") { report.kindMismatch++; }\n")
 		g.pf("      else { %s = value; }\n", name)
+		g.pf("    }\n")
+	default:
+		g.pf("      report.unknown++;\n")
 		g.pf("    }\n")
 	}
 }
@@ -1023,9 +1478,10 @@ func (g *variableGen) emitRootSave(st *ir.Struct) {
 	g.pf("    w.leb(ref); w.u8(12);\n")
 	g.pf("    const sub = new TableVariableWriter();\n")
 	g.pf("    sub.leb(nodes.list.length);\n")
-	g.pf("    for (const b of nodes.list) {\n")
-	g.pf("      const tref = ids.ref(TableStringBlobId);\n")
-	g.pf("      sub.leb(tref); sub.leb(b.length); sub.raw(b);\n")
+	g.pf("    for (const n of nodes.list) {\n")
+	g.pf("      const tref = ids.ref(n.typeId);\n")
+	g.pf("      sub.leb(tref);\n")
+	g.pf("      if (!TableVariableWriteNodeBody(sub, ids, nodes, n, null, [], null)) { return -1; }\n")
 	g.pf("    }\n")
 	g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
 	g.pf("  }\n")
@@ -1047,9 +1503,10 @@ func (g *variableGen) emitRootSave(st *ir.Struct) {
 	g.pf("    w.leb(ref); w.u8(12);\n")
 	g.pf("    const sub = new TableVariableWriter();\n")
 	g.pf("    sub.leb(nodes.list.length);\n")
-	g.pf("    for (const b of nodes.list) {\n")
-	g.pf("      const tref = ids.ref(TableStringBlobId);\n")
-	g.pf("      sub.leb(tref); sub.leb(b.length); sub.raw(b);\n")
+	g.pf("    for (const n of nodes.list) {\n")
+	g.pf("      const tref = ids.ref(n.typeId);\n")
+	g.pf("      sub.leb(tref);\n")
+	g.pf("      if (!TableVariableWriteNodeBody(sub, ids, nodes, n, null, [], null)) { return null; }\n")
 	g.pf("    }\n")
 	g.pf("    w.leb(sub.len); w.raw(sub.b);\n")
 	g.pf("  }\n")
@@ -1103,14 +1560,15 @@ func (g *variableGen) emitRootLoad(st *ir.Struct) {
 	g.pf("  const records = TableVariableNodeTableScan(bytes, table, entriesStart, report, null);\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, entriesStart);\n")
 	g.pf("  %sBodyRead(r, ids, table, v, report, pending, records, false, null, []);\n", st.Name)
-	g.pf("  for (const p of pending) {\n")
-	g.pf("    const [obj, slot, index] = p;\n")
+	g.pf("  for (let i = 0; i < pending.length; i++) {\n")
+	g.pf("    const [obj, slot, index] = pending[i];\n")
 	g.pf("    if (index === 0) { continue; }\n")
 	g.pf("    if (index === 1) { report.kindMismatch++; continue; }\n")
 	g.pf("    const rec = records[index - 2];\n")
 	g.pf("    if (rec === undefined) { report.malformed = true; continue; }\n")
 	g.pf("    if (rec === null) { continue; }\n")
-	g.pf("    obj[slot] = rec;\n")
+	g.pf("    if (rec.blob !== undefined) { obj[slot] = rec.blob; continue; }\n")
+	g.pf("    obj[slot] = TableVariableDecodeNode(rec, ids, table, report, pending, records, null, []);\n")
 	g.pf("  }\n")
 	g.pf("  return v;\n")
 	g.pf("}\n\n")
