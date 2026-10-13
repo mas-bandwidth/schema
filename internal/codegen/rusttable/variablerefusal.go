@@ -19,12 +19,15 @@ import (
 // so the message names the table, the field and the construct together, which
 // is what a refusal by name owes (§11).
 //
-// NOT YET WIRED INTO Generate: it guards the variable wire emitter (form byte
-// 1), which does not exist. When it is wired in it must be scoped to the
-// variable wire path alone — the fixed-form corpus (rusttable_test.go's
-// `pointered`) declares variable tables with pointers and unions that are not
-// emitted on the variable wire, and refusing them at the top of
-// GenerateLineage breaks the fixed form's own tests.
+// SCOPED TO THE CARD'S VARIABLE-WIRE PATH, not to GenerateLineage: it guards
+// [cardVariableModules] — the card unit's own module emitter, which runs the
+// refusal FIRST (§11) — while [scopedVariableModules], GenerateLineage's entry
+// point, leaves a variable table whose fields the card boundary does not carry
+// ABSENT rather than refusing the unit whole. The scoping is what keeps the
+// fixed-form corpus (rusttable_test.go's `pointered`) green: it declares
+// variable tables with pointers and unions the variable wire does not carry,
+// and refusing them at the top of GenerateLineage breaks the fixed form's own
+// tests.
 func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 	variable := ir.VariableTables(u)
 	if len(variable) == 0 {
