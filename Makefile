@@ -5981,6 +5981,9 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+# roadmap is not a compiler backend: ROADMAP.md is generated from
+# docs/roadmap.sexp by tools/roadmap/render.lisp (make roadmap, roadmap-check).
+include $(wildcard tools/roadmap/roadmap.mk)
 include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
