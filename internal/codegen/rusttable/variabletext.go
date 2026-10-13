@@ -960,10 +960,10 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, dst)
 		fmt.Fprintf(b, "%selse if jr.peek() == b'\"' {\n", in)
 		if f.Type.Kind == ir.TString {
-			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() { %s = Some(s); }\n", in, dst)
+			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() { %s = Some(Rc::from(s)); }\n", in, dst)
 		} else {
 			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() {\n", in)
-			fmt.Fprintf(b, "%s        match json_unb64(&s) { Some(d) => %s = Some(d), None => { jr.kind_mismatch += 1; %s = None; } }\n", in, dst, dst)
+			fmt.Fprintf(b, "%s        match json_unb64(&s) { Some(d) => %s = Some(Rc::from(d)), None => { jr.kind_mismatch += 1; %s = None; } }\n", in, dst, dst)
 			fmt.Fprintf(b, "%s    }\n", in)
 		}
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)

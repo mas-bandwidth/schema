@@ -240,8 +240,10 @@ pub fn ref_id(ids: &[u64], r: u64) -> Option<u64> {
 /// in the FIRST-VISIT order of a depth-first pre-order walk over pointer edges
 /// only — fields in declaration order, elements in index order, descending
 /// through every by-value edge. The root is index 1 and record k (1-based) is
-/// index k + 1. A table node's identity is its Rc, so two slots holding one
-/// Rc are one node, written once; a blob is numbered by its type and bytes.
+/// index k + 1. A node's identity is its Rc — a table's Rc<T>, a *string
+/// blob's Rc<str>, a *bytes blob's Rc<[u8]> — so two slots holding one Rc are
+/// one node, written once, and two slots holding EQUAL bytes in two Rcs are two
+/// nodes, exactly as the oracle numbers by object (internal/tablewire/nodes.go).
 /// It is derived from the graph before the body is written and never carried.
 pub enum TableNodeRecord {
     Table(u64, Rc<dyn Any>),
@@ -252,7 +254,7 @@ pub enum TableNodeRecord {
 pub struct TableNodeGraph {
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
-    blobs: HashMap<(u64, Vec<u8>), u64>,
+    blobs: HashMap<usize, u64>,
 }
 
 impl TableNodeGraph {
@@ -274,8 +276,8 @@ impl TableNodeGraph {
     }
 
     /// Number one blob node at its first visit (§2.5): a blob reaches nothing.
-    pub fn visit_blob(&mut self, type_id: u64, bytes: &[u8]) {
-        let key = (type_id, bytes.to_vec());
+    /// key is the blob's identity, the address its Rc owns.
+    pub fn visit_blob(&mut self, type_id: u64, key: usize, bytes: &[u8]) {
         if self.blobs.contains_key(&key) {
             return;
         }
@@ -288,9 +290,9 @@ impl TableNodeGraph {
         *self.tables.get(&(Rc::as_ptr(node) as *const () as usize)).unwrap_or(&0)
     }
 
-    /// The index a blob slot writes (§2.5, §3.1).
-    pub fn blob_index(&self, type_id: u64, bytes: &[u8]) -> u64 {
-        *self.blobs.get(&(type_id, bytes.to_vec())).unwrap_or(&0)
+    /// The index a blob slot writes (§2.5, §3.1), by the blob's identity.
+    pub fn blob_index(&self, key: usize) -> u64 {
+        *self.blobs.get(&key).unwrap_or(&0)
     }
 }
 
@@ -299,8 +301,11 @@ pub enum TableNodeSlot {
     /// a record this root cannot place (counted unknown once, at the record) or
     /// a text blob refused as malformed: every slot naming it reads null
     Null,
-    /// a blob record of a reserved type id the root names (§2.5)
-    Blob(u64, Vec<u8>),
+    /// a *bytes blob record (§2.5), materialized ONCE and shared by every
+    /// slot that names it
+    Bytes(Rc<[u8]>),
+    /// a *string blob record (§2.5), checked well-formed, materialized once
+    Text(Rc<str>),
     /// a table record this root can place, not decoded yet
     Table(u64),
     /// a table record whose body is being decoded right now
@@ -388,10 +393,10 @@ impl TableNodeReader {
             for &(tid, start, stop) in &reader.recs {
                 let bytes = &wire[start..stop];
                 if tid == BYTES_TYPE_ID && bytes_edge {
-                    reader.slots.push(TableNodeSlot::Blob(tid, bytes.to_vec()));
+                    reader.slots.push(TableNodeSlot::Bytes(Rc::from(bytes)));
                 } else if tid == STRING_TYPE_ID && string_edge {
                     if text_valid(bytes) {
-                        reader.slots.push(TableNodeSlot::Blob(tid, bytes.to_vec()));
+                        reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
                     } else {
                         report.malformed = true;
                         reader.slots.push(TableNodeSlot::Null);
@@ -435,7 +440,7 @@ impl TableNodeReader {
         }
         match &self.slots[k] {
             TableNodeSlot::Null => None,
-            TableNodeSlot::Blob(..) => { report.kind_mismatch += 1; None }
+            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.kind_mismatch += 1; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
                 if *t == want { Some(k) } else { report.kind_mismatch += 1; None }
             }
@@ -445,9 +450,10 @@ impl TableNodeReader {
         }
     }
 
-    /// Resolve a blob slot's index (§2.5, §3.1): the blob's bytes when the
-    /// record is a blob of the slot's own reserved type id.
-    pub fn blob_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<Vec<u8>> {
+    /// The blob slot a node index names (§2.5, §3.1), or None with the event
+    /// counted: index 1 (the root) and a table record are kind mismatches, an
+    /// index past the table is malformed.
+    fn blob_record(&self, index: u64, report: &mut TableReport) -> Option<&TableNodeSlot> {
         if !self.good || index == 0 {
             return None;
         }
@@ -459,11 +465,24 @@ impl TableNodeReader {
             report.malformed = true;
             return None;
         }
-        match &self.slots[(index - 2) as usize] {
+        Some(&self.slots[(index - 2) as usize])
+    }
+
+    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
+    /// record shares; a *string record or a table record is a kind mismatch.
+    pub fn bytes_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
+        match self.blob_record(index, report)? {
             TableNodeSlot::Null => None,
-            TableNodeSlot::Blob(t, b) => {
-                if *t == want { Some(b.clone()) } else { report.kind_mismatch += 1; None }
-            }
+            TableNodeSlot::Bytes(b) => Some(b.clone()),
+            _ => { report.kind_mismatch += 1; None }
+        }
+    }
+
+    /// Resolve a *string slot (§2.5, §3.1), the same way.
+    pub fn text_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
+        match self.blob_record(index, report)? {
+            TableNodeSlot::Null => None,
+            TableNodeSlot::Text(s) => Some(s.clone()),
             _ => { report.kind_mismatch += 1; None }
         }
     }

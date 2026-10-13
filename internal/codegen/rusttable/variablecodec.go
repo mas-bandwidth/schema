@@ -161,10 +161,13 @@ func scalarRust(f *ir.Field) string {
 func elemRust(f *ir.Field) string {
 	switch classOf(f) {
 	case vBlob:
+		// a blob is a NODE (§2.5): its Rc is its identity, so a slot that
+		// shares another's Rc shares one record, and equal bytes in two Rcs
+		// are two records, as the oracle numbers them
 		if f.Type.Kind == ir.TString {
-			return "Option<String>"
+			return "Option<Rc<str>>"
 		}
-		return "Option<Vec<u8>>"
+		return "Option<Rc<[u8]>>"
 	case vPointer:
 		return "Option<Rc<" + f.Type.Name + ">>"
 	case vString:
@@ -333,9 +336,9 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 		case vBlob:
 			bytes := "b.as_bytes()"
 			if f.Type.Kind == ir.TBytes {
-				bytes = "b.as_slice()"
+				bytes = "&b[..]"
 			}
-			fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, %s); }\n", x, blobTypeConst(f), bytes)
+			fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); }\n", x, blobTypeConst(f), bytes)
 		case vPointer:
 			visit := func(e string) string {
 				return fmt.Sprintf("if let Some(n) = %s { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }", e, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
@@ -473,14 +476,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	switch classOf(f) {
 	case vBlob:
 		// a NON-NULL blob ALWAYS rides, a zero-length one included (§2.5)
-		bytes := "n.as_bytes()"
-		if f.Type.Kind == ir.TBytes {
-			bytes = "n.as_slice()"
-		}
 		fmt.Fprintf(b, "%sif let Some(n) = &%s {\n", ind, x)
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
-		fmt.Fprintf(b, "%sleb_write(out, g.blob_index(%s, %s));\n", inner, blobTypeConst(f), bytes)
+		fmt.Fprintf(b, "%sleb_write(out, g.blob_index(Rc::as_ptr(n) as *const u8 as usize));\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vPointer:
 		// NULL IS INDEX 0, AND NULL IS ELIDED; a non-null pointer always rides (§3.1)
@@ -699,11 +698,11 @@ func emitEnumDecode(b *strings.Builder, f *ir.Field, dst, bound, onBad, ind stri
 // it, and every later slot shares it.
 func emitPointerResolve(b *strings.Builder, f *ir.Field, dst, ind string) {
 	if f.Type.Blob() {
-		conv := ""
 		if f.Type.Kind == ir.TString {
-			conv = ".map(|b| String::from_utf8(b).unwrap_or_default())"
+			fmt.Fprintf(b, "%s%s = nodes.text_slot(index, report);\n", ind, dst)
+		} else {
+			fmt.Fprintf(b, "%s%s = nodes.bytes_slot(index, report);\n", ind, dst)
 		}
-		fmt.Fprintf(b, "%s%s = nodes.blob_slot(index, %s, report)%s;\n", ind, dst, blobTypeConst(f), conv)
 		return
 	}
 	tid := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName())

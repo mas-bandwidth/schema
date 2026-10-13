@@ -38,6 +38,9 @@ import (
 //     enums, bools, floats and narrow ints, a bounded array of a fixed table,
 //     and a shared node defined and named through §16.7's `&node`, in a probe
 //     unit whose wires and texts the oracle writes here;
+//   - blob identity (§2.5, §3.1): two *string and two *bytes slots holding
+//     equal bytes, empty and not, are two records, as the oracle writes them,
+//     while one blob two slots name (blob_shared) stays one record;
 //   - the escape kind 31 (§3): at a field the reader cannot name (unknown), at
 //     a field it names and as an array's element kind (kind_mismatch each), the
 //     report compared with the oracle's.
@@ -155,6 +158,14 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 		text, err := pm.Write(inst)
 		if err != nil {
 			t.Fatalf("%s: the oracle did not write: %v", pc.name, err)
+		}
+		if strings.Contains(pc.name, "_strings") || strings.Contains(pc.name, "_bytes") {
+			// the case is only worth its name if the oracle writes TWO blob
+			// records for the two equal slots (node_count 2, §3.1)
+			g, err := tablewire.Number(pm, inst)
+			if err != nil || len(g.Records()) != 2 {
+				t.Fatalf("%s: the oracle does not number two blob records for two equal slots (%v)", pc.name, err)
+			}
 		}
 		probeCases = append(probeCases, vcCase{name: pc.name, root: "Probe", wire: wire, text: append(text, '\n')})
 	}
@@ -373,6 +384,8 @@ table Probe
     raw    bytes(6)
     blob   *bytes
     note   *string
+    blob2  *bytes
+    note2  *string
     mood   Mood = angry
     moods  []Mood
     flags  []bool
@@ -401,6 +414,13 @@ var variableClassProbeTexts = []struct{ name, text string }{
   "head": {"&node": 1},
   "tail": -7
 }`},
+	// A BLOB IS A NODE, NUMBERED BY OBJECT (docs/SPEC-TABLES.md §2.5, §3.1):
+	// two slots holding EQUAL bytes in two blobs are two records, which the
+	// oracle writes and a by-content numbering would merge into one
+	{"probe_equal_strings", `{"note": "hi", "note2": "hi"}`},
+	{"probe_empty_strings", `{"note": "", "note2": ""}`},
+	{"probe_equal_bytes", `{"blob": "AQI=", "blob2": "AQI="}`},
+	{"probe_empty_bytes", `{"blob": "", "blob2": ""}`},
 	{"probe_edges", `{
   "u8v": 0, "f32v": 0, "flag": true, "b10": 0, "raw": "", "blob": "", "note": "",
   "mood": "None", "nums": [], "spots": [{"x": 0, "y": 1.5, "tag": 0}],
