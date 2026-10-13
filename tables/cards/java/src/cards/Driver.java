@@ -48,11 +48,6 @@ public final class Driver {
         }
         String surface = verb;
         Path outdir = Paths.get(args[2]);
-        // The second half's surfaces answer absent (exit 2).
-        if (surface.equals("upgrade") || surface.equals("edit")
-                || surface.equals("taskhash") || surface.equals("view")) {
-            System.exit(2);
-        }
         List<Case> cases = readManifest(manifest);
         Files.createDirectories(outdir);
         for (Case c : cases) {
@@ -67,10 +62,15 @@ public final class Driver {
         final String surface;
         final String name;
         final String input;
+        final String edit;
         Case(String surface, String name, String input) {
+            this(surface, name, input, null);
+        }
+        Case(String surface, String name, String input, String edit) {
             this.surface = surface;
             this.name = name;
             this.input = input;
+            this.edit = edit;
         }
     }
 
@@ -85,13 +85,22 @@ public final class Driver {
             if (f.length < 3) {
                 throw new IOException("malformed manifest line " + line);
             }
-            out.add(new Case(f[0], f[1], f[2]));
+            if (f.length > 3) {
+                out.add(new Case(f[0], f[1], f[2], f[3]));
+            } else {
+                out.add(new Case(f[0], f[1], f[2]));
+            }
         }
         return out;
     }
 
     static void one(String surface, Case c, Path outdir) throws IOException {
-        byte[] input = Files.readAllBytes(Paths.get(c.input));
+        byte[] input;
+        if (surface.equals("view")) {
+            input = new byte[0];
+        } else {
+            input = Files.readAllBytes(Paths.get(c.input));
+        }
         try {
             switch (surface) {
                 case "load": {
@@ -120,6 +129,37 @@ public final class Driver {
                 case "parse": {
                     Cards.Record rec = Cards.parse(input);
                     write(outdir, c.name, "wire", rec.wire());
+                    break;
+                }
+                case "upgrade": {
+                    Cards.UpgradeResult r = Cards.upgrade(input);
+                    if (System.getenv("CARDS_JAVA_NEGATIVE_UPGRADE") != null
+                            && r.report.retained > 0) {
+                        writeRefused(outdir, c.name, "malformed");
+                        break;
+                    }
+                    write(outdir, c.name, "wire", r.wire);
+                    writeReport(outdir, c.name, r.report);
+                    break;
+                }
+                case "edit": {
+                    Cards.Record rec = applyEdit(input, c.edit);
+                    write(outdir, c.name, "wire", rec.wire());
+                    break;
+                }
+                case "taskhash": {
+                    if (System.getenv("CARDS_JAVA_NEGATIVE_HASH") != null) {
+                        write(outdir, c.name, "hex",
+                            "0000000000000000000000000000000000000000000000000000000000000000"
+                                .getBytes(StandardCharsets.UTF_8));
+                        break;
+                    }
+                    write(outdir, c.name, "hex",
+                        Cards.taskHash(input).getBytes(StandardCharsets.UTF_8));
+                    break;
+                }
+                case "view": {
+                    write(outdir, c.name, "txt", view());
                     break;
                 }
                 default:
@@ -151,5 +191,128 @@ public final class Driver {
         b.append("Duplicate=0\n");
         b.append("Malformed=").append(r.malformed).append('\n');
         write(outdir, name, "report", b.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    // applyEdit applies one edit line — "needs=a,b", "tier=heavy",
+    // "priority=blocker", "paths=x,y", "column=review", "holder=h" — through
+    // the Set* edit of the same name (tables/cards/edit.go).
+    static Cards.Record applyEdit(byte[] wire, String edit) throws Cards.Refusal {
+        if (edit == null || edit.indexOf('=') < 0) {
+            throw new Cards.Refusal("malformed");
+        }
+        String key = edit.substring(0, edit.indexOf('='));
+        String value = edit.substring(edit.indexOf('=') + 1);
+        switch (key) {
+            case "needs":
+                return Cards.setNeeds(wire, splitList(value));
+            case "paths":
+                return Cards.setPaths(wire, splitList(value));
+            case "tier":
+                return Cards.setTier(wire, parseTier(value));
+            case "priority":
+                return Cards.setPriority(wire, parsePriority(value));
+            case "column":
+                return Cards.setColumn(wire, parseColumn(value));
+            case "holder":
+                return Cards.setHolder(wire, value);
+            default:
+                throw new Cards.Refusal("malformed");
+        }
+    }
+
+    static List<String> splitList(String v) {
+        List<String> out = new ArrayList<>();
+        if (v.isEmpty()) {
+            return out;
+        }
+        for (String part : v.split(",", -1)) {
+            out.add(part);
+        }
+        return out;
+    }
+
+    static int parseTier(String s) throws Cards.Refusal {
+        switch (s) {
+            case "flash": return 1;
+            case "pro": return 2;
+            case "heavy": return 3;
+            case "frontier": return 4;
+            default: throw new Cards.Refusal("malformed");
+        }
+    }
+
+    static int parsePriority(String s) throws Cards.Refusal {
+        switch (s) {
+            case "normal": return 1;
+            case "high": return 2;
+            case "critical": return 3;
+            case "blocker": return 4;
+            default: throw new Cards.Refusal("malformed");
+        }
+    }
+
+    static int parseColumn(String s) throws Cards.Refusal {
+        switch (s) {
+            case "waiting": return 1;
+            case "ready": return 2;
+            case "working": return 3;
+            case "review": return 4;
+            case "merging": return 5;
+            case "landed": return 6;
+            case "plan": return 7;
+            case "check": return 8;
+            default: throw new Cards.Refusal("malformed");
+        }
+    }
+
+    // view renders the generated view: every field of every table in the unit,
+    // in declaration order, one line each (docs/SPEC-TABLES.md §8, FORMAT.md
+    // "The view"). The type-name vocabulary is reconstructed from the generated
+    // descriptors; lists and enums map by the field the schema declares.
+    public static byte[] view() {
+        TableTypeInfo[] tables = {
+            CardDescriptor.tableType(),
+            CardIDDescriptor.tableType(),
+            ConsumerDescriptor.tableType(),
+            KeyValueDescriptor.tableType(),
+            PathTextDescriptor.tableType()
+        };
+        StringBuilder b = new StringBuilder();
+        for (TableTypeInfo t : tables) {
+            for (TableFieldInfo f : t.fields) {
+                b.append(t.name).append(' ')
+                 .append(f.name).append(' ')
+                 .append(typeName(t.name, f)).append(' ')
+                 .append(f.shape).append(' ')
+                 .append(f.bound > 0 ? Long.toString(f.bound) : "-")
+                 .append('\n');
+            }
+        }
+        return b.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    static String typeName(String table, TableFieldInfo f) {
+        switch (f.kind) {
+            case 12: case 17: return "string";
+            case 4: return "int32";
+            case 5: return "int64";
+            case 30:
+                if (table.equals("Card")) {
+                    if (f.name.equals("tier")) { return "Tier"; }
+                    if (f.name.equals("priority")) { return "Priority"; }
+                    if (f.name.equals("column")) { return "Column"; }
+                }
+                return "?";
+            case 14:
+                if (table.equals("Card")) {
+                    if (f.name.equals("paths") || f.name.equals("_new") || f.name.equals("shared")) { return "PathText"; }
+                    if (f.name.equals("needs")) { return "CardID"; }
+                    if (f.name.equals("extra")) { return "KeyValue"; }
+                    if (f.name.equals("consumers")) { return "Consumer"; }
+                }
+                return "?";
+            default:
+                return "?";
+        }
     }
 }
