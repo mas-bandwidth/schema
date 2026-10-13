@@ -1,0 +1,4 @@
+RESULT: empty-consumers sha=dddddddddddddddddddddddddddddddddddddddd tier: flash
+REPO: mas-bandwidth/schema
+KIND: feature
+TEST: TestUpgradeKeepsEveryField

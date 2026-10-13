@@ -259,6 +259,90 @@ cards-test: cards-generate cards-corpus-check
 	cd build/tables-generated-go/cards-future && go vet ./...
 	go test -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
 
+# ---------------------------------------------------------------------------
+# THE CARD CONFORMANCE SET (the-card-corpus-is-a-language-neutral-conformance-set)
+# ---------------------------------------------------------------------------
+# A language-neutral card corpus under tables/cards/conformance (FORMAT.md), the
+# Go reference driver that writes its expected answers, and the harness `cards`
+# subcommand that runs any language's driver over it and compares bytes. The
+# abstract claim is tla/CardHops.tla (ImplementationsAgree, HopOrderIrrelevant);
+# this is its concrete side. Every leg's cards-<lang>-conformance target runs
+# the harness `cards` subcommand with --require $(CARDS_REQUIRE); card targets
+# live in that leg's own make fragment.
+CARDS_REQUIRE ?= load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# THE GO REFERENCE DRIVER: cards-driver-go copies the handwritten driver into the
+# generated cards module (so it imports `cards` in process) and builds
+# build/cards-driver-go.
+.PHONY: cards-driver-go
+cards-driver-go: cards-generate
+	@mkdir -p build/tables-generated-go/cards/cmd/cards-driver
+	cp tables/cards/cmd/cards-driver/main.go build/tables-generated-go/cards/cmd/cards-driver/main.go
+	cd build/tables-generated-go/cards/cmd/cards-driver && go build -o "$(CURDIR)/build/cards-driver-go" .
+
+# THE CREATE TARGET: generate the large bounds inputs and the future-declaration
+# wire into cases/, then run the Go driver into expected/. It REFUSES to
+# overwrite an existing expected file, and a normal test never runs it. The
+# future wire is built the way `make cards-example` builds future-note.wire, from
+# the c03 future declaration the current reader must retain.
+.PHONY: cards-conformance-create
+cards-conformance-create: cards-driver-go
+	@if [ -n "$$(ls tables/cards/conformance/expected/ 2>/dev/null)" ]; then \
+		echo "cards-conformance-create REFUSED: tables/cards/conformance/expected is not empty"; exit 1; fi
+	@mkdir -p build/tables-generated-go/cards-future/probe
+	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.Id[:], &r.IdLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
+	cd build/tables-generated-go/cards-future && go run "$(CURDIR)/build/tables-generated-go/cards-future/probe" > "$(CURDIR)/tables/cards/conformance/cases/future-note.wire"
+	@printf '{"id":"x","body":"' > tables/cards/conformance/cases/bounds-body-65536.json
+	@head -c 65536 /dev/zero | tr '\0' 'y' >> tables/cards/conformance/cases/bounds-body-65536.json
+	@printf '"}' >> tables/cards/conformance/cases/bounds-body-65536.json
+	@printf '{"id":"x","body":"' > tables/cards/conformance/cases/bounds-body-65537.json
+	@head -c 65537 /dev/zero | tr '\0' 'y' >> tables/cards/conformance/cases/bounds-body-65537.json
+	@printf '"}' >> tables/cards/conformance/cases/bounds-body-65537.json
+	@for spec in 'paths paths {"s":"p"}' 'new _new {"s":"n"}' 'shared shared {"s":"s"}' 'needs needs {"s":"d"}' 'consumers consumers {"kind":"k"}'; do \
+		set -- $$spec; suffix=$$1; field=$$2; elem=$$3; \
+		for n in 512 513; do \
+			out=tables/cards/conformance/cases/bounds-$$suffix-$$n.json; \
+			printf '{"id":"x","%s":[' "$$field" > $$out; \
+			i=1; while [ $$i -le $$n ]; do \
+				[ $$i -gt 1 ] && printf ',' >> $$out; \
+				printf '%s' "$$elem" >> $$out; \
+				i=$$((i+1)); \
+			done; \
+			printf ']}' >> $$out; \
+		done; \
+	done
+	@for s in load save render parse bounds upgrade edit taskhash view; do \
+		./build/cards-driver-go tables/cards/conformance/MANIFEST.txt $$s tables/cards/conformance/expected; \
+	done
+	@echo "cards-conformance-create: wrote the Go reference answers into tables/cards/conformance/expected"
+
+# THE GO CHECK: the STEP-5 `cards` subcommand over the Go reference driver. It
+# writes the derived manifest into build/, runs the driver per surface into a
+# fresh outdir, and compares each answer byte for byte with expected/.
+.PHONY: cards-conformance-go
+cards-conformance-go: build/conformance-harness cards-driver-go
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
+
+# THE NEGATIVE CONTROL (STEP 6): copy expected/ into build/, flip one byte of one
+# render answer and one taskhash answer, run the check against the copy, and
+# require it to fail naming those two surfaces while the rest pass.
+.PHONY: cards-conformance-negative-control
+cards-conformance-negative-control: build/conformance-harness cards-driver-go
+	@rm -rf build/cards-conformance-neg && mkdir -p build/cards-conformance-neg/expected
+	cp tables/cards/conformance/expected/* build/cards-conformance-neg/expected/
+	@printf '\000' | dd of=build/cards-conformance-neg/expected/card-populated.txt bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
+	@c=$$(head -c 1 build/cards-conformance-neg/expected/card-populated.hex); \
+	if [ "$$c" = "0" ]; then v=1; else v=0; fi; \
+	printf '%s' "$$v" | dd of=build/cards-conformance-neg/expected/card-populated.hex bs=1 seek=0 count=1 conv=notrunc 2>/dev/null
+	@if ./build/conformance-harness cards --corpus tables/cards/conformance --expected build/cards-conformance-neg/expected --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE) > build/cards-conformance-neg/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one render and one taskhash answer byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-conformance-neg/log; exit 1; }
+	@grep -qE 'cards taskhash .*FAIL' build/cards-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-conformance-neg/log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|view) pass' build/cards-conformance-neg/log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-conformance-neg/log; exit 1; }
+	@echo 'cards negative control: one changed render and taskhash byte turns exactly those surfaces red'
+
+test-go: cards-conformance-go cards-conformance-negative-control
+
 # The populated fixture is created ONLY under an explicit update flag, into the
 # named source fuzz directory; ordinary tests read the committed evidence and
 # fail when it is missing (docs/SPEC-TABLES.md §16, §7).
