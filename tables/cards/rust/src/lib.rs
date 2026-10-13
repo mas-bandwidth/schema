@@ -1074,7 +1074,7 @@ fn validate_strings(name: &str, values: &[String], bound: usize) -> Result<(), S
                 bound
             ));
         }
-        if s.contains(' ') {
+        if s.as_bytes().contains(&0) {
             return Err(format!(
                 "cards: {} has an element that is not well-formed UTF-8 without NUL",
                 name
@@ -1144,3 +1144,48 @@ pub fn parse_column(s: &str) -> Result<Column, String> {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+fn type_of(_table: &str, f: &TableFieldDesc) -> &'static str {
+    match f.kind {
+        12 | 17 => "string",
+        4 => "int32",
+        5 => "int64",
+        30 => match f.name {
+            "tier" => "Tier",
+            "priority" => "Priority",
+            "column" => "Column",
+            _ => "?",
+        },
+        14 => match f.name {
+            "paths" | "_new" | "shared" => "PathText",
+            "needs" => "CardID",
+            "extra" => "KeyValue",
+            "consumers" => "Consumer",
+            _ => "?",
+        },
+        _ => "?",
+    }
+}
+
+/// Render the unit descriptors as view.txt (docs/SPEC-TABLES.md §8).
+pub fn render_view() -> Vec<u8> {
+    let mut out = String::new();
+    for t in TABLES.iter() {
+        for f in t.fields.iter() {
+            let shape = match f.shape {
+                SHAPE_VALUE => "value",
+                SHAPE_LIST => "list",
+                SHAPE_BLOB => "blob",
+                _ => "?",
+            };
+            let bound = if shape == "value" && f.bound > 0 {
+                f.bound.to_string()
+            } else {
+                "-".to_string()
+            };
+            use std::fmt::Write;
+            let _ = writeln!(&mut out, "{} {} {} {} {}", t.name, f.name, type_of(t.name, f), shape, bound);
+        }
+    }
+    out.into_bytes()
+}

@@ -327,3 +327,26 @@ fn field_edit_leaves_the_task_hash_alone() {
         }
     }
 }
+
+#[test]
+fn view_walks_every_field() {
+    use crate::{render_view, TABLES, TableDesc, TableFieldDesc, SHAPE_VALUE, SHAPE_LIST, SHAPE_BLOB};
+
+    // 1. Matches expected/view.txt byte for byte
+    let got = render_view();
+    let expected = fs::read(conformance("expected/view.txt")).unwrap();
+    assert_eq!(got, expected, "render_view must match expected/view.txt byte for byte");
+
+    // 2. Vocabulary completeness
+    assert_eq!(TABLES.len(), 5, "registry must name exactly 5 tables");
+    let card_desc = TABLES.iter().find(|t| t.name == "Card").expect("Card table descriptor must exist");
+    assert_eq!(card_desc.num_fields, 25);
+    assert_eq!(card_desc.fields.len(), 25);
+
+    // 3. Walks loaded record values and fields
+    let wire = fs::read(conformance("cases/card-populated.wire")).unwrap();
+    let (rec, _) = crate::load(&wire).unwrap();
+    assert_eq!(rec.card().id, "populated");
+    assert_eq!(rec.card().paths.len(), 2);
+    assert_eq!(rec.card().body.as_deref().unwrap().contains("multibyte"), true);
+}
