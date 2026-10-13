@@ -535,8 +535,39 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		  cat build/elixir-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
 
+# THE MESSAGE FORM'S BATCH ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3).
+# TestMessageFormBatchElixir reads the `message` rows of the conformance
+# manifest and runs the generated Elixir against the leg's own toolchain, so it
+# is a FUNCTIONAL test: elixirBinary SKIPS when no Elixir is found and only
+# FAILS by name under SCHEMA_REQUIRE_CORPUS — which is the shape
+# tables-elixir-versioning (above) established: a bare `go test ./...` is green
+# with no toolchain, so the leg's gate is never satisfied by absence. This
+# target is that gate for the batch: it arms SCHEMA_REQUIRE_CORPUS=1, pins the
+# one test, and reds on any `--- SKIP` in the -v output.
+#
+# ERL_FLAGS CAPS EACH BEAM'S SCHEDULER THREADS. The batch runs one Elixir VM per
+# parallel subtest, and a default BEAM starts one scheduler thread per core plus
+# its dirty schedulers — on a 64-core bench with the per-user thread limit at
+# ~1870 that is EAGAIN inside the VM ("Failed to create scheduler thread"), not
+# a verdict about the bytes. One scheduler of each class is all the generated
+# probe uses, and the VM still runs the whole probe.
+.PHONY: tables-elixir-message-batch
+tables-elixir-message-batch:
+	@mkdir -p build
+	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormBatchElixir$$' \
+		> build/tables-elixir-message-batch.log 2>&1; \
+		status=$$?; cat build/tables-elixir-message-batch.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@if grep -q -- '--- SKIP' build/tables-elixir-message-batch.log; then \
+		echo "tables-elixir-message-batch: the batch gate SKIPPED a subtest; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or corpus is a failure"; \
+		exit 1; \
+	fi
+	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
+test-elixir: tables-elixir-message-batch
 test-elixir: tables-elixir-paired-gate
 
 # ---------------------------------------------------------------------------
