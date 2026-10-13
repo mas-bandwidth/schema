@@ -116,6 +116,17 @@ void cardRoundTripsThePopulatedFixture() {
   final rec2 = fromJson(json);
   sameBytes(rec2.wire(), wire, 'FromJSON reproduces card-populated.wire');
 
+  // FromJSON refuses a JSON text that is not an object, as the Go facade does.
+  try {
+    fromJson('[]');
+    check(false, 'FromJSON refuses a non-object JSON text');
+  } on CardException catch (e) {
+    check(
+      e.message.contains('malformed'),
+      'FromJSON refuses a non-object JSON text as malformed (${e.message})',
+    );
+  }
+
   // the record owns a defensive copy: mutating the caller's input and a Wire
   // result leaves the record unchanged.
   final caller = Uint8List.fromList(wire);

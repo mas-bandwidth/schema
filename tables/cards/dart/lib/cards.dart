@@ -93,6 +93,10 @@ Record fromJson(String text) {
   final report = TableTextReport();
   Card card;
   try {
+    final root = jsonDecode(text);
+    if (root is! Map<String, dynamic>) {
+      throw CardException('cards: JSON is malformed');
+    }
     card = cardFromJson(text, report);
   } on FormatException {
     throw CardException('cards: JSON is malformed');
