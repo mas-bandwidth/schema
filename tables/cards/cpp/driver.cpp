@@ -1,7 +1,6 @@
 // driver.cpp — the C++ card conformance driver
 // (tables/cards/conformance/FORMAT.md). It answers list, load, save, render,
-// parse and bounds through the owning facade. upgrade, edit, taskhash and view
-// exit 2: their card is a later one.
+// parse, bounds, upgrade, edit, taskhash and view through the owning facade.
 #include "cards.hpp"
 
 #include <cstdio>
@@ -18,6 +17,7 @@ struct Case {
     std::string surface;
     std::string name;
     std::string input;
+    std::string edit;
 };
 
 void fatal(const std::string & msg) {
@@ -67,6 +67,7 @@ std::vector<Case> readManifest(const std::string & path) {
         std::istringstream ls(line.substr(a));
         Case c;
         if (!(ls >> c.surface >> c.name >> c.input)) fatal("malformed manifest line");
+        ls >> c.edit;
         out.push_back(c);
     }
     return out;
@@ -93,7 +94,92 @@ void refuse(const std::string & outdir, const std::string & name, const std::str
     writeFile(outdir + "/" + name + ".refused", c + "\n");
 }
 
+std::vector<std::string> splitList(const std::string & v) {
+    if (v.empty()) return {};
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (start <= v.size()) {
+        size_t comma = v.find(',', start);
+        if (comma == std::string::npos) {
+            out.push_back(v.substr(start));
+            break;
+        }
+        out.push_back(v.substr(start, comma - start));
+        start = comma + 1;
+    }
+    return out;
+}
+
+bool parseTier(const std::string & s, cards::Tier & out) {
+    if (s == "flash") { out = cards::Tier::flash; return true; }
+    if (s == "pro") { out = cards::Tier::pro; return true; }
+    if (s == "heavy") { out = cards::Tier::heavy; return true; }
+    if (s == "frontier") { out = cards::Tier::frontier; return true; }
+    return false;
+}
+
+bool parsePriority(const std::string & s, cards::Priority & out) {
+    if (s == "normal") { out = cards::Priority::normal; return true; }
+    if (s == "high") { out = cards::Priority::high; return true; }
+    if (s == "critical") { out = cards::Priority::critical; return true; }
+    if (s == "blocker") { out = cards::Priority::blocker; return true; }
+    return false;
+}
+
+bool parseColumn(const std::string & s, cards::Column & out) {
+    if (s == "waiting") { out = cards::Column::waiting; return true; }
+    if (s == "ready") { out = cards::Column::ready; return true; }
+    if (s == "working") { out = cards::Column::working; return true; }
+    if (s == "review") { out = cards::Column::review; return true; }
+    if (s == "merging") { out = cards::Column::merging; return true; }
+    if (s == "landed") { out = cards::Column::landed; return true; }
+    if (s == "plan") { out = cards::Column::plan; return true; }
+    if (s == "check") { out = cards::Column::check; return true; }
+    return false;
+}
+
+bool applyEdit(cards::Record & rec, const std::string & edit, std::string & cls) {
+    size_t eq = edit.find('=');
+    if (eq == std::string::npos) { cls = "malformed"; return false; }
+    std::string key = edit.substr(0, eq);
+    std::string value = edit.substr(eq + 1);
+    if (key == "needs") return cards::SetNeeds(rec, splitList(value), cls);
+    if (key == "paths") return cards::SetPaths(rec, splitList(value), cls);
+    if (key == "holder") return cards::SetHolder(rec, value, cls);
+    if (key == "tier") {
+        cards::Tier tier;
+        if (!parseTier(value, tier)) { cls = "malformed"; return false; }
+        return cards::SetTier(rec, tier, cls);
+    }
+    if (key == "priority") {
+        cards::Priority priority;
+        if (!parsePriority(value, priority)) { cls = "malformed"; return false; }
+        return cards::SetPriority(rec, priority, cls);
+    }
+    if (key == "column") {
+        cards::Column column;
+        if (!parseColumn(value, column)) { cls = "malformed"; return false; }
+        return cards::SetColumn(rec, column, cls);
+    }
+    cls = "malformed";
+    return false;
+}
+
+std::string hexEncode(const uint8_t d[32]) {
+    static const char * h = "0123456789abcdef";
+    std::string s(64, '0');
+    for (int i = 0; i < 32; i++) {
+        s[(size_t)i * 2] = h[d[i] >> 4];
+        s[(size_t)i * 2 + 1] = h[d[i] & 0xf];
+    }
+    return s;
+}
+
 void one(const std::string & surface, const Case & c, const std::string & outdir) {
+    if (surface == "view") {
+        writeFile(outdir + "/" + c.name + ".txt", cards::WriteView());
+        return;
+    }
     std::vector<char> input;
     if (c.input != "-" && !readFile(c.input, input)) fatal("cannot read " + c.input);
     if (surface == "load") {
@@ -140,15 +226,48 @@ void one(const std::string & surface, const Case & c, const std::string & outdir
         writeFile(outdir + "/" + c.name + ".wire", cards::CardWire(rec));
         return;
     }
+    if (surface == "upgrade") {
+        std::vector<uint8_t> wire;
+        cards::TableReport rep;
+        std::string cls;
+        if (!cards::Upgrade(reinterpret_cast<const uint8_t *>(input.data()), input.size(), wire, rep, cls)) {
+            refuse(outdir, c.name, cls);
+            return;
+        }
+        writeFile(outdir + "/" + c.name + ".wire", wire);
+        writeFile(outdir + "/" + c.name + ".report", writeReport(rep));
+        return;
+    }
+    if (surface == "edit") {
+        cards::Record rec;
+        cards::TableReport rep;
+        if (!cards::CardLoad(reinterpret_cast<const uint8_t *>(input.data()), input.size(), rec, rep))
+            fatal("edit load refused " + c.name);
+        std::string cls;
+        if (!applyEdit(rec, c.edit, cls)) {
+            refuse(outdir, c.name, cls);
+            return;
+        }
+        writeFile(outdir + "/" + c.name + ".wire", cards::CardWire(rec));
+        return;
+    }
+    if (surface == "taskhash") {
+        cards::Record rec;
+        cards::TableReport rep;
+        if (!cards::CardLoad(reinterpret_cast<const uint8_t *>(input.data()), input.size(), rec, rep))
+            fatal("taskhash load refused " + c.name);
+        uint8_t dig[32];
+        std::string cls;
+        if (!cards::TaskHash(rec, dig, cls)) fatal("taskhash refused " + c.name);
+        writeFile(outdir + "/" + c.name + ".hex", hexEncode(dig));
+        return;
+    }
     fatal("unknown surface " + surface);
 }
 
 bool known(const std::string & s) {
-    return s == "load" || s == "save" || s == "render" || s == "parse" || s == "bounds";
-}
-
-bool absent(const std::string & s) {
-    return s == "upgrade" || s == "edit" || s == "taskhash" || s == "view";
+    return s == "load" || s == "save" || s == "render" || s == "parse" || s == "bounds" ||
+           s == "upgrade" || s == "edit" || s == "taskhash" || s == "view";
 }
 
 } // namespace
@@ -157,10 +276,9 @@ int main(int argc, char ** argv) {
     if (argc < 3) fatal("usage: <manifest> (list | <surface> <outdir>)");
     std::string verb = argv[2];
     if (verb == "list") {
-        std::fputs("load\nsave\nrender\nparse\nbounds\n", stdout);
+        std::fputs("load\nsave\nrender\nparse\nbounds\nupgrade\nedit\ntaskhash\nview\n", stdout);
         return 0;
     }
-    if (absent(verb)) return 2;
     if (argc < 4) fatal("usage: <manifest> <surface> <outdir>");
     if (!known(verb)) fatal("unknown surface " + verb);
     std::string outdir = argv[3];

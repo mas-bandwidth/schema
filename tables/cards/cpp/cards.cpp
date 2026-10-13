@@ -3,7 +3,9 @@
 // over the generated Card table unit, with the customer bounds enforced before
 // any record is published.
 #include "cards.hpp"
+#include "CardsView.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -131,6 +133,7 @@ bool CardLoad(const uint8_t * wire, size_t len, Record & out, TableReport & repo
     out.wire.assign(wire, wire + len);
     out.region.swap(raw);
     out.root = root;
+    out.report = report;
     return true;
 }
 
@@ -583,6 +586,405 @@ bool Render(const Record & in, std::vector<char> & out, TableReport & report) {
     }
     out.assign(o.begin(), o.end());
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// L3 — retained upgrade and the strict read (tables/cards/upgrade.go;
+// docs/SPEC-TABLES.md §6.6, §4; tla/CardVersioning.tla NoFieldLost,
+// BodyUnchanged, RefusalKeepsOriginal).
+// L4 — task hash and atomic field edits (tables/cards/edit.go;
+// tla/CardHops.tla TaskHashStable, EditDropsUnknown).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+bool envIs(const char * name) {
+    const char * v = std::getenv(name);
+    return v != nullptr && std::strcmp(v, "1") == 0;
+}
+
+bool lossy(const TableReport & r) {
+    return r.unknown > 0 || r.kind_mismatch > 0 || r.clamped > 0 || r.retain_lost > 0 || r.malformed;
+}
+
+bool upgradeLoss(const TableReport & r) {
+    return r.retain_lost > 0 || r.kind_mismatch > 0 || r.clamped > 0 || r.malformed;
+}
+
+void classifyUpgrade(const TableReport & r, std::string & refuse_class) {
+    if (r.retain_lost > 0) refuse_class = "retain-lost";
+    else refuse_class = "malformed";
+}
+
+struct AlignedRegion {
+    std::vector<uint8_t> raw;
+    uint8_t * ptr = nullptr;
+};
+
+bool alignRegion(int64_t n, AlignedRegion & a) {
+    if (n < 0) return false;
+    a.raw.assign((size_t)n + 63, 0);
+    uintptr_t addr = reinterpret_cast<uintptr_t>(a.raw.data());
+    size_t off = (64 - (addr & 63)) & 63;
+    a.ptr = a.raw.data() + off;
+    return true;
+}
+
+bool stringsOk(const std::vector<std::string> & values, size_t bound) {
+    for (const std::string & s : values) {
+        if (s.size() > bound) return false;
+        if (!isUtf8WithoutNul(s.data(), s.size())) return false;
+    }
+    return true;
+}
+
+void placeString(char * dst, int32_t & n, const std::string & s) {
+    if (!s.empty()) std::memcpy(dst, s.data(), s.size());
+    dst[s.size()] = 0;
+    n = (int32_t)s.size();
+}
+
+void clearList(TableRef & elements, int32_t & count) {
+    elements = TableRef{};
+    count = 0;
+}
+
+void appendU64(std::vector<uint8_t> & frame, uint64_t v) {
+    for (int i = 0; i < 8; i++) frame.push_back((uint8_t)(v >> (8 * i)));
+}
+
+void appendText(std::vector<uint8_t> & frame, const char * p, size_t n) {
+    appendU64(frame, (uint64_t)n);
+    if (n > 0 && p != nullptr) frame.insert(frame.end(), p, p + n);
+}
+
+void appendPathList(std::vector<uint8_t> & frame, const TableList<PathText> & list) {
+    appendU64(frame, (uint64_t)(list.count < 0 ? 0 : list.count));
+    for (int32_t i = 0; i < list.count; i++) {
+        int32_t n = list[i].s_length;
+        if (n < 0) n = 0;
+        appendText(frame, list[i].s, (size_t)n);
+    }
+}
+
+void appendIdList(std::vector<uint8_t> & frame, const TableList<CardID> & list) {
+    appendU64(frame, (uint64_t)(list.count < 0 ? 0 : list.count));
+    for (int32_t i = 0; i < list.count; i++) {
+        int32_t n = list[i].s_length;
+        if (n < 0) n = 0;
+        appendText(frame, list[i].s, (size_t)n);
+    }
+}
+
+void appendBlob(std::vector<uint8_t> & frame, const TableRef & ref) {
+    if (ref.null()) {
+        appendText(frame, nullptr, 0);
+        return;
+    }
+    TableStringView v = TableStringAt(ref);
+    appendText(frame, v.data, (size_t)(v.length < 0 ? 0 : v.length));
+}
+
+template <typename Mutate>
+bool editRecord(Record & rec, std::string & refuse_class, Mutate mutate) {
+    if (rec.root == nullptr) {
+        refuse_class = "malformed";
+        return false;
+    }
+    if (lossy(rec.report)) {
+        refuse_class = "unknown-present";
+        return false;
+    }
+    CardBuilder b;
+    TableReport rep;
+    if (!CardLoadBuilder(b, rec.wire.data(), (int64_t)rec.wire.size(), &rep)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    if (lossy(rep)) {
+        refuse_class = "unknown-present";
+        return false;
+    }
+    Card * root = b.GetRoot();
+    if (root == nullptr || !mutate(root, b.main)) {
+        if (refuse_class.empty()) refuse_class = "malformed";
+        return false;
+    }
+    if (!b.Lock()) {
+        refuse_class = "malformed";
+        return false;
+    }
+    const Card * packed = b.AsConst();
+    int64_t size = CardMeasure(packed);
+    if (size < 0) {
+        refuse_class = "malformed";
+        return false;
+    }
+    std::vector<uint8_t> wire((size_t)size);
+    if (CardSave(packed, wire.data(), size) != size) {
+        refuse_class = "malformed";
+        return false;
+    }
+    Record fresh;
+    TableReport loadRep;
+    if (!CardLoad(wire.data(), wire.size(), fresh, loadRep)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    rec.wire.swap(fresh.wire);
+    rec.region.swap(fresh.region);
+    rec.root = fresh.root;
+    rec.report = fresh.report;
+    fresh.root = nullptr;
+    refuse_class.clear();
+    return true;
+}
+
+} // namespace
+
+bool UpgradeRetain(const uint8_t * wire, size_t len, int64_t retain_bytes, int32_t retain_ids,
+                   std::vector<uint8_t> & out, TableReport & report, std::string & refuse_class) {
+    out.clear();
+    report = TableReport{};
+    refuse_class.clear();
+    if (wire == nullptr && len != 0) {
+        refuse_class = "malformed";
+        return false;
+    }
+    if (retain_bytes < 0 || retain_ids < 0) {
+        refuse_class = "malformed";
+        return false;
+    }
+    int64_t n = CardLoadMeasure(wire, (int64_t)len);
+    if (n < 0) {
+        refuse_class = "malformed";
+        return false;
+    }
+    AlignedRegion region;
+    if (!alignRegion(n, region)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    std::vector<uint8_t> bytes;
+    std::vector<TableRetain::Id> ids;
+    if (retain_bytes > 0) bytes.assign((size_t)retain_bytes, 0);
+    if (retain_ids > 0) ids.resize((size_t)retain_ids);
+    TableRetain retain;
+    retain.bytes = bytes.empty() ? nullptr : bytes.data();
+    retain.capacity = retain_bytes;
+    retain.ids = ids.empty() ? nullptr : ids.data();
+    retain.id_capacity = retain_ids;
+    const Card * root = CardLoadRetain(region.ptr, n, wire, (int64_t)len, &retain, &report);
+    if (root == nullptr) {
+        classifyUpgrade(report, refuse_class);
+        return false;
+    }
+    bool over_body = false;
+    std::string over_list;
+    if (!CheckCard(root, over_body, over_list)) {
+        if (over_body) refuse_class = "body-bound 65536";
+        else if (!over_list.empty()) refuse_class = "list-bound " + over_list + " 512";
+        else refuse_class = "malformed";
+        return false;
+    }
+    if (envIs("CARDS_CPP_UPGRADE_DROP") && report.retained > 0) {
+        int64_t size = CardMeasure(root);
+        if (size < 0) {
+            refuse_class = "malformed";
+            return false;
+        }
+        out.resize((size_t)size);
+        if (CardSave(root, out.data(), size) != size) {
+            out.clear();
+            refuse_class = "malformed";
+            return false;
+        }
+        return true;
+    }
+    int64_t size = CardMeasureRetain(root, &retain);
+    if (size < 0) {
+        classifyUpgrade(report, refuse_class);
+        return false;
+    }
+    out.resize((size_t)size);
+    if (CardSaveRetain(root, &retain, out.data(), size, &report) != size) {
+        out.clear();
+        classifyUpgrade(report, refuse_class);
+        return false;
+    }
+    if (upgradeLoss(report)) {
+        out.clear();
+        classifyUpgrade(report, refuse_class);
+        return false;
+    }
+    return true;
+}
+
+bool Upgrade(const uint8_t * wire, size_t len, std::vector<uint8_t> & out, TableReport & report, std::string & refuse_class) {
+    return UpgradeRetain(wire, len, kMaxRetainBytes, kMaxRetainIDs, out, report, refuse_class);
+}
+
+bool ReadStrict(const uint8_t * wire, size_t len, Record & out, std::string & refuse_class) {
+    refuse_class.clear();
+    TableReport report;
+    if (!CardLoad(wire, len, out, report)) {
+        out = Record{};
+        refuse_class = "malformed";
+        return false;
+    }
+    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0 || report.malformed) {
+        out = Record{};
+        refuse_class = "malformed";
+        return false;
+    }
+    return true;
+}
+
+bool TaskHash(const Record & rec, uint8_t out[32], std::string & refuse_class) {
+    std::memset(out, 0, 32);
+    refuse_class.clear();
+    if (rec.root == nullptr) {
+        refuse_class = "malformed";
+        return false;
+    }
+    if (lossy(rec.report)) {
+        refuse_class = "unknown-present";
+        return false;
+    }
+    const Card * root = rec.root;
+    std::vector<uint8_t> frame;
+    appendBlob(frame, root->body);
+    appendPathList(frame, root->paths);
+    appendPathList(frame, root->_new);
+    appendPathList(frame, root->shared);
+    int32_t test_n = root->test_length;
+    if (test_n < 0) test_n = 0;
+    appendText(frame, root->test, (size_t)test_n);
+    appendBlob(frame, root->done);
+    if (envIs("CARDS_CPP_HASH_NEEDS")) appendIdList(frame, root->needs);
+    Sha256(frame.data(), frame.size(), out);
+    return true;
+}
+
+bool SetNeeds(Record & rec, const std::vector<std::string> & needs, std::string & refuse_class) {
+    refuse_class.clear();
+    if (needs.size() > (size_t)kMaxListEntries) {
+        refuse_class = "list-bound needs 512";
+        return false;
+    }
+    if (!stringsOk(needs, 64)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker & worker) {
+        clearList(root->needs.elements, root->needs.count);
+        for (const std::string & s : needs) {
+            CardID * e = CardNeedsAdd(worker, root->needs);
+            if (e == nullptr) return false;
+            placeString(e->s, e->s_length, s);
+        }
+        return true;
+    });
+}
+
+bool SetPaths(Record & rec, const std::vector<std::string> & paths, std::string & refuse_class) {
+    refuse_class.clear();
+    if (paths.size() > (size_t)kMaxListEntries) {
+        refuse_class = "list-bound paths 512";
+        return false;
+    }
+    if (!stringsOk(paths, 192)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker & worker) {
+        clearList(root->paths.elements, root->paths.count);
+        for (const std::string & s : paths) {
+            PathText * e = CardPathsAdd(worker, root->paths);
+            if (e == nullptr) return false;
+            placeString(e->s, e->s_length, s);
+        }
+        return true;
+    });
+}
+
+bool SetTier(Record & rec, Tier tier, std::string & refuse_class) {
+    refuse_class.clear();
+    if (static_cast<uint8_t>(tier) > static_cast<uint8_t>(Tier::Max)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker &) {
+        root->tier = tier;
+        return true;
+    });
+}
+
+bool SetPriority(Record & rec, Priority priority, std::string & refuse_class) {
+    refuse_class.clear();
+    if (static_cast<uint8_t>(priority) > static_cast<uint8_t>(Priority::Max)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker &) {
+        root->priority = priority;
+        return true;
+    });
+}
+
+bool SetColumn(Record & rec, Column column, std::string & refuse_class) {
+    refuse_class.clear();
+    if (static_cast<uint8_t>(column) > static_cast<uint8_t>(Column::Max)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker &) {
+        root->column = column;
+        return true;
+    });
+}
+
+bool SetHolder(Record & rec, const std::string & holder, std::string & refuse_class) {
+    refuse_class.clear();
+    if (!stringsOk(std::vector<std::string>{holder}, 32)) {
+        refuse_class = "malformed";
+        return false;
+    }
+    return editRecord(rec, refuse_class, [&](Card * root, TableWorker &) {
+        placeString(root->holder, root->holder_length, holder);
+        return true;
+    });
+}
+
+std::string WriteView() {
+    const UnitViewInfo * uv = UnitView();
+    std::string o;
+    if (uv == nullptr) return o;
+    for (int32_t ti = 0; ti < uv->num_tables; ti++) {
+        const ViewType & t = uv->tables[ti];
+        const TableTypeInfo * ty = t.type;
+        if (ty == nullptr) continue;
+        for (int32_t fi = 0; fi < ty->num_fields; fi++) {
+            const TableFieldInfo & f = ty->fields[fi];
+            bool map_type = f.type_name != nullptr && std::strncmp(f.type_name, "map[", 4) == 0;
+            bool list = f.is_array && f.array_bound == 0 && !map_type;
+            const char * shape = "value";
+            if (list) shape = "list";
+            else if (f.is_pointer) shape = "blob";
+            o += t.name != nullptr ? t.name : "";
+            o += ' ';
+            o += f.name != nullptr ? f.name : "";
+            o += ' ';
+            o += f.type_name != nullptr ? f.type_name : "";
+            o += ' ';
+            o += shape;
+            o += ' ';
+            if (f.array_bound > 0) o += std::to_string(f.array_bound);
+            else o += '-';
+            o += '\n';
+        }
+    }
+    return o;
 }
 
 } // namespace cards
