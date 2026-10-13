@@ -79,14 +79,8 @@ func cardUnsupportedVariableConstruct(f *ir.Field) string {
 		return "optional ?T is outside the card constructs (§2.3)"
 	case f.KeyEnum != "":
 		return "enum-keyed array [E]T is outside the card constructs (§2.4)"
-	case f.Type.Pointer && f.Type.Kind == ir.TBytes:
-		return "*bytes is outside the card constructs (§2.5)"
-	case f.Type.Pointer && f.Array == ir.ArrayNone && f.Type.Kind == ir.TNamed:
-		return "pointer to a table outside a list element is outside the card constructs (§2.1)"
 	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
 		return "the 128-bit integer is outside the card constructs (§15)"
-	case f.Type.Kind == ir.TBits:
-		return "the bits(N) kind is outside the card constructs (§15)"
 	case f.Type.Kind == ir.TFixed:
 		return "the fixed-point kind is outside the card constructs (§15)"
 	}
