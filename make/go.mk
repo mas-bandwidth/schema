@@ -278,7 +278,7 @@ CARDS_REQUIRE ?= load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-driver-go: cards-generate
 	@mkdir -p build/tables-generated-go/cards/cmd/cards-driver
 	cp tables/cards/cmd/cards-driver/main.go build/tables-generated-go/cards/cmd/cards-driver/main.go
-	cd build/tables-generated-go/cards && go build -o "$(CURDIR)/build/cards-driver-go" ./cmd/cards-driver
+	cd build/tables-generated-go/cards/cmd/cards-driver && go build -o "$(CURDIR)/build/cards-driver-go" .
 
 # THE CREATE TARGET: generate the large bounds inputs and the future-declaration
 # wire into cases/, then run the Go driver into expected/. It REFUSES to
