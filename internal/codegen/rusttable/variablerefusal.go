@@ -9,9 +9,10 @@ import (
 
 // refuseCardUnsupportedVariableConstructs is docs/SPEC-TABLES.md §11's refusal
 // at generation: it refuses, BY NAME, every variable-class construct this
-// backend does not carry on the table wire, while the card record's slice
-// (plain `table` roots and tables as list elements; bool/int32/int64/enum with
-// their defaults and ranges; string(N); *string; and []T lists of tables)
+// backend does not carry on the table wire, while the variable class it does
+// carry (table roots and pointers *T, the flat node table, *string and *bytes
+// blobs, bool and every int/uint/float/bits width, string(N) and bytes(N),
+// enums, and unbounded arrays of scalar, string, enum and pointer elements)
 // passes. The rest of the class stays absent and is refused rather than
 // mis-encoded or silently dropped.
 //
@@ -63,8 +64,10 @@ func refuseCardUnsupportedFields(st *ir.Struct) error {
 }
 
 // cardUnsupportedVariableConstruct returns the construct's name on a field the
-// card slice does not carry, and "" on every field it does: a scalar, a
-// string(N), a *string blob, an enum, or an unbounded list of tables.
+// variable class does not carry, and "" on every field it does: a scalar of any
+// int/uint/float/bits width, a string(N), a bytes(N), a *string or *bytes blob,
+// an enum, a pointer to a table, or an unbounded array of scalar, string, enum
+// or pointer elements.
 func cardUnsupportedVariableConstruct(f *ir.Field) string {
 	switch {
 	case f.IsMap():
@@ -73,14 +76,8 @@ func cardUnsupportedVariableConstruct(f *ir.Field) string {
 		return "optional ?T is outside the card constructs (§2.3)"
 	case f.KeyEnum != "":
 		return "enum-keyed array [E]T is outside the card constructs (§2.4)"
-	case f.Type.Pointer && f.Type.Kind == ir.TBytes:
-		return "*bytes is outside the card constructs (§2.5)"
-	case f.Type.Pointer && f.Array == ir.ArrayNone && f.Type.Kind == ir.TNamed:
-		return "pointer to a table outside a list element is outside the card constructs (§2.1)"
 	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
 		return "the 128-bit integer is outside the card constructs (§15)"
-	case f.Type.Kind == ir.TBits:
-		return "the bits(N) kind is outside the card constructs (§15)"
 	case f.Type.Kind == ir.TFixed:
 		return "the fixed-point kind is outside the card constructs (§15)"
 	}
