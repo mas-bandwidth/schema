@@ -9,6 +9,8 @@
 //     MaxListEntries 512) refuse before any bytes are published.
 //   parseRenderMatchesGo — Parse and Render match the Go leg's expected bytes on
 //     the shared corpus, and the stranded-key case refuses with the key.
+//   cardEnumNoneRoundTrips — an enum field at its zero value spells "None" in
+//     JSON and reads back as zero with no loss event (SPEC-TABLES.md §16.2).
 //
 // Run from the repository root, which is where the Makefile runs it.
 
@@ -240,10 +242,29 @@ void parseRenderMatchesGo() {
   });
 }
 
+// cardEnumNoneRoundTrips proves a card whose enum fields sit at their zero
+// value round-trips through the JSON text form: ToJSON spells the value
+// "None" instead of refusing, and FromJSON reads "None" back as zero with no
+// loss event, so the facade publishes it (docs/SPEC-TABLES.md §16.2).
+void cardEnumNoneRoundTrips() {
+  final rec = fromJson('{"id":"x"}');
+  check(rec.card.priority == 0, 'default priority is zero');
+  final text = toJson(rec);
+  check(
+    text.contains('"priority": "None"'),
+    'ToJSON spells enum zero as None ($text)',
+  );
+
+  final rec2 = fromJson('{"id":"x","priority":"None","tier":"None"}');
+  check(rec2.card.priority == 0, 'FromJSON reads None as zero');
+  check(rec2.card.tier == 0, 'FromJSON reads tier None as zero');
+}
+
 void main() {
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
   parseRenderMatchesGo();
+  cardEnumNoneRoundTrips();
   if (failed) {
     print('cards_test: FAILED');
     exit(1);
