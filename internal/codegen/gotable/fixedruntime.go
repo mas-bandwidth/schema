@@ -62,12 +62,18 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard, Arg uint32
+	Src, Dst, Size, Aux, Guard uint32
+	// Arg is the guard's arm ordinal, FULL WIDTH (§4.1: arg : u64, no byte lane
+	// anywhere): a union past 255 arms has a two-byte tag and a lane narrower
+	// than the ordinal would truncate arm 256 into arm 1's guard value.
+	Arg uint64
 	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
 	// TO (docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
-	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
-	// nests a union leaves the lane unset and the read is unchanged.
-	Guard2, Arg2 uint32
+	// hold their ordinal. Arg2 is full width too (§4.1: arg2 : u64). ArgW2 of
+	// zero is "no outer tag", so a plan that never nests a union leaves the lane
+	// unset and the read is unchanged.
+	Guard2 uint32
+	Arg2   uint64
 	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
 }
 
@@ -984,7 +990,7 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 // census is whether THIS entry is the first time the peer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
 // count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
-func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
@@ -1022,7 +1028,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	}
 }
 
-func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
@@ -1143,8 +1149,8 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			for j := uint32(0); j < te.Children; j++ {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: j + 1})
-					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, j+1, census)
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
 					break
 				}
 				theirArm += tableFixedSubtree(theirs, theirArm)
@@ -1163,10 +1169,13 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		// THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), not 255:
 		// capped at 255 a 300-variant writer's variant 299 read as out of the
-		// set and landed None.
+		// set and landed None. Past the uint16 length word the writer's variant
+		// count cannot be named, and the plan REFUSES by name: overflow is the
+		// pool's refusal, reported plan_too_large (§5.8 row 14), never
+		// layout_record_too_large — that name is an entry past the record.
 		n := te.Children
 		if n > tableFixedRemapMax {
-			c.tooLarge = true
+			c.overflow = true
 			return
 		}
 		m := make([]uint16, n)

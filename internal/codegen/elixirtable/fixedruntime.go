@@ -919,6 +919,12 @@ const fixedRuntimeBody = `  @moduledoc """
     {entries, n} = acc
 
     cond do
+      # A REMAP TABLE'S LENGTH WORD IS UINT16 (§5.2, §5.8 row 14): a writer
+      # whose variant count does not fit it refuses by name, plan_too_large,
+      # never layout_record_too_large — that name is an entry past the record.
+      report[:plan_too_large] ->
+        {:error, :plan_too_large, report}
+
       any_past?(entries, record) ->
         {:error, :layout_record_too_large, report}
 
@@ -1526,20 +1532,27 @@ const fixedRuntimeBody = `  @moduledoc """
     their_variants = children_at(theirs, ti)
     my_variants = children_at(mine, mi)
 
-    remap =
-      Enum.map(0..(their_variants - 1)//1, fn j ->
-        their_id = id_at(theirs, ti + 1 + j)
+    # THE LENGTH WORD IS UINT16 (§5.2, §5.8 row 14): a writer whose variant
+    # count does not fit it refuses by name, plan_too_large, rather than laying
+    # a tuple that silently drops the 65536th variant on.
+    if their_variants > 65535 do
+      {acc, Map.put(report, :plan_too_large, true)}
+    else
+      remap =
+        Enum.map(0..(their_variants - 1)//1, fn j ->
+          their_id = id_at(theirs, ti + 1 + j)
 
-        case Enum.find(0..(my_variants - 1)//1, fn k -> id_at(mine, mi + 1 + k) == their_id end) do
-          nil -> 0
-          k -> k + 1
-        end
-      end)
+          case Enum.find(0..(my_variants - 1)//1, fn k -> id_at(mine, mi + 1 + k) == their_id end) do
+            nil -> 0
+            k -> k + 1
+          end
+        end)
 
-    entry =
-      {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}
+      entry =
+        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple(remap)}
 
-    {guarded(acc, guard, tag, entry), report}
+      {guarded(acc, guard, tag, entry), report}
+    end
   end
 
   # THE COALESCER, and it is the only optimization a plan compiler performs: two
