@@ -1,6 +1,26 @@
 package gotable
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// requireSerializeGoSibling mirrors the codebase's skip convention for the
+// sibling `serialize.go` Go runtime checkout (fixedredteam_test.go redRuntime,
+// fixedform_test.go, fixedroadmap_t09_test.go): the generated packet side
+// imports it unconditionally, so a tree without the sibling cannot build the
+// probe at all and the suite says so instead of failing red.
+func requireSerializeGoSibling(t *testing.T) {
+	t.Helper()
+	path, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("the Go runtime is not a sibling checkout at %s", path)
+	}
+}
 
 // THE PLAN IS PARTITIONED UNGUARDED-FIRST, AND THE IDENTITY PATH EQUALS THE
 // COMPILED ONE (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.2, §4.4; schema#876 rows
@@ -21,6 +41,7 @@ import "testing"
 // counters, so this row pins the BYTES.
 func TestFixedRoadmapGoT17PlanPartition(t *testing.T) {
 	t.Parallel()
+	requireSerializeGoSibling(t)
 
 	// One fixture, shared by both rows: a table mixing unguarded scalars around
 	// a union whose arms are guarded. The tail past the union is unguarded, so
