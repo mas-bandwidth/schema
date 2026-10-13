@@ -123,10 +123,10 @@ defmodule Cards.CardsTest do
   # TestSaveSurfaceAcceptsEmptyConsumers pins the shared-corpus save surface:
   # the JSON spelling of a nil enum is "None" (docs/SPEC-TABLES.md §16), and the
   # generated Elixir text reader must round-trip it exactly as the Go leg does,
-  # writing empty-consumers.wire. The generated reader maps "None" to the nil
-  # variant, exactly as the Go reference does (internal/tabletext/value.go
-  # EnumValue), so the save surface writes the wire byte for byte
-  # (docs/SPEC-TABLES.md §4.2).
+  # writing empty-consumers.wire. It is red while the Elixir emitter's JSON enum
+  # reader counts "None" as an unknown name instead of the nil variant
+  # (internal/codegen/elixirtable/variableform.go); that is a backend gap this
+  # card cannot touch, so the test stays red here (docs/SPEC-TABLES.md §4.2).
   test "TestSaveSurfaceAcceptsEmptyConsumers" do
     json = File.read!(Path.join([@conformance, "cases", "empty-consumers.json"]))
     expected_wire = File.read!(Path.join([@conformance, "expected", "empty-consumers.wire"]))
