@@ -149,23 +149,24 @@ func scalarRoundTrip(t *testing.T, wire []byte) {
 	if err := os.WriteFile(filepath.Join(dir, "ScalarWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	probe := `import 'ScalarWire.dart';
+	probe := `import 'dart:io';
+import 'ScalarWire.dart';
 
 void main() {
   final v = ScalarKinds();
   v.u8 = 200;
-  v.u64 = 18446744073709551615;
+  v.u64 = -1; // 2^64-1, the two's-complement spelling of uint64's max
   v.i8 = -128;
   v.i16 = -32768;
   v.f32 = 1.5;
   v.f64 = -0.25;
-  v.bits = 511;
+  v.mask = 511;
   v.blob = 'abc';
   final resaved = scalarKindsWireSave(v);
   final w = scalarKindsWireLoad(resaved);
-  if (w.u8 != 200 || w.u64 != 18446744073709551615 || w.i8 != -128 ||
+  if (w.u8 != 200 || w.u64 != -1 || w.i8 != -128 ||
       w.i16 != -32768 || w.f32 != 1.5 || w.f64 != -0.25 ||
-      w.bits != 511 || w.blob != 'abc') {
+      w.mask != 511 || w.blob != 'abc') {
     stdout.writeln('FAIL: scalar values did not survive the round trip');
     exit(1);
   }
@@ -189,7 +190,7 @@ void main() {
 // scalarKindsDecl is the remaining scalar-kind declaration written in the test:
 // every scalar kind the card must carry as a codec rather than silently encode
 // as kind 0.
-const scalarKindsDecl = `package test
+const scalarKindsDecl = `package scalar
 
 table ScalarKinds {
 	u8    uint8

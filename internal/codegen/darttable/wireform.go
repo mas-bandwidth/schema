@@ -29,13 +29,22 @@ import (
 // §3).
 const (
 	wireKindBool   = 1
+	wireKindI8     = 2
+	wireKindI16    = 3
 	wireKindI32    = 4
 	wireKindI64    = 5
+	wireKindU8     = 6
+	wireKindU16    = 7
+	wireKindU32    = 8
+	wireKindU64    = 9
+	wireKindF32    = 10
+	wireKindF64    = 11
 	wireKindString = 12
 	wireKindTable  = 13
 	wireKindArray  = 14
 	wireKindPtr    = 17
 	wireKindEnum   = 30
+	wireKindEscape = 31
 )
 
 // dartU64Literal renders a wire id (fnv1a64, §5) as a Dart int literal: the
@@ -62,8 +71,12 @@ func cardWireField(f *ir.Field) bool {
 	case f.Type.Kind == ir.TBool:
 		return true
 	case f.Type.Kind == ir.TInt:
-		return f.Type.Width == 32 || f.Type.Width == 64
-	case f.Type.Kind == ir.TString:
+		// uint8..uint64, int8, int16, int32, int64 (docs/SPEC-TABLES.md §2.1,
+		// §3); the 128-bit integer kinds ride the wide refusal (§15).
+		return f.Type.Width != 128
+	case f.Type.Kind == ir.TBits, f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
+		return true
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return true
 	case f.Type.Kind == ir.TNamed:
 		_, isEnum := f.Type.Ref.(*ir.Enum)
@@ -212,6 +225,24 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// widenKinds is the list of integer kinds a field declared at declKind WIDENS
+// from (§4): every kind below it on its own signed (2..5) or unsigned (6..9)
+// ladder, each with its payload width. The declaration's own kind is not here.
+func widenKinds(declKind int, signed bool) []struct{ k, w int } {
+	lo := wireKindI8
+	if !signed {
+		lo = wireKindU8
+	}
+	var out []struct{ k, w int }
+	for k := lo; k < declKind; k++ {
+		out = append(out, struct{ k, w int }{k, ir.TableKindWidth(k)})
+	}
+	return out
+}
+
+// fmtFloat renders a float bound as a Dart double literal (§3, §4).
+func fmtFloat(v float64) string { return fmt.Sprintf("%g", v) }
+
 func (g *wireGen) emit() {
 	g.pf("// The VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, in Dart:\n")
 	g.pf("// the card record's constructs — load (tolerant, §4) and save (the\n")
@@ -351,6 +382,13 @@ final class TableWireWriter {
 
   void putU32(int v) {
     for (var i = 0; i < 4; i++) {
+      buf.add(v & 0xFF);
+      v = v >> 8;
+    }
+  }
+
+  void putU16(int v) {
+    for (var i = 0; i < 2; i++) {
       buf.add(v & 0xFF);
       v = v >> 8;
     }
@@ -702,6 +740,33 @@ int readU32(Uint8List d, int off) {
   }
   return v;
 }
+
+// _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
+// (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
+// little-endian, exactly as the other backends write it.
+int _f32Bits(double d) {
+  final bd = ByteData(4);
+  bd.setFloat32(0, d, Endian.little);
+  return bd.getUint32(0, Endian.little);
+}
+
+double _f32FromBits(int b) {
+  final bd = ByteData(4);
+  bd.setUint32(0, b, Endian.little);
+  return bd.getFloat32(0, Endian.little);
+}
+
+int _f64Bits(double d) {
+  final bd = ByteData(8);
+  bd.setFloat64(0, d, Endian.little);
+  return bd.getUint64(0, Endian.little);
+}
+
+double _f64FromBits(int b) {
+  final bd = ByteData(8);
+  bd.setUint64(0, b, Endian.little);
+  return bd.getFloat64(0, Endian.little);
+}
 `)
 }
 
@@ -718,9 +783,11 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  List<%s> %s = <%s>[];\n", f.Type.Name, name, f.Type.Name)
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
-		case f.Type.Kind == ir.TInt:
+		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 			g.pf("  int %s = %s;\n", name, g.intDefault(f))
-		case f.Type.Kind == ir.TString:
+		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+			g.pf("  double %s = %s;\n", name, g.floatDefault(f))
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("  String %s = %s;\n", name, g.stringDefault(f))
 		case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
 			g.pf("  int %s = %s;\n", name, g.enumDefault(f))
@@ -743,6 +810,13 @@ func (g *wireGen) stringDefault(f *ir.Field) string {
 		return fmt.Sprintf("%q", string(f.DefBytes))
 	}
 	return "''"
+}
+
+func (g *wireGen) floatDefault(f *ir.Field) string {
+	if f.HasDefault {
+		return fmt.Sprintf("%g", f.DefFloat)
+	}
+	return "0.0"
 }
 
 func (g *wireGen) enumDefault(f *ir.Field) string {
@@ -818,23 +892,57 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(b.length);\n", ind)
 		g.pf("%s\tw.putBytes(b);\n", ind)
 		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
+		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
+		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
+		g.pf("%s\tfinal s = w.sub();\n", ind)
+		g.pf("%s\ts.putByte(%d);\n", ind, wireKindU8)
+		g.pf("%s\ts.putLeb(b.length);\n", ind)
+		g.pf("%s\ts.putBytes(b);\n", ind)
+		g.pf("%s\tw.putLeb(ref);\n", ind)
+		g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
+		g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
+		g.pf("%s\tw.putBytes(s.buf);\n", ind)
+		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TBool:
 		g.pf("%sif (%s != %v) {\n", ind, expr, f.HasDefault && f.DefBool)
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TInt:
-		kind := wireKindI64
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+		// An integer or bits field rides under its own kind (§3): int8/16/32/64
+		// at 2/3/4/5, uint8/16/32/64 at 6/7/8/9, bits(N) at the unsigned kind of
+		// its storage width. The payload is the value at the kind's width.
+		kind := ir.TableWireScalarKind(f)
 		put := "putU64"
-		if f.Type.Width == 32 {
-			kind = wireKindI32
+		switch ir.TableKindWidth(kind) {
+		case 1:
+			put = "putByte"
+		case 2:
+			put = "putU16"
+		case 4:
 			put = "putU32"
 		}
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.intDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		kind := wireKindF64
+		bits := "_f64Bits"
+		put := "putU64"
+		if f.Type.Kind == ir.TFloat32 {
+			kind = wireKindF32
+			bits = "_f32Bits"
+			put = "putU32"
+		}
+		g.pf("%sif (%s != %s) {\n", ind, expr, g.floatDefault(f))
+		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
+		g.pf("%s\tw.putByte(%d);\n", ind, kind)
+		g.pf("%s\tw.%s(%s(%s));\n", ind, put, bits, expr)
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
@@ -972,40 +1080,62 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\tv.%s = r.readByte() != 0;\n", ind, name)
 		g.pf("%s\tbreak;\n", ind)
-	case f.Type.Kind == ir.TInt:
-		// An int field's declared kind is 4 (int32) or 5 (int64); a payload that
-		// arrives under a smaller integer kind WIDENS (§4), one under a kind this
-		// field does not take is a mismatch, and a value past the declared range
-		// CLAMPS.
-		declKind := wireKindI64
-		declWidth := 8
-		if f.Type.Width == 32 {
-			declKind = wireKindI32
-			declWidth = 4
-		}
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+		// An int/bits field's declared kind is §3's integer kind for its width
+		// and signedness: int8/16/32/64 at 2/3/4/5, uint8/16/32/64 at 6/7/8/9,
+		// bits(N) at the unsigned kind of its storage width. A payload under a
+		// smaller kind on the same signed/unsigned ladder WIDENS (§4), one under
+		// a kind this field does not take is a mismatch, and a value past the
+		// declared range (or the bits mask) CLAMPS.
+		declKind := ir.TableWireScalarKind(f)
+		declWidth := ir.TableKindWidth(declKind)
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tvar value = 0;\n", ind)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
-		// widened integer kinds below the declaration, sign-extended
-		for _, wk := range []struct{ k, w int }{{2, 1}, {3, 2}} {
-			if wk.k >= declKind {
-				continue
-			}
+		for _, wk := range widenKinds(declKind, signed) {
 			g.pf("%s\t\t\tcase %d:\n", ind, wk.k)
 			g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.malformed = true; return; }\n", ind, wk.w)
 			g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
 			for b := 0; b < wk.w; b++ {
 				g.pf("%s\t\t\t\traw |= r.readByte() << %d;\n", ind, 8*b)
 			}
-			g.pf("%s\t\t\t\tvalue = _signExtend(raw, %d);\n", ind, wk.w)
+			if signed {
+				g.pf("%s\t\t\t\tvalue = _signExtend(raw, %d);\n", ind, wk.w)
+			} else {
+				g.pf("%s\t\t\t\tvalue = raw;\n", ind)
+			}
 			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t\t\tbreak;\n", ind)
 		}
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
-		if declWidth == 4 {
+		switch declWidth {
+		case 1:
+			g.pf("%s\t\t\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
+			if signed {
+				g.pf("%s\t\t\t\tvalue = _signExtend(r.readByte(), 1);\n", ind)
+			} else {
+				g.pf("%s\t\t\t\tvalue = r.readByte();\n", ind)
+			}
+		case 2:
+			g.pf("%s\t\t\t\tif (!r.has(2)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
+			for b := 0; b < 2; b++ {
+				g.pf("%s\t\t\t\traw |= r.readByte() << %d;\n", ind, 8*b)
+			}
+			if signed {
+				g.pf("%s\t\t\t\tvalue = _signExtend(raw, 2);\n", ind)
+			} else {
+				g.pf("%s\t\t\t\tvalue = raw;\n", ind)
+			}
+		case 4:
 			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\tvalue = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;\n", ind)
-		} else {
+			if signed {
+				g.pf("%s\t\t\t\tvalue = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;\n", ind)
+			} else {
+				g.pf("%s\t\t\t\tvalue = readU32(r.data, r.pos); r.pos += 4;\n", ind)
+			}
+		default:
 			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
 			g.pf("%s\t\t\t\tvalue = readU64(r.data, r.pos); r.pos += 8;\n", ind)
 		}
@@ -1019,7 +1149,69 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\tif (value < %s) { value = %s; r.report.clamped++; }\n", ind, f.IntMin.String(), f.IntMin.String())
 			g.pf("%s\t\tif (value > %s) { value = %s; r.report.clamped++; }\n", ind, f.IntMax.String(), f.IntMax.String())
 		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			max := uint64(1)<<f.Type.Width - 1
+			g.pf("%s\t\tif (value > %d) { value = %d; r.report.clamped++; }\n", ind, max, max)
+		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s\tbreak;\n", ind)
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		// A float field reads its own kind (§3): f32 at 10, f64 at 11; f64 also
+		// WIDENS a kind-10 payload (§4). The value rides as its raw IEEE bits.
+		declKind := wireKindF64
+		if f.Type.Kind == ir.TFloat32 {
+			declKind = wireKindF32
+		}
+		g.pf("%s\t{\n", ind)
+		g.pf("%s\t\tvar d = 0.0;\n", ind)
+		g.pf("%s\t\tswitch (kind) {\n", ind)
+		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
+		if f.Type.Kind == ir.TFloat64 {
+			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\td = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;\n", ind)
+		} else {
+			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
+		}
+		g.pf("%s\t\t\t\tbreak;\n", ind)
+		if f.Type.Kind == ir.TFloat64 {
+			g.pf("%s\t\t\tcase %d:\n", ind, wireKindF32)
+			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
+			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
+			g.pf("%s\t\t\t\tbreak;\n", ind)
+		}
+		g.pf("%s\t\t\tdefault:\n", ind)
+		g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
+		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\t\t\tbreak;\n", ind)
+		g.pf("%s\t\t}\n", ind)
+		if f.HasFloatRange {
+			g.pf("%s\t\tif (d < %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMin), fmtFloat(f.FMin))
+			g.pf("%s\t\tif (d > %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMax), fmtFloat(f.FMax))
+		}
+		g.pf("%s\t\tv.%s = d;\n", ind, name)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s\tbreak;\n", ind)
+	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
+		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
+		g.pf("%s\t{\n", ind)
+		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
+		g.pf("%s\t\tif (len == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
+		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
+		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
+		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
+		g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
+		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindU8)
+		g.pf("%s\t\tif (!arr.has(count)) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+		g.pf("%s\t\tvar keep = count;\n", ind)
+		g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s\t\tv.%s = utf8.decode(arr.data.sublist(arr.pos, arr.pos + keep));\n", ind, name)
+		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case enumRef(f) != nil:
