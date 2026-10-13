@@ -132,9 +132,8 @@ func init() {
 	registerPacketValueDefaultCarrier("js")
 	registerWideTextCarrier("js")
 	registerListCarrier("js")
-	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
-	// *bytes stays a named refusal (§11), so js registers as a string carrier
-	// alone and not as a byte-buffer carrier.
-	registerStringCarrier("js")
-	registerBuiltin(jsTarget{}, true, false, false, false)
+	// The variable wire carries BOTH blobs (§2.5) — *string and *bytes — so js
+	// registers as a full byte-buffer carrier through registerBuiltin's blobs
+	// flag, which lifts refuseBytes in GenerateLineage (§11).
+	registerBuiltin(jsTarget{}, true, false, false, true)
 }
