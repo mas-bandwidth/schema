@@ -18,12 +18,15 @@
 
 #include "cards.h"
 
-static const char *const kSurfaces[5] = {"load", "save", "render", "parse", "bounds"};
+static const char *const kSurfaces[9] = {"load",  "save", "render", "parse",
+                                         "bounds", "upgrade", "edit", "taskhash",
+                                         "view"};
 
 typedef struct Case {
     char *surface;
     char *name;
     char *input;
+    char *edit;
 } Case;
 
 static uint8_t *read_file(const char *path, int64_t *len) {
@@ -73,6 +76,15 @@ static int refuse(const char *outdir, const char *name, const char *cls) {
 /* refusal_class maps a facade error to one class of the closed list
    FORMAT.md fixes, never free text. */
 static void refusal_class(const char *err, char *out, size_t cap) {
+    if (strstr(err, "unknown field") != NULL ||
+        strstr(err, "unknown field(s), refusing") != NULL) {
+        snprintf(out, cap, "unknown-present");
+        return;
+    }
+    if (strstr(err, "retained field(s) lost") != NULL) {
+        snprintf(out, cap, "retain-lost");
+        return;
+    }
     if (strstr(err, "past the 65536-byte ceiling") != NULL) {
         snprintf(out, cap, "body-bound 65536");
         return;
@@ -136,7 +148,7 @@ static Case *read_manifest(const char *path, int *count) {
         int64_t start = pos;
         char line[2048];
         int64_t ln;
-        char *f1, *f2, *f3, *save = NULL;
+        char *f1, *f2, *f3, *f4, *save = NULL;
         while (pos < len && text[pos] != '\n') pos++;
         ln = pos - start;
         if (ln >= (int64_t)sizeof(line)) ln = sizeof(line) - 1;
@@ -153,6 +165,7 @@ static Case *read_manifest(const char *path, int *count) {
         f1 = strtok_r(line, " \t\r\n", &save);
         f2 = strtok_r(NULL, " \t\r\n", &save);
         f3 = strtok_r(NULL, " \t\r\n", &save);
+        f4 = strtok_r(NULL, " \t\r\n", &save);
         if (f1 == NULL || f2 == NULL || f3 == NULL) continue;
         if (n >= cap) {
             cap = cap > 0 ? cap * 2 : 16;
@@ -161,6 +174,7 @@ static Case *read_manifest(const char *path, int *count) {
         cases[n].surface = strdup(f1);
         cases[n].name = strdup(f2);
         cases[n].input = strdup(f3);
+        cases[n].edit = f4 != NULL ? strdup(f4) : NULL;
         n++;
     }
     free(text);
@@ -170,10 +184,92 @@ static Case *read_manifest(const char *path, int *count) {
 
 static int is_surface(const char *s) {
     int i;
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 9; i++) {
         if (strcmp(s, kSurfaces[i]) == 0) return 1;
     }
     return 0;
+}
+
+static int fail(char *err, size_t err_cap, const char *msg) {
+    if (err != NULL && err_cap > 0) snprintf(err, err_cap, "%s", msg);
+    return 0;
+}
+
+static int enum_tier_value(const char *s) {
+    if (strcmp(s, "flash") == 0) return TIER_FLASH;
+    if (strcmp(s, "pro") == 0) return TIER_PRO;
+    if (strcmp(s, "heavy") == 0) return TIER_HEAVY;
+    if (strcmp(s, "frontier") == 0) return TIER_FRONTIER;
+    return TIER_NONE;
+}
+
+static int enum_priority_value(const char *s) {
+    if (strcmp(s, "normal") == 0) return PRIORITY_NORMAL;
+    if (strcmp(s, "high") == 0) return PRIORITY_HIGH;
+    if (strcmp(s, "critical") == 0) return PRIORITY_CRITICAL;
+    if (strcmp(s, "blocker") == 0) return PRIORITY_BLOCKER;
+    return PRIORITY_NONE;
+}
+
+static int enum_column_value(const char *s) {
+    if (strcmp(s, "waiting") == 0) return COLUMN_WAITING;
+    if (strcmp(s, "ready") == 0) return COLUMN_READY;
+    if (strcmp(s, "working") == 0) return COLUMN_WORKING;
+    if (strcmp(s, "review") == 0) return COLUMN_REVIEW;
+    if (strcmp(s, "merging") == 0) return COLUMN_MERGING;
+    if (strcmp(s, "landed") == 0) return COLUMN_LANDED;
+    if (strcmp(s, "plan") == 0) return COLUMN_PLAN;
+    if (strcmp(s, "check") == 0) return COLUMN_CHECK;
+    return COLUMN_NONE;
+}
+
+static int parse_name_value(const char *edit, char *name, size_t ncap,
+                            char *value, size_t vcap) {
+    const char *eq = strchr(edit, '=');
+    size_t nl;
+    if (eq == NULL) return 0;
+    nl = (size_t)(eq - edit);
+    if (nl >= ncap) return 0;
+    memcpy(name, edit, nl);
+    name[nl] = '\0';
+    snprintf(value, vcap, "%s", eq + 1);
+    return 1;
+}
+
+/* apply_edit reads one manifest edit line and calls the matching Set* of
+   tables/cards/c/cards.h (DESIGN L4). */
+static int apply_edit(CardsRecord *rec, const char *edit, char *err,
+                      size_t err_cap) {
+    char name[64], value[1024];
+    if (edit == NULL || !parse_name_value(edit, name, sizeof(name), value,
+                                          sizeof(value)))
+        return fail(err, err_cap, "cards: malformed edit line");
+    if (strcmp(name, "needs") == 0 || strcmp(name, "paths") == 0) {
+        const char *vals[512];
+        char buf[1024];
+        int count = 0;
+        char *tok;
+        snprintf(buf, sizeof(buf), "%s", value);
+        tok = strtok(buf, ",");
+        while (tok != NULL && count < 512) {
+            vals[count++] = tok;
+            tok = strtok(NULL, ",");
+        }
+        if (strcmp(name, "needs") == 0)
+            return cards_set_needs(rec, vals, count, err, err_cap);
+        return cards_set_paths(rec, vals, count, err, err_cap);
+    }
+    if (strcmp(name, "tier") == 0)
+        return cards_set_tier(rec, (Tier)enum_tier_value(value), err, err_cap);
+    if (strcmp(name, "priority") == 0)
+        return cards_set_priority(rec, (Priority)enum_priority_value(value), err,
+                                  err_cap);
+    if (strcmp(name, "column") == 0)
+        return cards_set_column(rec, (Column)enum_column_value(value), err,
+                                err_cap);
+    if (strcmp(name, "holder") == 0)
+        return cards_set_holder(rec, value, err, err_cap);
+    return fail(err, err_cap, "cards: unknown edit field");
 }
 
 static int one(const char *surface, const Case *c, const char *outdir) {
@@ -276,6 +372,92 @@ static int one(const char *surface, const Case *c, const char *outdir) {
         cards_record_clear(&rec);
         return ok;
     }
+    if (strcmp(surface, "upgrade") == 0) {
+        int64_t len = 0;
+        uint8_t *wire = read_file(c->input, &len);
+        uint8_t *out = NULL;
+        int64_t out_len = 0;
+        TableReport report;
+        char cls[128];
+        int ok;
+        const char *sab;
+        if (wire == NULL) return 0;
+        if (!cards_upgrade(wire, len, &out, &out_len, &report, err, sizeof(err))) {
+            free(wire);
+            refusal_class(err, cls, sizeof(cls));
+            return refuse(outdir, c->name, cls);
+        }
+        free(wire);
+        /* the negative control: drop one retained byte from the output */
+        sab = getenv("CARDS_C_UPGRADE_SABOTAGE");
+        if (sab != NULL && strcmp(sab, "1") == 0 && out_len > 0) out_len--;
+        ok = write_out(outdir, c->name, "wire", out, out_len);
+        cards_free_buf(out);
+        if (ok) ok = write_report(outdir, c->name, &report);
+        return ok;
+    }
+    if (strcmp(surface, "edit") == 0) {
+        int64_t len = 0;
+        uint8_t *wire = read_file(c->input, &len);
+        CardsRecord rec;
+        TableReport report;
+        uint8_t *out = NULL;
+        int64_t out_len = 0;
+        char cls[128];
+        int ok;
+        if (wire == NULL) return 0;
+        if (!cards_load(wire, len, &rec, &report, err, sizeof(err))) {
+            free(wire);
+            refusal_class(err, cls, sizeof(cls));
+            return refuse(outdir, c->name, cls);
+        }
+        free(wire);
+        if (!apply_edit(&rec, c->edit, err, sizeof(err))) {
+            cards_record_clear(&rec);
+            refusal_class(err, cls, sizeof(cls));
+            return refuse(outdir, c->name, cls);
+        }
+        ok = cards_wire(&rec, &out, &out_len, err, sizeof(err));
+        cards_record_clear(&rec);
+        if (!ok) return 0;
+        ok = write_out(outdir, c->name, "wire", out, out_len);
+        cards_free_buf(out);
+        return ok;
+    }
+    if (strcmp(surface, "taskhash") == 0) {
+        int64_t len = 0;
+        uint8_t *wire = read_file(c->input, &len);
+        CardsRecord rec;
+        TableReport report;
+        uint8_t hex[65];
+        const char *sab;
+        int ok;
+        if (wire == NULL) return 0;
+        if (!cards_load(wire, len, &rec, &report, err, sizeof(err))) {
+            free(wire);
+            return 0;
+        }
+        free(wire);
+        if (!cards_task_hash(&rec, hex, err, sizeof(err))) {
+            cards_record_clear(&rec);
+            return 0;
+        }
+        cards_record_clear(&rec);
+        sab = getenv("CARDS_C_HASH_SABOTAGE");
+        if (sab != NULL && strcmp(sab, "1") == 0)
+            hex[0] = (uint8_t)(hex[0] == '0' ? '1' : '0');
+        ok = write_out(outdir, c->name, "hex", (const uint8_t *)hex, 64);
+        return ok;
+    }
+    if (strcmp(surface, "view") == 0) {
+        uint8_t *text = NULL;
+        int64_t text_len = 0;
+        int ok;
+        if (!cards_view(&text, &text_len, err, sizeof(err))) return 0;
+        ok = write_out(outdir, c->name, "txt", text, text_len);
+        cards_free_buf(text);
+        return ok;
+    }
     return 0;
 }
 
@@ -291,14 +473,14 @@ int main(int argc, char **argv) {
     manifest = argv[1];
     verb = argv[2];
     if (strcmp(verb, "list") == 0) {
-        for (i = 0; i < 5; i++) printf("%s\n", kSurfaces[i]);
+        for (i = 0; i < 9; i++) printf("%s\n", kSurfaces[i]);
         return 0;
     }
     if (argc < 4) {
         fprintf(stderr, "usage: driver <manifest> <surface> <outdir>\n");
         return 2;
     }
-    if (!is_surface(verb)) return 2; /* upgrade, edit, taskhash, view: absent */
+    if (!is_surface(verb)) return 2;
     cases = read_manifest(manifest, &count);
     if (cases == NULL) return 1;
     mkdir(argv[3], 0755);

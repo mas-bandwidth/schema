@@ -3,6 +3,8 @@
    tables/cards/parse.go with tables/cards/render.go (DESIGN L2). Every
    function that implements a rule cites its design section. */
 #include "cards.h"
+#include "CardsView.h"
+#include "sha256.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -1334,6 +1336,437 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
         dyn_put(&buf, v.data, v.length);
     }
     free(region);
+    if (buf.data == NULL) {
+        buf.data = (uint8_t *)malloc(1);
+        buf.len = 0;
+    }
+    *out = buf.data;
+    *out_len = buf.len;
+    return 1;
+}
+
+/* ---- DESIGN L3: retained upgrade, strict read, task hash ---- */
+
+/* cards_lossy names the read events that make a record unsafe to rewrite or
+   hash (docs/SPEC-TABLES.md §4 tolerance, §6.6 retain-unknown). Unknown,
+   Retained and Widened alone are not loss. */
+static int cards_lossy(const TableReport *rep, char *err, size_t err_cap) {
+    if (rep->retain_lost > 0)
+        return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
+    if (rep->unknown > 0)
+        return failf(err, err_cap,
+                     "cards: record carries unknown field(s), refusing: refused, never hashed or rewritten");
+    if (rep->kind_mismatch > 0)
+        return fail(err, err_cap, "cards: kind mismatch(es), refusing to replace");
+    if (rep->clamped > 0)
+        return fail(err, err_cap, "cards: clamped value(s), refusing to replace");
+    if (rep->malformed)
+        return fail(err, err_cap, "cards: malformed wire, refusing to replace");
+    return 1;
+}
+
+/* cards_upgrade_loss names the report events that make a rewrite unsafe
+   (docs/SPEC-TABLES.md §6.6): a retained field that could not be kept, a kind
+   mismatch, a clamped value or framing damage. Unknown, Retained and Widened
+   alone are not loss (§4). */
+static int cards_upgrade_loss(const TableReport *rep, char *err, size_t err_cap) {
+    if (rep->retain_lost > 0)
+        return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
+    if (rep->kind_mismatch > 0)
+        return fail(err, err_cap, "cards: kind mismatch(es), refusing to replace");
+    if (rep->clamped > 0)
+        return fail(err, err_cap, "cards: clamped value(s), refusing to replace");
+    if (rep->malformed)
+        return fail(err, err_cap, "cards: malformed wire, refusing to replace");
+    return 1;
+}
+
+/* cards_upgrade ports Upgrade in tables/cards/upgrade.go (DESIGN L3): one
+   retained round trip — retained load, the accumulated loss check, retained
+   measure and save — publishing only on complete success. It keeps
+   tla/CardVersioning.tla NoFieldLost, BodyUnchanged and RefusalKeepsOriginal. */
+int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
+                  int64_t *out_len, TableReport *report, char *err,
+                  size_t err_cap) {
+    return cards_upgrade_ex(wire, wire_len, out, out_len, report,
+                            CARDS_MAX_RETAIN_BYTES, CARDS_MAX_RETAIN_IDS, err,
+                            err_cap);
+}
+
+int cards_upgrade_ex(const uint8_t *wire, int64_t wire_len, uint8_t **out,
+                     int64_t *out_len, TableReport *report, int64_t retain_bytes,
+                     int retain_ids, char *err, size_t err_cap) {
+    TableReport rep;
+    int64_t n, size;
+    uint8_t *region;
+    uint8_t *buffer;
+    TableRetain retain;
+    const Card *root;
+    memset(&rep, 0, sizeof(rep));
+    if (out != NULL) *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (retain_bytes < 0 || retain_ids < 0)
+        return fail(err, err_cap, "cards: upgrade: negative retention capacity");
+    n = card_load_measure(wire, wire_len);
+    if (n < 0) {
+        if (report != NULL) *report = rep;
+        return fail(err, err_cap, "cards: upgrade: wire is malformed");
+    }
+    region = (uint8_t *)aligned_alloc64(n);
+    if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
+    memset(&retain, 0, sizeof(retain));
+    retain.bytes = (uint8_t *)malloc((size_t)(retain_bytes > 0 ? retain_bytes : 1));
+    retain.capacity = retain_bytes;
+    retain.ids = (TableRetainId *)malloc((size_t)(retain_ids > 0 ? retain_ids : 1) * sizeof(TableRetainId));
+    retain.id_capacity = retain_ids;
+    if (retain.bytes == NULL || retain.ids == NULL) {
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        return fail(err, err_cap, "cards: allocation failed");
+    }
+    root = cards_retain_load(region, n, wire, wire_len, &retain, &rep);
+    if (root == NULL) {
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        if (report != NULL) *report = rep;
+        return fail(err, err_cap, "cards: upgrade: wire is malformed");
+    }
+    if (!check_card(root, NULL, err, err_cap)) {
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        if (report != NULL) *report = rep;
+        return 0;
+    }
+    size = cards_retain_measure(root, &retain);
+    if (size < 0) {
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        return fail(err, err_cap, "cards: upgrade: measure refused the retained card");
+    }
+    buffer = (uint8_t *)malloc((size_t)(size > 0 ? size : 1));
+    if (buffer == NULL) {
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        return fail(err, err_cap, "cards: allocation failed");
+    }
+    if (cards_retain_save(root, &retain, buffer, size, &rep) != size) {
+        free(buffer);
+        free(retain.bytes);
+        free(retain.ids);
+        free(region);
+        if (report != NULL) *report = rep;
+        return fail(err, err_cap, "cards: upgrade: save did not fill the measured wire");
+    }
+    free(retain.bytes);
+    free(retain.ids);
+    free(region);
+    if (report != NULL) *report = rep;
+    if (!cards_upgrade_loss(&rep, err, err_cap)) {
+        free(buffer);
+        return 0;
+    }
+    *out = buffer;
+    *out_len = size;
+    return 1;
+}
+
+/* hex64 writes 32 bytes as 64 lowercase hex digits and a NUL. */
+static void hex64(char out[65], const uint8_t digest[32]) {
+    static const char digits[] = "0123456789abcdef";
+    int i;
+    for (i = 0; i < 32; i++) {
+        out[i * 2] = digits[digest[i] >> 4];
+        out[i * 2 + 1] = digits[digest[i] & 0x0f];
+    }
+    out[64] = '\0';
+}
+
+static int frame_u64(DynBuf *b, uint64_t v) {
+    uint8_t raw[8];
+    int i;
+    for (i = 0; i < 8; i++) raw[i] = (uint8_t)(v >> (8 * i));
+    return dyn_put(b, raw, 8);
+}
+
+static int frame_text(DynBuf *b, const uint8_t *data, int64_t len) {
+    if (len < 0) len = 0;
+    return frame_u64(b, (uint64_t)len) && dyn_put(b, data, len);
+}
+
+/* frame_list is the framed spelling of one PathText list: count then each
+   length-prefixed element (edit.go hashPathList). */
+static int frame_list(DynBuf *b, const TableList *list) {
+    int32_t i;
+    if (list->count < 0) return 0;
+    if (!frame_u64(b, (uint64_t)list->count)) return 0;
+    for (i = 0; i < list->count; i++) {
+        const PathText *e = card_paths_at(list, i);
+        int64_t n;
+        if (e == NULL) return 0;
+        n = e->s_length;
+        if (n > 192) n = 192;
+        if (n < 0) n = 0;
+        if (!frame_text(b, (const uint8_t *)e->s, n)) return 0;
+    }
+    return 1;
+}
+
+/* cards_task_hash ports TaskHash in tables/cards/edit.go (DESIGN L3): SHA-256
+   over body, paths, new, shared, test and done, each text length-prefixed and
+   each list count-prefixed; needs, tier, priority and the machine fields are
+   excluded, so tla/CardHops.tla TaskHashStable holds across a machine-field
+   edit. A lossy record is refused, never hashed (edit.go refuseLossy). */
+int cards_task_hash(const CardsRecord *record, uint8_t out_hex[65], char *err,
+                    size_t err_cap) {
+    DynBuf b;
+    TableBytesView body, done;
+    const uint8_t *test;
+    int64_t test_len;
+    uint8_t digest[32];
+    if (record == NULL || record->root == NULL)
+        return fail(err, err_cap, "cards: nil record");
+    if (!cards_lossy(&record->report, err, err_cap)) return 0;
+    memset(&b, 0, sizeof(b));
+    body = table_bytes_at(NULL, &record->root->body);
+    done = table_bytes_at(NULL, &record->root->done);
+    test = (const uint8_t *)record->root->test;
+    test_len = record->root->test_length;
+    if (test_len > 192) test_len = 192;
+    if (test_len < 0) test_len = 0;
+    if (!frame_text(&b, body.data, body.length) ||
+        !frame_list(&b, &record->root->paths) ||
+        !frame_list(&b, &record->root->_new) ||
+        !frame_list(&b, &record->root->shared) ||
+        !frame_text(&b, test, test_len) ||
+        !frame_text(&b, done.data, done.length)) {
+        free(b.data);
+        return fail(err, err_cap, "cards: task hash framing failed");
+    }
+    cards_sha256(digest, b.data, (size_t)b.len);
+    free(b.data);
+    hex64((char *)out_hex, digest);
+    return 1;
+}
+
+/* ---- DESIGN L4: atomic field edits ---- */
+
+typedef struct EditCtx {
+    const char *const *values;
+    int count;
+    Tier tier;
+    Priority priority;
+    Column column;
+    const char *holder;
+} EditCtx;
+
+static int edit_needs(Card *root, TableWorker *w, const EditCtx *c) {
+    int i;
+    memset(&root->needs, 0, sizeof(root->needs));
+    for (i = 0; i < c->count; i++) {
+        CardID *e = card_needs_add(w, &root->needs);
+        if (e == NULL) return 0;
+        assign_fixed(e->s, &e->s_length, c->values[i]);
+    }
+    return 1;
+}
+
+static int edit_paths(Card *root, TableWorker *w, const EditCtx *c) {
+    int i;
+    memset(&root->paths, 0, sizeof(root->paths));
+    for (i = 0; i < c->count; i++) {
+        PathText *e = card_paths_add(w, &root->paths);
+        if (e == NULL) return 0;
+        assign_fixed(e->s, &e->s_length, c->values[i]);
+    }
+    return 1;
+}
+
+static int edit_tier(Card *root, TableWorker *w, const EditCtx *c) {
+    (void)w;
+    root->tier = c->tier;
+    return 1;
+}
+
+static int edit_priority(Card *root, TableWorker *w, const EditCtx *c) {
+    (void)w;
+    root->priority = c->priority;
+    return 1;
+}
+
+static int edit_column(Card *root, TableWorker *w, const EditCtx *c) {
+    (void)w;
+    root->column = c->column;
+    return 1;
+}
+
+static int edit_holder(Card *root, TableWorker *w, const EditCtx *c) {
+    (void)w;
+    assign_fixed(root->holder, &root->holder_length, c->holder);
+    return 1;
+}
+
+/* edit_common ports edit in tables/cards/edit.go (DESIGN L4, §6.2): check the
+   current record is safe, reload it into a fresh independent builder, apply
+   the mutation, validate, pack, measure and save, and only on complete success
+   swap the record's owned wire and region. A refusal leaves the wire
+   byte-equal and drops the unknown fields an ordinary rewrite cannot carry
+   (CardHops EditDropsUnknown). */
+static int edit_common(CardsRecord *r, int (*mutate)(Card *, TableWorker *, const EditCtx *),
+                       const EditCtx *c, char *err, size_t err_cap) {
+    CardBuilder b;
+    TableReport rep;
+    CardsRecord tmp;
+    TableCtx ctx;
+    if (r == NULL || r->root == NULL)
+        return fail(err, err_cap, "cards: nil record");
+    if (!cards_lossy(&r->report, err, err_cap)) return 0;
+    if (!card_builder_init(&b))
+        return fail(err, err_cap, "cards: arena initialization failed");
+    memset(&rep, 0, sizeof(rep));
+    if (!card_load_builder(&b, r->wire, r->wire_len, &rep)) {
+        card_builder_shutdown(&b);
+        return fail(err, err_cap, "cards: reload into builder failed");
+    }
+    if (!cards_lossy(&rep, err, err_cap)) {
+        card_builder_shutdown(&b);
+        return 0;
+    }
+    if (!mutate(card_builder_root(&b), &b.main, c)) {
+        card_builder_shutdown(&b);
+        return fail(err, err_cap, "cards: builder refused the edit");
+    }
+    ctx.arena = &b.arena;
+    if (!check_card(card_builder_root(&b), &ctx, err, err_cap)) {
+        card_builder_shutdown(&b);
+        return 0;
+    }
+    if (!adopt_builder(&b, &tmp, err, err_cap)) return 0;
+    tmp.report = rep;
+    free(r->wire);
+    free(r->region);
+    *r = tmp;
+    return 1;
+}
+
+static int validate_values(const char *name, const char *const *v, int n,
+                           int bound, char *err, size_t err_cap) {
+    int i;
+    if (n > CARDS_MAX_LIST_ENTRIES)
+        return failf(err, err_cap,
+                     "cards: %s has %d entries, past the %d-entry ceiling",
+                     name, n, CARDS_MAX_LIST_ENTRIES);
+    for (i = 0; i < n; i++) {
+        size_t l = strlen(v[i]);
+        if ((int)l > bound)
+            return failf(err, err_cap, "cards: %s element is past its %d-byte bound",
+                         name, bound);
+        if (!utf8_valid((const uint8_t *)v[i], (int64_t)l))
+            return fail(err, err_cap,
+                        "cards: element is not well-formed UTF-8 without NUL");
+    }
+    return 1;
+}
+
+int cards_set_needs(CardsRecord *record, const char *const *values, int count,
+                    char *err, size_t err_cap) {
+    EditCtx c;
+    if (count < 0) count = 0;
+    if (!validate_values("needs", values, count, 64, err, err_cap)) return 0;
+    c.values = values;
+    c.count = count;
+    return edit_common(record, edit_needs, &c, err, err_cap);
+}
+
+int cards_set_paths(CardsRecord *record, const char *const *values, int count,
+                    char *err, size_t err_cap) {
+    EditCtx c;
+    if (count < 0) count = 0;
+    if (!validate_values("paths", values, count, 192, err, err_cap)) return 0;
+    c.values = values;
+    c.count = count;
+    return edit_common(record, edit_paths, &c, err, err_cap);
+}
+
+int cards_set_tier(CardsRecord *record, Tier tier, char *err, size_t err_cap) {
+    EditCtx c;
+    memset(&c, 0, sizeof(c));
+    if (tier > TIER_MAX)
+        return failf(err, err_cap, "cards: tier %d is not a declared variant", (int)tier);
+    c.tier = tier;
+    return edit_common(record, edit_tier, &c, err, err_cap);
+}
+
+int cards_set_priority(CardsRecord *record, Priority priority, char *err,
+                       size_t err_cap) {
+    EditCtx c;
+    memset(&c, 0, sizeof(c));
+    if (priority > PRIORITY_MAX)
+        return failf(err, err_cap, "cards: priority %d is not a declared variant",
+                     (int)priority);
+    c.priority = priority;
+    return edit_common(record, edit_priority, &c, err, err_cap);
+}
+
+int cards_set_column(CardsRecord *record, Column column, char *err,
+                     size_t err_cap) {
+    EditCtx c;
+    memset(&c, 0, sizeof(c));
+    if (column > COLUMN_MAX)
+        return failf(err, err_cap, "cards: column %d is not a declared variant",
+                     (int)column);
+    c.column = column;
+    return edit_common(record, edit_column, &c, err, err_cap);
+}
+
+int cards_set_holder(CardsRecord *record, const char *holder, char *err,
+                     size_t err_cap) {
+    EditCtx c;
+    const char *one[1];
+    memset(&c, 0, sizeof(c));
+    if (holder == NULL) holder = "";
+    one[0] = holder;
+    if (!validate_values("holder", one, 1, 32, err, err_cap)) return 0;
+    c.holder = holder;
+    return edit_common(record, edit_holder, &c, err, err_cap);
+}
+
+/* cards_view ports the view surface (DESIGN L4; docs/SPEC-TABLES.md §8): one
+   line per field of every table, tables in the generated view's order and
+   fields in declaration order, kind, shape and bound read from the generated
+   descriptors. The vocabulary is the generated one, so tla/CardHops.tla
+   ImplementationsAgree holds: every leg walks the same field names. */
+int cards_view(uint8_t **out, int64_t *out_len, char *err, size_t err_cap) {
+    const UnitViewInfo *v = unit_view();
+    DynBuf buf;
+    int t, f;
+    if (v == NULL) return fail(err, err_cap, "cards: no unit view");
+    memset(&buf, 0, sizeof(buf));
+    for (t = 0; t < v->num_tables; t++) {
+        const TableTypeInfo *ti = v->tables[t].type;
+        for (f = 0; ti != NULL && f < ti->num_fields; f++) {
+            const TableFieldInfo *fi = &ti->fields[f];
+            const char *shape = fi->is_pointer ? "blob"
+                                : (fi->sequence == 1 ? "list" : "value");
+            char bound[16];
+            char line[256];
+            int n;
+            if (fi->sequence == 0 && !fi->is_pointer && fi->array_bound > 0)
+                snprintf(bound, sizeof(bound), "%d", (int)fi->array_bound);
+            else
+                snprintf(bound, sizeof(bound), "-");
+            n = snprintf(line, sizeof(line), "%s %s %s %s %s\n", ti->name,
+                         fi->name, fi->type_name, shape, bound);
+            if (n < 0 || n >= (int)sizeof(line) || !dyn_put(&buf, line, n)) {
+                free(buf.data);
+                return fail(err, err_cap, "cards: view line too long");
+            }
+        }
+    }
     if (buf.data == NULL) {
         buf.data = (uint8_t *)malloc(1);
         buf.len = 0;
