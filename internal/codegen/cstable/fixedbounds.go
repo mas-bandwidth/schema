@@ -24,7 +24,6 @@ package cstable
 // clamped, so the counter they would have moved never moved either (§5.4).
 
 import (
-	"fmt"
 	"math/big"
 	"strings"
 
@@ -105,22 +104,28 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		if owner != nil && owner.IsTable {
 			slots = expr + ".Slots"
 		}
+		i := g.enterLoop()
 		g.pf("%sif (%s != null)\n%s{\n", ind, slots, ind)
-		g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, f.KeyEnumRef.Max, slots, ind)
-		g.emitFixedClampElement(f, slots+"[i]", indent+8)
+		g.pf("%s    for (int %s = 0; %s < %d && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, f.KeyEnumRef.Max, i, slots, i, ind)
+		g.emitFixedClampElement(f, slots+"["+i+"]", indent+8)
 		g.pf("%s    }\n%s}\n", ind, ind)
+		g.leaveLoop()
 	case f.Array == ir.ArrayFixed:
+		i := g.enterLoop()
 		g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-		g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, f.ArrayBound, expr, ind)
-		g.emitFixedClampElement(f, expr+"[i]", indent+8)
+		g.pf("%s    for (int %s = 0; %s < %d && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, f.ArrayBound, i, expr, i, ind)
+		g.emitFixedClampElement(f, expr+"["+i+"]", indent+8)
 		g.pf("%s    }\n%s}\n", ind, ind)
+		g.leaveLoop()
 	case f.Array == ir.ArrayCounted:
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
 		// and a zero nobody wrote is not a value to hold to a range.
+		i := g.enterLoop()
 		g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-		g.pf("%s    for (int i = 0; i < %s.%sCount && i < %s.Length; ++i)\n%s    {\n", ind, val, prop, expr, ind)
-		g.emitFixedClampElement(f, expr+"[i]", indent+8)
+		g.pf("%s    for (int %s = 0; %s < %s.%sCount && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, val, prop, i, expr, i, ind)
+		g.emitFixedClampElement(f, expr+"["+i+"]", indent+8)
 		g.pf("%s    }\n%s}\n", ind, ind)
+		g.leaveLoop()
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		// THE CONTENT RULE IS NOT THIS LEG'S YET. §5.8 row 8's ruling — a
 		// content violation REFUSES BY NAME — is owed by the reference first;
@@ -159,7 +164,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 						continue
 					}
 					g.pf("%s        case %s.%s:\n%s        {\n", ind, tagType, ir.GoExportName(v.Name), ind)
-					g.emitFixedClampElement(v.F, fmt.Sprintf("%s.%s", expr, ir.GoExportName(v.Name)), indent+12)
+					// AN ARM IS A FIELD LINE (§2.6): an array arm holds each
+					// element to its bound over the arm's live count, the way
+					// the same line in a struct is held.
+					g.emitFixedClampPayload(unionOwner(r), v.F, expr, indent+12)
 					g.pf("%s            break;\n%s        }\n", ind, ind)
 				}
 				g.pf("%s        default: break;\n%s    }\n", ind, ind)
