@@ -1123,10 +1123,7 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../..")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	// The probe lives IN the generated package, whose name is the schema's own.
 	files["version_test.go"] = []byte(strings.Replace(testSource, "package probe", "package "+u.Package, 1))
