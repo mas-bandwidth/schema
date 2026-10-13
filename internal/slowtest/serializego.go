@@ -43,8 +43,9 @@ func SerializeGo(t testing.TB, root string) string {
 	}
 	msg := "slowtest: the Go runtime serialize.go is absent: looked for a sibling at " + sibling +
 		" and a fetched copy at " + fetched + "; `make tables-fixedform-corpus` fetches the runtime"
-	if Enabled() {
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 		t.Fatalf("%s", msg)
+		return ""
 	}
 	t.Skipf("%s", msg)
 	return ""

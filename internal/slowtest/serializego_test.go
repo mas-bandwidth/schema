@@ -78,18 +78,24 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 		if !fake.failed {
 			t.Fatal("SerializeGo under SCHEMA_REQUIRE_CORPUS did not fail")
 		}
+		if fake.skipped {
+			t.Fatal("SerializeGo under SCHEMA_REQUIRE_CORPUS also skipped")
+		}
 		assertAbsentMessage(t, fake.msg)
 	})
 
-	t.Run("absent without it skips by name", func(t *testing.T) {
+	t.Run("absent under SCHEMA_SLOW alone skips by name", func(t *testing.T) {
 		setEnv(t, "SCHEMA_REQUIRE_CORPUS", "")
-		setEnv(t, "SCHEMA_SLOW", "")
+		setEnv(t, "SCHEMA_SLOW", "1")
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
 			t.Fatalf("SerializeGo = %q, want empty on the skip branch", got)
 		}
+		if fake.failed {
+			t.Fatal("SerializeGo under SCHEMA_SLOW without SCHEMA_REQUIRE_CORPUS failed")
+		}
 		if !fake.skipped {
-			t.Fatal("SerializeGo without SCHEMA_REQUIRE_CORPUS did not skip")
+			t.Fatal("SerializeGo under SCHEMA_SLOW without SCHEMA_REQUIRE_CORPUS did not skip")
 		}
 		assertAbsentMessage(t, fake.msg)
 	})

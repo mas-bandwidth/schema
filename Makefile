@@ -6079,7 +6079,11 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # build/serialize.go. A SERIALIZE_GO named on the command line (or in the
 # environment) that is absent still refuses by name, and so does a fetch that
 # fails or produces no go.mod: a gate with no blade is the exact silence this
-# refusal exists to forbid.
+# refusal exists to forbid. The check target repeats that refusal in its own
+# recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
+# still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
+# is up to date, and a phony target with only that prerequisite would report
+# nothing to be done.
 SERIALIZE_GO_PIN     ?= v1.15.1
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
 SERIALIZE_GO_FETCHED := build/serialize.go
@@ -6115,6 +6119,10 @@ $(SERIALIZE_RUNTIME)/serialize.h:
 
 .PHONY: tables-fixedform-corpus-check
 tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if test "$(origin SERIALIZE_GO)" != "file" && ! test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	fi
 
 .PHONY: tables-fixedform-corpus
 
