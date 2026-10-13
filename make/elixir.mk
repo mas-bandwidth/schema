@@ -565,10 +565,35 @@ tables-elixir-message-batch:
 	fi
 	@echo 'tables Elixir message batch: TestMessageFormBatchElixir ran under test-elixir with no subtest skipped'
 
+# elixir/F12: a second layout for a held hash (docs/SPEC-TABLES.md §3.4,
+# docs/FIXED-FORM-ALGORITHM.md §5.3 step 5). The row script builds its vector
+# from the generated module's OWN facts — the held hash, the lock's layout
+# bytes and the file header — with no corpus file, so this target needs only
+# the compiled fixed-form beams. It is the leg's on-GENERATED-code assertion
+# that a held hash over different bytes is refused `:layout_malformed`, changes
+# nothing and is never `:layout_newer`.
+.PHONY: tables-elixir-row-f12
+tables-elixir-row-f12: build/elixir-fixedform/.stamp
+	$(ELIXIR) test/conformance/elixir/rows/F12.exs
+
+# The same law as a Go functional probe (fixedroadmap_t13_test.go), which draws
+# its vectors from T.lineage_fixed_known/0 rather than the corpus: every byte of
+# the held layout bent in turn, the other lock entry's real layout under this
+# build's hash, and this build's layout under the older entry's hash, each
+# `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
+# Elixir, so it is gated exactly like tables-elixir-versioning: the corpus skip
+# is a FAILURE under SCHEMA_REQUIRE_CORPUS=1.
+.PHONY: tables-elixir-t13
+tables-elixir-t13:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
+	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-message-batch
 test-elixir: tables-elixir-paired-gate
+test-elixir: tables-elixir-row-f12 tables-elixir-t13
 
 # ---------------------------------------------------------------------------
 # THE CARDS UNIT'S ELIXIR LEG (docs/SPEC-TABLES.md §2)
