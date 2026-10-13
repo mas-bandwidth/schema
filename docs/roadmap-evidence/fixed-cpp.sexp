@@ -26,7 +26,7 @@
 (:id "cpp/C12" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t06_test.go: TestFixedRoadmapCppT06Bounds/cpp/C12") :tested-revision "71822a0fa7367fc58523c3ae845e02a01b9ef3f6")
 (:id "cpp/C13" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t06_test.go: TestFixedRoadmapCppT06Bounds/cpp/C13") :tested-revision "71822a0fa7367fc58523c3ae845e02a01b9ef3f6")
 (:id "cpp/R17" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t06_test.go: TestFixedRoadmapCppT06Bounds/cpp/R17") :tested-revision "71822a0fa7367fc58523c3ae845e02a01b9ef3f6")
-(:id "cpp/R30" :state :unknown :note "compressed float rides as the float: the resolution's 'Q' digest marker and the finer-widens/coarser-refuses-by-name/drop-the-triple rulings live in ir/fixedform.go and are emitted into no cpptable fixed header, so no assertion on this leg's emitted bytes holds them; the sibling serialize runtime a compiled probe needs is absent.")
+(:id "cpp/R30" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t14_test.go: TestFixedRoadmapCppT14CompressedFloats/cpp/R30"))
 (:id "cpp/F4" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/F4") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")
 (:id "cpp/F7" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/F7") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")
 (:id "cpp/F8" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t01_test.go: TestFixedRoadmapCppT01Framing/cpp/F8") :tested-revision "5b7d44e06ed0b31d50e3a4fef1907dc59d71b25f")

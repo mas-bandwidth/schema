@@ -1142,6 +1142,17 @@ const messageRuntimeBody = `  defstruct [
     end
   end
 
+  # docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
+  # The product rounds to float32 before the add. Elixir does not contract.
+  def dequantize_bits(index, qmin, delta, count) when is_integer(index) and is_integer(count) and count > 0 do
+    index = if index < 0, do: 0, else: index
+    index = if index > count, do: count, else: index
+    normalized = round_f32(index / count)
+    scaled = round_f32(normalized * delta)
+    <<bits::little-unsigned-32>> = <<round_f32(scaled + qmin)::little-float-32>>
+    bits
+  end
+
   # A finite float rounded to float32, or :nonfinite where it overflows the
   # width: the page's "not finite in float32" (docs/SPEC-TABLES.md §3.3), which
   # a ranged float's delta or delta/res reaches by overflow alone.
