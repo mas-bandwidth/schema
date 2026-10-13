@@ -87,8 +87,9 @@ layout hash are not counters and never ride. A clean read is seven zeroes and
 
 ### The view
 
-`view.txt` is one line per field of every table in the unit, in declaration
-order:
+`view.txt` is one line per field of every table in the unit, tables in the
+generated view's order (sorted by table name) and each table's fields in
+declaration order:
 
 ```
 <table> <field> <kind> <shape> <bound>
