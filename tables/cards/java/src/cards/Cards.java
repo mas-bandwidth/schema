@@ -8,11 +8,13 @@
 package cards;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -629,5 +631,240 @@ public final class Cards {
             }
         }
         return -1;
+    }
+
+    // ---------------------------------------------------------------------
+    // upgrade.go — the retained wire upgrade and the strict unsupported-data
+    // read (docs/SPEC-TABLES.md §6.6, §4). Ported from tables/cards/upgrade.go.
+    // ---------------------------------------------------------------------
+
+    // MaxRetainBytes is the customer ceiling on the retained-record byte store
+    // (§6.6). upgrade.go MaxRetainBytes.
+    public static final int MaxRetainBytes = 1 << 20;
+    // MaxRetainIDs is the customer ceiling on the retained-id entry store
+    // (§6.6). upgrade.go MaxRetainIDs.
+    public static final int MaxRetainIDs = 4096;
+
+    // UpgradeResult carries the upgraded wire and the accumulated read report on
+    // success; on refusal upgrade throws and the input wire is left untouched.
+    public static final class UpgradeResult {
+        public final byte[] wire;
+        public final TableVariable.Report report;
+        UpgradeResult(byte[] wire, TableVariable.Report report) {
+            this.wire = wire;
+            this.report = report;
+        }
+    }
+
+    // Upgrade rewrites wire through the generated retaining region path so that
+    // every field the current declaration cannot name is preserved byte for byte
+    // at the end of its own body (§6.6). It refuses on RetainLost,
+    // KindMismatch, Clamped, Malformed or any failed call; the input wire is
+    // never mutated. Upgrade of an upgraded record is byte-identical (§6.6).
+    public static UpgradeResult upgrade(byte[] wire) throws Refusal {
+        return upgrade(wire, MaxRetainBytes, MaxRetainIDs);
+    }
+
+    // upgrade is the retention seam: the refusal probes drive smaller
+    // caller-owned storage through the same path so a tiny capacity can be
+    // shown to name RetainLost while the input is preserved.
+    public static UpgradeResult upgrade(byte[] wire, int retainBytes, int retainIDs) throws Refusal {
+        TableVariable.Report report = new TableVariable.Report();
+        TableRetain retain = new TableRetain(retainBytes, retainIDs);
+        CardVariable.Value v = CardRetain.loadRetain(wire, retain, report);
+        if (v == null || report.malformed) {
+            throw new Refusal("malformed");
+        }
+        checkValue(v);
+        byte[] out = CardRetain.saveRetain(v, retain, report);
+        if (out == null) {
+            throw new Refusal("malformed");
+        }
+        if (report.retainLost > 0) {
+            throw new Refusal("retain-lost");
+        }
+        if (report.kindMismatch > 0 || report.clamped > 0 || report.malformed) {
+            throw new Refusal("malformed");
+        }
+        return new UpgradeResult(out, report);
+    }
+
+    // ReadStrict reads wire and refuses any data the current declaration cannot
+    // support: Unknown, KindMismatch, Clamped and Malformed (§4).
+    public static Record readStrict(byte[] wire) throws Refusal {
+        TableVariable.Report report = new TableVariable.Report();
+        CardVariable.Value v = CardVariable.load(wire, report);
+        if (v == null || report.malformed) {
+            throw new Refusal("malformed");
+        }
+        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0) {
+            throw new Refusal("unknown-present");
+        }
+        checkValue(v);
+        return new Record(Arrays.copyOf(wire, wire.length), v, report);
+    }
+
+    // ---------------------------------------------------------------------
+    // edit.go — the task hash and the atomic field edits (docs/SPEC-TABLES.md
+    // §5, §6.2). Ported from tables/cards/edit.go.
+    // ---------------------------------------------------------------------
+
+    // TaskHash returns 64 lowercase hex digits over the task fields: body,
+    // paths, new, shared, test and done, framed per §5. A lossy record is never
+    // hashed. edit.go TaskHash.
+    public static String taskHash(byte[] wire) throws Refusal {
+        TableVariable.Report report = new TableVariable.Report();
+        CardVariable.Value v = CardVariable.load(wire, report);
+        if (v == null || report.malformed) {
+            throw new Refusal("malformed");
+        }
+        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0
+                || report.retainLost > 0) {
+            throw new Refusal("unknown-present");
+        }
+        MessageDigest h = sha256();
+        hashText(h, v.body != null ? v.body : "");
+        hashList(h, v.paths);
+        hashList(h, v.new_);
+        hashList(h, v.shared);
+        hashText(h, v.test);
+        hashText(h, v.done != null ? v.done : "");
+        byte[] d = h.digest();
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : d) {
+            sb.append(HEX[(b >> 4) & 0xf]).append(HEX[b & 0xf]);
+        }
+        return sb.toString();
+    }
+
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
+    private static MessageDigest sha256() throws Refusal {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new Refusal("malformed");
+        }
+    }
+
+    private static void hashU64(MessageDigest h, long v) {
+        for (int i = 0; i < 8; i++) {
+            h.update((byte) (v >>> (8 * i)));
+        }
+    }
+
+    private static void hashText(MessageDigest h, String s) {
+        byte[] b = s.getBytes(StandardCharsets.UTF_8);
+        hashU64(h, b.length);
+        h.update(b);
+    }
+
+    private static void hashList(MessageDigest h, List<PathTextVariable.Value> list) {
+        hashU64(h, list.size());
+        for (PathTextVariable.Value e : list) {
+            hashText(h, e.s);
+        }
+    }
+
+    // SetNeeds replaces the record's needs list atomically; each entry well
+    // formed and within 64 bytes, the list within MaxListEntries (edit.go).
+    public static Record setNeeds(byte[] wire, List<String> needs) throws Refusal {
+        validateStrings(needs, 64);
+        if (needs.size() > MaxListEntries) {
+            throw new Refusal("list-bound needs " + MaxListEntries);
+        }
+        return edit(wire, v -> {
+            v.needs.clear();
+            for (String s : needs) {
+                CardIDVariable.Value r = new CardIDVariable.Value();
+                r.s = s;
+                v.needs.add(r);
+            }
+        });
+    }
+
+    // SetPaths replaces the record's paths list atomically (§2.9).
+    public static Record setPaths(byte[] wire, List<String> paths) throws Refusal {
+        validateStrings(paths, 192);
+        if (paths.size() > MaxListEntries) {
+            throw new Refusal("list-bound paths " + MaxListEntries);
+        }
+        return edit(wire, v -> {
+            v.paths.clear();
+            for (String s : paths) {
+                PathTextVariable.Value r = new PathTextVariable.Value();
+                r.s = s;
+                v.paths.add(r);
+            }
+        });
+    }
+
+    // SetTier changes a record's tier atomically; only a declared variant is
+    // accepted (§8).
+    public static Record setTier(byte[] wire, int tier) throws Refusal {
+        if (tier < 0 || tier > 4) {
+            throw new Refusal("malformed");
+        }
+        return edit(wire, v -> v.tier = tier);
+    }
+
+    // SetPriority changes a record's priority atomically (§8).
+    public static Record setPriority(byte[] wire, int priority) throws Refusal {
+        if (priority < 0 || priority > 4) {
+            throw new Refusal("malformed");
+        }
+        return edit(wire, v -> v.priority = priority);
+    }
+
+    // SetColumn changes a record's column atomically (§8).
+    public static Record setColumn(byte[] wire, int column) throws Refusal {
+        if (column < 0 || column > 8) {
+            throw new Refusal("malformed");
+        }
+        return edit(wire, v -> v.column = column);
+    }
+
+    // SetHolder changes a record's holder atomically; well formed and within 32
+    // bytes (§6.1).
+    public static Record setHolder(byte[] wire, String holder) throws Refusal {
+        validateStrings(Arrays.asList(holder), 32);
+        return edit(wire, v -> v.holder = holder);
+    }
+
+    // validateStrings applies the shared element policy: well-formed UTF-8
+    // without NUL and within the declared string bound (§6.1). edit.go.
+    static void validateStrings(List<String> values, int bound) throws Refusal {
+        for (String s : values) {
+            byte[] b = s.getBytes(StandardCharsets.UTF_8);
+            if (b.length > bound) {
+                throw new Refusal("malformed");
+            }
+            if (!utf8Valid(b) || indexOf(b, (byte) 0) >= 0) {
+                throw new Refusal("malformed");
+            }
+        }
+    }
+
+    // edit is the shared atomic rewrite: refuse when the loaded record reports
+    // loss (CardHops EditDropsUnknown is the witness), build a fresh record,
+    // publish only on complete success. Any refusal leaves the input unchanged
+    // (§6.2).
+    static Record edit(byte[] wire, Consumer<CardVariable.Value> mutate) throws Refusal {
+        TableVariable.Report report = new TableVariable.Report();
+        CardVariable.Value v = CardVariable.load(wire, report);
+        if (v == null || report.malformed) {
+            throw new Refusal("malformed");
+        }
+        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0
+                || report.retainLost > 0) {
+            throw new Refusal("unknown-present");
+        }
+        mutate.accept(v);
+        checkValue(v);
+        byte[] out = CardVariable.save(v);
+        if (out == null) {
+            throw new Refusal("malformed");
+        }
+        return new Record(out, v, report);
     }
 }
