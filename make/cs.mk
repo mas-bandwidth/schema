@@ -599,3 +599,31 @@ cards-cs-test: bin/schema cards-cs-generate
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Release --nologo -v quiet
 	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
 	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
+
+# cards-cs-driver builds the facade driver program once, so the conformance
+# check pays no build per surface.
+.PHONY: cards-cs-driver
+cards-cs-driver: cards-cs-generate
+	@mkdir -p build/cards-driver-cs
+	$(DOTNET) build tables/cards/cs/Driver/Driver.csproj -c Release -o build/cards-driver-cs --nologo -v quiet
+
+# cards-cs-conformance runs the harness `cards` subcommand over the C#
+# driver with the five surfaces this card owns required; upgrade, edit,
+# taskhash and view are a-cs-card-upgrades-edits-and-walks-the-shared-corpus's
+# and are answered absent.
+.PHONY: cards-cs-conformance
+cards-cs-conformance: build/conformance-harness cards-cs-driver
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/driver --require load,save,render,parse,bounds
+
+# cards-cs-conformance-negative-control: the same check against the driver
+# with a test-only environment switch that changes one rendered byte,
+# required to FAIL on render while the other four surfaces pass.
+.PHONY: cards-cs-conformance-negative-control
+cards-cs-conformance-negative-control: build/conformance-harness cards-cs-driver
+	@if CARDS_CS_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/driver --require load,save,render,parse,bounds > build/cards-cs-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-cs-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-neg.log; exit 1; }
+	@echo 'cards C# negative control: one changed rendered byte turns exactly render red'
+
+test-cs: cards-cs-test cards-cs-conformance cards-cs-conformance-negative-control
