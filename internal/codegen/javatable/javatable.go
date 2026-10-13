@@ -404,12 +404,12 @@ func checkNames(u *ir.Unit) error {
 // refuseVariableForm refuses, by name, every variable-class construct the card
 // record does not use (docs/SPEC-TABLES.md §2, §11). The VARIABLE FORM (§3,
 // form byte 1) is taught for plain `table` roots and tables as list elements,
-// bool/int32/int64/enum fields, string(N), the *string byte buffer (§2.5) and
-// unbounded lists of tables ([]T, §2.9). Every other variable-class construct
-// — a map (§2.8), a union arm (§2.6), a *bytes buffer, a pointer to a table
-// outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed array
-// (§2.4) — is refused here, naming the table, the field and the construct, so
-// it is never mis-encoded and never silently dropped.
+// bool/int32/int64/enum fields, string(N), the *string and *bytes byte buffers
+// (§2.5) and unbounded lists of tables ([]T, §2.9). Every other
+// variable-class construct — a map (§2.8), a union arm (§2.6), a pointer to a
+// table outside a list element (§2.1), an optional ?T (§2.3), an enum-keyed
+// array (§2.4) — is refused here, naming the table, the field and the
+// construct, so it is never mis-encoded and never silently dropped.
 //
 // The refusal is scoped to the VARIABLE tables. A DECLARED `fixed table`
 // ([ir.Struct.FixedDeclared]) keeps the fixed form's own answers for optional
@@ -476,8 +476,8 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 
 // variableFormRefusal names the variable-class construct a field spells that
 // the Java variable form does not carry, or "" when it carries it
-// (docs/SPEC-TABLES.md §2, §11). The *string byte buffer (§2.5) is the card
-// construct and is carried; a pointer to a table by value is not.
+// (docs/SPEC-TABLES.md §2, §11). The *string and *bytes byte buffers (§2.5) are
+// carried; a pointer to a table by value is not.
 func variableFormRefusal(f *ir.Field) string {
 	if f.IsMap() {
 		return "a map (docs/SPEC-TABLES.md §2.8)"
@@ -493,7 +493,7 @@ func variableFormRefusal(f *ir.Field) string {
 		case f.Type.Kind == ir.TString && f.Type.Blob():
 			return "" // the *string byte buffer, the card's own construct (§2.5)
 		case f.Type.Kind == ir.TBytes && f.Type.Blob():
-			return "a *bytes byte buffer (docs/SPEC-TABLES.md §2.5)"
+			return "" // the *bytes byte buffer (§2.5)
 		default:
 			return "a pointer to a table outside a list element (docs/SPEC-TABLES.md §2.1)"
 		}

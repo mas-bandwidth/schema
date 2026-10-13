@@ -55,13 +55,6 @@ table BadKeyed { k [Col]int32 }
 			wantRefuses: []string{"BadKeyed", "k", "enum-keyed"},
 		},
 		{
-			name: "*bytes",
-			definition: `package probe
-table BadBytes { b *bytes }
-`,
-			wantRefuses: []string{"BadBytes", "b", "*bytes"},
-		},
-		{
 			name: "union in a table closure",
 			definition: `package probe
 table Child {}

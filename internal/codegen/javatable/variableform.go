@@ -36,6 +36,7 @@ public final class TableVariable {
     // record rides under (fnv1a64("string")).
     public static final long NODE_ID = 0xFFFFFFFFFFFFFFFFL;
     public static final long STRING_ID = 0x704be0d8faaffc58L;
+    public static final long BYTES_ID = 0x2f2ec0474f1c4fe4L;
     public static final long BUILD_ID = 0xFFFFFFFFFFFFFFFEL;
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
@@ -415,6 +416,7 @@ public int unknown;
         public long typeId;
         public final byte[] body;
         public String value;
+        public byte[] bytes;
         public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
     }
 
@@ -458,15 +460,19 @@ public int unknown;
         // type id this reader cannot name is an excluded class (§6.6): the
         // retaining read counts one retain_lost and never retains it.
         for (NodeRecord rec : list) {
-            if (rec.typeId != STRING_ID) {
+            if (rec.typeId == STRING_ID) {
+                if (!textValid(rec.body, 0, rec.body.length)) {
+                    r.report.malformed = true;
+                    rec.typeId = 0;
+                } else {
+                    rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
+                }
+            } else if (rec.typeId == BYTES_ID) {
+                rec.bytes = rec.body;
+            } else {
                 r.report.unknown++;
                 if (retain) { r.report.retainLost++; }
                 rec.typeId = 0;
-            } else if (!textValid(rec.body, 0, rec.body.length)) {
-                r.report.malformed = true;
-                rec.typeId = 0;
-            } else {
-                rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
             }
         }
         return list.toArray(new NodeRecord[0]);
@@ -573,6 +579,16 @@ public int unknown;
         return recs[(int) (index - 2)].value;
     }
 
+    // resolveBytes resolves one *bytes pointer index against the numbering
+    // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
+    // ROOT (a kind mismatch), an index past the records is malformed.
+    public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
+        if (index == 0) { return null; }
+        if (index == 1) { report.kindMismatch++; return null; }
+        if (index < 2 || recs == null || index - 2 >= recs.length) { report.malformed = true; return null; }
+        return recs[(int) (index - 2)].bytes;
+    }
+
     // NodeTable is a load-side holder: the root body's node records, filled
     // when the reserved node-table field is met and read by every deferred
     // pointer index afterward (§3.1).
@@ -589,18 +605,32 @@ public int unknown;
     // first-visit order takes the next node index (2, 3, ...; the root is 1,
     // §3.1) and its body bytes, written once into the node table.
     public static final class NodeList {
-        private final java.util.ArrayList<byte[]> bodies = new java.util.ArrayList<>();
+        private static final class Entry {
+            final long typeId;
+            final byte[] body;
+            Entry(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
+        }
+        private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
         private final java.util.IdentityHashMap<String, Long> seen = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<byte[], Long> seenBytes = new java.util.IdentityHashMap<>();
         private int next = 2;
         public long ref(String s) {
             Long have = seen.get(s);
             if (have != null) { return have.longValue(); }
             seen.put(s, Long.valueOf(next));
-            bodies.add(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
-        public int size() { return bodies.size(); }
-        public byte[] body(int i) { return bodies.get(i); }
+        public long refBytes(byte[] b) {
+            Long have = seenBytes.get(b);
+            if (have != null) { return have.longValue(); }
+            seenBytes.put(b, Long.valueOf(next));
+            entries.add(new Entry(BYTES_ID, b));
+            return next++;
+        }
+        public int size() { return entries.size(); }
+        public long typeId(int i) { return entries.get(i).typeId; }
+        public byte[] body(int i) { return entries.get(i).body; }
     }
 }
 `
@@ -1009,6 +1039,11 @@ func variableWireKind(f *ir.Field) int {
 			return 17
 		}
 		return 12
+	case ir.TBytes:
+		if f.Type.Blob() {
+			return 17
+		}
+		return 0
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1047,6 +1082,8 @@ func variableValueType(f *ir.Field) string {
 		return "long"
 	case ir.TString:
 		return "String"
+	case ir.TBytes:
+		return "byte[]"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1077,6 +1114,8 @@ func variableDefault(f *ir.Field) string {
 			return "null"
 		}
 		return "\"\""
+	case ir.TBytes:
+		return "null"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1107,7 +1146,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
 		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
-		if f.Type.Kind == ir.TString && f.Type.Blob() {
+		if f.Type.Blob() {
 			fmt.Fprintf(&b, "        public long %sIdx;\n", varMember(f))
 		}
 	}
@@ -1164,6 +1203,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	for _, f := range st.Fields {
 		if f.Type.Kind == ir.TString && f.Type.Blob() {
 			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
+		} else if f.Type.Kind == ir.TBytes && f.Type.Blob() {
+			fmt.Fprintf(&b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", varMember(f), varMember(f), varMember(f))
 		} else if f.Array == ir.ArrayList {
 			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
 				fmt.Fprintf(&b, "        for (%sVariable.Value e : v.%s) { %sVariable.resolveNodes(e, nt, report); }\n", elem.Name, varMember(f), elem.Name)
@@ -1206,7 +1247,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "            nw.putLeb(nodes.size());\n")
 	fmt.Fprintf(&b, "            for (int i = 0; i < nodes.size(); i++) {\n")
 	fmt.Fprintf(&b, "                byte[] body = nodes.body(i);\n")
-	fmt.Fprintf(&b, "                nw.putLeb(nw.ref(TableVariable.STRING_ID));\n")
+	fmt.Fprintf(&b, "                nw.putLeb(nw.ref(nodes.typeId(i)));\n")
 	fmt.Fprintf(&b, "                nw.putLeb(body.length);\n")
 	fmt.Fprintf(&b, "                nw.putBytes(body, 0, body.length);\n")
 	fmt.Fprintf(&b, "            }\n")
@@ -1407,6 +1448,8 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s == null) { b.append(\"null\"); } else { TableJson.esc(b, v.%s); }\n", m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s == null) { b.append(\"null\"); } else { TableJson.esc(b, java.util.Base64.getEncoder().encodeToString(v.%s)); }\n", m, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        TableJson.esc(b, v.%s);\n", m)
 	case f.Type.Kind == ir.TBool:
@@ -1447,6 +1490,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanString(); }\n", m)
+		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); v.%s = java.util.Base64.getDecoder().decode(s); }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
@@ -1501,6 +1548,9 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	m := varMember(f)
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
+		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
+		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TString:
@@ -1580,6 +1630,8 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(nodes.ref(v.%s)); }\n", m, m, m)
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(nodes.refBytes(v.%s)); }\n", m, m, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(F_%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, m)
 	case f.Type.Kind == ir.TBool:
