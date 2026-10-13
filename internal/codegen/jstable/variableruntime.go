@@ -114,16 +114,65 @@ function TableVariableCount(fd, val) { return fd.list ? val.length : Math.min(va
 // POINTER EDGES, descending through every by-value edge to reach them. Node
 // index 1 is the root and record k is index k + 1. A reference to a node whose
 // descent is still open is a DATA CYCLE, and the save refuses it.
+//
+// THE WALK HOLDS ITS OWN STACK. A pointer chain is as deep as it is long, and
+// a wire that loads a hundred thousand nodes must save them, or answer null,
+// and never throw: the language's call stack is not the bound. Only the
+// BY-VALUE closure of one node is walked by recursion (TableVariableEdges),
+// and that nesting is the schema's, never the data's.
 class TableVariableNodes {
   constructor() { this.list = []; this.index = new Map(); this.slots = new Map(); }
   slot(holder, name) { return this.slots.get(holder).get(name); }
+}
+
+// the pointer and blob edges of one node's by-value closure, in the walk's
+// order: fields in declaration order, array elements in index order, a nested
+// table or a table element descended in place
+function TableVariableEdges(c, v, out) {
+  for (const fd of c.fields) {
+    const val = v[fd.n];
+    switch (fd.s) {
+      case "sblob": case "bblob":
+        if (val !== null) { out.push({ blob: true, fd, holder: v, val }); }
+        break;
+      case "ptr":
+        if (val !== null) { out.push({ blob: false, c: fd.c, val }); }
+        break;
+      case "tab":
+        TableVariableEdges(fd.c, val, out);
+        break;
+      case "arr": {
+        const n = TableVariableCount(fd, val);
+        if (fd.e.s === "ptr") {
+          for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
+        } else if (fd.e.s === "tab") {
+          for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out); }
+        }
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 function TableVariableNumber(c, root) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
-  return TableVariableDescend(c, root, nodes, open) ? nodes : null;
+  const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1];
+    if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
+    const e = top.edges[top.i++];
+    if (e.blob) { TableVariableBlobNode(nodes, e.holder, e.fd, e.val); continue; }
+    if (open.has(e.val)) { return null; }
+    if (nodes.index.has(e.val)) { continue; }
+    nodes.list.push({ typeId: e.c.typeId, codec: e.c, v: e.val });
+    nodes.index.set(e.val, nodes.list.length + 1);
+    open.add(e.val);
+    stack.push({ v: e.val, edges: TableVariableEdges(e.c, e.val, []), i: 0 });
+  }
+  return nodes;
 }
 
 function TableVariableBlobNode(nodes, holder, fd, val) {
@@ -140,48 +189,6 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
   if (nodes.index.has(val)) { return; }
   nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
   nodes.index.set(val, nodes.list.length + 1);
-}
-
-function TableVariableTableNode(c, val, nodes, open) {
-  if (open.has(val)) { return false; }
-  if (nodes.index.has(val)) { return true; }
-  nodes.list.push({ typeId: c.typeId, codec: c, v: val });
-  nodes.index.set(val, nodes.list.length + 1);
-  open.add(val);
-  const ok = TableVariableDescend(c, val, nodes, open);
-  open.delete(val);
-  return ok;
-}
-
-function TableVariableDescend(c, v, nodes, open) {
-  for (const fd of c.fields) {
-    const val = v[fd.n];
-    switch (fd.s) {
-      case "sblob": case "bblob":
-        if (val !== null) { TableVariableBlobNode(nodes, v, fd, val); }
-        break;
-      case "ptr":
-        if (val !== null && !TableVariableTableNode(fd.c, val, nodes, open)) { return false; }
-        break;
-      case "tab":
-        if (!TableVariableDescend(fd.c, val, nodes, open)) { return false; }
-        break;
-      case "arr": {
-        const n = TableVariableCount(fd, val);
-        if (fd.e.s === "ptr") {
-          for (let i = 0; i < n; i++) {
-            if (val[i] !== null && !TableVariableTableNode(fd.e.c, val[i], nodes, open)) { return false; }
-          }
-        } else if (fd.e.s === "tab") {
-          for (let i = 0; i < n; i++) {
-            if (!TableVariableDescend(fd.e.c, val[i], nodes, open)) { return false; }
-          }
-        }
-        break;
-      }
-    }
-  }
-  return true;
 }
 
 // ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire/encode.go) ---
@@ -823,49 +830,33 @@ function TableVariableFloatText(v, single) {
 // PASS ONE of the write (§16.7): every slot naming each node counted, so a
 // node's first occurrence knows whether it will be named again; a reference to
 // a node whose descent is still open is a cycle, refused as the wire refuses
-// it. A blob object two slots name is counted too: it has no spelling.
-function TableVariableTextCount(c, v, g, open) {
-  for (const fd of c.fields) {
-    const val = v[fd.n];
-    switch (fd.s) {
-      case "sblob": case "bblob":
-        if (val !== null && typeof val === "object") { g.blobs.set(val, (g.blobs.get(val) || 0) + 1); }
-        break;
-      case "ptr":
-        if (!TableVariableTextNode(fd.c, val, g, open)) { return false; }
-        break;
-      case "tab":
-        if (!TableVariableTextCount(fd.c, val, g, open)) { return false; }
-        break;
-      case "arr": {
-        const n = TableVariableCount(fd, val);
-        if (fd.e.s === "ptr") {
-          for (let i = 0; i < n; i++) { if (!TableVariableTextNode(fd.e.c, val[i], g, open)) { return false; } }
-        } else if (fd.e.s === "tab") {
-          for (let i = 0; i < n; i++) { if (!TableVariableTextCount(fd.e.c, val[i], g, open)) { return false; } }
-        }
-        break;
-      }
+// it. A blob object two slots name is counted too: it has no spelling. Like the
+// numbering, the walk holds its own stack: a chain longer than the depth cap is
+// counted here and refused by the write (null), never a thrown stack overflow.
+function TableVariableTextCount(c, root, g) {
+  const open = new Set([root]);
+  const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1];
+    if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
+    const e = top.edges[top.i++];
+    if (e.blob) {
+      if (typeof e.val === "object") { g.blobs.set(e.val, (g.blobs.get(e.val) || 0) + 1); }
+      continue;
     }
+    const n = (g.count.get(e.val) || 0) + 1;
+    g.count.set(e.val, n);
+    if (open.has(e.val)) { return false; }
+    if (n > 1) { continue; }
+    open.add(e.val);
+    stack.push({ v: e.val, edges: TableVariableEdges(e.c, e.val, []), i: 0 });
   }
   return true;
 }
 
-function TableVariableTextNode(c, node, g, open) {
-  if (node === null) { return true; }
-  const n = (g.count.get(node) || 0) + 1;
-  g.count.set(node, n);
-  if (open.has(node)) { return false; }
-  if (n > 1) { return true; }
-  open.add(node);
-  const ok = TableVariableTextCount(c, node, g, open);
-  open.delete(node);
-  return ok;
-}
-
 function TableVariableToJson(c, v) {
   const g = { count: new Map(), labels: new Map(), next: 0, blobs: new Map() };
-  if (!TableVariableTextCount(c, v, g, new Set([v]))) { return null; }
+  if (!TableVariableTextCount(c, v, g)) { return null; }
   const out = [];
   if (!TableVariableJsonValue(c, v, 0, g, out)) { return null; }
   return out.join("") + "\n";

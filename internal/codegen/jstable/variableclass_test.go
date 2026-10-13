@@ -49,13 +49,32 @@ import (
 //     kept), each against the oracle's report and save;
 //   - a DATA CYCLE (§3.1, §16.7): a Leaf naming itself and two naming each other
 //     refuse the save, the measure and the text, as the oracle refuses them, and
-//     a label named inside its own definition is a text the reader refuses.
+//     a label named inside its own definition is a text the reader refuses;
+//   - LONG CHAINS of 5,000 and 100,000 Leaves, as the oracle saves them: the
+//     load, the save and the measure never throw (the numbering and the text's
+//     count hold their own stack), the bytes are the oracle's, and ToJson
+//     answers null past the depth cap, as the oracle's writer refuses.
 //
 // Each wire is loaded and saved back (the bytes must not move and the report
 // must be clean), written as text (the text must be the oracle's), and read
 // back from the text and saved (the bytes must be the wire again). A corpus
 // wire is first held to the oracle itself: the oracle decodes it, re-encodes
 // the same bytes, and writes the committed text.
+// vcCase is one instance the JavaScript probe loads, saves and writes.
+type vcCase struct {
+	Name       string `json:"name"`
+	Module     string `json:"module"`
+	Root       string `json:"root"`
+	Wire       string `json:"wire"`
+	Text       string `json:"text"` // "" for a wire-only instance (no-text)
+	RefuseText bool   `json:"refuseText"`
+	// Same names two slots that must land as ONE object after the load (the
+	// shared node or blob the wire numbers once, §3.1)
+	Same []string `json:"same"`
+	wire []byte
+	text []byte
+}
+
 func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -65,19 +84,6 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	}
 	work := t.TempDir()
 
-	type vcCase struct {
-		Name       string `json:"name"`
-		Module     string `json:"module"`
-		Root       string `json:"root"`
-		Wire       string `json:"wire"`
-		Text       string `json:"text"` // "" for a wire-only instance (no-text)
-		RefuseText bool   `json:"refuseText"`
-		// Same names two slots that must land as ONE object after the load
-		// (the shared node or blob the wire numbers once, §3.1)
-		Same []string `json:"same"`
-		wire []byte
-		text []byte
-	}
 	type vcUnit struct {
 		name  string
 		unit  *ir.Unit
@@ -220,6 +226,14 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		}
 		probeCases = append(probeCases, &vcCase{Name: "probe_shared_string", Root: "Probe", wire: wire, RefuseText: true, Same: []string{"note", "note2"}})
 	}
+	// A LONG CHAIN (§3.1, §16.7): 5,000 and 100,000 Leaves, each naming the
+	// next. The oracle saves them, and its text writer refuses past the depth
+	// cap. A JavaScript load, save and measure must not throw on them — the
+	// numbering holds its own stack — and ToJson answers null, as the oracle's
+	// writer refuses.
+	for _, n := range []int{5000, 100000} {
+		probeCases = append(probeCases, variableClassChain(t, pm, n))
+	}
 	units = append(units, &vcUnit{"classprobe", probe, probeCases})
 
 	// THE ESCAPE KIND (§3): one wire, kind 31 at three positions, and the
@@ -329,7 +343,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			if err := os.WriteFile(c.Wire, c.wire, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			want = append(want, "WIRE "+c.Name+" OK")
+			want = append(want, "WIRE "+c.Name+" OK", "MEASURE "+c.Name+" OK")
 			if c.text != nil {
 				c.Text = filepath.Join(work, c.Name+".json")
 				if err := os.WriteFile(c.Text, c.text, 0o600); err != nil {
@@ -442,6 +456,47 @@ func variableClassEscapeWire(t *testing.T, u *ir.Unit) []byte {
 		w = binary.LittleEndian.AppendUint64(w, id)
 	}
 	return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
+}
+
+// variableClassChain is a Probe whose head is a chain of n Leaves (id k, each
+// naming the next), as the ORACLE saves it: the case's wire is
+// tablewire.Encode's, and the oracle's text writer must refuse the chain
+// past the depth cap, so the case expects the JavaScript ToJson to refuse too.
+func variableClassChain(t *testing.T, pm *tabletext.Model, n int) *vcCase {
+	t.Helper()
+	inst := pm.New(pm.Lookup("Probe"))
+	field := func(in *tabletext.Instance, name string) *tabletext.Field {
+		for i := range in.Fields {
+			if in.Fields[i].Def.Name == name {
+				return &in.Fields[i]
+			}
+		}
+		t.Fatalf("no field %s", name)
+		return nil
+	}
+	var prev *tabletext.Instance
+	for k := 0; k < n; k++ {
+		leaf := pm.New(pm.Lookup("Leaf"))
+		field(leaf, "id").Cell.U = uint64(k + 1)
+		if prev == nil {
+			field(inst, "head").Cell.Node = leaf
+		} else {
+			field(prev, "next").Cell.Node = leaf
+		}
+		prev = leaf
+	}
+	wire, err := tablewire.Encode(pm, inst)
+	if err != nil {
+		t.Fatalf("the oracle did not save a %d-node chain: %v", n, err)
+	}
+	g, err := tablewire.Number(pm, inst)
+	if err != nil || len(g.Records()) != n {
+		t.Fatalf("the oracle did not number %d records for a %d-node chain (%v)", n, n, err)
+	}
+	if _, err := pm.Write(inst); err == nil {
+		t.Fatalf("the oracle's writer did not refuse a %d-node chain past the depth cap", n)
+	}
+	return &vcCase{Name: fmt.Sprintf("probe_chain_%d", n), Root: "Probe", wire: wire, RefuseText: true}
 }
 
 // variableClassLeastWire builds one Probe wire whose [2..4]uint8 `least`
@@ -575,6 +630,8 @@ for (const c of spec.cases) {
   const saved = m[c.root + "Save"](v);
   if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
   else { console.log("WIRE " + c.name + " DIFF " + firstDiff(saved, wire) + " report " + JSON.stringify(rep)); }
+  const measured = m[c.root + "Measure"](v);
+  console.log("MEASURE " + c.name + (saved !== null && measured === saved.length ? " OK" : " DIFF " + measured));
   if (c.same !== null && c.same.length === 2) {
     const a = v[c.same[0]], b = v[c.same[1]];
     console.log("SAME " + c.name + (a !== null && a === b ? " OK" : " DIFF"));
