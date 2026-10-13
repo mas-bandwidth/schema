@@ -436,5 +436,16 @@ public final class TableVocabulary {
             && a.max == b.max && a.qMin == b.qMin && a.qMax == b.qMax
             && a.qRes == b.qRes && a.steps == b.steps;
     }
+
+    // docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
+    // The product rounds to float32 before the add. Java does not contract a
+    // multiply-add, so these bits are the unfused result.
+    public static int dequantizeBits(int index, float qmin, float delta, int count) {
+        if (index < 0) { index = 0; }
+        if (index > count) { index = count; }
+        float normalized = (float) index / (float) count;
+        float scaled = normalized * delta;
+        return Float.floatToRawIntBits(scaled + qmin);
+    }
 }
 `
