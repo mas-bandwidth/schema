@@ -67,6 +67,51 @@ bool Parse(const char * text, size_t len, Record & out, std::string & refuse_cla
 // the body bytes verbatim (tables/cards/render.go; docs/SPEC-TABLES.md §6.2, §16).
 bool Render(const Record & in, std::vector<char> & out, TableReport & report);
 
+// MaxRetainBytes and MaxRetainIDs are the customer ceilings on the two
+// caller-owned retention stores (docs/SPEC-TABLES.md §6.6). They never grow.
+inline constexpr int64_t kMaxRetainBytes = 1 << 20;
+inline constexpr int32_t kMaxRetainIDs = 4096;
+
+// Upgrade rewrites wire through the generated retaining path so every field
+// the current declaration cannot name is kept (tables/cards/upgrade.go;
+// docs/SPEC-TABLES.md §6.6; tla/CardVersioning.tla NoFieldLost, BodyUnchanged,
+// RefusalKeepsOriginal). On loss or a refused wire it returns false, leaves
+// out empty, and names the conformance class. The input bytes are never written.
+// UpgradeRetain is the same path with caller-owned store sizes, so a probe can
+// show a short id list names retain-lost.
+bool Upgrade(const uint8_t * wire, size_t len, std::vector<uint8_t> & out, TableReport & report, std::string & refuse_class);
+bool UpgradeRetain(const uint8_t * wire, size_t len, int64_t retain_bytes, int32_t retain_ids,
+                   std::vector<uint8_t> & out, TableReport & report, std::string & refuse_class);
+
+// ReadStrict loads wire and refuses any data the current declaration cannot
+// support (docs/SPEC-TABLES.md §4). A safe Widened event does not refuse. On
+// rejection out holds no usable record.
+bool ReadStrict(const uint8_t * wire, size_t len, Record & out, std::string & refuse_class);
+
+// Sha256 is FIPS 180-4. out is 32 bytes.
+void Sha256(const uint8_t * data, size_t len, uint8_t out[32]);
+
+// TaskHash digests the task fields — body, paths, new, shared, test, done —
+// length-prefixed so boundaries cannot collide (tables/cards/edit.go). A nil
+// or lossy record is refused and out is zero. CARDS_CPP_HASH_NEEDS=1 appends
+// the needs list so the conformance hash surface alone goes red.
+bool TaskHash(const Record & rec, uint8_t out[32], std::string & refuse_class);
+
+// Field edits validate, rebuild through a fresh builder, and publish only
+// after lock, save, reload and CheckCard succeed (docs/SPEC-TABLES.md §2.9,
+// §6.2; tla/CardHops.tla EditDropsUnknown). A refusal leaves rec.wire unchanged
+// and names the conformance class.
+bool SetNeeds(Record & rec, const std::vector<std::string> & needs, std::string & refuse_class);
+bool SetPaths(Record & rec, const std::vector<std::string> & paths, std::string & refuse_class);
+bool SetTier(Record & rec, Tier tier, std::string & refuse_class);
+bool SetPriority(Record & rec, Priority priority, std::string & refuse_class);
+bool SetColumn(Record & rec, Column column, std::string & refuse_class);
+bool SetHolder(Record & rec, const std::string & holder, std::string & refuse_class);
+
+// WriteView walks UnitView and spells every field of every table
+// (tables/cards/conformance/FORMAT.md; docs/SPEC-TABLES.md §8).
+std::string WriteView();
+
 } // namespace cards
 
 #endif
