@@ -40,6 +40,11 @@ bool CardLoad(const uint8_t * wire, size_t len, Record & out, TableReport & repo
 // only on complete success; a refused write mutates nothing.
 bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report);
 
+// CardFromJSON is the same write, and refuse_class is the conformance reason
+// class (tables/cards/conformance/FORMAT.md) on refusal, empty on success
+// (docs/SPEC-TABLES.md §2.5, §2.9, §16).
+bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report, std::string & refuse_class);
+
 // ToJSON writes the record's known-field JSON text. It is the known-field view,
 // not a lossless archival rewrite (§16).
 bool CardToJSON(const Record & in, std::vector<char> & out, TableReport & report);

@@ -134,35 +134,47 @@ bool CardLoad(const uint8_t * wire, size_t len, Record & out, TableReport & repo
     return true;
 }
 
-bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report) {
+bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report, std::string & refuse_class) {
+    refuse_class.clear();
     CardBuilder b;
-    if (!CardFromJson(b, text, (int64_t)len, &report)) return false;
-    if (report.malformed) return false;
-    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0) return false;
-    if (!b.Lock()) return false;
+    if (!CardFromJson(b, text, (int64_t)len, &report)) { refuse_class = "malformed"; return false; }
+    if (report.malformed) { refuse_class = "malformed"; return false; }
+    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0) { refuse_class = "malformed"; return false; }
+    if (!b.Lock()) { refuse_class = "malformed"; return false; }
     const Card * root = b.AsConst();
     int64_t size = CardMeasure(root);
-    if (size < 0) return false;
+    if (size < 0) { refuse_class = "malformed"; return false; }
     std::vector<uint8_t> wire((size_t)size);
-    if (CardSave(root, wire.data(), size) != size) return false;
+    if (CardSave(root, wire.data(), size) != size) { refuse_class = "malformed"; return false; }
     // Re-load the saved wire into a region form so the bounds check walks the
     // same self-relative layout the facade owns (docs/SPEC-TABLES.md §6.2).
     int64_t n = CardLoadMeasure(wire.data(), size);
-    if (n < 0) return false;
+    if (n < 0) { refuse_class = "malformed"; return false; }
     std::vector<uint8_t> raw((size_t)n + 63);
     uintptr_t addr = reinterpret_cast<uintptr_t>(raw.data());
     size_t off = (64 - (addr & 63)) & 63;
     uint8_t * aligned = raw.data() + off;
     TableReport loadReport;
     const Card * own = CardLoad(aligned, n, wire.data(), size, &loadReport);
-    if (own == nullptr) return false;
+    if (own == nullptr) { refuse_class = "malformed"; return false; }
     bool over_body = false;
     std::string over_list;
-    if (!CheckCard(own, over_body, over_list)) return false;
+    if (!CheckCard(own, over_body, over_list)) {
+        if (over_body) refuse_class = "body-bound 65536";
+        else if (!over_list.empty()) refuse_class = "list-bound " + over_list + " 512";
+        else refuse_class = "malformed";
+        return false;
+    }
     out.wire.swap(wire);
     out.region.swap(raw);
     out.root = own;
+    out.report = report;
     return true;
+}
+
+bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report) {
+    std::string unused;
+    return CardFromJSON(text, len, out, report, unused);
 }
 
 bool CardToJSON(const Record & in, std::vector<char> & out, TableReport & report) {

@@ -28,3 +28,27 @@ build/cards-cpp-test-asan: cards-cpp-generate tables/cards/cpp/cards.cpp tables/
 cards-cpp-test: build/cards-cpp-test build/cards-cpp-test-asan
 	./build/cards-cpp-test
 	./build/cards-cpp-test-asan
+
+build/cards-cpp-driver: cards-cpp-generate tables/cards/cpp/cards.cpp tables/cards/cpp/driver.cpp make/cpp.mk
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -I$(CARDS_CPP_GENERATED) \
+		tables/cards/cpp/driver.cpp tables/cards/cpp/cards.cpp \
+		$(CARDS_CPP_GENERATED)/CardTable.cpp -o $@
+
+.PHONY: cards-cpp-conformance
+cards-cpp-conformance: build/conformance-harness build/cards-cpp-driver
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cpp/driver --require load,save,render,parse,bounds
+
+.PHONY: cards-cpp-conformance-negative-control
+cards-cpp-conformance-negative-control: build/conformance-harness build/cards-cpp-driver
+	@mkdir -p build
+	@if CARDS_CPP_RENDER_FLIP=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cpp/driver --require load,save,render,parse,bounds > build/cards-cpp-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; \
+	fi
+	@grep -qE 'cards render .*FAIL' build/cards-cpp-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-cpp-conformance-neg.log; exit 1; }
+	@for s in load save parse bounds; do \
+		grep -qE "cards $$s pass" build/cards-cpp-conformance-neg.log || { echo "NEGATIVE CONTROL FAILED: $$s did not stay green"; cat build/cards-cpp-conformance-neg.log; exit 1; }; \
+	done
+	@echo 'cards-cpp negative control: one changed render byte turns render red; load, save, parse and bounds stay green'
+
+test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-control
