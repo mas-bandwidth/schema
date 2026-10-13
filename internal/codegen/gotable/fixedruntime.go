@@ -79,6 +79,9 @@ type TableFixedDst struct {
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count int32
+	// Split is the number of UNGUARDED entries (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): the index the guarded half starts at, stated by the plan itself.
+	Split int32
 }
 
 func tableFixedWidens(from, to uint8) bool {
@@ -244,8 +247,10 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		out++
 	}
 	n = out
-	tableFixedPartition(raw, int32(n))
-	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
+	// The split is KEPT, not discarded (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// the plan states where its guarded half starts.
+	split := tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
 func tableFixedPut8(b []byte, v uint8) { b[0] = v }
@@ -284,10 +289,22 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// READ(plan, split, ...) (docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
+	// partitioned unguarded-first (§4.1), so the split is the first guarded
+	// index; entries below it run WITHOUT a guard test and only the guarded
+	// half from split on tests one.
+	split := count
+	for i := int32(0); i < count; i++ {
+		if plan[i].Guard != tableFixedNoGuard {
+			split = i
+			break
+		}
+	}
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
+		// split there is no guard to test (§4.4).
+		if i >= split && p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
 		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
@@ -1251,7 +1268,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	// guarded and unguarded entries in field order, and a field past a union
 	// would land behind a guarded one. §5.9 item 42 owes the order on this
 	// path too, and the lineage plans below are compiled here, so they are
-	// partitioned by construction.
+	// partitioned by construction. The returned count's plan states its split
+	// at the first guarded index (docs/FIXED-FORM-ALGORITHM.md §4.1), which
+	// tableFixedRun derives once (§4.4).
 	tableFixedPartition(plan, out)
 	return out
 }
