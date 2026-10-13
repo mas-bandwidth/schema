@@ -1,0 +1,6 @@
+config	module	outcome	invariant	states	distinct_states	depth	exit_code	java_version	tlc_version
+MCCardHops.cfg	CardHops	exhaustive	-	184151	3175	7	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCCardHopsEditDropsUnknown.cfg	CardHops	counterexample	NoFieldLost	201	78	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCCardHopsDivergentLeg.cfg	CardHops	counterexample	ImplementationsAgree	2	2	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCCardHopsEditTouchesBody.cfg	CardHops	counterexample	BodyUnchanged	136	49	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCCardHopsHashSeesNeeds.cfg	CardHops	counterexample	TaskHashStable	140	53	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
