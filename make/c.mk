@@ -1227,3 +1227,57 @@ tables-c-runcopy: build/schema_test_c_runcopy build/schema_test_c_runcopy_asan
 # It rides the leg's own fixed-form target rather than a target of its own that
 # somebody has to remember: one name for "check the C fixed form".
 tables-c-fixedform: tables-c-runcopy
+
+# THE CARDS UNIT'S C LEG, L1 (docs/SPEC-TABLES.md §2): the owning facade
+# (tables/cards/c) over the generated Card codec. These targets live in
+# make/c.mk (NOT a separate make/cards-c.mk) because the wide-scalar refusal
+# gate discovers every make/*.mk as a live port, and a fragment named
+# cards-c.mk would be refused there as a phantom port.
+
+# cards-c-generate produces ONLY build/tables-generated-c/cards, cleaning
+# that owned output first so a deleted symbol cannot survive a regeneration.
+# It depends on bin/schema only, never on a generated stamp.
+.PHONY: cards-c-generate
+cards-c-generate: bin/schema
+	@rm -rf build/tables-generated-c/cards
+	@mkdir -p build/tables-generated-c/cards
+	./bin/schema generate --lang c --out build/tables-generated-c/cards tables/cards
+
+build/cards-test-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/cards_test.c
+	@mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -Werror -Ibuild/tables-generated-c/cards -Itables/cards/c tables/cards/c/cards_test.c tables/cards/c/cards.c build/tables-generated-c/cards/CardTable.c build/tables-generated-c/cards/CardsView.c -o $@ -lm
+
+build/cards-test-c-asan: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/cards_test.c
+	@mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -Werror $(C_SANITIZE) -Ibuild/tables-generated-c/cards -Itables/cards/c tables/cards/c/cards_test.c tables/cards/c/cards.c build/tables-generated-c/cards/CardTable.c build/tables-generated-c/cards/CardsView.c -o $@ -lm
+
+# cards-c-test builds the generated unit with the facade and cards_test.c,
+# and runs it natively and again under ASan/UBSan.
+.PHONY: cards-c-test
+cards-c-test: build/cards-test-c build/cards-test-c-asan
+	./build/cards-test-c
+	./build/cards-test-c-asan
+
+build/cards-driver-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/driver.c
+	@mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -Werror -Ibuild/tables-generated-c/cards -Itables/cards/c tables/cards/c/driver.c tables/cards/c/cards.c build/tables-generated-c/cards/CardTable.c build/tables-generated-c/cards/CardsView.c -o $@ -lm
+
+# cards-c-conformance runs the harness `cards` subcommand over the C driver
+# with the five surfaces this card owns required; upgrade, edit, taskhash and
+# view belong to a later card and are answered absent.
+.PHONY: cards-c-conformance
+cards-c-conformance: build/conformance-harness build/cards-driver-c
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds
+
+# cards-c-conformance-negative-control: the same check against the driver
+# with a test-only environment switch that changes one rendered byte,
+# required to FAIL on render while the other four surfaces pass.
+.PHONY: cards-c-conformance-negative-control
+cards-c-conformance-negative-control: build/conformance-harness build/cards-driver-c
+	@if CARDS_C_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds > build/cards-c-conformance-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
+	@grep -qE 'cards render .*FAIL' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@echo 'cards C negative control: one changed rendered byte turns exactly render red'
+
+test-c: cards-c-test cards-c-conformance cards-c-conformance-negative-control
