@@ -1,17 +1,18 @@
 // Package elixirtable emits the Elixir TABLE surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read side in <Base>Block.ex (§19) and the COOKED form's
-// read side in <Base>Cook.ex (§7), with their shared runtime modules and the
-// unit's BuildVersion module, emitted only when the unit declares tables.
+// the BLOCK form's read side in <Base>Block.ex (§19), the COOKED form's read
+// side in <Base>Cook.ex (§7), the FIXED form's codec (§3.4), and the VARIABLE
+// form's id-table wire in <Base>Table.ex (§3), with their shared runtime
+// modules and the unit's BuildVersion module, emitted only when the unit
+// declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
+// parses a wire, so both reach every fixed table of the unit. THE TABLE WIRE
 // itself — the codecs, the reflection descriptors and the text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir. The port that once stood here wrote the form that
-// preceded the id-table wire, which the current specification does not
-// describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
-// marks the cells.
+// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is emitted
+// for the variable form's slice: the fixed form (§3.4) carries every fixed
+// table, and the variable form (§3) carries the constructs this backend names,
+// byte for byte against the Go oracle (schema#515 landed the card slice, and
+// the cards after it extend it). ROADMAP.md marks the cells.
 package elixirtable
 
 import (

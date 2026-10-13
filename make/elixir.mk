@@ -261,9 +261,10 @@ tables-elixir-release:
 # THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
 # both and the block lead gate — then the format check and the packet tests.
-# The port emits no table wire (schema#515), so there is no walk gate, no
-# text-form control, no allocation audit and no soak here: each measured the
-# wire's previous form and went with it.
+# The variable form's id-table wire (§3) is emitted now (schema#515 landed the
+# card slice), so the wire's own gates ride beside these; what this leg still
+# lacks is the walk gate, the text-form control, the allocation audit and the
+# soak, which measured the wire's previous form and have yet to be re-priced.
 .PHONY: test-elixir
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz

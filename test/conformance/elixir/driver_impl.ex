@@ -9,12 +9,12 @@
 # whichever module under it exports block_open_<root> or cook_open_<root>. That
 # keeps the leg free of a generated name nothing else in the language needs.
 #
-# THE FIVE WIRE-CARRYING SURFACES ARE ABSENT, and not as a gap the leg counts:
-# Elixir emits no table wire at all. The port that once did wrote the form that
-# preceded the id-table wire and was removed rather than carried; schema#515
-# brings the id-table wire to Elixir, and these surfaces with it. What this leg
-# drives is the two ACCELERATORS the backend does emit — the block (§19) and
-# the cook (§7), both read halves.
+# THE WIRE-CARRYING SURFACES ARE NOT ON THIS DRIVER'S LIST YET: Elixir emits
+# the variable form's id-table wire now (schema#515 landed the card slice, and
+# the cards after it extend it), but this driver still answers only the two
+# ACCELERATORS the backend has always emitted — the block (§19) and the cook
+# (§7), both read halves. The wire, json-read, json-write and report surfaces
+# ride the card that teaches the variable class beyond the card constructs.
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -317,9 +317,11 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces and nothing else: Elixir emits no table
-  # wire, so wire, report and the three text surfaces are not on this list
-  # (schema#515 brings the id-table wire to Elixir)
+  # the two accelerators' surfaces and nothing else yet: the variable form's
+  # id-table wire is emitted now (schema#515 landed the card slice), but this
+  # driver still answers only block and cook; wire, json-read, json-write and
+  # report ride the card that carries the variable class beyond the card
+  # constructs.
   @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do

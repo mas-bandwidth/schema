@@ -105,9 +105,11 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) is NOT emitted for this backend (schema#515), so
-	// its elision rule is not this port's to carry today; when #515 lands, the
-	// codec it brings has to keep this claim true.
+	// The id-table wire (§3) IS emitted for this backend now — schema#515
+	// landed the variable form's card slice, and the cards after it extend it —
+	// and its elision rule is this port's to carry: an absent field reads its
+	// declared default, which is what keeps the default-elision claim this file
+	// registers true for the codec it brings (§4.2).
 	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
