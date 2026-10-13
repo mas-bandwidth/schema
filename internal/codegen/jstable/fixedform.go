@@ -458,20 +458,30 @@ func variableCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Stru
 // variableFieldRefusal names the construct a field holds that the card set
 // does not include, as `Table.field: construct (cite)`. The empty string is a
 // field the card set accepts. The card set (the slice
-// js-carries-the-variable-form-for-card-constructs) is exactly: bool, int32
-// and int64 scalars with their defaults and min/max; enums; string(N);
-// *string (§2.5); and unbounded lists of tables []T (§2.9).
+// js-carries-the-variable-class-beyond-the-card-constructs) is exactly: bool;
+// every int width (uint* included, §3); float32 and float64; bits(N) (§15);
+// string(N), *string and *bytes (§2.5); bytes(N) (§3); enums; pointers to
+// tables (§2.1); and unbounded lists []T of a table, a pointer, a scalar, a
+// string or an enum element (§2.9).
 func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	name := st.Name + "." + f.Name
-	// f.IsList() covers the list itself; the element must be a table.
+	// f.IsList() covers the unbounded list itself; the element may be a table
+	// (by value or pointer), a scalar, a string or an enum (§2.9).
 	if f.IsList() {
-		if f.Type.Kind != ir.TNamed {
-			return name + ": a []T whose element is not a table (docs/SPEC-TABLES.md §2.9)"
+		if f.Type.Kind == ir.TNamed {
+			switch f.Type.Ref.(type) {
+			case *ir.Struct:
+				return ""
+			case *ir.Enum:
+				return ""
+			}
+			return name + ": a []T whose element is not carried (docs/SPEC-TABLES.md §2.9)"
 		}
-		if _, ok := f.Type.Ref.(*ir.Struct); !ok {
-			return name + ": a []T whose element is not a table (docs/SPEC-TABLES.md §2.9)"
+		switch f.Type.Kind {
+		case ir.TBool, ir.TInt, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString:
+			return ""
 		}
-		return ""
+		return name + ": a []T whose element is not carried (docs/SPEC-TABLES.md §2.9)"
 	}
 	if f.IsMap() {
 		return name + ": a map (docs/SPEC-TABLES.md §2.8)"
@@ -486,24 +496,24 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	case ir.TBool:
 		return ""
 	case ir.TInt:
-		if f.Type.Signed && (f.Type.Width == 32 || f.Type.Width == 64) {
-			return ""
+		// uint128 is the one integer this leg still refuses; the other widths
+		// (int8..int64, uint8..uint64) all ride.
+		if f.Type.Width == 128 {
+			return name + ": a " + ir.TableTypeSpelling(f) + " (docs/SPEC-TABLES.md §3)"
 		}
-		return name + ": a " + ir.TableTypeSpelling(f) + " (the card set's scalars are int32 and int64, docs/SPEC-TABLES.md §3)"
+		return ""
 	case ir.TBits:
-		return name + ": a bits(" + itoa(int64(f.Type.Width)) + ") (docs/SPEC-TABLES.md §15)"
+		return ""
 	case ir.TFloat32:
-		return name + ": a float32 (docs/SPEC-TABLES.md §3)"
+		return ""
 	case ir.TFloat64:
-		return name + ": a float64 (docs/SPEC-TABLES.md §3)"
+		return ""
 	case ir.TString:
 		// string(N) and *string (§2.5, the string kind) are both in the set.
 		return ""
 	case ir.TBytes:
-		if f.Type.Pointer {
-			return name + ": a *bytes (docs/SPEC-TABLES.md §2.5)"
-		}
-		return name + ": a bytes(N) (docs/SPEC-TABLES.md §3)"
+		// *bytes (§2.5) and bytes(N) (§3) both ride.
+		return ""
 	case ir.TFixed:
 		return name + ": a fixed/ufixed (docs/SPEC-TABLES.md §15)"
 	case ir.TMap:
@@ -516,7 +526,7 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 			return ""
 		case *ir.Struct:
 			if f.Type.Pointer {
-				return name + ": a pointer to a table (docs/SPEC-TABLES.md §2.1)"
+				return ""
 			}
 			if f.Array != ir.ArrayNone {
 				return name + ": a " + ir.TableTypeSpelling(f) + " array (docs/SPEC-TABLES.md §2.9)"
