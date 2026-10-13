@@ -26,6 +26,9 @@
 mod card_table;
 mod card_variable;
 mod variable_runtime;
+pub mod sha256;
+mod card_descriptors;
+pub use card_descriptors::*;
 
 pub use card_table::*;
 pub use variable_runtime::*;
@@ -882,6 +885,260 @@ fn emit_id_list(out: &mut String, key: &str, elems: &[CardID]) {
         out.push_str(&e.s);
     }
     out.push('\n');
+}
+
+/// TaskHash calculates the canonical SHA-256 task hash of a record
+/// (docs/SPEC-TABLES.md §5: identity is the fields a task is; ports tables/cards/edit.go TaskHash; tla/CardHops.tla TaskHashStable).
+/// SHA-256 over body, paths, new, shared, test and done in that order,
+/// each text as an unsigned 64-bit little-endian byte length then its bytes,
+/// each list as an unsigned 64-bit little-endian count then each length-prefixed text;
+/// needs, tier, priority and machine fields excluded.
+/// Refuses a record whose report has Unknown, KindMismatch, Clamped, RetainLost or Malformed.
+pub fn task_hash(record: &Record) -> Result<[u8; 32], String> {
+    refuse_lossy(&record.report)?;
+    let card = &record.card;
+    let mut h = sha256::Sha256::new();
+
+    // 1. body
+    hash_opt_text(&mut h, card.body.as_deref());
+    // 2. paths
+    hash_path_list(&mut h, &card.paths);
+    // 3. _new
+    hash_path_list(&mut h, &card._new);
+    // 4. shared
+    hash_path_list(&mut h, &card.shared);
+    // 5. test
+    hash_text(&mut h, card.test.as_bytes());
+    // 6. done
+    hash_opt_text(&mut h, card.done.as_deref());
+
+    if std::env::var("CARDS_RUST_NEGATIVE_HASH").is_ok() || std::env::var("CARDS_RUST_SABOTAGE_HASH").is_ok() {
+        // a switch that adds needs to the hash must FAIL taskhash alone
+        hash_id_list(&mut h, &card.needs);
+    }
+
+    Ok(h.finalize())
+}
+
+/// TaskHashHex returns the 64 lowercase hex digits of TaskHash.
+pub fn task_hash_hex(record: &Record) -> Result<String, String> {
+    let digest = task_hash(record)?;
+    let mut s = String::with_capacity(64);
+    for b in digest {
+        use std::fmt::Write;
+        write!(&mut s, "{:02x}", b).unwrap();
+    }
+    Ok(s)
+}
+
+fn refuse_lossy(rep: &TableReport) -> Result<(), String> {
+    if rep.unknown > 0 || rep.kind_mismatch > 0 || rep.clamped > 0 || rep.retain_lost > 0 || rep.malformed {
+        return Err(format!(
+            "cards: record has loss events (unknown={} kindMismatch={} clamped={} retainLost={} malformed={}): refused, never hashed or rewritten",
+            rep.unknown, rep.kind_mismatch, rep.clamped, rep.retain_lost, rep.malformed
+        ));
+    }
+    Ok(())
+}
+
+fn hash_u64(h: &mut sha256::Sha256, v: u64) {
+    h.update(&v.to_le_bytes());
+}
+
+fn hash_text(h: &mut sha256::Sha256, text: &[u8]) {
+    hash_u64(h, text.len() as u64);
+    h.update(text);
+}
+
+fn hash_opt_text(h: &mut sha256::Sha256, text: Option<&str>) {
+    match text {
+        Some(s) => hash_text(h, s.as_bytes()),
+        None => hash_u64(h, 0),
+    }
+}
+
+fn hash_path_list(h: &mut sha256::Sha256, list: &[PathText]) {
+    hash_u64(h, list.len() as u64);
+    for elem in list {
+        hash_text(h, elem.s.as_bytes());
+    }
+}
+
+fn hash_id_list(h: &mut sha256::Sha256, list: &[CardID]) {
+    hash_u64(h, list.len() as u64);
+    for elem in list {
+        hash_text(h, elem.s.as_bytes());
+    }
+}
+
+/// SetNeeds replaces the record's needs list atomically (docs/SPEC-TABLES.md §2.9; ports tables/cards/edit.go SetNeeds).
+pub fn set_needs(record: &mut Record, needs: &[String]) -> Result<(), String> {
+    validate_strings("needs", needs, 64)?;
+    if needs.len() > MAX_LIST_ENTRIES {
+        return Err(format!(
+            "cards: needs has {} entries, past the {}-entry ceiling (docs/SPEC-TABLES.md §2.9)",
+            needs.len(),
+            MAX_LIST_ENTRIES
+        ));
+    }
+    edit(record, |card| {
+        card.needs = needs.iter().map(|s| CardID { s: s.clone() }).collect();
+        Ok(())
+    })
+}
+
+/// SetPaths replaces the record's paths list atomically (docs/SPEC-TABLES.md §2.9; ports tables/cards/edit.go SetPaths).
+pub fn set_paths(record: &mut Record, paths: &[String]) -> Result<(), String> {
+    validate_strings("paths", paths, 192)?;
+    if paths.len() > MAX_LIST_ENTRIES {
+        return Err(format!(
+            "cards: paths has {} entries, past the {}-entry ceiling (docs/SPEC-TABLES.md §2.9)",
+            paths.len(),
+            MAX_LIST_ENTRIES
+        ));
+    }
+    edit(record, |card| {
+        card.paths = paths.iter().map(|s| PathText { s: s.clone() }).collect();
+        Ok(())
+    })
+}
+
+/// SetTier changes a record's tier atomically (docs/SPEC-TABLES.md §8; ports tables/cards/edit.go SetTier).
+pub fn set_tier(record: &mut Record, tier: Tier) -> Result<(), String> {
+    match tier {
+        Tier::Flash | Tier::Pro | Tier::Heavy | Tier::Frontier => (),
+        _ => return Err("cards: tier is not a declared variant".to_string()),
+    }
+    edit(record, |card| {
+        card.tier = tier;
+        Ok(())
+    })
+}
+
+/// SetPriority changes a record's priority atomically (docs/SPEC-TABLES.md §8; ports tables/cards/edit.go SetPriority).
+pub fn set_priority(record: &mut Record, priority: Priority) -> Result<(), String> {
+    match priority {
+        Priority::Normal | Priority::High | Priority::Critical | Priority::Blocker => (),
+        _ => return Err("cards: priority is not a declared variant".to_string()),
+    }
+    edit(record, |card| {
+        card.priority = priority;
+        Ok(())
+    })
+}
+
+/// SetColumn changes a record's column atomically (docs/SPEC-TABLES.md §8; ports tables/cards/edit.go SetColumn).
+pub fn set_column(record: &mut Record, column: Column) -> Result<(), String> {
+    match column {
+        Column::Waiting | Column::Ready | Column::Working | Column::Review |
+        Column::Merging | Column::Landed | Column::Plan | Column::Check => (),
+        _ => return Err("cards: column is not a declared variant".to_string()),
+    }
+    edit(record, |card| {
+        card.column = column;
+        Ok(())
+    })
+}
+
+/// SetHolder changes a record's holder atomically (docs/SPEC-TABLES.md §6.1; ports tables/cards/edit.go SetHolder).
+pub fn set_holder(record: &mut Record, holder: &str) -> Result<(), String> {
+    validate_strings("holder", &[holder.to_string()], 32)?;
+    edit(record, |card| {
+        card.holder = holder.to_string();
+        Ok(())
+    })
+}
+
+/// edit is the shared atomic rewrite (docs/SPEC-TABLES.md §6.2; tla/CardHops.tla EditDropsUnknown).
+fn edit<F>(r: &mut Record, mutate: F) -> Result<(), String>
+where
+    F: FnOnce(&mut Card) -> Result<(), String>,
+{
+    refuse_lossy(&r.report)?;
+    let mut card = r.card.clone();
+    mutate(&mut card)?;
+    check_card(&card)?;
+    let wire = card_save(&card);
+    r.card = card;
+    r.wire = wire;
+    Ok(())
+}
+
+fn validate_strings(name: &str, values: &[String], bound: usize) -> Result<(), String> {
+    for s in values {
+        if s.len() > bound {
+            return Err(format!(
+                "cards: {} element is {} bytes, past its {}-byte bound",
+                name,
+                s.len(),
+                bound
+            ));
+        }
+        if s.contains(' ') {
+            return Err(format!(
+                "cards: {} has an element that is not well-formed UTF-8 without NUL",
+                name
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// apply_edit applies one edit command string like "needs=a,b", "tier=heavy",
+/// "priority=blocker", "paths=x,y", "column=landed", "holder=h" to a record.
+pub fn apply_edit(record: &mut Record, edit_cmd: &str) -> Result<(), String> {
+    let Some(eq_idx) = edit_cmd.find('=') else {
+        return Err("cards: edit line carries no =".to_string());
+    };
+    let key = &edit_cmd[..eq_idx];
+    let val = &edit_cmd[eq_idx + 1..];
+    match key {
+        "needs" => {
+            let list = split_comma(val);
+            set_needs(record, &list)
+        }
+        "paths" => {
+            let list = split_comma(val);
+            set_paths(record, &list)
+        }
+        "tier" => {
+            let t = parse_tier(val)?;
+            set_tier(record, t)
+        }
+        "priority" => {
+            let p = parse_priority(val)?;
+            set_priority(record, p)
+        }
+        "column" => {
+            let c = parse_column(val)?;
+            set_column(record, c)
+        }
+        "holder" => {
+            set_holder(record, val)
+        }
+        _ => Err(format!("cards: unknown edit key {:?}", key)),
+    }
+}
+
+fn split_comma(s: &str) -> Vec<String> {
+    if s.is_empty() {
+        return Vec::new();
+    }
+    s.split(',').map(|p| p.to_string()).collect()
+}
+
+pub fn parse_column(s: &str) -> Result<Column, String> {
+    match s {
+        "waiting" => Ok(Column::Waiting),
+        "ready" => Ok(Column::Ready),
+        "working" => Ok(Column::Working),
+        "review" => Ok(Column::Review),
+        "merging" => Ok(Column::Merging),
+        "landed" => Ok(Column::Landed),
+        "plan" => Ok(Column::Plan),
+        "check" => Ok(Column::Check),
+        _ => Err(format!("unknown column {:?}", s)),
+    }
 }
 
 #[cfg(test)]

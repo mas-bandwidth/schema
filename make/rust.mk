@@ -628,6 +628,8 @@ cards-rust-test: cards-rust-generate
 	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
 	@cp tables/cards/rust/Cargo.toml build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/card_descriptors.rs build/cards-rust/
+	@cp tables/cards/rust/src/sha256.rs build/cards-rust/sha256.rs
 	@cp tables/cards/rust/src/lib.rs build/cards-rust/lib.rs
 	@cp tables/cards/rust/tests/cards.rs build/cards-rust/tests.rs
 	@mkdir -p build/cards-rust/src/bin
