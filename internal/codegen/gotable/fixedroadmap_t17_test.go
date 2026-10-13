@@ -2,23 +2,39 @@ package gotable
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// requireSerializeGoSibling mirrors the codebase's skip convention for the
-// sibling `serialize.go` Go runtime checkout (fixedredteam_test.go redRuntime,
-// fixedform_test.go, fixedroadmap_t09_test.go): the generated packet side
-// imports it unconditionally, so a tree without the sibling cannot build the
-// probe at all and the suite says so instead of failing red.
-func requireSerializeGoSibling(t *testing.T) {
+// runTableOnly generates the TABLE emitter's files alone — no packet emitter,
+// no sibling `serialize.go` runtime — and runs the probe against them. The
+// packet side imports serialize.go unconditionally for a union, but the table
+// emitter's own union storage is self-contained (unions.go emitTableUnion), so
+// a fixed table of scalars and union arms compiles with no sibling at all
+// (fixedroadmap_t04_test.go's R19 does the same for scalar/enum/keyed units).
+func runTableOnly(t *testing.T, schema, testSource string) {
 	t.Helper()
-	path, err := filepath.Abs("../../../../serialize.go")
+	u := unitFrom(t, schema)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("the Go runtime is not a sibling checkout at %s", path)
+	dir := t.TempDir()
+	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
+	files["values_test.go"] = []byte(testSource)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated runtime: %v\n%s", err, out)
 	}
 }
 
@@ -41,7 +57,6 @@ func requireSerializeGoSibling(t *testing.T) {
 // counters, so this row pins the BYTES.
 func TestFixedRoadmapGoT17PlanPartition(t *testing.T) {
 	t.Parallel()
-	requireSerializeGoSibling(t)
 
 	// One fixture, shared by both rows: a table mixing unguarded scalars around
 	// a union whose arms are guarded. The tail past the union is unguarded, so
@@ -67,8 +82,34 @@ fixed table Root
 `
 
 	t.Run("go/W6", func(t *testing.T) {
-		runGenerated(t, fixture, `package probe
+		runTableOnly(t, fixture, `package probe
 import "testing"
+
+type ArmA struct {
+	N int32
+}
+
+type ArmB struct {
+	S       [8]byte
+	SLength int32
+	M       int32
+}
+
+type PickType uint8
+
+const (
+	PickTypeNone  PickType = 0
+	PickTypeA     PickType = 1
+	PickTypeB     PickType = 2
+	PickTypeCount PickType = 2
+	PickTypeMax   PickType = 2
+)
+
+type Pick struct {
+	Type PickType
+	A    ArmA
+	B    ArmB
+}
 
 // partitionSplit is §4.1's partition_is_held: split is in range, every entry
 // below it carries NO guard, every entry at or above it carries one, and the
@@ -141,12 +182,38 @@ func TestGoT17W6(t *testing.T) {
 	})
 
 	t.Run("go/P1", func(t *testing.T) {
-		runGenerated(t, fixture, `package probe
+		runTableOnly(t, fixture, `package probe
 import (
 	"bytes"
 	"testing"
 	"unsafe"
 )
+
+type ArmA struct {
+	N int32
+}
+
+type ArmB struct {
+	S       [8]byte
+	SLength int32
+	M       int32
+}
+
+type PickType uint8
+
+const (
+	PickTypeNone  PickType = 0
+	PickTypeA     PickType = 1
+	PickTypeB     PickType = 2
+	PickTypeCount PickType = 2
+	PickTypeMax   PickType = 2
+)
+
+type Pick struct {
+	Type PickType
+	A    ArmA
+	B    ArmB
+}
 
 // bytesOf returns a copy of the record's destination image, so the two paths
 // are compared over the bytes they LAND and not over one shared slice.
