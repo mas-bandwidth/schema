@@ -831,6 +831,181 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
     end
   end
 
+  # task_hash is SHA-256 over body, paths, new, shared, test and done, in that
+  # order. Each text is an unsigned 64-bit little-endian byte length then its
+  # bytes; each list is an unsigned 64-bit little-endian count then each
+  # length-prefixed text. Needs, tier, priority and machine fields are excluded
+  # (docs/SPEC-TABLES.md §5; tables/cards/edit.go: TaskHash). A lossy record is
+  # refused, never hashed (tla/CardHops.tla TaskHashStable). The test-only
+  # switch inserts needs where HashSeesNeeds does, so the check can see the
+  # fault.
+  def task_hash(%Record{value: value} = record) do
+    case refuse_lossy(record.report) do
+      {:error, reason} ->
+        {:error, reason}
+
+      :ok ->
+        parts = [
+          framed_text(Map.get(value, "body")),
+          framed_list(Map.get(value, "paths"))
+        ]
+
+        parts =
+          if System.get_env("CARDS_ELIXIR_HASH_NEGATIVE") == "1" do
+            parts ++ [framed_list(Map.get(value, "needs"))]
+          else
+            parts
+          end
+
+        parts =
+          parts ++
+            [
+              framed_list(Map.get(value, "_new")),
+              framed_list(Map.get(value, "shared")),
+              framed_text(Map.get(value, "test")),
+              framed_text(Map.get(value, "done"))
+            ]
+
+        {:ok, :crypto.hash(:sha256, parts)}
+    end
+  end
+
+  def task_hash(nil), do: {:error, "cards: nil record"}
+
+  # set_needs replaces the needs list only after every entry is validated and
+  # the replacement saves. A refusal publishes nothing (docs/SPEC-TABLES.md
+  # §2.9, §6.2; tables/cards/edit.go: SetNeeds). An ordinary rewrite cannot
+  # carry unknown fields (tla/CardHops.tla EditDropsUnknown, the reversed
+  # witness).
+  def set_needs(%Record{} = record, needs) when is_list(needs) do
+    with :ok <- validate_strings("needs", needs, 64),
+         :ok <- check_count(needs, "needs") do
+      edit(record, fn value ->
+        Map.put(value, "needs", Enum.map(needs, &%{"s" => &1}))
+      end)
+    end
+  end
+
+  # set_paths replaces the paths list atomically (docs/SPEC-TABLES.md §2.9;
+  # tables/cards/edit.go: SetPaths). A paths edit is a task-bearing change:
+  # TaskHashStable requires the digest to move with it.
+  def set_paths(%Record{} = record, paths) when is_list(paths) do
+    with :ok <- validate_strings("paths", paths, 192),
+         :ok <- check_count(paths, "paths") do
+      edit(record, fn value ->
+        Map.put(value, "paths", Enum.map(paths, &%{"s" => &1}))
+      end)
+    end
+  end
+
+  # set_tier accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetTier). Tier is excluded from the task hash.
+  def set_tier(%Record{} = record, tier) when is_binary(tier) do
+    if tier in ~w(flash pro heavy frontier) do
+      edit(record, fn value -> Map.put(value, "tier", tier) end)
+    else
+      {:error, "cards: tier #{inspect(tier)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_priority accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetPriority).
+  def set_priority(%Record{} = record, priority) when is_binary(priority) do
+    if priority in ~w(normal high critical blocker) do
+      edit(record, fn value -> Map.put(value, "priority", priority) end)
+    else
+      {:error, "cards: priority #{inspect(priority)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_column accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetColumn).
+  def set_column(%Record{} = record, column) when is_binary(column) do
+    if column in ~w(waiting ready working review merging landed plan check) do
+      edit(record, fn value -> Map.put(value, "column", column) end)
+    else
+      {:error, "cards: column #{inspect(column)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_holder replaces the holder string within its declared bound
+  # (docs/SPEC-TABLES.md §6.1; tables/cards/edit.go: SetHolder).
+  def set_holder(%Record{} = record, holder) when is_binary(holder) do
+    with :ok <- validate_strings("holder", [holder], 32) do
+      edit(record, fn value -> Map.put(value, "holder", holder) end)
+    end
+  end
+
+  # refuse_lossy names the read events that make a record unsafe to hash or
+  # rewrite (docs/SPEC-TABLES.md §4, §6.6; tables/cards/edit.go: refuseLossy).
+  defp refuse_lossy(report) do
+    unknown = Map.get(report, :unknown, 0)
+    kind_mismatch = Map.get(report, :kind_mismatch, 0)
+    clamped = Map.get(report, :clamped, 0)
+    retain_lost = Map.get(report, :retain_lost, 0)
+    malformed = Map.get(report, :malformed, false)
+
+    if unknown > 0 or kind_mismatch > 0 or clamped > 0 or retain_lost > 0 or malformed do
+      {:error,
+       "cards: record has loss events (unknown=#{unknown} kindMismatch=#{kind_mismatch} clamped=#{clamped} retainLost=#{retain_lost} malformed=#{malformed}): refused, never hashed or rewritten"}
+    else
+      :ok
+    end
+  end
+
+  # edit rebuilds the record and publishes the new wire only on complete
+  # success. Any refusal leaves the caller's record untouched
+  # (docs/SPEC-TABLES.md §6.2; tables/cards/edit.go: edit).
+  defp edit(%Record{} = record, mutate) do
+    with :ok <- refuse_lossy(record.report) do
+      value = mutate.(record.value)
+
+      case check_card(value) do
+        {:error, reason} ->
+          {:error, reason}
+
+        :ok ->
+          case Cards.Table.save("Card", value) do
+            {:ok, wire} -> {:ok, %Record{wire: wire, value: value, report: record.report}}
+            _ -> {:error, "cards: save did not fill the measured wire"}
+          end
+      end
+    end
+  end
+
+  defp edit(nil, _mutate), do: {:error, "cards: nil record"}
+
+  # validate_strings applies the shared element policy: well-formed UTF-8
+  # without NUL and within the declared string bound (docs/SPEC-TABLES.md §6.1;
+  # tables/cards/edit.go: validateStrings).
+  defp validate_strings(name, values, bound) do
+    Enum.reduce_while(values, :ok, fn s, :ok ->
+      cond do
+        byte_size(s) > bound ->
+          {:halt, {:error, "cards: #{name} element is #{byte_size(s)} bytes, past its #{bound}-byte bound"}}
+
+        not valid_utf8_no_nul?(s) ->
+          {:halt, {:error, "cards: #{name} has an element that is not well-formed UTF-8 without NUL"}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
+  end
+
+  defp framed_text(nil), do: <<0::little-unsigned-64>>
+  defp framed_text(s) when is_binary(s), do: <<byte_size(s)::little-unsigned-64, s::binary>>
+
+  defp framed_list(nil), do: <<0::little-unsigned-64>>
+
+  defp framed_list(items) when is_list(items) do
+    [<<length(items)::little-unsigned-64>> | Enum.map(items, &framed_text(elem_text(&1)))]
+  end
+
+  defp elem_text(%{"s" => s}), do: s
+  defp elem_text(s) when is_binary(s), do: s
+  defp elem_text(_), do: ""
+
   defp empty_report do
     %{
       unknown: 0,

@@ -230,6 +230,143 @@ defmodule Cards.CardsTest do
     end
   end
 
+  # TestTaskHashFramesLogicalFields pins the task-hash frame with a byte vector
+  # written here, not taken from the hasher (tables/cards/edit.go: TaskHash;
+  # tla/CardHops.tla TaskHashStable). body "a" with paths ["bc"] and body "ab"
+  # with paths ["c"] hash differently. Every expected .hex matches. A lossy
+  # record is refused, never hashed.
+  test "TestTaskHashFramesLogicalFields" do
+    {:ok, rec} =
+      Cards.from_json(~s({"id":"x","body":"a","paths":[{"s":"bc"}],"test":"T","done_when":"d"}))
+
+    frame = frame_bytes("a", ["bc"], [], [], "T", "d")
+    {:ok, hash} = Cards.task_hash(rec)
+    assert hash == :crypto.hash(:sha256, frame)
+
+    {:ok, boundary} =
+      Cards.from_json(~s({"id":"x","body":"ab","paths":[{"s":"c"}],"test":"T","done_when":"d"}))
+
+    {:ok, other} = Cards.task_hash(boundary)
+    assert other != hash
+    assert other == :crypto.hash(:sha256, frame_bytes("ab", ["c"], [], [], "T", "d"))
+
+    for name <- ~w(card-populated initial-populated empty-consumers) do
+      wire = File.read!(Path.join([@conformance, "cases", name <> ".wire"]))
+      {:ok, record, _} = Cards.load(wire)
+      {:ok, got} = Cards.task_hash(record)
+      want = Path.join([@conformance, "expected", name <> ".hex"]) |> File.read!() |> String.trim()
+      assert Base.encode16(got, case: :lower) == want, "#{name} task hash differs"
+    end
+
+    future = File.read!(Path.join([@conformance, "cases", "future-note.wire"]))
+    {:ok, lossy, report} = Cards.load(future)
+    assert report.unknown > 0
+    assert {:error, reason} = Cards.task_hash(lossy)
+    assert reason =~ "refused"
+  end
+
+  # TestFieldEditLeavesTheTaskHashAlone: needs, tier, priority, column and
+  # holder change the wire and not the hash; a paths edit changes both; the
+  # body is byte-equal throughout; every refusal leaves the wire byte-equal;
+  # every edit case matches its expected wire or refusal class
+  # (tables/cards/edit.go; tla/CardHops.tla TaskHashStable, EditDropsUnknown).
+  test "TestFieldEditLeavesTheTaskHashAlone" do
+    wire = File.read!(Path.join([@conformance, "cases", "card-populated.wire"]))
+    {:ok, rec, _} = Cards.load(wire)
+    {:ok, orig_hash} = Cards.task_hash(rec)
+    body = rec.value["body"]
+
+    {:ok, rec} = Cards.set_needs(rec, ["a", "b"])
+    {:ok, rec} = Cards.set_tier(rec, "heavy")
+    {:ok, rec} = Cards.set_priority(rec, "blocker")
+    {:ok, rec} = Cards.set_column(rec, "landed")
+    {:ok, rec} = Cards.set_holder(rec, "h")
+    assert Cards.wire(rec) != wire
+    {:ok, hash} = Cards.task_hash(rec)
+    assert hash == orig_hash
+    assert rec.value["body"] == body
+
+    {:ok, rec} = Cards.set_paths(rec, ["x", "y"])
+    assert Cards.wire(rec) != wire
+    {:ok, hash} = Cards.task_hash(rec)
+    assert hash != orig_hash
+    assert rec.value["body"] == body
+
+    {:ok, held, _} = Cards.load(wire)
+    before = Cards.wire(held)
+    assert {:error, _} = Cards.set_needs(held, [String.duplicate("n", 65)])
+    assert Cards.wire(held) == before
+    assert {:error, _} = Cards.set_needs(held, List.duplicate("n", 513))
+    assert Cards.wire(held) == before
+    assert {:error, _} = Cards.set_needs(held, ["bad\0nul"])
+    assert Cards.wire(held) == before
+    assert {:error, _} = Cards.set_tier(held, "nope")
+    assert Cards.wire(held) == before
+    assert {:error, _} = Cards.set_holder(held, String.duplicate("h", 33))
+    assert Cards.wire(held) == before
+
+    future = File.read!(Path.join([@conformance, "cases", "future-note.wire"]))
+    {:ok, lossy, _} = Cards.load(future)
+    lossy_wire = Cards.wire(lossy)
+    assert {:error, reason} = Cards.set_needs(lossy, ["a"])
+    assert reason =~ "loss events"
+    assert Cards.wire(lossy) == lossy_wire
+
+    for [name, input | edits] <- manifest_rows("edit") do
+      {:ok, record, _} = Cards.load(File.read!(input))
+      before = Cards.wire(record)
+
+      result =
+        case edits do
+          ["needs=" <> v] -> Cards.set_needs(record, split_list(v))
+          ["tier=" <> v] -> Cards.set_tier(record, v)
+          ["priority=" <> v] -> Cards.set_priority(record, v)
+          ["paths=" <> v] -> Cards.set_paths(record, split_list(v))
+          ["column=" <> v] -> Cards.set_column(record, v)
+          ["holder=" <> v] -> Cards.set_holder(record, v)
+        end
+
+      expected_wire = Path.join([@conformance, "expected", name <> ".wire"])
+      expected_refused = Path.join([@conformance, "expected", name <> ".refused"])
+
+      case result do
+        {:ok, edited} ->
+          assert File.exists?(expected_wire), "#{name} edited but the corpus expects a refusal"
+          assert Cards.wire(edited) == File.read!(expected_wire), "edit wire of #{name} differs"
+          assert edited.value["body"] == record.value["body"]
+
+        {:error, reason} ->
+          assert File.exists?(expected_refused), "#{name} refused (#{reason}) but the corpus expects a wire"
+          assert refusal_class(reason) == String.trim(File.read!(expected_refused))
+          assert Cards.wire(record) == before
+      end
+    end
+  end
+
+  # frame_bytes is the task-hash frame written independently of the hasher:
+  # each text is an unsigned 64-bit little-endian length then its bytes, and
+  # each list is a count then its length-prefixed texts (tables/cards/edit.go).
+  defp frame_bytes(body, paths, new, shared, test, done) do
+    IO.iodata_to_binary([
+      framed_text(body),
+      framed_list(paths),
+      framed_list(new),
+      framed_list(shared),
+      framed_text(test),
+      framed_text(done)
+    ])
+  end
+
+  defp framed_text(nil), do: <<0::little-unsigned-64>>
+  defp framed_text(s), do: <<byte_size(s)::little-unsigned-64, s::binary>>
+
+  defp framed_list(items) do
+    [<<length(items)::little-unsigned-64>> | Enum.map(items, &framed_text/1)]
+  end
+
+  defp split_list(""), do: []
+  defp split_list(v), do: String.split(v, ",")
+
   defp retain_ids_used(wire) do
     retain = %{records: [], used: 0, cap: 1 <<< 20, ids: [], id_cap: 4096}
     report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
