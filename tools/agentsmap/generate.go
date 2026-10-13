@@ -17,8 +17,11 @@ const maxRootBytes = 3 * 1024
 
 const rootAgents = "AGENTS.md"
 
-// skipNames are directories the map does not catalog: VCS, build output, and
-// local toolchain unpacks. A new source tree is not one of these.
+// skipNames are directories the map does not catalog: VCS, build output,
+// local toolchain unpacks, and the gitignored scratch directory. tmp/ is
+// .gitignore:4 (`/tmp/`), present on some machines and absent on others, so
+// it is mapped by no row on any machine. A new source tree is not one of
+// these.
 var skipNames = map[string]bool{
 	".git":         true,
 	"bin":          true,
@@ -29,6 +32,7 @@ var skipNames = map[string]bool{
 	"runtimes":     true,
 	"target":       true,
 	"tending":      true,
+	"tmp":          true,
 }
 
 type catalogIndex map[string]Entry
