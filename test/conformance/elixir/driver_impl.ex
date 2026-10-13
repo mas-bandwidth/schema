@@ -9,12 +9,11 @@
 # whichever module under it exports block_open_<root> or cook_open_<root>. That
 # keeps the leg free of a generated name nothing else in the language needs.
 #
-# THE FIVE WIRE-CARRYING SURFACES ARE ABSENT, and not as a gap the leg counts:
-# Elixir emits no table wire at all. The port that once did wrote the form that
-# preceded the id-table wire and was removed rather than carried; schema#515
-# brings the id-table wire to Elixir, and these surfaces with it. What this leg
-# drives is the two ACCELERATORS the backend does emit — the block (§19) and
-# the cook (§7), both read halves.
+# The backend emits the VARIABLE FORM for the card constructs (the id-table
+# wire's codec, descriptors and text form of docs/SPEC-TABLES.md §3, §16), but
+# that codec is not yet wired to the driver's wire, json-read, json-write and
+# report surfaces. What this leg drives is the two ACCELERATORS the backend
+# emits beside it — the block (§19) and the cook (§7), both read halves.
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -317,9 +316,9 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces and nothing else: Elixir emits no table
-  # wire, so wire, report and the three text surfaces are not on this list
-  # (schema#515 brings the id-table wire to Elixir)
+  # the two accelerators' surfaces only: the card-slice variable codec exists
+  # but is not yet wired, so wire, report and the three text surfaces are not
+  # on this list
   @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
