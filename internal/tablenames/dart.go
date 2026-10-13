@@ -50,6 +50,7 @@ func init() {
 		Name{Name: "TableFixedLineagePlan", What: "one lineage entry's plan, laid down from the lock's bytes, with its compile census and its refusal name"},
 		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
 		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
+		Name{Name: "TableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
 		// form byte 2. It is emitted for a unit that declares a fixed root,
@@ -88,5 +89,12 @@ func init() {
 		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
 		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
 		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
+		// THE BATCH SURFACE'S FREE FUNCTIONS (docs/SPEC-TABLES.md §3.3). Dart
+		// spells a free function lowerCamelCase, which normalises to the
+		// PascalCase registry spelling (the packet emitter's dartName), so the
+		// three below are claimed as one registration apiece.
+		Name{Name: "TableMessageBatchOpen", What: "the batch reader's open: one announcement pass over the bytes"},
+		Name{Name: "TableMessageBatchClose", What: "the batch reader's close: one byte-level check over the just-read batch"},
+		Name{Name: "TableMessageRefBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
 	)
 }
