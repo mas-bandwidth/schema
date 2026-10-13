@@ -19,6 +19,13 @@ func TestTableFixedSupportedAdmitsDirectAndPayloadFreeArms(t *testing.T) {
 	leaf := &Struct{Name: "Leaf", Fields: []*Field{
 		{Name: "n", Type: FieldType{Kind: TInt, Width: 32}},
 	}}
+	// badLeaf holds a pointer, so its own closure is not one the form carries
+	// (§5.5): the recursion a struct arm does must actually run, and an arm
+	// naming this type must be refused for the type, not merely admitted
+	// because the arm itself is a named type.
+	badLeaf := &Struct{Name: "Bad", Fields: []*Field{
+		{Name: "p", Type: FieldType{Kind: TNamed, Name: "Bad", Pointer: true}},
+	}}
 
 	// unionTable builds a fixed table holding ONE union field whose single
 	// arm is f, so the gate's arm branch is the only thing under test.
@@ -69,6 +76,9 @@ func TestTableFixedSupportedAdmitsDirectAndPayloadFreeArms(t *testing.T) {
 			Type: FieldType{Kind: TInt, Width: 32},
 		}), false},
 		{"optional arm", unionTable(arm(FieldType{Kind: TInt, Width: 32, Optional: true})), false},
+		// The struct arm's admission is not vacuous: it recurses into the
+		// named struct's own closure, so one naming a pointer holder is refused.
+		{"struct arm with unfixed closure", unionTable(arm(FieldType{Kind: TNamed, Name: "Bad", Ref: badLeaf})), false},
 	}
 
 	for _, tt := range tests {
