@@ -714,4 +714,342 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
   defp emit_body(body), do: [body]
 
   defp collect_paths(list), do: Enum.map(list, &Map.get(&1, "s", ""))
+
+  # MaxRetainBytes and MaxRetainIDs are the customer ceilings on the retained
+  # stores. They are fixed per call and never grown (docs/SPEC-TABLES.md §6.6;
+  # tables/cards/upgrade.go: MaxRetainBytes, MaxRetainIDs).
+  @max_retain_bytes 1_048_576
+  @max_retain_ids 4096
+
+  # upgrade rewrites wire through the generated retaining path so every field
+  # the current declaration cannot name is preserved (docs/SPEC-TABLES.md §6.6;
+  # tables/cards/upgrade.go: Upgrade). Unknown, Retained and Widened alone are
+  # not loss. RetainLost, KindMismatch, Clamped, Malformed and any failed call
+  # return no wire and a named error; the input binary is never written.
+  # tla/CardVersioning.tla: NoFieldLost, BodyUnchanged, RefusalKeepsOriginal.
+  def upgrade(wire) when is_binary(wire), do: upgrade(wire, @max_retain_bytes, @max_retain_ids)
+
+  # upgrade/3 is the retention seam the refusal probe drives: the public call
+  # fixes both capacities, and a smaller caller-owned id store names RetainLost
+  # without publishing (tables/cards/upgrade.go: upgrade).
+  def upgrade(wire, retain_bytes, retain_ids) when is_binary(wire) do
+    report = empty_report()
+
+    cond do
+      retain_bytes < 0 or retain_ids < 0 ->
+        {:error, "cards: upgrade: negative retention capacity", report}
+
+      true ->
+        retain = %{records: [], used: 0, cap: retain_bytes, ids: [], id_cap: retain_ids}
+
+        case Cards.Table.load_retain("Card", wire, retain, report) do
+          {:error, _reason, report, _retain} ->
+            {:error, "cards: upgrade: wire is malformed", %{report | malformed: true}}
+
+          {:ok, value, report, retain} ->
+            retain = drop_one_retained(retain)
+
+            case check_card(value) do
+              {:error, reason} ->
+                {:error, "cards: upgrade: #{reason}", report}
+
+              :ok ->
+                size = Cards.Table.measure_retain("Card", value, retain)
+
+                case Cards.Table.save_retain("Card", value, retain, report) do
+                  {:ok, out, report, _retain} when byte_size(out) == size ->
+                    case loss_err(report) do
+                      :ok -> {:ok, out, report}
+                      {:error, reason} -> {:error, reason, report}
+                    end
+
+                  {:ok, _out, report, _retain} ->
+                    {:error, "cards: upgrade: save did not fill the measured wire", report}
+                end
+            end
+        end
+    end
+  end
+
+  # read_strict refuses any data the current declaration cannot support
+  # (docs/SPEC-TABLES.md §4; tables/cards/upgrade.go: ReadStrict). A safe
+  # Widened event need not refuse. It returns no usable record on rejection.
+  def read_strict(wire) when is_binary(wire) do
+    case load(wire) do
+      {:error, reason, _report} ->
+        {:error, reason}
+
+      {:ok, record, report} ->
+        cond do
+          report.unknown > 0 ->
+            {:error, "cards: strict: #{report.unknown} unknown field(s), unsupported data"}
+
+          report.kind_mismatch > 0 ->
+            {:error, "cards: strict: #{report.kind_mismatch} kind mismatch(es), unsupported data"}
+
+          report.clamped > 0 ->
+            {:error, "cards: strict: #{report.clamped} clamped value(s), unsupported data"}
+
+          report.malformed ->
+            {:error, "cards: strict: malformed wire, unsupported data"}
+
+          true ->
+            {:ok, record}
+        end
+    end
+  end
+
+  # loss_err names the report events that make a rewrite unsafe (§6.6).
+  # Unknown, Retained and Widened alone are not loss (§4).
+  defp loss_err(report) do
+    cond do
+      Map.get(report, :retain_lost, 0) > 0 ->
+        {:error, "cards: upgrade: #{report.retain_lost} retained field(s) lost, refusing to replace"}
+
+      Map.get(report, :kind_mismatch, 0) > 0 ->
+        {:error, "cards: upgrade: #{report.kind_mismatch} kind mismatch(es), refusing to replace"}
+
+      Map.get(report, :clamped, 0) > 0 ->
+        {:error, "cards: upgrade: #{report.clamped} clamped value(s), refusing to replace"}
+
+      Map.get(report, :malformed, false) ->
+        {:error, "cards: upgrade: malformed wire, refusing to replace"}
+
+      true ->
+        :ok
+    end
+  end
+
+  # drop_one_retained is the test-only switch the upgrade negative control
+  # drives: it omits one retained record before the save, so the published wire
+  # loses a field the check must catch (tla/CardVersioning.tla NoFieldLost).
+  defp drop_one_retained(retain) do
+    if System.get_env("CARDS_ELIXIR_UPGRADE_NEGATIVE") == "1" and retain.records != [] do
+      %{retain | records: tl(retain.records)}
+    else
+      retain
+    end
+  end
+
+  # task_hash is SHA-256 over body, paths, new, shared, test and done, in that
+  # order. Each text is an unsigned 64-bit little-endian byte length then its
+  # bytes; each list is an unsigned 64-bit little-endian count then each
+  # length-prefixed text. Needs, tier, priority and machine fields are excluded
+  # (docs/SPEC-TABLES.md §5; tables/cards/edit.go: TaskHash). A lossy record is
+  # refused, never hashed (tla/CardHops.tla TaskHashStable). The test-only
+  # switch inserts needs where HashSeesNeeds does, so the check can see the
+  # fault.
+  def task_hash(%Record{value: value} = record) do
+    case refuse_lossy(record.report) do
+      {:error, reason} ->
+        {:error, reason}
+
+      :ok ->
+        parts = [
+          framed_text(Map.get(value, "body")),
+          framed_list(Map.get(value, "paths"))
+        ]
+
+        parts =
+          if System.get_env("CARDS_ELIXIR_HASH_NEGATIVE") == "1" do
+            parts ++ [framed_list(Map.get(value, "needs"))]
+          else
+            parts
+          end
+
+        parts =
+          parts ++
+            [
+              framed_list(Map.get(value, "_new")),
+              framed_list(Map.get(value, "shared")),
+              framed_text(Map.get(value, "test")),
+              framed_text(Map.get(value, "done"))
+            ]
+
+        {:ok, :crypto.hash(:sha256, parts)}
+    end
+  end
+
+  def task_hash(nil), do: {:error, "cards: nil record"}
+
+  # set_needs replaces the needs list only after every entry is validated and
+  # the replacement saves. A refusal publishes nothing (docs/SPEC-TABLES.md
+  # §2.9, §6.2; tables/cards/edit.go: SetNeeds). An ordinary rewrite cannot
+  # carry unknown fields (tla/CardHops.tla EditDropsUnknown, the reversed
+  # witness).
+  def set_needs(%Record{} = record, needs) when is_list(needs) do
+    with :ok <- validate_strings("needs", needs, 64),
+         :ok <- check_count(needs, "needs") do
+      edit(record, fn value ->
+        Map.put(value, "needs", Enum.map(needs, &%{"s" => &1}))
+      end)
+    end
+  end
+
+  # set_paths replaces the paths list atomically (docs/SPEC-TABLES.md §2.9;
+  # tables/cards/edit.go: SetPaths). A paths edit is a task-bearing change:
+  # TaskHashStable requires the digest to move with it.
+  def set_paths(%Record{} = record, paths) when is_list(paths) do
+    with :ok <- validate_strings("paths", paths, 192),
+         :ok <- check_count(paths, "paths") do
+      edit(record, fn value ->
+        Map.put(value, "paths", Enum.map(paths, &%{"s" => &1}))
+      end)
+    end
+  end
+
+  # set_tier accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetTier). Tier is excluded from the task hash.
+  def set_tier(%Record{} = record, tier) when is_binary(tier) do
+    if tier in ~w(flash pro heavy frontier) do
+      edit(record, fn value -> Map.put(value, "tier", tier) end)
+    else
+      {:error, "cards: tier #{inspect(tier)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_priority accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetPriority).
+  def set_priority(%Record{} = record, priority) when is_binary(priority) do
+    if priority in ~w(normal high critical blocker) do
+      edit(record, fn value -> Map.put(value, "priority", priority) end)
+    else
+      {:error, "cards: priority #{inspect(priority)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_column accepts only a declared variant (docs/SPEC-TABLES.md §8;
+  # tables/cards/edit.go: SetColumn).
+  def set_column(%Record{} = record, column) when is_binary(column) do
+    if column in ~w(waiting ready working review merging landed plan check) do
+      edit(record, fn value -> Map.put(value, "column", column) end)
+    else
+      {:error, "cards: column #{inspect(column)} is not a declared variant (docs/SPEC-TABLES.md §8)"}
+    end
+  end
+
+  # set_holder replaces the holder string within its declared bound
+  # (docs/SPEC-TABLES.md §6.1; tables/cards/edit.go: SetHolder).
+  def set_holder(%Record{} = record, holder) when is_binary(holder) do
+    with :ok <- validate_strings("holder", [holder], 32) do
+      edit(record, fn value -> Map.put(value, "holder", holder) end)
+    end
+  end
+
+  # refuse_lossy names the read events that make a record unsafe to hash or
+  # rewrite (docs/SPEC-TABLES.md §4, §6.6; tables/cards/edit.go: refuseLossy).
+  defp refuse_lossy(report) do
+    unknown = Map.get(report, :unknown, 0)
+    kind_mismatch = Map.get(report, :kind_mismatch, 0)
+    clamped = Map.get(report, :clamped, 0)
+    retain_lost = Map.get(report, :retain_lost, 0)
+    malformed = Map.get(report, :malformed, false)
+
+    if unknown > 0 or kind_mismatch > 0 or clamped > 0 or retain_lost > 0 or malformed do
+      {:error,
+       "cards: record has loss events (unknown=#{unknown} kindMismatch=#{kind_mismatch} clamped=#{clamped} retainLost=#{retain_lost} malformed=#{malformed}): refused, never hashed or rewritten"}
+    else
+      :ok
+    end
+  end
+
+  # edit rebuilds the record and publishes the new wire only on complete
+  # success. Any refusal leaves the caller's record untouched
+  # (docs/SPEC-TABLES.md §6.2; tables/cards/edit.go: edit).
+  defp edit(%Record{} = record, mutate) do
+    with :ok <- refuse_lossy(record.report) do
+      value = mutate.(record.value)
+
+      case check_card(value) do
+        {:error, reason} ->
+          {:error, reason}
+
+        :ok ->
+          case Cards.Table.save("Card", value) do
+            {:ok, wire} -> {:ok, %Record{wire: wire, value: value, report: record.report}}
+            _ -> {:error, "cards: save did not fill the measured wire"}
+          end
+      end
+    end
+  end
+
+  defp edit(nil, _mutate), do: {:error, "cards: nil record"}
+
+  # validate_strings applies the shared element policy: well-formed UTF-8
+  # without NUL and within the declared string bound (docs/SPEC-TABLES.md §6.1;
+  # tables/cards/edit.go: validateStrings).
+  defp validate_strings(name, values, bound) do
+    Enum.reduce_while(values, :ok, fn s, :ok ->
+      cond do
+        byte_size(s) > bound ->
+          {:halt, {:error, "cards: #{name} element is #{byte_size(s)} bytes, past its #{bound}-byte bound"}}
+
+        not valid_utf8_no_nul?(s) ->
+          {:halt, {:error, "cards: #{name} has an element that is not well-formed UTF-8 without NUL"}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
+  end
+
+  # view walks descriptors/0 of the generated Card unit: tables in name order,
+  # fields in declaration order, one line each (docs/SPEC-TABLES.md §8;
+  # tables/cards/conformance/FORMAT.md). The kind column is the schema element
+  # type the descriptor names. tla/CardHops.tla ImplementationsAgree.
+  def view do
+    Cards.Table.descriptors()
+    |> Enum.sort_by(fn {name, _desc} -> name end)
+    |> Enum.flat_map(fn {table, desc} ->
+      Enum.map(desc.fields, fn f ->
+        "#{table} #{f.name} #{schema_kind(f)} #{f.shape} #{view_bound(f)}\n"
+      end)
+    end)
+    |> IO.iodata_to_binary()
+  end
+
+  defp schema_kind(%{t: :list, elem: elem}), do: elem
+  defp schema_kind(%{t: :string}), do: "string"
+  defp schema_kind(%{t: :blob}), do: "string"
+  defp schema_kind(%{t: :int, width: width}), do: "int#{width * 8}"
+
+  defp schema_kind(%{t: :enum, by_name: by_name}) do
+    names = MapSet.new(Map.keys(by_name))
+
+    cond do
+      names == MapSet.new(~w(flash pro heavy frontier)) -> "Tier"
+      names == MapSet.new(~w(normal high critical blocker)) -> "Priority"
+      names == MapSet.new(~w(waiting ready working review merging landed plan check)) -> "Column"
+      true -> "enum"
+    end
+  end
+
+  defp view_bound(%{t: :string, bound: n}) when is_integer(n), do: Integer.to_string(n)
+  defp view_bound(_field), do: "-"
+
+  defp framed_text(nil), do: <<0::little-unsigned-64>>
+  defp framed_text(s) when is_binary(s), do: <<byte_size(s)::little-unsigned-64, s::binary>>
+
+  defp framed_list(nil), do: <<0::little-unsigned-64>>
+
+  defp framed_list(items) when is_list(items) do
+    [<<length(items)::little-unsigned-64>> | Enum.map(items, &framed_text(elem_text(&1)))]
+  end
+
+  defp elem_text(%{"s" => s}), do: s
+  defp elem_text(s) when is_binary(s), do: s
+  defp elem_text(_), do: ""
+
+  defp empty_report do
+    %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      malformed: false,
+      retained: 0,
+      retain_lost: 0,
+      duplicate: 0
+    }
+  end
 end

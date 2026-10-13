@@ -687,12 +687,14 @@ build/elixir-cards-driver/.stamp: build/elixir-cards-facade/.stamp tables/cards/
 	@touch $@
 
 # cards-elixir-conformance runs the harness's cards subcommand over the Elixir
-# driver, requiring the five surfaces this card implements (tables/cards/
-# conformance/FORMAT.md). upgrade, edit, taskhash and view are a later card.
+# driver and requires all nine surfaces (tables/cards/conformance/FORMAT.md).
+# Absence is a failure: a surface left out of the driver's list, or answered
+# with exit 2, reds the required check.
 .PHONY: cards-elixir-conformance
 cards-elixir-conformance: build/conformance-harness build/elixir-cards-driver/.stamp
 	./build/conformance-harness cards --corpus tables/cards/conformance \
-		--driver tables/cards/elixir/driver --require load,save,render,parse,bounds
+		--driver tables/cards/elixir/driver \
+		--require load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
 # cards-elixir-conformance-negative-control flips one rendered byte through a
 # test-only environment switch and requires the check to fail on render while
@@ -711,4 +713,47 @@ cards-elixir-conformance-negative-control: build/conformance-harness build/elixi
 	@grep -q 'cards bounds pass' build/cards-elixir-conformance-negative.log
 	@echo 'cards Elixir negative control: one changed render byte reds render while load, save, parse and bounds pass'
 
+# cards-elixir-conformance-upgrade-negative-control drops one retained field
+# through a test-only switch and requires the check to fail on upgrade alone.
+.PHONY: cards-elixir-conformance-upgrade-negative-control
+cards-elixir-conformance-upgrade-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_UPGRADE_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver \
+			--require load,save,render,parse,bounds,upgrade,edit,taskhash,view \
+			> build/cards-elixir-conformance-upgrade-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping one retained field left the check green"; exit 1; fi
+	@grep -q 'cards upgrade FAIL' build/cards-elixir-conformance-upgrade-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-upgrade-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards render pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards edit pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards taskhash pass' build/cards-elixir-conformance-upgrade-negative.log
+	@grep -q 'cards view pass' build/cards-elixir-conformance-upgrade-negative.log
+	@echo 'cards Elixir upgrade negative control: dropping one retained field reds upgrade alone'
+
+# cards-elixir-conformance-hash-negative-control adds needs to the task hash
+# through a test-only switch and requires the check to fail on taskhash alone.
+.PHONY: cards-elixir-conformance-hash-negative-control
+cards-elixir-conformance-hash-negative-control: build/conformance-harness build/elixir-cards-driver/.stamp
+	@if CARDS_ELIXIR_HASH_NEGATIVE=1 ./build/conformance-harness cards --corpus tables/cards/conformance \
+			--driver tables/cards/elixir/driver \
+			--require load,save,render,parse,bounds,upgrade,edit,taskhash,view \
+			> build/cards-elixir-conformance-hash-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: folding needs into the hash left the check green"; exit 1; fi
+	@grep -q 'cards taskhash FAIL' build/cards-elixir-conformance-hash-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red for another reason"; cat build/cards-elixir-conformance-hash-negative.log; exit 1; }
+	@grep -q 'cards load pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards save pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards render pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards parse pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards bounds pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards upgrade pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards edit pass' build/cards-elixir-conformance-hash-negative.log
+	@grep -q 'cards view pass' build/cards-elixir-conformance-hash-negative.log
+	@echo 'cards Elixir hash negative control: folding needs into the hash reds taskhash alone'
+
 test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
+test-elixir: cards-elixir-conformance-upgrade-negative-control cards-elixir-conformance-hash-negative-control
