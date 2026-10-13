@@ -67,13 +67,27 @@ func variableFieldType(f *ir.Field) string {
 	case f.IsList():
 		return "Vec<" + f.Type.Name + ">"
 	case f.Type.Blob():
-		return "Option<String>"
+		if f.Type.Kind == ir.TString {
+			return "Option<String>"
+		}
+		return "Option<Vec<u8>>"
 	case f.Type.Kind == ir.TString:
 		return "String"
 	case f.Type.Kind == ir.TBool:
 		return "bool"
 	case f.Type.Kind == ir.TInt:
-		return rustInt(f.Type.Width)
+		if f.Type.Signed {
+			return rustInt(f.Type.Width)
+		}
+		return rustUint(f.Type.Width)
+	case f.Type.Kind == ir.TBits:
+		return rustUint(f.Type.Width)
+	case f.Type.Kind == ir.TFloat32:
+		return "f32"
+	case f.Type.Kind == ir.TFloat64:
+		return "f64"
+	case f.Type.Kind == ir.TBytes:
+		return "Vec<u8>"
 	case f.Type.Kind == ir.TNamed:
 		return f.Type.Name
 	}
@@ -154,7 +168,13 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, body.len() as u64);\n", inner)
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
 	case f.Type.Blob():
-		fmt.Fprintf(b, "%slet idx = node_blob_index(nodes, STRING_TYPE_ID, %s.as_ref().unwrap().as_bytes());\n", inner, expr)
+		typeID := "STRING_TYPE_ID"
+		bytesExpr := expr + ".as_ref().unwrap().as_bytes()"
+		if f.Type.Kind != ir.TString {
+			typeID = "BYTES_TYPE_ID"
+			bytesExpr = expr + ".as_ref().unwrap().as_slice()"
+		}
+		fmt.Fprintf(b, "%slet idx = node_blob_index(nodes, %s, %s);\n", inner, typeID, bytesExpr)
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, idx);\n", inner)
@@ -167,10 +187,22 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sout.push(if %s { 1 } else { 0 });\n", inner, expr)
-	case f.Type.Kind == ir.TInt:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
-		fmt.Fprintf(b, "%sout.extend_from_slice(&(%s as u%d).to_le_bytes());\n", inner, expr, f.Type.Width)
+		fmt.Fprintf(b, "%sout.extend_from_slice(&%s.to_le_bytes());\n", inner, expr)
+	case f.Type.Kind == ir.TBytes:
+		// bytes(N) rides as an array of u8 (docs/SPEC-TABLES.md §3): kind 14
+		// over element kind 6, count then the raw bytes.
+		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
+		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
+		fmt.Fprintf(b, "%sbody.push(%d); // element kind: u8\n", inner, ir.TableWireElemKind(f))
+		fmt.Fprintf(b, "%sleb_write(&mut body, %s.len() as u64);\n", inner, expr)
+		fmt.Fprintf(b, "%sbody.extend_from_slice(&%s);\n", inner, expr)
+		fmt.Fprintf(b, "%sleb_write(out, r);\n", inner)
+		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
+		fmt.Fprintf(b, "%sleb_write(out, body.len() as u64);\n", inner)
+		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
@@ -203,8 +235,14 @@ func variableRides(f *ir.Field, expr string) string {
 	if f.Type.Kind == ir.TBool {
 		return expr
 	}
-	if f.Type.Kind == ir.TInt {
+	if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits {
 		return expr + " != 0"
+	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		return expr + " != 0.0"
+	}
+	if f.Type.Kind == ir.TBytes {
+		return "!" + expr + ".is_empty()"
 	}
 	if f.Type.Kind == ir.TNamed {
 		if _, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -349,7 +387,11 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		// a node index resolves into THIS slot (docs/SPEC-TABLES.md §3.1):
 		// 0 is null, 1 is the root (a kind mismatch on a blob slot), and 2+
 		// name the node table's records in index order.
-		fmt.Fprintf(b, "%s    if idx == 0 { %s = None; } else if idx == 1 { report.kind_mismatch += 1; %s = None; } else if idx as usize - 2 >= blobs.len() { report.malformed = true; %s = None; } else { %s = blobs[idx as usize - 2].as_ref().map(|b| String::from_utf8_lossy(b).into_owned()); }\n", inner, field, field, field, field)
+		if f.Type.Kind == ir.TString {
+			fmt.Fprintf(b, "%s    if idx == 0 { %s = None; } else if idx == 1 { report.kind_mismatch += 1; %s = None; } else if idx as usize - 2 >= blobs.len() { report.malformed = true; %s = None; } else { %s = blobs[idx as usize - 2].as_ref().map(|b| String::from_utf8_lossy(b).into_owned()); }\n", inner, field, field, field, field)
+		} else {
+			fmt.Fprintf(b, "%s    if idx == 0 { %s = None; } else if idx == 1 { report.kind_mismatch += 1; %s = None; } else if idx as usize - 2 >= blobs.len() { report.malformed = true; %s = None; } else { %s = blobs[idx as usize - 2].clone(); }\n", inner, field, field, field, field)
+		}
 		fmt.Fprintf(b, "%s}\n", inner)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "%sif kind != %d { report.kind_mismatch += 1; if !leb_skip(wire, %s, end, kind) { report.malformed = true; return false; } }\n", inner, ir.TableWireFieldKind(f), offArg)
@@ -376,6 +418,10 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s}\n", inner)
 	case f.Type.Kind == ir.TInt:
 		g.emitIntLoadField(b, f, field, inner, offArg, offDeref)
+	case f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		g.emitNumericLoadField(b, f, field, inner, offArg, offDeref)
+	case f.Type.Kind == ir.TBytes:
+		g.emitBytesLoadField(b, f, field, inner, offArg, offDeref)
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "%sif kind != %d { report.kind_mismatch += 1; if !leb_skip(wire, %s, end, kind) { report.malformed = true; return false; } }\n", inner, ir.TableWireFieldKind(f), offArg)
@@ -398,13 +444,28 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
-// emitIntLoadField emits one signed integer field's decode arm: the declared
-// kind, each narrower kind that widens into it (§4, decoded exactly at its own
-// width and counted `widened`), and the declared min/max clamp (§4) — the same
-// ladder the oracle's scalarAt walks (internal/tablewire/decode.go).
+// emitIntLoadField emits one integer field's decode arm: the declared kind,
+// each narrower kind that widens into it (§4, decoded exactly at its own width
+// and counted `widened`), and the declared min/max clamp (§4) — the same ladder
+// the oracle's scalarAt walks (internal/tablewire/decode.go). Signed and
+// unsigned fields share the ladder; only the storage type and the read's
+// reinterpretation differ (docs/SPEC-TABLES.md §3).
 func (g *gen) emitIntLoadField(b *strings.Builder, f *ir.Field, field, ind, offArg, offDeref string) {
 	declared := ir.TableWireFieldKind(f)
 	width := f.Type.Width / 8
+	signed := f.Type.Signed
+	readTy := func(rustWidth int) string {
+		if signed {
+			return fmt.Sprintf("i%d", rustWidth)
+		}
+		return fmt.Sprintf("u%d", rustWidth)
+	}
+	storage := func() string {
+		if signed {
+			return rustInt(f.Type.Width)
+		}
+		return rustUint(f.Type.Width)
+	}
 	clamp := func(inner string) {
 		if !f.HasIntRange {
 			return
@@ -414,9 +475,9 @@ func (g *gen) emitIntLoadField(b *strings.Builder, f *ir.Field, field, ind, offA
 	}
 	emitRead := func(inner string, kw int, rustWidth int) {
 		fmt.Fprintf(b, "%s    if %s + %d > end { report.malformed = true; return false; }\n", inner, offDeref, kw)
-		fmt.Fprintf(b, "%s    let mut x = i%d::from_le_bytes(wire[%s..%s + %d].try_into().unwrap()) as i64;\n", inner, rustWidth, offDeref, offDeref, kw)
+		fmt.Fprintf(b, "%s    let mut x = %s::from_le_bytes(wire[%s..%s + %d].try_into().unwrap()) as i64;\n", inner, readTy(rustWidth), offDeref, offDeref, kw)
 		clamp(inner)
-		fmt.Fprintf(b, "%s    %s = x as %s;\n", inner, field, rustInt(f.Type.Width))
+		fmt.Fprintf(b, "%s    %s = x as %s;\n", inner, field, storage())
 		fmt.Fprintf(b, "%s    %s += %d;\n", inner, offDeref, kw)
 	}
 	fmt.Fprintf(b, "%sif kind == %d {\n", ind, declared)
@@ -432,6 +493,75 @@ func (g *gen) emitIntLoadField(b *strings.Builder, f *ir.Field, field, ind, offA
 	}
 	fmt.Fprintf(b, "%s} else {\n", ind)
 	fmt.Fprintf(b, "%s    report.kind_mismatch += 1; if !leb_skip(wire, %s, end, kind) { report.malformed = true; return false; }\n", ind, offArg)
+	fmt.Fprintf(b, "%s}\n", ind)
+}
+
+// emitNumericLoadField emits the decode arm for the non-integer scalar kinds
+// the card carries beside int — bits(N) (an unsigned scalar) and the two float
+// widths (docs/SPEC-TABLES.md §3, §4). It shares §4's widening ladder and the
+// declared clamp, exactly as [emitIntLoadField] does for integers.
+func (g *gen) emitNumericLoadField(b *strings.Builder, f *ir.Field, field, ind, offArg, offDeref string) {
+	declared := ir.TableWireFieldKind(f)
+	isFloat := declared == ir.TableKindF32 || declared == ir.TableKindF64
+	emitRead := func(inner string, k int) {
+		kw := ir.TableKindWidth(k)
+		fmt.Fprintf(b, "%s    if %s + %d > end { report.malformed = true; return false; }\n", inner, offDeref, kw)
+		switch {
+		case k == ir.TableKindF32:
+			fmt.Fprintf(b, "%s    let mut x = f32::from_le_bytes(wire[%s..%s + %d].try_into().unwrap());\n", inner, offDeref, offDeref, kw)
+		case k == ir.TableKindF64:
+			fmt.Fprintf(b, "%s    let mut x = f64::from_le_bytes(wire[%s..%s + %d].try_into().unwrap());\n", inner, offDeref, offDeref, kw)
+		case ir.TableKindSigned(k):
+			fmt.Fprintf(b, "%s    let mut x = %s::from_le_bytes(wire[%s..%s + %d].try_into().unwrap()) as i64;\n", inner, rustInt(kw*8), offDeref, offDeref, kw)
+		default:
+			fmt.Fprintf(b, "%s    let mut x = %s::from_le_bytes(wire[%s..%s + %d].try_into().unwrap()) as i64;\n", inner, rustUint(kw*8), offDeref, offDeref, kw)
+		}
+		if !isFloat && f.HasIntRange {
+			fmt.Fprintf(b, "%s    if x < %s { x = %s; report.clamped += 1; }\n", inner, f.IntMin.String(), f.IntMin.String())
+			fmt.Fprintf(b, "%s    if x > %s { x = %s; report.clamped += 1; }\n", inner, f.IntMax.String(), f.IntMax.String())
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			max := uint64(1)<<f.Type.Width - 1
+			fmt.Fprintf(b, "%s    if x > %d { x = %d; report.clamped += 1; }\n", inner, max, max)
+		}
+		fmt.Fprintf(b, "%s    %s = x as %s;\n", inner, field, variableFieldType(f))
+		fmt.Fprintf(b, "%s    %s += %d;\n", inner, offDeref, kw)
+	}
+	fmt.Fprintf(b, "%sif kind == %d {\n", ind, declared)
+	emitRead(ind+"    ", declared)
+	for k := 1; k < declared; k++ {
+		if !ir.TableKindWidens(k, declared) {
+			continue
+		}
+		fmt.Fprintf(b, "%s} else if kind == %d {\n", ind, k)
+		emitRead(ind+"    ", k)
+		fmt.Fprintf(b, "%s    report.widened += 1;\n", ind)
+	}
+	fmt.Fprintf(b, "%s} else {\n", ind)
+	fmt.Fprintf(b, "%s    report.kind_mismatch += 1; if !leb_skip(wire, %s, end, kind) { report.malformed = true; return false; }\n", ind, offArg)
+	fmt.Fprintf(b, "%s}\n", ind)
+}
+
+// emitBytesLoadField emits bytes(N)'s decode arm: kind 14 over element kind 6,
+// count clamped to N (§4) and the raw bytes copied (docs/SPEC-TABLES.md §3).
+func (g *gen) emitBytesLoadField(b *strings.Builder, f *ir.Field, field, ind, offArg, offDeref string) {
+	fmt.Fprintf(b, "%sif kind != %d { report.kind_mismatch += 1; if !leb_skip(wire, %s, end, kind) { report.malformed = true; return false; } }\n", ind, ir.TableWireFieldKind(f), offArg)
+	fmt.Fprintf(b, "%selse {\n", ind)
+	inner := ind + "    "
+	fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, %s) else { report.malformed = true; return false; };\n", inner, offArg)
+	fmt.Fprintf(b, "%sif l > (end - %s) as u64 { report.malformed = true; return false; }\n", inner, offDeref)
+	fmt.Fprintf(b, "%slet sub = %s + l as usize;\n", inner, offDeref)
+	fmt.Fprintf(b, "%sif %s >= sub { report.malformed = true; return false; }\n", inner, offDeref)
+	fmt.Fprintf(b, "%slet ek = wire[%s]; %s += 1;\n", inner, offDeref, offDeref)
+	fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; %s = sub; }\n", inner, ir.TableWireElemKind(f), offDeref)
+	fmt.Fprintf(b, "%selse {\n", inner)
+	fmt.Fprintf(b, "%s    let Some(n) = leb_read(wire, %s) else { report.malformed = true; return false; };\n", inner, offArg)
+	fmt.Fprintf(b, "%s    if n > (sub - %s) as u64 { report.malformed = true; return false; }\n", inner, offDeref)
+	fmt.Fprintf(b, "%s    let n = n as usize;\n", inner)
+	fmt.Fprintf(b, "%s    let keep = if n > %d { report.clamped += 1; %d } else { n };\n", inner, f.Type.Size, f.Type.Size)
+	fmt.Fprintf(b, "%s    %s = wire[%s..%s + keep].to_vec();\n", inner, field, offDeref, offDeref)
+	fmt.Fprintf(b, "%s    %s = sub;\n", inner, offDeref)
+	fmt.Fprintf(b, "%s}\n", inner)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -577,6 +707,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                        let bytes = &wire[off..off + bl as usize];\n")
 	fmt.Fprintf(b, "                        if text_valid(bytes) { node_blobs.push(Some(bytes.to_vec())); }\n")
 	fmt.Fprintf(b, "                        else { report.malformed = true; node_blobs.push(None); }\n")
+	fmt.Fprintf(b, "                    } else if tid == BYTES_TYPE_ID {\n")
+	fmt.Fprintf(b, "                        node_blobs.push(Some(wire[off..off + bl as usize].to_vec()));\n")
 	fmt.Fprintf(b, "                    } else { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } node_blobs.push(None); }\n")
 	fmt.Fprintf(b, "                    off += bl as usize;\n")
 	fmt.Fprintf(b, "                    recs += 1;\n")
@@ -654,7 +786,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                if tref == 0 || tref as usize > ids.len() { return -1; }\n")
 	fmt.Fprintf(b, "                let Some(bl) = leb_read(wire, &mut off) else { return -1; };\n")
 	fmt.Fprintf(b, "                if bl as usize > sub - off { return -1; }\n")
-	fmt.Fprintf(b, "                if ids[tref as usize - 1] == STRING_TYPE_ID {\n")
+	fmt.Fprintf(b, "                if ids[tref as usize - 1] == STRING_TYPE_ID || ids[tref as usize - 1] == BYTES_TYPE_ID {\n")
 	fmt.Fprintf(b, "                    if bl > 0xffffffff { return -1; }\n")
 	fmt.Fprintf(b, "                    cur_blob += round(8 + bl as i64 + 1);\n")
 	fmt.Fprintf(b, "                }\n")

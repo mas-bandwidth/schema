@@ -23,14 +23,12 @@ import (
 // §3.1 that carries the *string blobs and the []T list elements — is the next
 // stage and is not emitted here.
 //
-// The modules are emitted STAND-ALONE, the same status
-// [refuseCardUnsupportedVariableConstructs] holds: neither is wired into
-// GenerateLineage yet, because the refusal guards this very emitter and the
-// fixed-form corpus (rusttable_test.go's `pointered`) declares variable tables
-// with pointers this wire does not carry. Wiring the refusal into the top of
-// GenerateLineage refuses those fixed-form fixtures, so the boundary stays
-// scoped to the variable wire path alone until the emitter is complete enough
-// to take that gate over.
+// The modules are emitted STAND-ALONE. [cardVariableModules] carries the
+// card-boundary refusal (§11) on the card's own path, while
+// [scopedVariableModules] — GenerateLineage's entry point — leaves a variable
+// table whose fields the boundary does not carry ABSENT rather than refusing
+// the unit whole, so the fixed-form corpus (rusttable_test.go's `pointered`)
+// still emits its fixed form beside a variable table it does not encode.
 const VariableRuntimeModule = "variable_runtime"
 
 // cardVariableModules returns the variable wire's modules for a unit whose
@@ -181,6 +179,7 @@ pub fn leb_write(out: &mut Vec<u8>, v: u64) {
 /// lookup and a reader can name the numbering.
 pub const NODE_TABLE_ID: u64 = 0xffffffffffffffff;
 pub const STRING_TYPE_ID: u64 = 0x704be0d8faaffc58;
+pub const BYTES_TYPE_ID: u64 = 0x2f2ec0474f1c4fe4;
 pub const BUILD_VERSION_ID: u64 = 0xfffffffffffffffe;
 pub const VOCABULARY_ID: u64 = 0xfffffffffffffffd;
 
