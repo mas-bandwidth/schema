@@ -141,7 +141,7 @@ func TestCsCarriesBlobs(t *testing.T) {
 	if err == nil {
 		t.Fatal("refuseBlobs accepted a blob-bearing unit for rust")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, elixir and go only today", "--lang cs"} {
+	for _, want := range []string{"*bytes and *string are c, cpp, cs, dart, elixir and go only today", "--lang cs"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}

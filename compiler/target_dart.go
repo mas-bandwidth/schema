@@ -132,9 +132,8 @@ func init() {
 	// elements (docs/SPEC-TABLES.md §2.9), so the Dart table backend registers
 	// as a list carrier too.
 	registerListCarrier("dart")
-	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
-	// *bytes stays a named refusal (§11), so dart registers as a string carrier
-	// alone and not as a byte-buffer carrier.
-	registerStringCarrier("dart")
-	registerBuiltin(dartTarget{}, true, false, false, false)
+	// The variable wire carries BOTH blobs — *bytes and *string (§2.5) — so
+	// dart registers through registerBuiltin's blobs flag, which names it a
+	// byte-buffer AND string carrier together.
+	registerBuiltin(dartTarget{}, true, false, false, true)
 }
