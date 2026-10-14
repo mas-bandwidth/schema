@@ -77,6 +77,11 @@ func TestDartOptionalPresenceOnVariableWire(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "optional_probe.dart"), []byte(source), 0600); err != nil {
 			t.Fatal(err)
 		}
+		analyze := exec.Command(dartBinary(t), "analyze", "--fatal-infos", "optional_probe.dart")
+		analyze.Dir = dir
+		if out, err := analyze.CombinedOutput(); err != nil {
+			t.Fatalf("optional analyze: %v\n%s", err, out)
+		}
 		cmd := exec.Command(dartBinary(t), "--enable-asserts", "optional_probe.dart")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
@@ -110,7 +115,7 @@ const valueId=%s;
 String hex(Uint8List b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
 void check(bool b,String why){if(!b)throw StateError(why);}
 Uint8List field(int id,int kind,List<int> bytes){
- final s=w.WireState();final out=w.TableWireWriter(s)..putByte(1)..putLeb(0);out.buf.removeLast();
+ final s=w.WireState();final out=w.TableWireWriter(s)..putByte(1);
  out.putLeb(out.refFor(id));out.putByte(kind);out.putBytes(bytes);out.putByte(0);
  for(final id in s.ids){out.putU64(id);}out.putU64(s.ids.length);return Uint8List.fromList(out.buf);
 }
