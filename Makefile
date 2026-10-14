@@ -2848,8 +2848,8 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp tes
 # and iterated reads, Measure and Save on the richest FIXED root; the run
 # prints the count and its in-process control plants one allocation and
 # requires the instrument to see it. #562's list audit and #615/#679's retain
-# counters hold their own paths; `make test` reaches this one through
-# build/schema_test_tables.
+# counters hold their own paths; `make test` runs this one in the cpp leg's
+# table-gate list, beside the other tables-* gates.
 .PHONY: tables-cpp-alloc
 tables-cpp-alloc: build/schema_test_tables
 	@./build/schema_test_tables > build/tables-cpp-alloc.log 2>&1 || { cat build/tables-cpp-alloc.log; exit 1; }
@@ -3502,6 +3502,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-runtime-home-negative-control
 	$(MAKE) tables-cpp-runtime-home
 	$(MAKE) tables-cpp-runtime-home-negative-control
+	$(MAKE) tables-cpp-alloc
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative-control
