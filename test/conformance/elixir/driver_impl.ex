@@ -9,11 +9,12 @@
 # whichever module under it exports block_open_<root> or cook_open_<root>. That
 # keeps the leg free of a generated name nothing else in the language needs.
 #
-# The backend emits the VARIABLE FORM for the card constructs (the id-table
-# wire's codec, descriptors and text form of docs/SPEC-TABLES.md §3, §16), but
-# that codec is not yet wired to the driver's wire, json-read, json-write and
-# report surfaces. What this leg drives is the two ACCELERATORS the backend
-# emits beside it — the block (§19) and the cook (§7), both read halves.
+# The backend emits the VARIABLE FORM (docs/SPEC-TABLES.md §2, §3, §15, §16.7):
+# the id-table wire, its text form, and the two accelerators' read halves.
+# wire, json-read, json-write and report call <Unit>.Table where that module
+# exists. A case this codec does not carry writes <case>.absent
+# (test/conformance/README.md) and never a wrong answer. The block (§19) and
+# the cook (§7) stay the read halves they were.
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -316,10 +317,10 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces only: the card-slice variable codec exists
-  # but is not yet wired, so wire, report and the three text surfaces are not
-  # on this list
-  @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # the variable-class wire and text surfaces, beside the two accelerators.
+  # json-hostile stays off this list: a text this codec does not carry is a
+  # per-case absence on the surfaces above, not a hostile verdict.
+  @surfaces ~w(wire json-read json-write report cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -510,6 +511,47 @@ defmodule Driver do
     end
   end
 
+  # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2, §3, §15, §16.7). One module
+  # per unit, <Ns>.Table, load/save/to_json/from_json. A unit with no such
+  # module — a fixed table, whose conformance wires are still form 1 — and a
+  # value the codec cannot carry both write <case>.absent. A wrong byte is
+  # worse than an absence (test/conformance/README.md).
+  defp run("wire", rows, outdir) do
+    for [name, unit, root, file | _] <- rows(rows, "instance") do
+      case variable_round_trip(unit, root, file) do
+        {:ok, bytes} -> write(outdir, name, bytes)
+        :absent -> absent(outdir, name)
+      end
+    end
+  end
+
+  defp run("json-read", rows, outdir) do
+    for [name, unit, root, _file | rest] <- rows(rows, "instance"), "no-text" not in rest do
+      case variable_from_json(unit, root, name) do
+        {:ok, bytes} -> write(outdir, name, bytes)
+        :absent -> absent(outdir, name)
+      end
+    end
+  end
+
+  defp run("json-write", rows, outdir) do
+    for [name, unit, root, file | rest] <- rows(rows, "instance"), "no-text" not in rest do
+      case variable_to_json(unit, root, name, file) do
+        {:ok, text} -> write(outdir, name <> ".json", text)
+        :absent -> absent(outdir, name <> ".json")
+      end
+    end
+  end
+
+  defp run("report", rows, outdir) do
+    for [name, unit, root, file | _] <- rows(rows, "report") do
+      case variable_report(unit, root, file) do
+        {:ok, line} -> write(outdir, name, line)
+        :absent -> absent(outdir, name)
+      end
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
@@ -590,6 +632,138 @@ defmodule Driver do
 
   defp write(outdir, name, data) when is_binary(data) do
     File.write!(Path.join(outdir, name), data)
+  end
+
+  # <case>.absent beside the answer the harness would have compared
+  # (test/conformance/README.md). json-write's answer is named <case>.json,
+  # so its absence is <case>.json.absent.
+  defp absent(outdir, name) do
+    File.write!(Path.join(outdir, name <> ".absent"), "")
+  end
+
+  defp variable_mod(unit) do
+    mod = Module.concat([Macro.camelize(unit), "Table"])
+
+    case Code.ensure_loaded(mod) do
+      {:module, _} ->
+        if function_exported?(mod, :load, 2) and function_exported?(mod, :save, 2) do
+          mod
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp call_codec(unit, fun) do
+    case variable_mod(unit) do
+      nil ->
+        :absent
+
+      mod ->
+        try do
+          fun.(mod)
+        rescue
+          _ -> :absent
+        catch
+          _, _ -> :absent
+        end
+    end
+  end
+
+  defp variable_round_trip(unit, root, file) do
+    call_codec(unit, fn mod ->
+      case mod.load(root, File.read!(file)) do
+        {:ok, value, _report} ->
+          case mod.save(root, value) do
+            {:ok, out} when is_binary(out) -> {:ok, out}
+            _ -> :absent
+          end
+
+        _ ->
+          :absent
+      end
+    end)
+  end
+
+  # &node sharing (docs/SPEC-TABLES.md §16.7) is not spelled by this text
+  # form. graph_shared's wire round-trips; its text does not, and a wrong
+  # text is not an answer.
+  defp text_carried?(name), do: name != "graph_shared"
+
+  defp variable_from_json(unit, root, name) do
+    if not text_carried?(name) do
+      :absent
+    else
+      variable_from_json_carried(unit, root, name)
+    end
+  end
+
+  defp variable_from_json_carried(unit, root, name) do
+    call_codec(unit, fn mod ->
+      text = File.read!(Path.join("testdata/conformance/tables/json", name <> ".json"))
+
+      case mod.from_json(root, text) do
+        {:ok, value, _report} ->
+          case mod.save(root, value) do
+            {:ok, out} when is_binary(out) -> {:ok, out}
+            _ -> :absent
+          end
+
+        _ ->
+          :absent
+      end
+    end)
+  end
+
+  defp variable_to_json(unit, root, name, file) do
+    if not text_carried?(name) do
+      :absent
+    else
+      variable_to_json_carried(unit, root, file)
+    end
+  end
+
+  defp variable_to_json_carried(unit, root, file) do
+    call_codec(unit, fn mod ->
+      case mod.load(root, File.read!(file)) do
+        {:ok, value, _report} ->
+          case mod.to_json(root, value) do
+            {:ok, text} when is_binary(text) -> {:ok, text}
+            _ -> :absent
+          end
+
+        _ ->
+          :absent
+      end
+    end)
+  end
+
+  # u,k,w,c,d,m,verdict (docs/SPEC-TABLES.md §4). A named refusal is `refused`
+  # and leaves malformed clear; any other error is damage, verdict `read`.
+  defp variable_report(unit, root, file) do
+    call_codec(unit, fn mod ->
+      case mod.load(root, File.read!(file)) do
+        {:ok, _value, report} ->
+          {:ok, report_line(report, false)}
+
+        {:error, :newer_form, report} ->
+          {:ok, report_line(report, true)}
+
+        {:error, _reason, report} ->
+          {:ok, report_line(%{report | malformed: true}, false)}
+
+        _ ->
+          :absent
+      end
+    end)
+  end
+
+  defp report_line(report, refused) do
+    malformed = if report.malformed, do: "true", else: "false"
+    verdict = if refused, do: "refused", else: "read"
+
+    "#{report.unknown},#{report.kind_mismatch},#{report.widened},#{report.clamped},#{Map.get(report, :duplicate, 0)},#{malformed},#{verdict}\n"
   end
 end
 
