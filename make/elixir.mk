@@ -88,19 +88,21 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # are distinct. The conformance driver starts a BEAM per surface over these
 # .beam files, so nothing is compiled at driver time.
 #
-# tblp2 (test/tables/P2.schema) is DELIBERATELY ABSENT: its two tables are the
-# pointered side of the evolution pair (`Chain.link *Link`, `Link.next *Link`),
-# and the variable form's boundary refuses a pointer to a table outside a list
-# element by name (docs/SPEC-TABLES.md §2.1, §11). The conformance matrix's
-# cook, block and forgery surfaces — the three this leg answers — name only
-# graphdemo and blockdemo, so dropping the unit changes no cell.
+# graphdemo (tables/pointers) exercises the pointered variable class
+# (docs/SPEC-TABLES.md §2.1); blobdemo (tables/blobs) the byte buffers (§2.5);
+# listdemo (tables/lists) the unbounded arrays (§2.9); tblp1/tblp2/tblp3 the
+# evolution rows. The conformance matrix's cook, block and forgery surfaces —
+# the three this leg answers — name only graphdemo and blockdemo today; the
+# variable-class surfaces (wire, json-read, json-write, report) arrive with
+# the carry this card teaches.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema
 
-build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -261,9 +263,9 @@ tables-elixir-release:
 # THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
 # two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
 # both and the block lead gate — then the format check and the packet tests.
-# The port emits no table wire (schema#515), so there is no walk gate, no
-# text-form control, no allocation audit and no soak here: each measured the
-# wire's previous form and went with it.
+# The port emits the variable form's card slice (docs/SPEC-TABLES.md §3, §16),
+# but this leg still has no walk gate, no text-form control, no allocation
+# audit and no soak: the gates that ring the wire's full class arrive with it.
 .PHONY: test-elixir
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz

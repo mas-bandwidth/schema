@@ -4,14 +4,13 @@
 // unit's BuildVersion module, emitted only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
-// itself — the codecs, the reflection descriptors and the text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir. The port that once stood here wrote the form that
-// preceded the id-table wire, which the current specification does not
-// describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
-// marks the cells.
+// parses a wire, so both reach every fixed table of the unit. Beside them the
+// VARIABLE FORM is emitted for the card constructs only: the id-table wire's
+// codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
+// §3, §4, §8 and §16 in their id-table form, for a plain `table` root, tables
+// as list elements, bool/int32/int64/enum, string(N), *string and []T lists of
+// tables. The rest of the variable class is refused by name at the backend's
+// boundary (§11).
 package elixirtable
 
 import (
