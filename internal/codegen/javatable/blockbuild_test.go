@@ -454,6 +454,12 @@ public final class Driver {
   TableVariable.Report slack=new TableVariable.Report();RootVariable.Value reset=RootVariable.load(java.util.Arrays.copyOf(framed.buf,framed.off),slack);
   if(reset==null||!slack.malformed||slack.refused||reset.metas.size()!=1||reset.metas.get(0).build!=1)throw new AssertionError("unclaimed element bytes kept the damaged value");
   System.out.println("unclaimed element bytes reset the slot to its declared default");
+  TableVariable.Writer zeroType=new TableVariable.Writer(new byte[256],new TableVariable.Ids(64)),node=zeroType.sub(new byte[64]);
+  node.putLeb(1);node.putLeb(node.ref(0));node.putLeb(1);node.put8(0);
+  zeroType.put8(1);zeroType.putLeb(zeroType.ref(RootVariable.F_first));zeroType.put8(17);zeroType.putLeb(2);
+  zeroType.putLeb(zeroType.ref(TableVariable.NODE_ID));zeroType.put8(12);zeroType.putLeb(node.off);zeroType.putBytes(node.buf,0,node.off);zeroType.put8(0);zeroType.trailer();
+  TableVariable.Report unknown=new TableVariable.Report();RootVariable.Value unknownPrefix=RootVariable.load(java.util.Arrays.copyOf(zeroType.buf,zeroType.off),unknown);
+  if(unknownPrefix==null||unknownPrefix.first!=null||unknown.unknown!=1||unknown.malformed||unknown.refused)throw new AssertionError("unknown zero type id confused with malformed text");
  }
 }`
 	for _, f := range u.Tables["Root"].Fields {
