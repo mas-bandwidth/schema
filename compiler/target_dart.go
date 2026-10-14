@@ -41,8 +41,13 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 		return nil, err
 	}
 	// §2.6, §3.4: supported explicitly fixed closures have tag/arm storage in
-	// the fixed library; variable-table closures retain their named refusals.
-	if !darttable.FixedTableClosureSupported(u) {
+	// the fixed library. A unit with a variable root this card carries is not
+	// refused whole for a union, an array of unions or a map that sits beside
+	// that root — tables/lists is that shape. Those constructs stay unencoded
+	// on form 1 (cardWireField does not claim them) and a unit the variable
+	// form owns still refuses them by name. A unit with no carried root keeps
+	// the named compiler refusal.
+	if !darttable.CarriesVariableRoot(u) && !darttable.FixedTableClosureSupported(u) {
 		if err := refuseTableArms(u, "dart"); err != nil {
 			return nil, err
 		}
@@ -50,12 +55,12 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 			return nil, err
 		}
 	}
-	if err := refuseUnionArrays(u, "dart"); err != nil {
-		return nil, err
+	if !darttable.CarriesVariableRoot(u) {
+		if err := refuseUnionArrays(u, "dart"); err != nil {
+			return nil, err
+		}
 	}
-	// §2.5: the variable wire carries the STRING blob but not the BYTES blob,
-	// so the two are refused apart — *bytes stays a named refusal, *string is
-	// the card's optional scalar pointer and is carried.
+	// §2.5: *bytes and *string both ride the node table on this leg.
 	if err := refuseBytes(u, "dart"); err != nil {
 		return nil, err
 	}
@@ -65,8 +70,10 @@ func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	if err := refuseOptionalArrays(u, "dart"); err != nil {
 		return nil, err
 	}
-	if err := refuseMaps(u, "dart"); err != nil {
-		return nil, err
+	if !darttable.CarriesVariableRoot(u) {
+		if err := refuseMaps(u, "dart"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseLists(u, "dart"); err != nil {
 		return nil, err

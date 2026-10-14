@@ -171,19 +171,16 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
-	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the card
-	// record's constructs. The card's tables are all plain `table`, so the
-	// form-1 wire is their load/save; a fixed-only unit has no variable root
-	// and gets nothing (its form 3 is above). A unit the fixed form already
-	// serves emits no form-1 byte either (§3.4): the variable form is emitted
-	// for the unit it OWNS — one whose closure holds no fixed table.
-	if !closureHoldsFixedTable(u, closure) {
-		wire, err := generateWireFiles(u)
-		if err != nil {
-			return nil, err
-		}
-		maps.Copy(out, wire)
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1. A fixed-only unit
+	// has no variable root and gets nothing from generateWireFiles (its form 3
+	// is above). A unit that mixes fixed tables with a variable root this card
+	// carries emits BOTH: form 3 for the fixed tables, form 1 for the variable
+	// roots. Fixed tables are not encoded as form 1.
+	wire, err := generateWireFiles(u)
+	if err != nil {
+		return nil, err
 	}
+	maps.Copy(out, wire)
 	// A unit whose wide kinds cost it the accelerators AND that has no fixed
 	// form to put in their place has nothing to emit, so it is refused whole
 	// and by name, exactly as it was before the form arrived.
@@ -330,12 +327,6 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// dropped from the variable form.
 			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
 				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
-					name, f.Name)
-			}
-			// pointers to tables outside an unbounded list element
-			// (docs/SPEC-TABLES.md §2.1)
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Pointer && f.Type.Kind == ir.TNamed && ref.IsTable && f.Array != ir.ArrayList {
-				return fmt.Errorf("table %s field %s: a pointer to a table outside an unbounded list element is refused in the Dart table backend (docs/SPEC-TABLES.md §2.1, §11)",
 					name, f.Name)
 			}
 		}

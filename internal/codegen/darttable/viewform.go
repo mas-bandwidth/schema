@@ -85,8 +85,8 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		bound = fmt.Sprintf("%d", f.Type.Size)
 	case f.HasIntRange:
-		min = f.IntMin.String()
-		max = f.IntMax.String()
+		min = dartBoundLiteral(f.IntMin)
+		max = dartBoundLiteral(f.IntMax)
 	}
 	g.pf("\t\tTableFieldInfo(%q, %d, %q, %s, %s, %s),\n",
 		f.Name, cardFieldKind(f), cardFieldShape(f), bound, min, max)

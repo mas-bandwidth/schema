@@ -1,29 +1,25 @@
 // THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, in Dart: load
 // (tolerant, §4) and save (the canonical byte layout the other backends write)
-// for the card record's constructs and the remaining SCALAR KINDS — a plain
-// `table` root, tables as unbounded list elements, bool/int8/int16/int32/int64
-// and uint8/uint16/uint32/uint64 fields, `bits(N)`, `float32`/`float64`,
-// `string(N)`/`bytes(N)`, `*string`/`*bytes` (the two byte-buffer kinds of
-// §2.5) and `[]T` of tables (§2.9). Every other variable-class construct — a
-// map, a union, a bounded/counted array, an optional, a keyed array, the wide
-// kinds, wstring and arrays of scalars/strings/enums/pointers — is refused by
-// name in checkUnsupportedConstructs (§11), and nothing here reads or writes
-// one.
+// for the variable class this card carries — a plain `table` root, by-value
+// nesting, pointers *T, arrays of pointers []*T, counted [..N]T of a carried
+// element, tables as list elements, bool and the integer kinds below 128,
+// `bits(N)`, `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`,
+// and unbounded arrays of scalars, strings and enums. A map, a union, an
+// optional, a keyed array, a fixed positional array, the wide kinds and
+// wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
+// the variable form owns, and nothing here encodes one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
-// committed byte oracle tables/cards/fuzz/card-populated.wire: the form byte,
-// the root body's ref/kind/payload framing, the id-table trailer in first-use
-// order, and kind 17 node indices for `*string` riding a §3.1 flat node table
-// of string-blob records. Every function below that implements a rule cites
-// the section it reads.
-//
-// This is the card's SLICE of the variable-class port the conformance README
-// tracks (schema#349): every other variable-class construct is refused by name
-// in checkUnsupportedConstructs (§11), and nothing here reads or writes one.
+// committed byte oracle tables/cards/fuzz/card-populated.wire, and the
+// pointer, blob and list corpora pin the same bytes in testdata/wire/tables.
+// The id table is 64-bit, first-use order (§3). Kind 31 (escape) is never
+// written — no declaration maps to it — and the reader skips it by its L
+// (§3, §4). Every function below that implements a rule cites the section.
 package darttable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -61,66 +57,135 @@ func dartU64Literal(id uint64) string {
 	return fmt.Sprintf("%d", int64(id))
 }
 
-// cardWireField reports whether a field is one of the card record's
-// constructs or a carried scalar kind (docs/SPEC-TABLES.md §2.1, §2.5, §2.9,
-// §3): bool, the integer/bits kinds of width below 128, float32/float64,
-// enum, string(N), bytes(N), *string/*bytes (the byte-buffer kinds) and an
-// unbounded []T of table elements. Every other variable-class construct — a
-// map, a union, a bounded/counted array, an optional, a keyed array, the wide
-// kinds, wstring — is NOT a card construct: the wire form is not claimed for
-// it, and the emitter must never mis-encode it (§11).
+// dartBoundLiteral is a declared integer bound as a Dart int literal (§3, §4).
+// A bound above 2^63-1 is the same 64-bit pattern, spelled as its signed mint,
+// because a Dart int literal cannot name an unsigned value past that line.
+func dartBoundLiteral(n *big.Int) string {
+	if n == nil {
+		return "0"
+	}
+	if n.Sign() < 0 || n.BitLen() > 64 {
+		return n.String()
+	}
+	return dartU64Literal(n.Uint64())
+}
+
+// tableRef is the table a field names, or nil for a scalar, an enum, a blob,
+// a union or a non-table struct (docs/SPEC-TABLES.md §2.1).
+func tableRef(f *ir.Field) *ir.Struct {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok || !st.IsTable {
+		return nil
+	}
+	return st
+}
+
+func isPointerTable(f *ir.Field) bool {
+	return f.Array == ir.ArrayNone && f.Type.Pointer && tableRef(f) != nil
+}
+
+func isByValueTable(f *ir.Field) bool {
+	return f.Array == ir.ArrayNone && !f.Type.Pointer && !f.Type.Blob() && tableRef(f) != nil
+}
+
+// cardWireField reports whether a field is a construct this backend encodes
+// on form 1 (docs/SPEC-TABLES.md §2.1, §2.5, §2.9, §3): the scalar kinds below
+// 128, bits, the two floats, enum, string(N), bytes(N), *string/*bytes, a
+// pointer or by-value table whose target is itself carried, and a counted or
+// unbounded array of a carried element. A map, a union, an optional, a keyed
+// array, a fixed positional array, the wide kinds and wstring are not: the
+// wire form is not claimed for them (§11). seen breaks a pointer cycle — a
+// table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
-	switch {
-	case f.Type.Blob():
-		return true // *string and *bytes, both blobs on the node table (§2.5)
-	case f.IsList():
+	return cardWireFieldSeen(f, map[string]bool{})
+}
+
+func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
+	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.Type.Kind == ir.TMap {
+		return false
+	}
+	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+		return false
+	}
+	if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TWString {
+		return false
+	}
+	if f.Type.Blob() && f.Array == ir.ArrayNone {
 		return true
-	case f.Type.Kind == ir.TBool:
+	}
+	if f.CountedOnWire() {
+		return cardScalarOrTable(f, seen)
+	}
+	if f.Array != ir.ArrayNone {
+		return false
+	}
+	return cardScalarOrTable(f, seen)
+}
+
+func cardScalarOrTable(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return true
-	case f.Type.Kind == ir.TInt:
-		// uint8..uint64, int8, int16, int32, int64 (docs/SPEC-TABLES.md §2.1,
-		// §3); the 128-bit integer kinds ride the wide refusal (§15).
+	case ir.TInt:
 		return f.Type.Width != 128
-	case f.Type.Kind == ir.TBits, f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
-		return true
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		return true
-	case f.Type.Kind == ir.TNamed:
-		_, isEnum := f.Type.Ref.(*ir.Enum)
-		return isEnum
+	case ir.TNamed:
+		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+			return !f.Type.Pointer
+		}
+		if ref := tableRef(f); ref != nil {
+			return cardWireTableSeen(ref, seen)
+		}
 	}
 	return false
 }
 
-// cardWireTable reports whether every field of a variable table is a card
-// construct. A table with any other construct keeps its fixed form and gets no
-// form-1 codec here — this is the card's slice and the rest is not claimed.
+// cardWireTable reports whether every field of a table is a carried construct.
+// A table with any other construct gets no form-1 codec (§11).
 func cardWireTable(st *ir.Struct) bool {
+	return cardWireTableSeen(st, map[string]bool{})
+}
+
+func cardWireTableSeen(st *ir.Struct, seen map[string]bool) bool {
+	if st == nil || !st.IsTable {
+		return false
+	}
+	if seen[st.Name] {
+		return true
+	}
+	seen[st.Name] = true
 	for _, f := range st.Fields {
-		if !cardWireField(f) {
+		if !cardWireFieldSeen(f, seen) {
+			delete(seen, st.Name)
 			return false
 		}
 	}
 	return true
 }
 
-// variableRoots is every plain `table` of the unit that uses ONLY the card's
-// constructs and that no other such table reaches BY VALUE — the tables a
-// form-1 FILE is written for, §3's ROOT BODY being the one that carries the
-// node table (§3.1). A table reached only as a list element is a by-value
-// member, never a root.
+// CarriesVariableRoot reports whether the unit has a variable table this
+// backend encodes on form 1. The compiler uses it so a map or a union sitting
+// beside that root does not refuse the whole unit (docs/SPEC-TABLES.md §11).
+func CarriesVariableRoot(u *ir.Unit) bool {
+	return len(variableRoots(u)) > 0
+}
+
+// variableRoots is every plain `table` this backend encodes that no other such
+// table reaches by value or as a counted/list element — the tables a form-1
+// FILE is written for. A pointer target stays a root: the edge is not by-value
+// (§3.1). A fixed table is a node, never a file root.
 func variableRoots(u *ir.Unit) []*ir.Struct {
 	variable := ir.VariableTables(u)
 	named := map[string]bool{}
 	for _, st := range u.Tables {
-		if !variable[st.Name] || !cardWireTable(st) {
+		if !cardWireTable(st) {
 			continue
 		}
 		for _, f := range st.Fields {
-			if f.IsList() || (f.Type.Kind == ir.TNamed && !f.Type.Pointer) {
-				if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-					named[ref.Name] = true
-				}
+			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || isByValueTable(f)) {
+				named[ref.Name] = true
 			}
 		}
 	}
@@ -144,35 +209,36 @@ func sortedTableNames(u *ir.Unit) []string {
 	return out
 }
 
-// wireClosure is the set of variable tables a form-1 codec reaches: the roots
-// and every by-value member, in an order where a member's helpers are emitted
-// before the table that holds it.
+// wireClosure is every table a form-1 codec reaches, fixed tables included
+// when they are pointer targets or by-value members: a member's helpers are
+// emitted before the table that holds it. A table this backend does not
+// encode is left out, so a map or a union beside a carried root is not given
+// a codec (§11).
 func wireClosure(u *ir.Unit) []*ir.Struct {
-	variable := ir.VariableTables(u)
 	var order []*ir.Struct
 	seen := map[string]bool{}
 	var visit func(st *ir.Struct)
 	visit = func(st *ir.Struct) {
-		if seen[st.Name] {
+		if st == nil || seen[st.Name] || !cardWireTable(st) {
 			return
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.IsList() || (f.Type.Kind == ir.TNamed && !f.Type.Pointer) {
-				if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable && variable[ref.Name] && cardWireTable(ref) {
-					visit(ref)
-				}
+			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone) {
+				visit(ref)
 			}
 		}
 		order = append(order, st)
 	}
 	for _, name := range sortedTableNames(u) {
-		if variable[name] && cardWireTable(u.Tables[name]) {
-			visit(u.Tables[name])
+		if st := u.Tables[name]; st != nil {
+			visit(st)
 		}
 	}
 	return order
 }
+
+func typeConst(st *ir.Struct) string { return "_kType" + st.Name }
 
 // generateWireFiles emits the form-1 wire library <Home>Wire.dart for every
 // variable root, and nothing for a unit whose tables carry no form-1 codec
@@ -255,6 +321,9 @@ func dartListElemType(f *ir.Field) string {
 		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
 			return "int"
 		}
+		if f.Type.Pointer && tableRef(f) != nil {
+			return f.Type.Name + "?"
+		}
 		return f.Type.Name
 	}
 	return "int"
@@ -282,11 +351,17 @@ func (g *wireGen) emit() {
 	g.pf("// The VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, in Dart:\n")
 	g.pf("// the card record's constructs — load (tolerant, §4) and save (the\n")
 	g.pf("// canonical layout the Go, C, C++ and C# backends write), against the\n")
-	g.pf("// committed byte oracle tables/cards/fuzz/card-populated.wire.\n\n")
+	g.pf("// committed byte oracle tables/cards/fuzz/card-populated.wire.\n")
+	// The runtime is one library for every kind the class can carry. A unit
+	// that does not spend a kind leaves that helper unreferenced. That is the
+	// shape of a shared runtime, not a mistake in a unit. The ignore has to
+	// sit above the imports: the analyzer only honours it before any code.
+	g.pf("// ignore_for_file: unused_element\n\n")
 	g.pf("import 'dart:convert';\nimport 'dart:typed_data';\n\n")
 	g.emitConstants()
 	g.emitRuntime()
 	g.emitRetainRuntime()
+	g.emitNodeDispatch()
 	for _, st := range g.closure {
 		g.emitStorage(st)
 	}
@@ -295,6 +370,9 @@ func (g *wireGen) emit() {
 	}
 	for _, st := range g.closure {
 		g.emitLoadBody(st)
+	}
+	for _, st := range g.closure {
+		g.emitNumber(st)
 	}
 	for _, st := range g.roots {
 		g.emitSave(st)
@@ -313,7 +391,11 @@ func (g *wireGen) emitConstants() {
 	g.pf("const int _kBuildVersionId = %s; // 0xFFFFFFFFFFFFFFFE\n", dartU64Literal(ir.TableBuildVersionWireId))
 	g.pf("const int _kVocabularyId = %s; // 0xFFFFFFFFFFFFFFFD\n", dartU64Literal(ir.TableMessageVocabularyWireId))
 	g.pf("const int _kBytesBlobId = %s; // fnv1a64(\"bytes\")\n", dartU64Literal(ir.BytesWireTypeId))
-	g.pf("const int _kStringBlobId = %s; // fnv1a64(\"string\")\n\n", dartU64Literal(ir.StringWireTypeId))
+	g.pf("const int _kStringBlobId = %s; // fnv1a64(\"string\")\n", dartU64Literal(ir.StringWireTypeId))
+	for _, st := range g.closure {
+		g.pf("const int %s = %s; // fnv1a64(%q)\n", typeConst(st), dartU64Literal(tableWireId(st)), st.WireName())
+	}
+	g.pf("\n")
 }
 
 // emitRuntime emits the generic form-1 writer/reader (§3, §4), shared by every
@@ -341,9 +423,25 @@ final class WireState {
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
   final List<List<int>> nodes = <List<int>>[];
+  final List<Object?> nodeObjs = <Object?>[];
+  final Map<Object, int> _objIndex = <Object, int>{};
   TableRetain? retain;
   TableWireReport? report;
   bool lost = false;
+
+  int mark() => ids.length;
+
+  // rollback drops ids interned after mark, so an elided by-value body leaves
+  // nothing in the id table (§3).
+  void rollback(int m) {
+    while (ids.length > m) {
+      refs.remove(ids.removeLast());
+    }
+  }
+
+  void indexRoot(Object v) {
+    _objIndex[v] = 1;
+  }
 
   int refFor(int id) {
     final r = refs[id];
@@ -380,9 +478,9 @@ final class WireState {
   // reference backends' first-visit numbering byte for byte (§3.1). A *bytes
   // blob and a *string blob of equal bytes are two nodes: the type id tells
   // them apart.
-  int nodeIndexForBlob(int typeId, List<int> bytes) {
+  int? _findBlob(int typeId, List<int> bytes) {
     for (var i = 0; i < nodes.length; i++) {
-      if (nodeTypes[i] != typeId) continue;
+      if (nodeObjs[i] != null || nodeTypes[i] != typeId) continue;
       final existing = nodes[i];
       if (existing.length != bytes.length) continue;
       var same = true;
@@ -394,9 +492,55 @@ final class WireState {
       }
       if (same) return i + 2;
     }
+    return null;
+  }
+
+  // noteBlob numbers one *bytes/*string blob (§3.1). A blob reached twice with
+  // the same type id and the same bytes is one record. Numbering does not
+  // intern ids — the node-table write does, in record order (§3).
+  int noteBlob(int typeId, List<int> bytes) {
+    final found = _findBlob(typeId, bytes);
+    if (found != null) return found;
     nodeTypes.add(typeId);
-    nodes.add(bytes);
+    nodes.add(List<int>.from(bytes));
+    nodeObjs.add(null);
     return nodes.length + 1;
+  }
+
+  int nodeIndexForBlob(int typeId, List<int> bytes) => noteBlob(typeId, bytes);
+
+  int blobIndex(int typeId, List<int> bytes) {
+    final found = _findBlob(typeId, bytes);
+    if (found == null) {
+      throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
+    }
+    return found;
+  }
+
+  // noteTable numbers one table node on first visit and descends immediately,
+  // so a child is numbered before the next sibling field (§3.1). A reference
+  // to a node still open is a cycle and save refuses it. A node already
+  // numbered and closed is shared: one index, no second record.
+  void noteTable(int typeId, Object obj, Set<Object> open, void Function(Set<Object> open) descend) {
+    if (open.contains(obj)) {
+      throw StateError('data cycle: a pointer reaches a node still open (docs/SPEC-TABLES.md §3.1)');
+    }
+    if (_objIndex.containsKey(obj)) return;
+    _objIndex[obj] = nodes.length + 2;
+    nodeTypes.add(typeId);
+    nodes.add(<int>[]);
+    nodeObjs.add(obj);
+    open.add(obj);
+    descend(open);
+    open.remove(obj);
+  }
+
+  int indexOf(Object obj) {
+    final i = _objIndex[obj];
+    if (i == null) {
+      throw StateError('node was not numbered (docs/SPEC-TABLES.md §3.1)');
+    }
+    return i;
   }
 }
 
@@ -494,6 +638,8 @@ final class TableWireReader {
   final Map<int, int> refToId;
   final List<int> nodeTypes;
   final List<Uint8List> nodes;
+  final Set<int> knownTypes;
+  final List<Object?> decoded;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -501,12 +647,16 @@ final class TableWireReader {
   bool bytesBlob = false;
   TableRetain? retain;
   List<int> path = <int>[];
+  Object? rootObj;
+  int rootType = 0;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
       refToId = <int, int>{},
       nodeTypes = <int>[],
       nodes = <Uint8List>[],
+      knownTypes = <int>{},
+      decoded = <Object?>[],
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -519,13 +669,38 @@ final class TableWireReader {
       refToId = parent.refToId,
       nodeTypes = parent.nodeTypes,
       nodes = parent.nodes,
+      knownTypes = parent.knownTypes,
+      decoded = parent.decoded,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
       stringBlob = parent.stringBlob,
       bytesBlob = parent.bytesBlob,
       retain = parent.retain,
-      path = parent.path;
+      path = parent.path,
+      rootObj = parent.rootObj,
+      rootType = parent.rootType;
+
+  // over reads one node-record body against the parent's numbering. The bytes
+  // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
+  TableWireReader.over(Uint8List bytes, TableWireReader parent)
+    : data = bytes,
+      pos = 0,
+      limit = bytes.length,
+      refToId = parent.refToId,
+      nodeTypes = parent.nodeTypes,
+      nodes = parent.nodes,
+      knownTypes = parent.knownTypes,
+      decoded = parent.decoded,
+      report = parent.report,
+      entryCount = parent.entryCount,
+      nodeTableGood = parent.nodeTableGood,
+      stringBlob = parent.stringBlob,
+      bytesBlob = parent.bytesBlob,
+      retain = parent.retain,
+      path = parent.path,
+      rootObj = parent.rootObj,
+      rootType = parent.rootType;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -658,6 +833,48 @@ final class TableWireReader {
 
   Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
 
+  // resolveTable turns a kind-17 node index into the table it names (§3.1).
+  // 0 is null. 1 is the root, and only when the field's target is the root's
+  // own type. A record is decoded once and stored before its body is read, so
+  // a second slot names the same object. A type this reader cannot place, or
+  // a type other than the field's target, is a kind mismatch and reads null.
+  Object? resolveTable(int idx, int wantType) {
+    if (!nodeTableGood) return null;
+    if (idx == 0) return null;
+    if (idx == 1) {
+      if (wantType != rootType) {
+        report.kindMismatch++;
+        return null;
+      }
+      return rootObj;
+    }
+    final rec = idx - 2;
+    if (rec < 0 || rec >= nodes.length) {
+      report.malformed = true;
+      return null;
+    }
+    if (nodeTypes[rec] != wantType) {
+      report.kindMismatch++;
+      return null;
+    }
+    final have = decoded[rec];
+    if (have != null) return have;
+    final obj = _newNode(wantType);
+    if (obj == null) {
+      report.kindMismatch++;
+      return null;
+    }
+    decoded[rec] = obj;
+    final sub = TableWireReader.over(nodes[rec], this);
+    _loadNodeBody(sub, wantType, obj);
+    if (sub.pos != sub.limit) {
+      report.malformed = true;
+      decoded[rec] = null;
+      return null;
+    }
+    return obj;
+  }
+
   // open resolves the id table from the END of the wire (§3), then walks the
   // root body's framing to its terminator. 0 ok, 1 refused (a form byte this
   // reader does not carry), 2 damaged (a trailer the reader cannot resolve, or
@@ -759,12 +976,15 @@ final class TableWireReader {
             }
           } else if (typeId == _kBytesBlobId && bytesBlob) {
             nodeTypes.add(typeId);
+          } else if (knownTypes.contains(typeId)) {
+            nodeTypes.add(typeId);
           } else {
             report.unknown++;
             if (retain != null) report.retainLost++;
             nodeTypes.add(typeId);
           }
           nodes.add(bytes);
+          decoded.add(null);
           read++;
         }
         if (!framed || pos != end || read != count) {
@@ -777,6 +997,32 @@ final class TableWireReader {
       }
     }
   }
+}
+
+// _kindWidens reports whether a payload kind is a smaller kind on the same
+// signed or unsigned ladder, or an f32 read into an f64 (§4). One array whose
+// element kind widens counts one widened, not one per element.
+bool _kindWidens(int from, int to) {
+  return (from >= 2 && from <= 5 && to > from && to <= 5) ||
+      (from >= 6 && from <= 9 && to > from && to <= 9) ||
+      (from == 10 && to == 11);
+}
+
+// _u64Below/_u64Above compare two 64-bit patterns stored as Dart ints (§4).
+// Bit 63 sets the mint negative; unsigned order puts that pattern above every
+// pattern with the bit clear, and matches signed order when the signs agree.
+bool _u64Below(int a, int b) {
+  final ah = a < 0;
+  final bh = b < 0;
+  if (ah != bh) return bh;
+  return a < b;
+}
+
+bool _u64Above(int a, int b) {
+  final ah = a < 0;
+  final bh = b < 0;
+  if (ah != bh) return ah;
+  return a > b;
 }
 
 int readU64(Uint8List d, int off) {
@@ -837,9 +1083,13 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			} else {
 				g.pf("  Uint8List? %s;\n", name)
 			}
-		case f.IsList():
+		case f.CountedOnWire():
 			et := dartListElemType(f)
 			g.pf("  List<%s> %s = <%s>[];\n", et, name, et)
+		case isPointerTable(f):
+			g.pf("  %s? %s;\n", f.Type.Name, name)
+		case isByValueTable(f):
+			g.pf("  %s %s = %s();\n", f.Type.Name, name, f.Type.Name)
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
 		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
@@ -859,7 +1109,7 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 
 func (g *wireGen) intDefault(f *ir.Field) string {
 	if f.HasDefault && f.DefInt != nil {
-		return f.DefInt.String()
+		return dartBoundLiteral(f.DefInt)
 	}
 	return "0"
 }
@@ -920,15 +1170,26 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\tw.putLeb(w.state.nodeIndexForBlob(_kStringBlobId, utf8.encode(%s!)));\n", ind, expr)
+			g.pf("%s\tw.putLeb(w.state.blobIndex(_kStringBlobId, utf8.encode(%s!)));\n", ind, expr)
 		} else {
-			g.pf("%s\tw.putLeb(w.state.nodeIndexForBlob(_kBytesBlobId, %s!));\n", ind, expr)
+			g.pf("%s\tw.putLeb(w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr)
 		}
 		g.pf("%s}\n", ind)
-	case f.IsList(): // []T rides as kind 14; element kind 13 for tables, else the element's own (§2.9, §3)
-		if listElementKind(f) == wireKindTable {
+	case isPointerTable(f):
+		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
+		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
+		g.pf("%s\tw.putLeb(w.state.indexOf(%s!));\n", ind, expr)
+		g.pf("%s}\n", ind)
+	case isByValueTable(f):
+		g.emitSaveByValue(f, expr, ind, id)
+	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
+		switch listElementKind(f) {
+		case wireKindPtr:
+			g.emitSavePointerList(f, expr, ind, id)
+		case wireKindTable:
 			g.emitSaveTableList(f, expr, ind, id, ordinal)
-		} else {
+		default:
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
 	case f.Type.Kind == ir.TString:
@@ -1012,6 +1273,46 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// the wide kinds by name (§11), and fixed-only constructs are form 3.
 		g.pf("%s// %s: not a card construct; refused by name (§11)\n", ind, name)
 	}
+}
+
+// emitSaveByValue writes a nested table as kind 13 (§3). The field id is
+// interned first, the body decides, and an all-default body (its terminator
+// alone) rolls the id table back so the elided nest leaves no ids.
+func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
+	ref := tableRef(f)
+	g.pf("%s{\n", ind)
+	g.pf("%s\tfinal mark = w.state.mark();\n", ind)
+	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
+	g.pf("%s\tfinal b = w.sub();\n", ind)
+	g.pf("%s\t%sWireSaveBody(b, %s);\n", ind, dartName(ref.Name), expr)
+	g.pf("%s\tif (b.buf.length <= 1) {\n", ind)
+	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
+	g.pf("%s\t} else {\n", ind)
+	g.pf("%s\t\tw.putLeb(ref);\n", ind)
+	g.pf("%s\t\tw.putByte(%d);\n", ind, wireKindTable)
+	g.pf("%s\t\tw.putLeb(b.buf.length);\n", ind)
+	g.pf("%s\t\tw.putBytes(b.buf);\n", ind)
+	g.pf("%s\t}\n", ind)
+	g.pf("%s}\n", ind)
+}
+
+// emitSavePointerList writes a []*T as kind 14 over element kind 17 (§3.1):
+// the count the value decides, then one node index a slot, and a null slot
+// rides as 0. The field id is interned before the body.
+func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
+	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
+	g.pf("%s\tfinal s = w.sub();\n", ind)
+	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
+	g.pf("%s\ts.putLeb(%s.length);\n", ind, expr)
+	g.pf("%s\tfor (final e in %s) {\n", ind, expr)
+	g.pf("%s\t\tif (e == null) { s.putLeb(0); } else { s.putLeb(w.state.indexOf(e)); }\n", ind)
+	g.pf("%s\t}\n", ind)
+	g.pf("%s\tw.putLeb(ref);\n", ind)
+	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
+	g.pf("%s\tw.putBytes(s.buf);\n", ind)
+	g.pf("%s}\n", ind)
 }
 
 // emitSaveTableList writes a `[]T` of tables as kind 14 over element kind 13
@@ -1169,7 +1470,28 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
-	case f.IsList(): // []T rides as kind 14; element kind 13 for tables, else the element's own (§2.9, §3)
+	case isPointerTable(f):
+		ref := tableRef(f)
+		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
+		g.pf("%s\t{\n", ind)
+		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
+		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tv.%s = r.resolveTable(idx, %s) as %s?;\n", ind, name, typeConst(ref), ref.Name)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s\tbreak;\n", ind)
+	case isByValueTable(f):
+		ref := tableRef(f)
+		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindTable)
+		g.pf("%s\t{\n", ind)
+		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
+		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
+		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)
+		g.pf("%s\t\tr.pos += len;\n", ind)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s\tbreak;\n", ind)
+	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
@@ -1183,9 +1505,20 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
 		g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
-		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, listElementKind(f))
+		declKind := listElementKind(f)
+		switch declKind {
+		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool:
+			g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, declKind)
+		default:
+			// A smaller kind on the same ladder widens the whole array once (§4).
+			g.pf("%s\t\tif (elemKind != %d) {\n", ind, declKind)
+			g.pf("%s\t\t\tif (!_kindWidens(elemKind, %d)) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, declKind)
+			g.pf("%s\t\t\tr.report.widened++;\n", ind)
+			g.pf("%s\t\t}\n", ind)
+		}
 		g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
-		if listElementKind(f) == wireKindTable {
+		switch listElementKind(f) {
+		case wireKindTable:
 			g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
 			g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
 			g.pf("%s\t\t\tvar e = %s();\n", ind, f.Type.Name)
@@ -1195,7 +1528,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
 			g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
 			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
-		} else {
+		case wireKindPtr:
+			ref := tableRef(f)
+			g.pf("%s\t\t\tfinal idx = arr.readLeb();\n", ind)
+			g.pf("%s\t\t\tif (idx == null) { r.report.malformed = true; break; }\n", ind)
+			g.pf("%s\t\t\tv.%s.add(r.resolveTable(idx, %s) as %s?);\n", ind, name, typeConst(ref), ref.Name)
+		default:
 			g.emitLoadScalarListElem(f, "v."+name, "arr", ind)
 		}
 		g.pf("%s\t\t}\n", ind)
@@ -1285,12 +1623,18 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		if f.HasIntRange {
-			g.pf("%s\t\tif (value < %s) { value = %s; r.report.clamped++; }\n", ind, f.IntMin.String(), f.IntMin.String())
-			g.pf("%s\t\tif (value > %s) { value = %s; r.report.clamped++; }\n", ind, f.IntMax.String(), f.IntMax.String())
+			lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
+			if signed {
+				g.pf("%s\t\tif (value < %s) { value = %s; r.report.clamped++; }\n", ind, lo, lo)
+				g.pf("%s\t\tif (value > %s) { value = %s; r.report.clamped++; }\n", ind, hi, hi)
+			} else {
+				g.pf("%s\t\tif (_u64Below(value, %s)) { value = %s; r.report.clamped++; }\n", ind, lo, lo)
+				g.pf("%s\t\tif (_u64Above(value, %s)) { value = %s; r.report.clamped++; }\n", ind, hi, hi)
+			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\t\tif (value > %d) { value = %d; r.report.clamped++; }\n", ind, max, max)
+			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
+			g.pf("%s\t\tif (_u64Above(value, %s)) { value = %s; r.report.clamped++; }\n", ind, lit, lit)
 		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
@@ -1394,7 +1738,9 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		e := enumRef(f)
 		g.pf("%s\t\t\tfinal vref = %s.readLeb();\n", ind, arr)
 		g.pf("%s\t\t\tif (vref == null) { r.report.malformed = true; break; }\n", ind)
-		g.pf("%s\t\t\tif (vref == 0) { %s.add(0); break; }\n", ind, dest)
+		g.pf("%s\t\t\tif (vref == 0) {\n", ind)
+		g.pf("%s\t\t\t\t%s.add(0);\n", ind, dest)
+		g.pf("%s\t\t\t} else {\n", ind)
 		g.pf("%s\t\t\tfinal vid = %s.refToId[vref];\n", ind, arr)
 		g.pf("%s\t\t\tif (vid == null) { r.report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tswitch (vid) {\n", ind)
@@ -1404,6 +1750,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		}
 		g.pf("%s\t\t\t\tdefault: %s.add(0); r.report.unknown++;\n", ind, dest)
 		g.pf("%s\t\t\t}\n", ind)
+		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
 		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(%s.readByte() != 0);\n", ind, dest, arr)
@@ -1411,67 +1758,189 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
 	case wireKindF64:
-		g.pf("%s\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		// f64 widens an f32 element kind (§4). The array already counted widened.
+		g.pf("%s\t\t\tif (elemKind == %d) {\n", ind, wireKindF32)
+		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
+		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
 	default:
-		w := ir.TableKindWidth(elemKind)
 		signed := f.Type.Kind == ir.TInt && f.Type.Signed
-		g.pf("%s\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
-		switch w {
-		case 1:
-			if signed {
-				g.pf("%s\t\t\t%s.add(_signExtend(%s.readByte(), 1));\n", ind, dest, arr)
-			} else {
-				g.pf("%s\t\t\t%s.add(%s.readByte());\n", ind, dest, arr)
-			}
-		case 2:
-			g.pf("%s\t\t\tvar raw = 0;\n", ind)
-			for b := 0; b < 2; b++ {
-				g.pf("%s\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
-			}
-			if signed {
-				g.pf("%s\t\t\t%s.add(_signExtend(raw, 2));\n", ind, dest)
-			} else {
-				g.pf("%s\t\t\t%s.add(raw);\n", ind, dest)
-			}
-		case 4:
-			if signed {
-				g.pf("%s\t\t\t%s.add(_signExtend(readU32(%s.data, %s.pos), 4)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
-			} else {
-				g.pf("%s\t\t\t%s.add(readU32(%s.data, %s.pos)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
-			}
-		default:
-			g.pf("%s\t\t\t%s.add(readU64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		decl := listElementKind(f)
+		lo := wireKindU8
+		if decl >= wireKindI8 && decl <= wireKindI64 {
+			lo = wireKindI8
+			signed = true
 		}
+		for k := lo; k <= decl; k++ {
+			kw := "if"
+			if k != lo {
+				kw = "} else if"
+			}
+			w := ir.TableKindWidth(k)
+			g.pf("%s\t\t\t%s (elemKind == %d) {\n", ind, kw, k)
+			g.pf("%s\t\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+			switch w {
+			case 1:
+				if signed {
+					g.pf("%s\t\t\t\t%s.add(_signExtend(%s.readByte(), 1));\n", ind, dest, arr)
+				} else {
+					g.pf("%s\t\t\t\t%s.add(%s.readByte());\n", ind, dest, arr)
+				}
+			case 2:
+				g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
+				for b := 0; b < 2; b++ {
+					g.pf("%s\t\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
+				}
+				if signed {
+					g.pf("%s\t\t\t\t%s.add(_signExtend(raw, 2));\n", ind, dest)
+				} else {
+					g.pf("%s\t\t\t\t%s.add(raw);\n", ind, dest)
+				}
+			case 4:
+				if signed {
+					g.pf("%s\t\t\t\t%s.add(_signExtend(readU32(%s.data, %s.pos), 4)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+				} else {
+					g.pf("%s\t\t\t\t%s.add(readU32(%s.data, %s.pos)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+				}
+			default:
+				g.pf("%s\t\t\t\t%s.add(readU64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+			}
+		}
+		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
 	}
 }
 
 // emitSave emits <name>WireSave: form byte 1, the root body, the node-table
 // field (§3.1, written LAST in the root body), the terminator and the id-table
 // trailer (§3).
+func (g *wireGen) emitKnownTypes(st *ir.Struct, recv, root string) {
+	g.pf("\t%s.rootObj = %s;\n", recv, root)
+	g.pf("\t%s.rootType = %s;\n", recv, typeConst(st))
+	reached := ir.PointerReachable(st)
+	if len(reached) == 0 {
+		return
+	}
+	g.pf("\t%s.knownTypes.addAll(<int>[", recv)
+	for i, t := range reached {
+		if i > 0 {
+			g.pf(", ")
+		}
+		g.pf("%s", typeConst(t))
+	}
+	g.pf("]);\n")
+}
+
+func (g *wireGen) emitNumber(st *ir.Struct) {
+	g.pf("void %sNumber(WireState s, %s v, Set<Object> open) {\n", dartName(st.Name), st.Name)
+	for _, f := range st.Fields {
+		g.emitNumberField(f, "\t")
+	}
+	g.pf("}\n\n")
+}
+
+func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
+	expr := "v." + fieldMember(f)
+	switch {
+	case f.Type.Blob() && f.Array == ir.ArrayNone:
+		g.pf("%sif (%s != null) {\n", ind, expr)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s\ts.noteBlob(_kStringBlobId, utf8.encode(%s!));\n", ind, expr)
+		} else {
+			g.pf("%s\ts.noteBlob(_kBytesBlobId, %s!);\n", ind, expr)
+		}
+		g.pf("%s}\n", ind)
+	case isPointerTable(f):
+		ref := tableRef(f)
+		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%s\tfinal node = %s!;\n", ind, expr)
+		g.pf("%s\ts.noteTable(%s, node, open, (o) { %sNumber(s, node, o); });\n", ind, typeConst(ref), dartName(ref.Name))
+		g.pf("%s}\n", ind)
+	case isByValueTable(f):
+		ref := tableRef(f)
+		g.pf("%s%sNumber(s, %s, open);\n", ind, dartName(ref.Name), expr)
+	case f.CountedOnWire():
+		ref := tableRef(f)
+		if ref == nil {
+			return
+		}
+		if f.Type.Pointer {
+			g.pf("%sfor (final e in %s) {\n", ind, expr)
+			g.pf("%s\tif (e != null) {\n", ind)
+			g.pf("%s\t\tfinal node = e;\n", ind)
+			g.pf("%s\t\ts.noteTable(%s, node, open, (o) { %sNumber(s, node, o); });\n", ind, typeConst(ref), dartName(ref.Name))
+			g.pf("%s\t}\n", ind)
+			g.pf("%s}\n", ind)
+		} else {
+			g.pf("%sfor (final e in %s) {\n", ind, expr)
+			g.pf("%s\t%sNumber(s, e, open);\n", ind, dartName(ref.Name))
+			g.pf("%s}\n", ind)
+		}
+	}
+}
+
+func (g *wireGen) emitNodeDispatch() {
+	g.pf("void _writeNodeTable(TableWireWriter w) {\n")
+	g.pf("\tfinal state = w.state;\n")
+	g.pf("\tif (state.nodes.isEmpty) return;\n")
+	g.pf("\tfinal ref = state.refFor(_kNodeTableId);\n")
+	g.pf("\tw.putLeb(ref);\n")
+	g.pf("\tw.putByte(%d);\n", wireKindString)
+	g.pf("\tfinal body = TableWireWriter(state);\n")
+	g.pf("\tbody.putLeb(state.nodes.length);\n")
+	g.pf("\tfor (var i = 0; i < state.nodes.length; i++) {\n")
+	g.pf("\t\tbody.putLeb(state.refFor(state.nodeTypes[i]));\n")
+	g.pf("\t\tfinal obj = state.nodeObjs[i];\n")
+	g.pf("\t\tif (obj == null) {\n")
+	g.pf("\t\t\tfinal node = state.nodes[i];\n")
+	g.pf("\t\t\tbody.putLeb(node.length);\n")
+	g.pf("\t\t\tbody.putBytes(node);\n")
+	g.pf("\t\t} else {\n")
+	g.pf("\t\t\tfinal sub = TableWireWriter(state);\n")
+	g.pf("\t\t\t_writeNodeBody(sub, state.nodeTypes[i], obj);\n")
+	g.pf("\t\t\tbody.putLeb(sub.buf.length);\n")
+	g.pf("\t\t\tbody.putBytes(sub.buf);\n")
+	g.pf("\t\t}\n")
+	g.pf("\t}\n")
+	g.pf("\tw.putLeb(body.buf.length);\n")
+	g.pf("\tw.putBytes(body.buf);\n")
+	g.pf("}\n\n")
+	g.pf("void _writeNodeBody(TableWireWriter w, int typeId, Object obj) {\n")
+	g.pf("\tswitch (typeId) {\n")
+	for _, st := range g.closure {
+		g.pf("\t\tcase %s: %sWireSaveBody(w, obj as %s); break;\n", typeConst(st), dartName(st.Name), st.Name)
+	}
+	g.pf("\t\tdefault: throw StateError('no node body for type $typeId (docs/SPEC-TABLES.md §3.1)');\n")
+	g.pf("\t}\n}\n\n")
+	g.pf("Object? _newNode(int typeId) {\n")
+	g.pf("\tswitch (typeId) {\n")
+	for _, st := range g.closure {
+		g.pf("\t\tcase %s: return %s();\n", typeConst(st), st.Name)
+	}
+	g.pf("\t\tdefault: return null;\n")
+	g.pf("\t}\n}\n\n")
+	g.pf("void _loadNodeBody(TableWireReader r, int typeId, Object obj) {\n")
+	g.pf("\tswitch (typeId) {\n")
+	for _, st := range g.closure {
+		g.pf("\t\tcase %s: %sWireLoadBody(r, obj as %s, true); break;\n", typeConst(st), dartName(st.Name), st.Name)
+	}
+	g.pf("\t}\n}\n\n")
+}
+
 func (g *wireGen) emitSave(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireSave"
 	g.pf("Uint8List %s(%s v) {\n", fn, n)
 	g.pf("\tfinal state = WireState();\n")
+	g.pf("\tstate.indexRoot(v);\n")
+	g.pf("\tfinal open = <Object>{v};\n")
+	g.pf("\t%sNumber(state, v, open);\n", dartName(n))
 	g.pf("\tfinal w = TableWireWriter(state);\n")
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", dartName(n))
-	g.pf("\tif (state.nodes.isNotEmpty) {\n")
-	g.pf("\t\tfinal ref = state.refFor(_kNodeTableId);\n")
-	g.pf("\t\tw.putLeb(ref);\n")
-	g.pf("\t\tw.putByte(%d);\n", wireKindString)
-	g.pf("\t\tfinal body = TableWireWriter(state);\n")
-	g.pf("\t\tbody.putLeb(state.nodes.length);\n")
-	g.pf("\t\tfor (var i = 0; i < state.nodes.length; i++) {\n")
-	g.pf("\t\t\tfinal node = state.nodes[i];\n")
-	g.pf("\t\t\tbody.putLeb(state.refFor(state.nodeTypes[i]));\n")
-	g.pf("\t\t\tbody.putLeb(node.length);\n")
-	g.pf("\t\t\tbody.putBytes(node);\n")
-	g.pf("\t\t}\n")
-	g.pf("\t\tw.putLeb(body.buf.length);\n")
-	g.pf("\t\tw.putBytes(body.buf);\n")
-	g.pf("\t}\n")
+	g.pf("\t_writeNodeTable(w);\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
@@ -1493,6 +1962,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.path = [1];\n")
+	g.emitKnownTypes(st, "r", "v")
 	g.pf("\tif (report != null) r.report = report;\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")

@@ -19,6 +19,9 @@ import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
 import '../../../build/tables-generated-dart/cards/CardsWire.dart';
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
+import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
+import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
+import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -648,12 +651,168 @@ int surfaceCook(String outDir) {
   return 0;
 }
 
+// A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
+// graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
+// report for the roots the variable class carries. Maps, union arrays and
+// every other unit stay absent. no-text rows are not asked for a text.
+bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
+
+void spillAbsent(String outDir, String name) {
+  File('$outDir/$name.absent').writeAsBytesSync(<int>[]);
+}
+
+String _reportLine(int unknown, int kind, int widened, int clamped, bool malformed, bool refused) {
+  final m = malformed ? 'true' : 'false';
+  final v = refused ? 'refused' : 'read';
+  return '$unknown,$kind,$widened,$clamped,0,$m,$v\n';
+}
+
+Uint8List? wireResave(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      return graphdemo.sceneWireSave(graphdemo.sceneWireLoad(wire));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogWireSave(blobdemo.catalogWireLoad(wire));
+    case 'listdemo Save':
+      return listdemo.saveWireSave(listdemo.saveWireLoad(wire));
+    case 'listdemo Album':
+      return listdemo.albumWireSave(listdemo.albumWireLoad(wire));
+    case 'listdemo Sheet':
+      return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+  }
+  return null;
+}
+
+Uint8List? jsonReadSave(String unit, String root, String text) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      return graphdemo.sceneWireSave(graphdemo.sceneFromJson(text));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogWireSave(blobdemo.catalogFromJson(text));
+    case 'listdemo Save':
+      return listdemo.saveWireSave(listdemo.saveFromJson(text));
+    case 'listdemo Album':
+      return listdemo.albumWireSave(listdemo.albumFromJson(text));
+    case 'listdemo Sheet':
+      return listdemo.sheetWireSave(listdemo.sheetFromJson(text));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedWireSave(listdemo.unboundedFromJson(text));
+  }
+  return null;
+}
+
+String? jsonWriteText(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      return graphdemo.sceneToJson(graphdemo.sceneWireLoad(wire));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogToJson(blobdemo.catalogWireLoad(wire));
+    case 'listdemo Save':
+      return listdemo.saveToJson(listdemo.saveWireLoad(wire));
+    case 'listdemo Album':
+      return listdemo.albumToJson(listdemo.albumWireLoad(wire));
+    case 'listdemo Sheet':
+      return listdemo.sheetToJson(listdemo.sheetWireLoad(wire));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedToJson(listdemo.unboundedWireLoad(wire));
+  }
+  return null;
+}
+
+String? loadReport(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      final r = graphdemo.TableWireReport();
+      graphdemo.sceneWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'blobdemo Catalog':
+      final r = blobdemo.TableWireReport();
+      blobdemo.catalogWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'listdemo Save':
+      final r = listdemo.TableWireReport();
+      listdemo.saveWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'listdemo Album':
+      final r = listdemo.TableWireReport();
+      listdemo.albumWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'listdemo Sheet':
+      final r = listdemo.TableWireReport();
+      listdemo.sheetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+    case 'listdemo Unbounded':
+      final r = listdemo.TableWireReport();
+      listdemo.unboundedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.malformed, r.refused);
+  }
+  return null;
+}
+
+int surfaceWire(String outDir) {
+  for (final f in kind('instance')) {
+    final saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (saved == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceJsonRead(String outDir) {
+  for (final f in kind('instance')) {
+    if (noTextRow(f)) continue;
+    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    if (!File(textPath).existsSync()) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    final saved = jsonReadSave(f[2], f[3], File(textPath).readAsStringSync());
+    if (saved == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceJsonWrite(String outDir) {
+  for (final f in kind('instance')) {
+    if (noTextRow(f)) continue;
+    final text = jsonWriteText(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (text == null) {
+      spillAbsent(outDir, '${f[1]}.json');
+      continue;
+    }
+    File('$outDir/${f[1]}.json').writeAsStringSync(text);
+  }
+  return 0;
+}
+
+int surfaceReport(String outDir) {
+  for (final f in kind('report')) {
+    final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (line == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(line);
+  }
+  return 0;
+}
+
 const String surfaces =
-    // the wire-carrying surfaces are ABSENT from this list because the Dart
-    // variable wire is carried by the cards unit's codec and the wire fuzzer
-    // (the wire-fuzz mode below), not by the table conformance driver; the
-    // accelerators and the forgery surfaces are current.
+    // wire, json-read, json-write and report answer the variable class for
+    // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7). The
+    // accelerators and the forgery surfaces stay. The wire fuzzer's roots are
+    // another card's.
     ''
+    'wire\njson-read\njson-write\nreport\n'
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
 
@@ -822,6 +981,14 @@ int run(List<String> args) {
   }
   final out = args[2];
   switch (surface) {
+    case 'wire':
+      return surfaceWire(out);
+    case 'json-read':
+      return surfaceJsonRead(out);
+    case 'json-write':
+      return surfaceJsonWrite(out);
+    case 'report':
+      return surfaceReport(out);
     case 'cook':
       return surfaceCook(out);
     case 'cook-foreign':
