@@ -35,6 +35,12 @@ fixed table Root { stamp uint64
 // write: the block builder and the cook writer are one card and one run.
 const blockBuildCookSchema = blockBuilderSchema + `
 fixed table Config { scale float32 = 1.0
+ samples [..3]uint64 }
+`
+
+// fixedPointCookSchema is a private emitter fixture; public accelerators still refuse it.
+const fixedPointCookSchema = blockBuilderSchema + `
+fixed table Config { scale float32 = 1.0
  samples [..3]uint64
  fixed_scalar fixed(12,4) | min = -1024, max = 1024
  fixed_array [..3]fixed(16,16) | min = -512, max = 512
@@ -128,10 +134,6 @@ fn main() {
     value.scale = 2.5;
     value.samples_count = 1;
     value.samples = [11, 22, 33];
-    value.fixed_scalar = -4660;
-    value.fixed_array_count = 1;
-    value.fixed_array = [-12345678, 12345678, -1];
-    value.unsigned_fixed = 48879;
     let (measure, reason) = config_cook_measure_reason(&value);
     println!(
         "MEASURE {measure} {}",
@@ -177,6 +179,10 @@ fn main() {
 // and runs it once with rustc. It is the same shape as fixedroadmap_t09_test.go's
 // t09Run: a fixed unit grows no packet module, so `rustc` alone builds it.
 func blockProbeRun(t *testing.T, spillTo string) map[string]string {
+	return blockProbeRunSchema(t, spillTo, blockBuildCookSchema, false)
+}
+
+func blockProbeRunSchema(t *testing.T, spillTo, schema string, internalFixed bool) map[string]string {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -184,22 +190,21 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 		}
 		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
 	}
-	out := generate(t, blockBuildCookSchema)
-	// Fixed-point accelerators remain publicly refused by WideTableKinds.
-	// Exercise the internal emitter's storage descriptors without widening that
-	// production boundary; the Go oracle pins raw scalar and array slots (§4.3).
-	u := unitFrom(t, blockBuildCookSchema)
-	out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
-	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, closure: ir.TableClosure(u)}
-		out[strings.ToLower(f.Base)+"_cook.rs"] = g.cookModule()
-	}
-	blockOut, err := generateBlocks(u, ir.Blocks(u), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range blockOut {
-		out[name] = data
+	out := generate(t, schema)
+	probe := blockProbe()
+	if internalFixed {
+		// Exercise latent descriptors below WideTableKinds, without altering
+		// the ordinary public Generate probe or widening accelerator support.
+		u := unitFrom(t, schema)
+		out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
+		for _, f := range u.Files {
+			g := &gen{unit: u, file: f, closure: ir.TableClosure(u)}
+			out[strings.ToLower(f.Base)+"_cook.rs"] = g.cookModule()
+		}
+		blocks, err := generateBlocks(u, ir.Blocks(u), "")
+		if err != nil { t.Fatal(err) }
+		for name, data := range blocks { out[name] = data }
+		probe = strings.Replace(probe, "value.samples = [11, 22, 33];", "value.samples = [11, 22, 33]; value.fixed_scalar = -4660; value.fixed_array_count = 1; value.fixed_array = [-12345678, 12345678, -1]; value.unsigned_fixed = 48879;", 1)
 	}
 	root := t.TempDir()
 	for name, data := range out {
@@ -210,7 +215,7 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(blockProbe()), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "blockbuildprobe")
@@ -434,8 +439,12 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 // goBuilderCookProbeRun executes the actual Go builder and cook writer, rather
 // than asking a second layout reconstruction to certify the Rust runtime.
 func goBuilderCookProbeRun(t *testing.T) map[string]string {
+	return goBuilderCookProbeRunSchema(t, blockBuildCookSchema, false)
+}
+
+func goBuilderCookProbeRunSchema(t *testing.T, schema string, internalFixed bool) map[string]string {
 	t.Helper()
-	out, err := gotable.Generate(unitFrom(t, blockBuildCookSchema))
+	out, err := gotable.Generate(unitFrom(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +460,7 @@ func goBuilderCookProbeRun(t *testing.T) map[string]string {
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module probe\n\ngo 1.26\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	const probe = `package probe
+	probe := `package probe
 import("testing";"fmt";"encoding/hex";"unsafe")
 func TestOracle(t *testing.T) {
  t.Parallel()
@@ -466,10 +475,6 @@ func TestOracle(t *testing.T) {
  value.Scale=2.5
  value.SamplesCount=1
  value.Samples=[3]uint64{11,22,33}
- value.FixedScalar=-4660
- value.FixedArrayCount=1
- value.FixedArray=[3]int32{-12345678,12345678,-1}
- value.UnsignedFixed=48879
  n:=ConfigCookMeasure(&value)
  le,be:=make([]byte,n),make([]byte,n)
  if !ConfigCookFrom(&value,le,TableByteOrderLittle)||!ConfigCookFrom(&value,be,TableByteOrderBig) { t.Fatal("cook") }
@@ -479,6 +484,9 @@ func TestOracle(t *testing.T) {
  fmt.Println("WIRE",hex.EncodeToString(wire))
 }
 `
+	if internalFixed {
+		probe = strings.Replace(probe, "value.Samples=[3]uint64{11,22,33}", "value.Samples=[3]uint64{11,22,33}; value.FixedScalar=-4660; value.FixedArrayCount=1; value.FixedArray=[3]int32{-12345678,12345678,-1}; value.UnsignedFixed=48879", 1)
+	}
 	if err := os.WriteFile(filepath.Join(root, "oracle_test.go"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -574,4 +582,18 @@ fn main() {
 		t.Fatalf("RenderFrame Rust producer: %v\n%s", err, o)
 	}
 	t.Log("Rust RenderFrame block written for the C++ reader")
+}
+
+// TestFixedPointCookDescriptorsRust pins raw integer storage (§4.3) beneath
+// the intentional public wide-kind accelerator refusal. The ordinary public
+// builder/writer probe above remains unchanged and receives no module injection.
+func TestFixedPointCookDescriptorsRust(t *testing.T) {
+	t.Parallel()
+	rust := blockProbeRunSchema(t, "", fixedPointCookSchema, true)
+	goBytes := goBuilderCookProbeRunSchema(t, fixedPointCookSchema, true)
+	for _, order := range []string{"LE", "BE"} {
+		if rust[order] == "" || rust[order] != goBytes[order] {
+			t.Errorf("%s fixed-point scalar/array complete cook bytes differ from Go CookFrom", order)
+		}
+	}
 }
