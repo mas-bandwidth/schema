@@ -935,6 +935,7 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
             }};
         }
         match (instance[2].as_str(), instance[3].as_str()) {
+            ("blobdemo", "Catalog") => variable!(blobdemo, catalog_load, catalog_cook_measure_reason, catalog_cook_from),
             ("graphdemo", "Scene") => variable!(graphdemo, scene_load, scene_cook_measure_reason, scene_cook_from),
             ("tabledemo", "WideBlob") => fixed!(tabledemo, wide_blob_load, wide_blob_cook_measure, wide_blob_cook_from),
             ("tabledemo", "KeyedConfig") => fixed!(tabledemo, keyed_config_load, keyed_config_cook_measure, keyed_config_cook_from),
