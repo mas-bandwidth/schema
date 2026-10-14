@@ -933,3 +933,141 @@ Record readStrict(Uint8List wire) {
   return rec;
 }
 
+// ---- L4: the task hash and atomic field edits (tables/cards/edit.go) ----
+
+// _refuseLossy names the read events that make a record unsafe to hash or
+// rewrite (§4, §6.6; tla/CardHops.tla: EditDropsUnknown reversed witness).
+void _refuseLossy(TableWireReport rep) {
+  if (rep.unknown > 0 ||
+      rep.kindMismatch > 0 ||
+      rep.clamped > 0 ||
+      rep.retainLost > 0 ||
+      rep.malformed) {
+    throw CardException(
+      'cards: record has loss events (unknown=${rep.unknown} kindMismatch=${rep.kindMismatch} clamped=${rep.clamped} retainLost=${rep.retainLost} malformed=${rep.malformed}): refused, never hashed or rewritten',
+    );
+  }
+}
+
+void _hashU64(List<int> out, int v) {
+  for (var i = 0; i < 8; i++) {
+    out.add((v >> (8 * i)) & 0xff);
+  }
+}
+
+void _hashText(List<int> out, String text) {
+  final b = utf8.encode(text);
+  _hashU64(out, b.length);
+  out.addAll(b);
+}
+
+void _hashList(List<int> out, List<String> items) {
+  _hashU64(out, items.length);
+  for (final e in items) {
+    _hashText(out, e);
+  }
+}
+
+// taskHash returns the SHA-256 digest of a record's task: body, paths, new,
+// shared, test and done in that order, each text as an unsigned 64-bit
+// little-endian byte length then its bytes, each list as a count then each
+// length-prefixed text; needs, tier, priority and machine fields excluded
+// (docs/SPEC-TABLES.md §5; tla/CardHops.tla: TaskHashStable). A nil or lossy
+// record is refused with no hash.
+Uint8List taskHash(Record record) {
+  _refuseLossy(record.report);
+  final c = record.card;
+  final framed = <int>[];
+  _hashText(framed, c.body ?? '');
+  _hashList(framed, c.paths.map((e) => e.s).toList());
+  _hashList(framed, c.new_.map((e) => e.s).toList());
+  _hashList(framed, c.shared.map((e) => e.s).toList());
+  _hashText(framed, c.test);
+  _hashText(framed, c.done ?? '');
+  return sha256Bytes(framed);
+}
+
+// taskHashHex is taskHash as 64 lowercase hex digits.
+String taskHashHex(Record record) =>
+    taskHash(record).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+
+void _validateStrings(String name, List<String> values, int bound) {
+  for (final v in values) {
+    if (utf8.encode(v).length > bound) {
+      throw CardException(
+        'cards: $name element is ${utf8.encode(v).length} bytes, past its $bound-byte bound',
+      );
+    }
+    if (v.contains('\u0000')) {
+      throw CardException(
+        'cards: $name has an element that is not well-formed UTF-8 without NUL',
+      );
+    }
+  }
+}
+
+// _edit is the shared atomic rewrite: refuse a lossy record, reload it fresh,
+// mutate, validate the whole rebuilt card, save, and publish only on complete
+// success (§6.2; tla/CardHops.tla: TaskHashStable, EditDropsUnknown).
+void _edit(Record r, void Function(Card) mutate) {
+  _refuseLossy(r.report);
+  final fresh = load(r.wire());
+  _refuseLossy(fresh.report);
+  mutate(fresh.card);
+  checkCard(fresh.card);
+  final wire = cardWireSave(fresh.card);
+  r._publish(wire, fresh.card, TableWireReport());
+}
+
+// setNeeds replaces the needs list atomically (§2.9, §6.2).
+void setNeeds(Record r, List<String> needs) {
+  _validateStrings('needs', needs, 64);
+  if (needs.length > maxListEntries) {
+    throw CardException(
+      'cards: needs has ${needs.length} entries, past the $maxListEntries-entry ceiling',
+    );
+  }
+  _edit(r, (c) => c.needs = needs.map((e) => CardID()..s = e).toList());
+}
+
+// setPaths replaces the paths list atomically (§2.9, §6.2).
+void setPaths(Record r, List<String> paths) {
+  _validateStrings('paths', paths, 192);
+  if (paths.length > maxListEntries) {
+    throw CardException(
+      'cards: paths has ${paths.length} entries, past the $maxListEntries-entry ceiling',
+    );
+  }
+  _edit(r, (c) => c.paths = paths.map((e) => PathText()..s = e).toList());
+}
+
+// setTier changes the tier atomically; only a declared variant is accepted (§8).
+void setTier(Record r, int tier) {
+  if (tier < 0 || tier > Tier.max) {
+    throw CardException('cards: tier $tier is not a declared variant');
+  }
+  _edit(r, (c) => c.tier = tier);
+}
+
+// setPriority changes the priority atomically (§8).
+void setPriority(Record r, int priority) {
+  if (priority < 0 || priority > Priority.max) {
+    throw CardException('cards: priority $priority is not a declared variant');
+  }
+  _edit(r, (c) => c.priority = priority);
+}
+
+// setColumn changes the column atomically (§8).
+void setColumn(Record r, int column) {
+  if (column < 0 || column > Column.max) {
+    throw CardException('cards: column $column is not a declared variant');
+  }
+  _edit(r, (c) => c.column = column);
+}
+
+// setHolder changes the holder atomically (§6.1).
+void setHolder(Record r, String holder) {
+  _validateStrings('holder', [holder], 32);
+  _edit(r, (c) => c.holder = holder);
+}
+
