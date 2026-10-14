@@ -1,16 +1,18 @@
 // Program.cs — the C# leg of the card conformance set
 // (tables/cards/conformance/FORMAT.md). It answers the driver contract
 // test/conformance/README.md states — `<driver> <manifest> list` and
-// `<driver> <manifest> <surface> <outdir>` — over the five surfaces this
-// card owns (load, save, render, parse, bounds), through the facade in
-// tables/cards/cs/Cards.cs. The upgrade, edit, taskhash and view surfaces
-// belong to a-cs-card-upgrades-edits-and-walks-the-shared-corpus and are
-// answered absent (exit 2). It is the concrete side of tla/CardHops.tla:
-// every language's driver must answer the same bytes.
+// `<driver> <manifest> <surface> <outdir>` — over the nine card surfaces
+// through the facade in tables/cards/cs/Cards.cs: load, save, render, parse
+// and bounds (a-cs-card-round-trips-and-renders-the-shared-corpus), then
+// upgrade, edit, taskhash and view (this card). It is the concrete side of
+// tla/CardHops.tla: ImplementationsAgree and HopOrderIrrelevant say every
+// language's driver answers the same bytes, and this one must too.
 //
-// A test-only environment switch, CARDS_CS_SABOTAGE=1, changes one rendered
-// byte so the negative control can prove the render surface goes red while
-// the other four stay green.
+// Two test-only environment switches turn exactly one surface red for the
+// negative controls, never a tracked file:
+//   CARDS_CS_SABOTAGE=1          changes one rendered byte (render alone);
+//   CARDS_CS_UPGRADE_SABOTAGE=1  drops the retained fields (upgrade alone);
+//   CARDS_CS_HASH_SABOTAGE=1     folds needs into the hash (taskhash alone).
 
 using System;
 using System.IO;
@@ -19,13 +21,17 @@ using Cards;
 
 internal static class Program
 {
-    private static readonly string[] Surfaces = { "load", "save", "render", "parse", "bounds" };
+    private static readonly string[] Surfaces =
+    {
+        "load", "save", "render", "parse", "bounds", "upgrade", "edit", "taskhash", "view"
+    };
 
     private sealed class Case
     {
         public string Surface;
         public string Name;
         public string Input;
+        public string[] Edit;
     }
 
     private static Case[] ReadManifest(string path)
@@ -41,7 +47,13 @@ internal static class Program
                 Console.Error.WriteLine("driver: malformed manifest line \"" + line + "\"");
                 Environment.Exit(1);
             }
-            cases.Add(new Case { Surface = f[0], Name = f[1], Input = f[2] });
+            var c = new Case { Surface = f[0], Name = f[1], Input = f[2], Edit = new string[0] };
+            if (f.Length > 3)
+            {
+                c.Edit = new string[f.Length - 3];
+                Array.Copy(f, 3, c.Edit, 0, c.Edit.Length);
+            }
+            cases.Add(c);
         }
         return cases.ToArray();
     }
@@ -65,6 +77,8 @@ internal static class Program
         if (msg.Contains("past the 65536-byte ceiling")) return "body-bound 65536";
         if (msg.Contains("past the 512-entry ceiling")) return "list-bound " + FieldName(msg) + " 512";
         if (msg.Contains("stranded header key")) return "stranded-key " + QuotedWord(msg);
+        if (msg.Contains("retained field(s) lost")) return "retain-lost";
+        if (msg.Contains("record has loss events")) return "unknown-present";
         return "malformed";
     }
 
@@ -102,6 +116,118 @@ internal static class Program
         b.Append("Duplicate=").Append(r.Duplicate).Append('\n');
         b.Append("Malformed=").Append(r.Malformed ? "true" : "false").Append('\n');
         WriteFile(outdir, name, "report", Encoding.UTF8.GetBytes(b.ToString()));
+    }
+
+    // ViewText renders the generated view (docs/SPEC-TABLES.md §8): every
+    // field of every table in the unit, tables in the generated view's order
+    // and fields in declaration order, one "<table> <field> <kind> <shape>
+    // <bound>" line each — the C# spelling of the Go driver's view() over
+    // cards.UnitView() (tables/cards/cmd/cards-driver/main.go).
+    private static byte[] ViewText()
+    {
+        var b = new StringBuilder();
+        foreach (ViewType t in Schema.UnitView().Tables.Span)
+        {
+            foreach (TableFieldInfo f in t.Type.Fields)
+            {
+                string shape = "value";
+                if (f.PointerTypeId != 0)
+                {
+                    shape = "blob";
+                }
+                else if (f.IsArray && f.ArrayBound == int.MaxValue)
+                {
+                    shape = "list";
+                }
+                string bound = "-";
+                if (shape == "value" && f.ArrayBound > 0)
+                {
+                    bound = f.ArrayBound.ToString();
+                }
+                b.Append(t.Name).Append(' ').Append(f.Name).Append(' ')
+                    .Append(f.TypeName).Append(' ').Append(shape).Append(' ')
+                    .Append(bound).Append('\n');
+            }
+        }
+        return Encoding.UTF8.GetBytes(b.ToString());
+    }
+
+    // ApplyEdit applies one edit line — "needs=a,b", "tier=heavy",
+    // "priority=blocker", "paths=x,y", "column=landed", "holder=h" — through
+    // the Set* edit of the same name (tables/cards/edit.go).
+    private static void ApplyEdit(Record rec, string[] edit)
+    {
+        if (edit.Length != 1)
+        {
+            throw new CardException("cards-driver: an edit line carries exactly one edit");
+        }
+        string line = edit[0];
+        int eq = line.IndexOf('=');
+        if (eq < 0)
+        {
+            throw new CardException("cards-driver: edit \"" + line + "\" has no =");
+        }
+        string key = line.Substring(0, eq);
+        string value = line.Substring(eq + 1);
+        switch (key)
+        {
+            case "needs": rec.SetNeeds(SplitList(value)); return;
+            case "paths": rec.SetPaths(SplitList(value)); return;
+            case "tier": rec.SetTier(ParseTier(value)); return;
+            case "priority": rec.SetPriority(ParsePriority(value)); return;
+            case "column": rec.SetColumn(ParseColumn(value)); return;
+            case "holder": rec.SetHolder(value); return;
+        }
+        throw new CardException("cards-driver: unknown edit \"" + key + "\"");
+    }
+
+    private static string[] SplitList(string v)
+    {
+        if (v.Length == 0)
+        {
+            return new string[0];
+        }
+        return v.Split(',');
+    }
+
+    private static Tier ParseTier(string s)
+    {
+        switch (s)
+        {
+            case "flash": return Tier.flash;
+            case "pro": return Tier.pro;
+            case "heavy": return Tier.heavy;
+            case "frontier": return Tier.frontier;
+        }
+        throw new CardException("cards-driver: unknown tier \"" + s + "\"");
+    }
+
+    private static Priority ParsePriority(string s)
+    {
+        switch (s)
+        {
+            case "normal": return Priority.normal;
+            case "high": return Priority.high;
+            case "critical": return Priority.critical;
+            case "blocker": return Priority.blocker;
+        }
+        throw new CardException("cards-driver: unknown priority \"" + s + "\"");
+    }
+
+    private static Column ParseColumn(string s)
+    {
+        switch (s)
+        {
+            case "waiting": return Column.waiting;
+            case "ready": return Column.ready;
+            case "working": return Column.working;
+            case "review": return Column.review;
+            case "merging": return Column.merging;
+            case "landed": return Column.landed;
+            case "plan": return Column.plan;
+            case "check": return Column.check;
+        }
+        throw new CardException("cards-driver: unknown column \"" + s + "\"");
     }
 
     private static void One(string surface, Case c, string outdir)
@@ -159,6 +285,64 @@ internal static class Program
                 }
                 break;
             }
+            case "upgrade":
+            {
+                byte[] wire = File.ReadAllBytes(c.Input);
+                try
+                {
+                    byte[] upgraded;
+                    TableReport report;
+                    if (Environment.GetEnvironmentVariable("CARDS_CS_UPGRADE_SABOTAGE") == "1")
+                    {
+                        // The negative control: drive the package-private
+                        // retention seam with no id storage, so every
+                        // retained field is dropped and the upgrade refuses
+                        // rather than reproducing the expected wire.
+                        upgraded = Record.UpgradeSeam(wire, Record.MaxRetainBytes, 0, out report);
+                    }
+                    else
+                    {
+                        upgraded = Record.Upgrade(wire, out report);
+                    }
+                    WriteReport(outdir, c.Name, report);
+                    WriteFile(outdir, c.Name, "wire", upgraded);
+                }
+                catch (CardException e)
+                {
+                    Refuse(outdir, c.Name, RefusalClass(e));
+                }
+                break;
+            }
+            case "edit":
+            {
+                byte[] wire = File.ReadAllBytes(c.Input);
+                Record rec = Record.Load(wire, out _);
+                try
+                {
+                    ApplyEdit(rec, c.Edit);
+                    WriteFile(outdir, c.Name, "wire", rec.Wire());
+                }
+                catch (CardException e)
+                {
+                    Refuse(outdir, c.Name, RefusalClass(e));
+                }
+                break;
+            }
+            case "taskhash":
+            {
+                byte[] wire = File.ReadAllBytes(c.Input);
+                Record rec = Record.Load(wire, out _);
+                bool sabotage = Environment.GetEnvironmentVariable("CARDS_CS_HASH_SABOTAGE") == "1";
+                byte[] hash = Record.TaskHash(rec, sabotage);
+                WriteFile(outdir, c.Name, "hex",
+                    Encoding.UTF8.GetBytes(BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant()));
+                break;
+            }
+            case "view":
+            {
+                WriteFile(outdir, c.Name, "txt", ViewText());
+                break;
+            }
         }
     }
 
@@ -185,7 +369,7 @@ internal static class Program
         string outdir = args[2];
         if (Array.IndexOf(Surfaces, surface) < 0)
         {
-            return 2; // upgrade, edit, taskhash, view: another card's surfaces
+            return 2; // not a card surface
         }
         Case[] cases = ReadManifest(manifest);
         Directory.CreateDirectory(outdir);
