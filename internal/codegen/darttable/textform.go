@@ -13,7 +13,8 @@
 // multi-byte character. Every function below cites the section it reads.
 //
 // Maps, optional values, fixed/keyed arrays and table-body/payload-free
-// union arms share this runtime. Other arm payloads and wide kinds remain
+// union arms, 128-bit integers and exact fixed-point values share this runtime.
+// Other arm payloads and wstring remain
 // refused (§11). A shared node is "&node" (§16.7).
 package darttable
 
@@ -122,7 +123,7 @@ func (g *wireGen) emitTextRuntime() {
 // the card's constructs can move — an unknown property, a kind mismatch, a
 // clamp.
 final class TableTextReport {
-` + textNumberMembers + `
+` + textNumberMembers + textBigIntegerMembers + textFixedMembers + `
   bool malformed = false;
   final Expando<List<MapEntry<String,dynamic>>> _entries = Expando();
   Iterable<MapEntry<dynamic,dynamic>> entries(Map obj) => _entries[obj] ?? obj.entries;
@@ -529,6 +530,8 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 			g.pf("\t\t\tfirst = false;\n")
 			g.pf("\t\t\tout.line(depth + 2);\n")
 			switch listElementKind(f) {
+			case 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29:
+				g.pf("out.raw(%s);\n", wideJSONText(f, "e"))
 			case wireKindBool:
 				g.pf("\t\t\tout.raw(e ? 'true' : 'false');\n")
 			case wireKindF32:
@@ -547,6 +550,8 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 			g.pf("\t\tout.raw(']');\n")
 			g.pf("\t}\n")
 		}
+	case wireWide(f):
+		g.pf("out.raw(%s);\n", wideJSONText(f, "v."+name))
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
@@ -653,6 +658,8 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			g.pf("\t\t\t\t\tv.%s.add(_readPtr(item, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh); }) as %s?);\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
 		default:
 			switch listElementKind(f) {
+			case 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29:
+				g.pf("v.%s.add(%s);\n", name, g.wideJSONRead(f, "item", g.wireElementDefault(f)))
 			case wireKindBool:
 				g.pf("\t\t\t\t\tif (item is bool) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
 			case wireKindF32, wireKindF64:
@@ -672,6 +679,8 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			g.pf("while(v.%s.length<%d){v.%s.add(%s); }\n", name, f.ArrayBound, name, g.wireElementDefault(f))
 		}
 		g.pf("\t\t\t\tbreak;\n")
+	case wireWide(f):
+		g.pf("v.%s=%s;break;\n", name, g.wideJSONRead(f, "val", "v."+name))
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.kindMismatch++; }\n", name)
 		g.pf("\t\t\t\tbreak;\n")

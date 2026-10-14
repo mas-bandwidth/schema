@@ -182,9 +182,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, wire)
 	// A unit whose wide kinds cost it the accelerators AND that has no fixed
-	// form to put in their place has nothing to emit, so it is refused whole
+	// or carried variable form to put in their place has nothing to emit, so it is refused whole
 	// and by name, exactly as it was before the form arrived.
-	if len(fixed) == 0 {
+	if len(fixed) == 0 && len(wire) == 0 {
 		if len(wide) > 0 {
 			return nil, ir.RefuseWideTableKinds(u, "Dart")
 		}

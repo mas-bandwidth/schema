@@ -158,3 +158,18 @@ func dartTableSource(name string) bool {
 		strings.HasSuffix(name, "Cook.dart") ||
 		strings.HasSuffix(name, "Fixed.dart")
 }
+
+func TestDartWideVariableSourcesAreCarried(t *testing.T) {
+	u := unitFromSource(t, `package probe
+ table Root { value int128 | min=-170141183460469231731687303715884105728,max=170141183460469231731687303715884105727
+ scaled fixed(8,8) | min=-128,max=127
+ body *string }
+ `)
+	files, err := New().Generate(u, "dart", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files["ProbeWire.dart"]) == 0 {
+		t.Fatal("wide variable root must have its public form1 source")
+	}
+}

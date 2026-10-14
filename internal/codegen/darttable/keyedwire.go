@@ -89,6 +89,10 @@ func (g *wireGen) emitKeyedBareWrite(f *ir.Field, expr, writer, ind string) {
 		}
 		g.pf("%sdefault:throw StateError('invalid_value');}\n%s%s.putLeb(variant==0?0:%s.refFor(variant));\n", ind, ind, writer, writer)
 	default:
+		if wireWide(f) {
+			g.emitWideBareWrite(f, expr, writer, ind)
+			break
+		}
 		put := "putU64"
 		switch ir.TableKindWidth(kind) {
 		case 1:
@@ -158,6 +162,8 @@ func (g *wireGen) emitTextReadKeyed(f *ir.Field) {
 	case tableRef(f) != nil:
 		ref := tableRef(f)
 		g.pf("if(item is Map<String,dynamic>){v.%s[key]=%s();%sFromJsonFields(v.%s[key],item,r,sh);}else{r.kindMismatch++;}\n", n, ref.Name, dartName(ref.Name), n)
+	case wireWide(f):
+		g.pf("v.%s[key]=%s;\n", n, g.wideJSONRead(f, "item", "v."+n+"[key]"))
 	case enumRef(f) != nil:
 		g.pf("if(item is String){v.%s[key]=%sFromName(item,r);}else{r.kindMismatch++;}\n", n, dartName(enumRef(f).Name))
 	case f.Type.Kind == ir.TBool:

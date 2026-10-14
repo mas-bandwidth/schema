@@ -6,8 +6,8 @@
 // `bits(N)`, `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`,
 // unbounded arrays of scalars, strings and enums, carried-value maps and
 // optional carried values, fixed positional arrays and enum-keyed arrays.
-// Table-body and payload-free union arms also ride; other arm payloads,
-// the wide kinds and wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
+// Table-body and payload-free union arms, 128-bit integers and fixed-point
+// values also ride. Other arm payloads and wstring stay refused (§11) on a unit
 // the variable form owns, and nothing here encodes one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
@@ -98,8 +98,8 @@ func isByValueTable(f *ir.Field) bool {
 // pointer or by-value table whose target is itself carried, and a counted or
 // unbounded array of a carried element, carried-value maps, and optional
 // carried values, fixed positional arrays, enum-keyed arrays, and unions
-// of table-body/payload-free arms. Other arm payloads, the wide kinds and
-// wstring are not: the
+// of table-body/payload-free arms, 128-bit integers and fixed-point values.
+// Other arm payloads and wstring are not: the
 // wire form is not claimed for them (§11). seen breaks a pointer cycle — a
 // table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
@@ -119,7 +119,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	if u := unionRef(f); u != nil {
 		return f.Array == ir.ArrayNone && cardWireUnion(u, seen)
 	}
-	if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TWString {
 		return false
 	}
 	if f.Type.Blob() && f.Array == ir.ArrayNone {
@@ -136,10 +136,10 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 
 func cardScalarOrTable(f *ir.Field, seen map[string]bool) bool {
 	switch f.Type.Kind {
-	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
+	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TFixed:
 		return true
 	case ir.TInt:
-		return f.Type.Width != 128
+		return true
 	case ir.TNamed:
 		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
 			return !f.Type.Pointer
@@ -159,6 +159,9 @@ func cardWireTable(st *ir.Struct) bool {
 
 func cardWireTableSeen(st *ir.Struct, seen map[string]bool) bool {
 	if st == nil || !st.IsTable {
+		return false
+	}
+	if st.IsMapEntry() && st.Fields[0].Type.Width == 128 {
 		return false
 	}
 	if seen[st.Name] {
@@ -339,6 +342,8 @@ func listElementKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 // kinds as `double`; string/bytes as `String`.
 func dartListElemType(f *ir.Field) string {
 	switch {
+	case wireWide(f):
+		return wideWireStorageType(f)
 	case f.Type.Kind == ir.TBool:
 		return "bool"
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
@@ -582,6 +587,7 @@ final class WireState {
 }
 
 final class TableWireWriter {
+` + wideWireWriterMembers + `
   final List<int> buf = <int>[];
   final WireState state;
   List<int> path = <int>[];
@@ -669,6 +675,7 @@ int _textBoundary(Uint8List d, int off, int len, int bound) {
 // TableWireReader holds the whole buffer and resolves the id table once at
 // open (§3): a body names an id by POSITION and the reader dispatches on it.
 final class TableWireReader {
+` + wideWireReaderMembers + `
   final Uint8List data;
   int pos;
   int limit;
@@ -739,7 +746,7 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -1042,7 +1049,8 @@ final class TableWireReader {
 bool _kindWidens(int from, int to) {
   return (from >= 2 && from <= 5 && to > from && to <= 5) ||
       (from >= 6 && from <= 9 && to > from && to <= 9) ||
-      (from == 10 && to == 11);
+      (from == 10 && to == 11) ||
+      (to==18&&from>=2&&from<=5) || (to==19&&from>=6&&from<=9);
 }
 
 // _u64Below/_u64Above compare two 64-bit patterns stored as Dart ints (§4).
@@ -1138,6 +1146,8 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  %s? %s;\n", f.Type.Name, name)
 		case isByValueTable(f):
 			g.pf("  %s %s = %s();\n", f.Type.Name, name, f.Type.Name)
+		case wireWide(f):
+			g.pf("  %s %s=%s;\n", wideWireStorageType(f), name, wideWireDefault(f))
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
 		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
@@ -1159,6 +1169,9 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 }
 
 func (g *wireGen) intDefault(f *ir.Field) string {
+	if wireWide(f) {
+		return wideWireDefault(f)
+	}
 	if f.HasDefault && f.DefInt != nil {
 		return dartBoundLiteral(f.DefInt)
 	}
@@ -1276,6 +1289,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
 		g.pf("%s\tw.putBytes(s.buf);\n", ind)
 		g.pf("%s}\n", ind)
+	case wireWide(f):
+		g.emitSaveWide(f, expr, ind)
 	case f.Type.Kind == ir.TBool:
 		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1446,6 +1461,10 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindF64:
 		g.pf("%s\t\ts.putU64(_f64Bits(e));\n", ind)
 	default:
+		if wireWide(f) {
+			g.emitWideBareWrite(f, "e", "s", ind)
+			break
+		}
 		put := "putU64"
 		switch ir.TableKindWidth(elemKind) {
 		case 1:
@@ -1645,6 +1664,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\tv.%s = r.readByte() != 0;\n", ind, name)
 		g.pf("%s\tbreak;\n", ind)
+	case wireWide(f):
+		g.emitLoadWide(f, ind)
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		// An int/bits field's declared kind is §3's integer kind for its width
 		// and signedness: int8/16/32/64 at 2/3/4/5, uint8/16/32/64 at 6/7/8/9,
@@ -1815,6 +1836,10 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 // length-framed, an enum a variant id reference (§2.9, §3).
 func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind string) {
 	elemKind := listElementKind(f)
+	if wireWide(f) {
+		g.emitWideListRead(f, dest, arr, ind)
+		return
+	}
 	switch elemKind {
 	case wireKindString:
 		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)

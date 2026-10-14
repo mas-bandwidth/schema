@@ -51,8 +51,8 @@ func (g *wireGen) emitDescriptors() {
 	g.pf("\tfinal int kind;\n")
 	g.pf("\tfinal String shape;\n")
 	g.pf("\tfinal int? bound;\n")
-	g.pf("\tfinal int? min;\n")
-	g.pf("\tfinal int? max;\n")
+	g.pf("\tfinal Object? min;\n")
+	g.pf("\tfinal Object? max;\n")
 	g.pf("\tTableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max);\n")
 	g.pf("}\n\n")
 	g.pf("final class TableTypeInfo {\n")
@@ -85,8 +85,13 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		bound = fmt.Sprintf("%d", f.Type.Size)
 	case f.HasIntRange:
-		min = dartBoundLiteral(f.IntMin)
-		max = dartBoundLiteral(f.IntMax)
+		if wireWide(f) {
+			min = wideWireBigLiteral(f.IntMin)
+			max = wideWireBigLiteral(f.IntMax)
+		} else {
+			min = dartBoundLiteral(f.IntMin)
+			max = dartBoundLiteral(f.IntMax)
+		}
 	}
 	g.pf("\t\tTableFieldInfo(%q, %d, %q, %s, %s, %s),\n",
 		f.Name, cardFieldKind(f), cardFieldShape(f), bound, min, max)
