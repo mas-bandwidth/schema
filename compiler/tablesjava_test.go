@@ -161,6 +161,19 @@ func javaEmittedNames(files map[string][]byte, ignore map[string]bool) map[strin
 	return emitted
 }
 
+// javaRuntimeSrc is runtimeSrc plus a POINTERED table, because the Java scan
+// below must see the VARIABLE FORM's runtime types (TableVariable, TableJson)
+// and the descriptor and retain runtimes that ride beside it — which a
+// fixed-only unit never emits. It is the Java twin of the C leg's cRuntimeSrc
+// and the Go leg's goRuntimeSrc.
+const javaRuntimeSrc = runtimeSrc + `
+table Holder
+{
+    value int32
+    next  *Holder
+}
+`
+
 // TestJavaTableRuntimeNamesAreClaimed is the SELF-MAINTAINING half of the §11
 // promise for this backend, and it is the C# test's shape with the two things
 // Java changes:
@@ -175,7 +188,7 @@ func javaEmittedNames(files map[string][]byte, ignore map[string]bool) map[strin
 // Probe.schema generates the class Probe and, when it declares a table,
 // ProbeTable — neither of which is a runtime spelling.
 func TestJavaTableRuntimeNamesAreClaimed(t *testing.T) {
-	files := javaFiles(t, runtimeSrc)
+	files := javaFiles(t, javaRuntimeSrc)
 	ignore := map[string]bool{"Probe": true, "ProbeTable": true}
 	emitted := javaEmittedNames(files, ignore)
 	if len(emitted) == 0 {
