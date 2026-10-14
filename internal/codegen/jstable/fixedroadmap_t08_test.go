@@ -21,6 +21,7 @@ package jstable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -270,10 +272,20 @@ func t08R27(t *testing.T) {
 func t08Play(t *testing.T, src, body string) string {
 	t.Helper()
 	u := unitFrom(t, src)
-	files, err := Generate(u)
+	// THE PACKET MODULE TOO: a table-closure union's storage class is emitted by
+	// internal/codegen/js (docs/SPEC-TABLES.md §2.6, §3.4) and the fixed form's
+	// table module imports it, so a fixture holding such a union needs the packet
+	// module beside the table module — the same two-surface generate
+	// jsRunVersionProbe does.
+	files, err := js.Generate(u)
+	if err != nil {
+		t.Fatalf("js.Generate: %v", err)
+	}
+	tables, err := GenerateLineage(u, nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {

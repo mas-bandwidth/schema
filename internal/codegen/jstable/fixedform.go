@@ -300,7 +300,12 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 						fixedDst{})
 					continue
 				}
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
+				// A DIRECT ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): a
+				// text, bytes or array arm walks as its own field type under the
+				// arm's position, the same shape a field's payload takes — the
+				// twin of ir's tableFixedWalkArm. A named struct arm falls
+				// through fixedWalkPayload to fixedWalkElement unchanged.
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:
