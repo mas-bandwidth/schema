@@ -3081,6 +3081,8 @@ namespace Blockdemo
             new TableFixedFill(0u, 11u),
         };
 
+        public const int RenderCameraFixedPlanSplit = 11;
+
         public static readonly TableFixedPlan RenderCameraFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3237,7 +3239,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCameraFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -3297,7 +3299,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderCamera(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -3328,7 +3335,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -3435,6 +3443,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderShipFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 16u),
         };
+
+        public const int RenderShipFixedPlanSplit = 16;
 
         public static readonly TableFixedPlan RenderShipFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3609,7 +3619,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderShipFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -3669,7 +3679,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderShip(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderShipFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3701,7 +3716,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -3788,6 +3804,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderTurretFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 12u),
         };
+
+        public const int RenderTurretFixedPlanSplit = 12;
 
         public static readonly TableFixedPlan RenderTurretFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3950,7 +3968,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderTurretFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -4010,7 +4028,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderTurret(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderTurretFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4042,7 +4065,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -4135,6 +4159,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderMissileFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 12u),
         };
+
+        public const int RenderMissileFixedPlanSplit = 12;
 
         public static readonly TableFixedPlan RenderMissileFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -4300,7 +4326,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderMissileFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -4360,7 +4386,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderMissile(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderMissileFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4392,7 +4423,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -4487,6 +4519,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderDynamicPropFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 12u),
         };
+
+        public const int RenderDynamicPropFixedPlanSplit = 12;
 
         public static readonly TableFixedPlan RenderDynamicPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -4653,7 +4687,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderDynamicPropFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -4713,7 +4747,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderDynamicPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4745,7 +4784,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -4840,6 +4880,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderStaticPropFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 12u),
         };
+
+        public const int RenderStaticPropFixedPlanSplit = 12;
 
         public static readonly TableFixedPlan RenderStaticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5006,7 +5048,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderStaticPropFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -5066,7 +5108,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderStaticPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5098,7 +5145,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -5196,6 +5244,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderCosmeticPropFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 13u),
         };
+
+        public const int RenderCosmeticPropFixedPlanSplit = 13;
 
         public static readonly TableFixedPlan RenderCosmeticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5364,7 +5414,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCosmeticPropFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -5424,7 +5474,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderCosmeticPropFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5456,7 +5511,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -5543,6 +5599,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderLaserFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 10u),
         };
+
+        public const int RenderLaserFixedPlanSplit = 10;
 
         public static readonly TableFixedPlan RenderLaserFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5704,7 +5762,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderLaserFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -5764,7 +5822,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderLaser(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderLaserFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -5796,7 +5859,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -5889,6 +5953,8 @@ namespace Blockdemo
         public static readonly TableFixedFill[] RenderExplosionFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 12u),
         };
+
+        public const int RenderExplosionFixedPlanSplit = 12;
 
         public static readonly TableFixedPlan RenderExplosionFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -6054,7 +6120,7 @@ namespace Blockdemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderExplosionFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -6114,7 +6180,12 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RenderExplosionFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -6146,7 +6217,8 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
 

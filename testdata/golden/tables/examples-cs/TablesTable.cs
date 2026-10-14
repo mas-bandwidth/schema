@@ -2201,6 +2201,8 @@ namespace Tabledemo
             new TableFixedFill(0u, 308u),
         };
 
+        public const int RootConfigFixedPlanSplit = 259;
+
         public static readonly TableFixedPlan RootConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 16u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(20u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
@@ -2210,64 +2212,48 @@ namespace Tabledemo
             new TableFixedEntry(36u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(40u, 7u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(41u, 8u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(42u, 9u, 4u, 0u, 41u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(42u, 10u, 4u, 0u, 41u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(46u, 11u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(50u, 12u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(54u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(58u, 14u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(62u, 15u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(63u, 16u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(64u, 17u, 4u, 0u, 63u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(64u, 18u, 4u, 0u, 63u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(68u, 19u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(72u, 20u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(76u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(80u, 22u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(84u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(85u, 24u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(86u, 25u, 4u, 0u, 85u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(86u, 26u, 4u, 0u, 85u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(90u, 27u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(94u, 28u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(98u, 29u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(102u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(106u, 31u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(107u, 32u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(108u, 33u, 4u, 0u, 107u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(108u, 34u, 4u, 0u, 107u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(112u, 35u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(116u, 36u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(120u, 37u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(124u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(128u, 39u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(129u, 40u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(130u, 41u, 4u, 0u, 129u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(130u, 42u, 4u, 0u, 129u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(134u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(138u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(142u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(146u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(150u, 47u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(151u, 48u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(152u, 49u, 4u, 0u, 151u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(152u, 50u, 4u, 0u, 151u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(156u, 51u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(160u, 52u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(164u, 53u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(168u, 54u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(172u, 55u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(173u, 56u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(174u, 57u, 4u, 0u, 173u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(174u, 58u, 4u, 0u, 173u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(178u, 59u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(182u, 60u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(186u, 61u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(190u, 62u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(194u, 63u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(195u, 64u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(196u, 65u, 4u, 0u, 195u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(196u, 66u, 4u, 0u, 195u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(200u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(204u, 68u, 32u, 69u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(240u, 70u, 16u, 71u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 3, 1),
@@ -2292,24 +2278,18 @@ namespace Tabledemo
             new TableFixedEntry(343u, 90u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(347u, 91u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(348u, 92u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(349u, 93u, 4u, 0u, 348u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(349u, 94u, 4u, 0u, 348u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(353u, 95u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(357u, 96u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(361u, 97u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(365u, 98u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(369u, 99u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(370u, 100u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(371u, 101u, 4u, 0u, 370u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(371u, 102u, 4u, 0u, 370u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(375u, 103u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(379u, 104u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(383u, 105u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(387u, 106u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(391u, 107u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(392u, 108u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(393u, 109u, 4u, 0u, 392u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(393u, 110u, 4u, 0u, 392u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(397u, 111u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(401u, 112u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(405u, 113u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2350,24 +2330,18 @@ namespace Tabledemo
             new TableFixedEntry(604u, 150u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(608u, 151u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(609u, 152u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(610u, 153u, 4u, 0u, 609u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(610u, 154u, 4u, 0u, 609u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(614u, 155u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(618u, 156u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(622u, 157u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(626u, 158u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(630u, 159u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(631u, 160u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(632u, 161u, 4u, 0u, 631u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(632u, 162u, 4u, 0u, 631u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(636u, 163u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(640u, 164u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(644u, 165u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(648u, 166u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(652u, 167u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(653u, 168u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(654u, 169u, 4u, 0u, 653u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(654u, 170u, 4u, 0u, 653u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(658u, 171u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(662u, 172u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(666u, 173u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2408,24 +2382,18 @@ namespace Tabledemo
             new TableFixedEntry(865u, 210u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(869u, 211u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(870u, 212u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(871u, 213u, 4u, 0u, 870u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(871u, 214u, 4u, 0u, 870u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(875u, 215u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(879u, 216u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(883u, 217u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(887u, 218u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(891u, 219u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(892u, 220u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(893u, 221u, 4u, 0u, 892u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(893u, 222u, 4u, 0u, 892u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(897u, 223u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(901u, 224u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(905u, 225u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(909u, 226u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(913u, 227u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(914u, 228u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(915u, 229u, 4u, 0u, 914u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(915u, 230u, 4u, 0u, 914u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(919u, 231u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(923u, 232u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(927u, 233u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2466,24 +2434,18 @@ namespace Tabledemo
             new TableFixedEntry(1126u, 270u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1130u, 271u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1131u, 272u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1132u, 273u, 4u, 0u, 1131u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1132u, 274u, 4u, 0u, 1131u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(1136u, 275u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1140u, 276u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1144u, 277u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1148u, 278u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1152u, 279u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1153u, 280u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1154u, 281u, 4u, 0u, 1153u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1154u, 282u, 4u, 0u, 1153u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(1158u, 283u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1162u, 284u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1166u, 285u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1170u, 286u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1174u, 287u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1175u, 288u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1176u, 289u, 4u, 0u, 1175u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1176u, 290u, 4u, 0u, 1175u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(1180u, 291u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(1184u, 292u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1188u, 293u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2501,6 +2463,46 @@ namespace Tabledemo
             new TableFixedEntry(1236u, 305u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1240u, 306u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1244u, 307u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(42u, 9u, 4u, 0u, 41u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(42u, 10u, 4u, 0u, 41u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(64u, 17u, 4u, 0u, 63u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(64u, 18u, 4u, 0u, 63u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(86u, 25u, 4u, 0u, 85u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(86u, 26u, 4u, 0u, 85u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(108u, 33u, 4u, 0u, 107u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(108u, 34u, 4u, 0u, 107u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(130u, 41u, 4u, 0u, 129u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(130u, 42u, 4u, 0u, 129u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(152u, 49u, 4u, 0u, 151u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(152u, 50u, 4u, 0u, 151u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(174u, 57u, 4u, 0u, 173u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(174u, 58u, 4u, 0u, 173u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(196u, 65u, 4u, 0u, 195u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(196u, 66u, 4u, 0u, 195u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(349u, 93u, 4u, 0u, 348u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(349u, 94u, 4u, 0u, 348u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(371u, 101u, 4u, 0u, 370u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(371u, 102u, 4u, 0u, 370u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(393u, 109u, 4u, 0u, 392u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(393u, 110u, 4u, 0u, 392u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(610u, 153u, 4u, 0u, 609u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(610u, 154u, 4u, 0u, 609u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(632u, 161u, 4u, 0u, 631u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(632u, 162u, 4u, 0u, 631u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(654u, 169u, 4u, 0u, 653u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(654u, 170u, 4u, 0u, 653u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(871u, 213u, 4u, 0u, 870u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(871u, 214u, 4u, 0u, 870u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(893u, 221u, 4u, 0u, 892u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(893u, 222u, 4u, 0u, 892u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(915u, 229u, 4u, 0u, 914u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(915u, 230u, 4u, 0u, 914u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1132u, 273u, 4u, 0u, 1131u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1132u, 274u, 4u, 0u, 1131u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1154u, 281u, 4u, 0u, 1153u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1154u, 282u, 4u, 0u, 1153u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1176u, 289u, 4u, 0u, 1175u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1176u, 290u, 4u, 0u, 1175u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
 
         private static readonly byte[] RootConfigFixedLayout0 = new byte[] {
@@ -2707,7 +2709,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RootConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -2767,7 +2769,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new RootConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RootConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, RootConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, RootConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 RootConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -2799,7 +2806,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, RootConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, RootConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -2867,6 +2875,8 @@ namespace Tabledemo
         public static readonly TableFixedFill[] WeaponConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 8u),
         };
+
+        public const int WeaponConfigFixedPlanSplit = 6;
 
         public static readonly TableFixedPlan WeaponConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3017,7 +3027,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = WeaponConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -3077,7 +3087,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new WeaponConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), WeaponConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 WeaponConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3109,7 +3124,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, WeaponConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, WeaponConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -3282,6 +3298,8 @@ namespace Tabledemo
             new TableFixedFill(0u, 46u),
         };
 
+        public const int LoadoutConfigFixedPlanSplit = 40;
+
         public static readonly TableFixedPlan LoadoutConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
@@ -3294,24 +3312,18 @@ namespace Tabledemo
             new TableFixedEntry(32u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(36u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(37u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(38u, 11u, 4u, 0u, 37u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(38u, 12u, 4u, 0u, 37u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(42u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(46u, 14u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(50u, 15u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(54u, 16u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(58u, 17u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(59u, 18u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(60u, 19u, 4u, 0u, 59u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(60u, 20u, 4u, 0u, 59u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(64u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(68u, 22u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(72u, 23u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(76u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(80u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(81u, 26u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(82u, 27u, 4u, 0u, 81u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(82u, 28u, 4u, 0u, 81u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(86u, 29u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(90u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(94u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3329,6 +3341,12 @@ namespace Tabledemo
             new TableFixedEntry(142u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(146u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(150u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(38u, 11u, 4u, 0u, 37u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(38u, 12u, 4u, 0u, 37u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(60u, 19u, 4u, 0u, 59u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(60u, 20u, 4u, 0u, 59u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(82u, 27u, 4u, 0u, 81u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(82u, 28u, 4u, 0u, 81u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
 
         private static readonly byte[] LoadoutConfigFixedLayout0 = new byte[] {
@@ -3503,7 +3521,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = LoadoutConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -3563,7 +3581,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new LoadoutConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), LoadoutConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 LoadoutConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -3595,7 +3618,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, LoadoutConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, LoadoutConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -3813,6 +3837,8 @@ namespace Tabledemo
             new TableFixedFill(0u, 60u),
         };
 
+        public const int ProfileConfigFixedPlanSplit = 52;
+
         public static readonly TableFixedPlan ProfileConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 32u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(36u, 2u, 16u, 3u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 3, 1),
@@ -3837,24 +3863,18 @@ namespace Tabledemo
             new TableFixedEntry(139u, 22u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(143u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(144u, 24u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(145u, 25u, 4u, 0u, 144u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(145u, 26u, 4u, 0u, 144u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(149u, 27u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(153u, 28u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(157u, 29u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(161u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(165u, 31u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(166u, 32u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(167u, 33u, 4u, 0u, 166u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(167u, 34u, 4u, 0u, 166u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(171u, 35u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(175u, 36u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(179u, 37u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(183u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(187u, 39u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(188u, 40u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(189u, 41u, 4u, 0u, 188u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(189u, 42u, 4u, 0u, 188u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(193u, 43u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(197u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(201u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3872,6 +3892,12 @@ namespace Tabledemo
             new TableFixedEntry(249u, 57u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(253u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(257u, 59u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(145u, 25u, 4u, 0u, 144u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(145u, 26u, 4u, 0u, 144u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(167u, 33u, 4u, 0u, 166u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(167u, 34u, 4u, 0u, 166u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(189u, 41u, 4u, 0u, 188u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(189u, 42u, 4u, 0u, 188u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
 
         private static readonly byte[] ProfileConfigFixedLayout0 = new byte[] {
@@ -4062,7 +4088,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = ProfileConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -4122,7 +4148,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new ProfileConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ProfileConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, ProfileConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, ProfileConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 ProfileConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -4154,7 +4185,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, ProfileConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, ProfileConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
 

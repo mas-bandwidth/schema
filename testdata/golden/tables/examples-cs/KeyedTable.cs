@@ -1259,6 +1259,8 @@ namespace Tabledemo
             new TableFixedFill(0u, 3u),
         };
 
+        public const int TeamConfigFixedPlanSplit = 2;
+
         public static readonly TableFixedPlan TeamConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(4u, 1u, 16u, 2u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
@@ -1394,7 +1396,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TeamConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -1454,7 +1456,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new TeamConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 TeamConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -1486,7 +1493,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, TeamConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, TeamConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // ---- GunnerConfig, the fixed form ----
@@ -1520,6 +1528,8 @@ namespace Tabledemo
         public static readonly TableFixedFill[] GunnerConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 2u),
         };
+
+        public const int GunnerConfigFixedPlanSplit = 2;
 
         public static readonly TableFixedPlan GunnerConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1656,7 +1666,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = GunnerConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -1716,7 +1726,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new GunnerConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, GunnerConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, GunnerConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1747,7 +1762,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, GunnerConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, GunnerConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // ---- TurretConfig, the fixed form ----
@@ -1792,6 +1808,8 @@ namespace Tabledemo
         public static readonly TableFixedFill[] TurretConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 5u),
         };
+
+        public const int TurretConfigFixedPlanSplit = 5;
 
         public static readonly TableFixedPlan TurretConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -1935,7 +1953,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TurretConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -1995,7 +2013,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new TurretConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TurretConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, TurretConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, TurretConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2026,7 +2049,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, TurretConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, TurretConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // ---- HullConfig, the fixed form ----
@@ -2100,6 +2124,8 @@ namespace Tabledemo
         public static readonly TableFixedFill[] HullConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 17u),
         };
+
+        public const int HullConfigFixedPlanSplit = 17;
 
         public static readonly TableFixedPlan HullConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2264,7 +2290,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = HullConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -2324,7 +2350,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new HullConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), HullConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, HullConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, HullConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2355,7 +2386,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, HullConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, HullConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -2530,6 +2562,8 @@ namespace Tabledemo
         public static readonly TableFixedFill[] KeyedConfigFixedCover = new TableFixedFill[] {
             new TableFixedFill(0u, 63u),
         };
+
+        public const int KeyedConfigFixedPlanSplit = 60;
 
         public static readonly TableFixedPlan KeyedConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -2759,7 +2793,7 @@ namespace Tabledemo
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = KeyedConfigFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
@@ -2819,7 +2853,12 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 KeyedConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -2851,7 +2890,8 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, KeyedConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, KeyedConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
 
