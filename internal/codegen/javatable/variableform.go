@@ -2248,6 +2248,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
 		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
 		fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
 		fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
@@ -2265,6 +2266,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    TableVariable.Reader br = r.body();\n")
 		fmt.Fprintf(b, "                    if (br != null) {\n")
 		fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.

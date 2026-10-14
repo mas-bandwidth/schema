@@ -441,6 +441,14 @@ public final class Driver {
    if(prefix==null||!damaged.malformed||damaged.refused||!prefix.metas.isEmpty()||!prefix.children.isEmpty())throw new AssertionError("nonminimal collection count refused instead of malformed: "+which);
   }
   System.out.println("nonminimal struct and pointer collection counts retain a malformed prefix");
+  TableVariable.Writer framed=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));
+  TableVariable.Writer elements=framed.sub(new byte[256]),entry=framed.sub(new byte[128]);
+  entry.putLeb(entry.ref(MetaVariable.F_build));entry.put8(4);entry.put32(42);entry.put8(0);entry.put8(77);
+  elements.put8(13);elements.putLeb(1);elements.putLeb(entry.off);elements.putBytes(entry.buf,0,entry.off);
+  framed.put8(1);framed.putLeb(framed.ref(RootVariable.F_metas));framed.put8(14);framed.putLeb(elements.off);framed.putBytes(elements.buf,0,elements.off);framed.put8(0);framed.trailer();
+  TableVariable.Report slack=new TableVariable.Report();RootVariable.Value reset=RootVariable.load(java.util.Arrays.copyOf(framed.buf,framed.off),slack);
+  if(reset==null||!slack.malformed||slack.refused||reset.metas.size()!=1||reset.metas.get(0).build!=1)throw new AssertionError("unclaimed element bytes kept the damaged value");
+  System.out.println("unclaimed element bytes reset the slot to its declared default");
  }
 }`
 	for _, f := range u.Tables["Root"].Fields {
