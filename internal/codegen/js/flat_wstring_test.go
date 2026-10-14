@@ -68,6 +68,12 @@ type Wide
 			t.Errorf("checked writer must contain %q but it does not:\n%s", required, writeChecked)
 		}
 	}
+	// The interior-null refusal sits in the loop body, at the same indent as
+	// the unit load. g.guard at the for-statement indent emits a malformed
+	// body that a substring check still accepts.
+	if got, want := lineIndent(writeChecked, "if (v === 0)"), lineIndent(writeChecked, "v = value.Text[wideIndex];"); got != want {
+		t.Errorf("interior-null guard indent %q, want loop-body indent %q:\n%s", got, want, writeChecked)
+	}
 
 	// Sanity: both writers should still have the loop structure
 	if !strings.Contains(writeProd, "for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++)") {
@@ -89,4 +95,13 @@ func emittedFlatFunction(t *testing.T, source, name string) string {
 		t.Fatalf("missing end of function %s", name)
 	}
 	return source[start : start+end+3]
+}
+
+func lineIndent(source, needle string) string {
+	idx := strings.Index(source, needle)
+	if idx < 0 {
+		return ""
+	}
+	lineStart := strings.LastIndex(source[:idx], "\n") + 1
+	return source[lineStart:idx]
 }

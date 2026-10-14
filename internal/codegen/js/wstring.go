@@ -47,7 +47,7 @@ func (g *fgen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sfor (let wideIndex = 0; wideIndex < %s; wideIndex++) {\n", ind, length)
 	g.pf("%s  v = %s[wideIndex];\n", ind, name)
-	g.guard("v === 0", " // a wide string's used units carry no interior null", ind)
+	g.guard("v === 0", " // a wide string's used units carry no interior null", ind+"  ")
 	g.mergeW(32, ind+"  ")
 	g.pf("%s}\n", ind)
 }
