@@ -48,6 +48,25 @@ int tableBlockRead64(ByteData view, int at) {
   return value;
 }
 
+// ---- the block form's FILL half (docs/SPEC-TABLES.md §19.1) ----
+//
+// A producer's refusal, BY NAME: the array whose declared maximum a count
+// violates, the count the producer asked for and the maximum the declaration
+// bounds it by. Begin fills it before it refuses and clears it on a clean
+// begin, so a caller's one variable answers "which array, how many, against
+// what bound" with no second channel — the same three facts the reference
+// leg's TableBlockRefusal carries.
+final class TableBlockRefusal {
+  String array;
+  int count;
+  int maximum;
+
+  TableBlockRefusal({this.array = '', this.count = 0, this.maximum = 0});
+
+  /// A refusal that names nothing: what a clean begin leaves behind.
+  bool get empty => array.isEmpty;
+}
+
 // ---- the block form's reflection (docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // One record's layout as DATA — the whole mechanism behind the block form's
