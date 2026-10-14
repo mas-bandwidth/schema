@@ -32,6 +32,9 @@
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
+# The formatting authority the C++ and C table legs are held to (issue #424).
+CLANG_FORMAT ?= clang-format
+
 # the classic serialize runtime the generated C++ targets (header-only), a
 # sibling checkout. Every other language's runtime checkout and toolchain pin
 # is that language's own: make/<lang>.mk (docs/CONTRIBUTING.md, "Adding a
