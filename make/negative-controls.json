@@ -34,6 +34,8 @@
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "tables-accessor-negative-control",
+        "tables-slot-negative-control",
         "toolchain-negative-control"
       ]
     },
