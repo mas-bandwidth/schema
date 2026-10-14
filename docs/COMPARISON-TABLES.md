@@ -188,7 +188,7 @@ Each with the section that defines it and the reason a game cares.
 | Explicit or sparse enum values | both | On the table wire a variant rides by name, so its number is invisible (SPEC §9). |
 | Varint compaction | Protobuf | The type wire is the compact wire; tables trade bytes for tolerance by design, and the ladder states the price. |
 | Deprecation markers | both | Removal is free and reported, which is what deprecation exists to fake elsewhere. |
-| Reserved numbers | Protobuf | Ids are name hashes and cannot be reused by number. Re-adding a retired name with a new meaning is the baseline's job, and the retired-names ledger it needs is [#441](https://github.com/mas-bandwidth/schema/issues/441), before 3.0.0. |
+| Reserved numbers | Protobuf | Ids are name hashes and cannot be reused by number. Re-adding a retired name with a new meaning is refused by the baseline's retired-names ledger ([#441](https://github.com/mas-bandwidth/schema/issues/441)), which landed before 3.0.0. |
 | RPC and gRPC | both | Out of scope, by the owner's word. Add it on top if you care. |
 
 ## The feature table
@@ -224,7 +224,7 @@ the source list at the end.
 | Units and includes | one `package` per unit, all files compiled together, order-free; cross-file table references form a DAG (SPEC §3.2, §11) | `include`, nested `namespace` (FB-schema) | `import`, `import public`, `package` (PB-editions) |
 | Attributes | closed typed vocabulary right of `\|`; unknown is a compile error; type tags inert until claimed (SPEC §4.2) | user attributes declarable, read via reflection (FB-schema) | custom options with retention and targets (PB-editions) |
 | Doc comments | the OPT-IN `///` block, binding to a declaration, field, variant or arm, into a `doc` descriptor column beside a `tags` one and into generated line comments; a plain `//` reaches nothing; no backend emits it yet (SPEC §4.1, §8.1) | `///` into generated code and the binary schema (FB-flatc) | the descriptor carries source info — `SourceCodeInfo`, whose `leading_comments` and `trailing_comments` a generator reads (PB-descriptor) |
-| Reserved names | the retired-names ledger in the baseline, before 3.0.0 ([#441](https://github.com/mas-bandwidth/schema/issues/441)) | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
+| Reserved names | the retired-names ledger in the baseline: a removed field, variant or arm is recorded, and a reuse of its name or id is refused until `--update --reason` acknowledges it ([#441](https://github.com/mas-bandwidth/schema/issues/441)) | — ; never remove, deprecate instead (FB-evolution) | `reserved` numbers and names (PB-proto3) |
 | Deprecation | — ; removal is free and counted | `(deprecated)`: accessors dropped, slot kept (FB-schema) | `[deprecated = true]` (PB-proto3) |
 | Required | — ; every field optional with a default (§4) | `(required)`, verifier-checked (FB-schema) | removed; `LEGACY_REQUIRED` only (PB-ed-overview) |
 | Rename | `\| was = "old"` keeps the id; a bare rename is a removal plus an addition, and a committed baseline warns on the pair (§5, §18.2) | free; names not serialized (FB-evolution) | free on binary; reserve the old name for JSON (PB-proto3) |
