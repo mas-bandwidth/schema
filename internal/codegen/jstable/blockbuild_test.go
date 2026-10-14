@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -28,7 +31,9 @@ import (
 // neither rows nor padding, which is what makes its bytes the Go builder's.
 // The same extent is then opened by this leg's own reader and every accessor
 // agrees with the counts written. A count past its declared maximum, and a
-// negative count, are refused with the extent untouched (§19.1).
+// negative count, are refused with the extent untouched (§19.1). The cook
+// half of the same probe (docs/SPEC-TABLES.md §7.6) is tablecook.Cook's bytes
+// in both orders, and a buffer one byte short of the measure is left alone.
 func TestBlockBuildAndCookWriteJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -46,6 +51,7 @@ func TestBlockBuildAndCookWriteJavaScript(t *testing.T) {
 	script := filepath.Join(dir, "probe.mjs")
 	probe := `
 import { RootBlock } from "./probeBlock.js";
+import { Root, RootCookMeasure, RootCookMeasureReason, RootCookFrom } from "./probeTable.js";
 const bytes = new Uint8Array(RootBlock.MaxBytes);
 const used = RootBlock.Begin(bytes, { Rows: 17, Other: 2 });
 if (!(used > 0)) { console.log("begin refused: " + used); process.exit(1); }
@@ -60,6 +66,32 @@ if (RootBlock.Begin(bytes, { Rows: 66, Other: 2 }) !== -1) { console.log("a coun
 if (RootBlock.Begin(bytes, { Rows: 17, Other: -1 }) !== -1) { console.log("a negative count was accepted"); process.exit(1); }
 if (Buffer.from(bytes.subarray(0, used)).toString("hex") !== hex) { console.log("a refusal changed the extent"); process.exit(1); }
 console.log("refusals left the extent alone");
+const root = new Root();
+root.Stamp = 42n;
+root.RowsCount = 2;
+root.Rows[0].Value = 9n;
+root.Rows[0].Flag = true;
+root.Rows[1].Value = 3n;
+root.Rows[1].Flag = false;
+root.OtherCount = 1;
+root.Other[0].Value = 11n;
+root.Other[0].Flag = true;
+const measure = RootCookMeasure(root);
+const reason = RootCookMeasureReason(root);
+console.log("cook-measure " + measure);
+console.log("cook-reason " + reason[0] + " " + reason[1]);
+const backing = new Uint8Array(measure);
+backing.fill(0xa5);
+const short = backing.subarray(0, measure - 1);
+const shortOk = RootCookFrom(root, short, 1) === false && backing.every((b) => b === 0xa5);
+console.log("cook-short " + (shortOk ? "ok" : "bad"));
+function cook(order) {
+  const buf = new Uint8Array(measure);
+  if (!RootCookFrom(root, buf, order)) { return "refused"; }
+  return Buffer.from(buf).toString("hex");
+}
+console.log("cook-le " + cook(1));
+console.log("cook-be " + cook(2));
 `
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
@@ -71,7 +103,7 @@ console.log("refusals left the extent alone");
 		t.Fatalf("the generated JavaScript did not build a block: %v\n%s", err, out)
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) != 4 {
+	if len(lines) != 9 {
 		t.Fatalf("probe output:\n%s", out)
 	}
 	// §19.1's used extent, and the Go builder's own answer for these counts.
@@ -119,4 +151,57 @@ console.log("refusals left the extent alone");
 	if lines[3] != "refusals left the extent alone" {
 		t.Fatalf("a refused Begin changed the extent: %q", lines[3])
 	}
+	// §7.6: the same value tabletext reads, cooked by tablecook in both orders.
+	// A view one byte short of that measure writes nothing.
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	text := []byte(`{"stamp":42,"rows":[{"value":9,"flag":true},{"value":3}],"other":[{"value":11,"flag":true}]}`)
+	if !m.Read(inst, text, &report) {
+		t.Fatalf("oracle text: %+v", report)
+	}
+	le, err := tablecook.Cook(m, inst, tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[4] != fmt.Sprintf("cook-measure %d", len(le)) {
+		t.Fatalf("CookMeasure = %q, tablecook answers %d (docs/SPEC-TABLES.md §7.6)", lines[4], len(le))
+	}
+	if lines[5] != fmt.Sprintf("cook-reason %d null", len(le)) {
+		t.Fatalf("CookMeasureReason = %q, want %d and no refusal", lines[5], len(le))
+	}
+	if lines[6] != "cook-short ok" {
+		t.Fatalf("a short buffer was written or CookFrom returned true: %q", lines[6])
+	}
+	gotLE, err := hex.DecodeString(strings.TrimPrefix(lines[7], "cook-le "))
+	if err != nil {
+		t.Fatalf("little cook: %v\n%s", err, lines[7])
+	}
+	gotBE, err := hex.DecodeString(strings.TrimPrefix(lines[8], "cook-be "))
+	if err != nil {
+		t.Fatalf("big cook: %v\n%s", err, lines[8])
+	}
+	if !bytes.Equal(gotLE, le) {
+		t.Fatalf("little cook differs from tablecook:\n%s", cookDiff(gotLE, le))
+	}
+	if !bytes.Equal(gotBE, be) {
+		t.Fatalf("big cook differs from tablecook:\n%s", cookDiff(gotBE, be))
+	}
+}
+
+func cookDiff(got, want []byte) string {
+	n := len(got)
+	if len(want) < n {
+		n = len(want)
+	}
+	for i := 0; i < n; i++ {
+		if got[i] != want[i] {
+			return fmt.Sprintf("byte %d got %02x want %02x (got %d bytes, want %d)", i, got[i], want[i], len(got), len(want))
+		}
+	}
+	return fmt.Sprintf("length got %d want %d", len(got), len(want))
 }
