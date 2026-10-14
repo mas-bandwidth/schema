@@ -1071,3 +1071,67 @@ void setHolder(Record r, String holder) {
   _edit(r, (c) => c.holder = holder);
 }
 
+// ---- the view (docs/SPEC-TABLES.md §8.1) ----
+
+// _viewKinds pins the schema element type of every descriptor field, keyed by
+// table and field; viewWalksEveryField pins the same vocabulary independently
+// in the test, so a declaration change without a vocabulary update fails.
+const Map<String, String> _viewKinds = {
+  'Card.id': 'string',
+  'Card.sha': 'string',
+  'Card.tier': 'Tier',
+  'Card.repo': 'string',
+  'Card._base': 'string',
+  'Card.kind': 'string',
+  'Card.priority': 'Priority',
+  'Card.stream': 'string',
+  'Card.paths': 'PathText',
+  'Card._new': 'PathText',
+  'Card.shared': 'PathText',
+  'Card.needs': 'CardID',
+  'Card.test': 'string',
+  'Card.done': 'string',
+  'Card.deadline_minutes': 'int32',
+  'Card.source': 'string',
+  'Card.epoch': 'int32',
+  'Card.column': 'Column',
+  'Card.holder': 'string',
+  'Card.attempt': 'int32',
+  'Card.head': 'string',
+  'Card.branch': 'string',
+  'Card.body': 'string',
+  'Card.extra': 'KeyValue',
+  'Card.consumers': 'Consumer',
+  'CardID.s': 'string',
+  'Consumer.kind': 'string',
+  'Consumer.who': 'string',
+  'Consumer.route': 'string',
+  'Consumer.model': 'string',
+  'Consumer.started': 'int64',
+  'Consumer.ended': 'int64',
+  'Consumer.outcome': 'string',
+  'Consumer.line': 'string',
+  'Consumer.cost_micro_usd': 'int64',
+  'KeyValue.key': 'string',
+  'KeyValue.value': 'string',
+  'PathText.s': 'string',
+};
+
+// viewText writes the generated view: one line per field of every table,
+// tables sorted by name, fields in declaration order, from cardDescriptors()
+// (docs/SPEC-TABLES.md §8.1; tables/cards/conformance/FORMAT.md).
+String viewText() {
+  final desc = cardDescriptors();
+  final tables = desc.keys.toList()..sort();
+  final out = StringBuffer();
+  for (final t in tables) {
+    for (final f in desc[t]!.fields) {
+      final kind = _viewKinds['$t.${f.name}'];
+      if (kind == null) {
+        throw CardException('cards: view has no kind for $t.${f.name}');
+      }
+      out.writeln('$t ${f.name} $kind ${f.shape} ${f.bound ?? '-'}');
+    }
+  }
+  return out.toString();
+}

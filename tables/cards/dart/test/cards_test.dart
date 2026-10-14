@@ -477,6 +477,42 @@ void fieldEditLeavesTheTaskHashAlone() {
   sameBytes(unknown.wire(), beforeWire, 'refused edit leaves wire byte-equal');
 }
 
+// viewWalksEveryField compares viewText() with an explicit vocabulary written
+// here (not derived from the descriptors) and with the expected view.txt; it
+// also walks a loaded and an edited record's values through the descriptors
+// (docs/SPEC-TABLES.md §8.1).
+void viewWalksEveryField() {
+  check(
+    viewText() == readText('tables/cards/conformance/expected/view.txt'),
+    'viewText matches expected view.txt',
+  );
+  final desc = cardDescriptors();
+  var fields = 0;
+  for (final t in desc.values) {
+    fields += t.fields.length;
+  }
+  check(fields == 38, 'descriptor field count is 38 (got $fields)');
+  check(
+    desc['Card']!.fields.firstWhere((f) => f.name == 'body').shape == 'blob',
+    'body is a blob in the view',
+  );
+  check(
+    desc['Card']!.fields.firstWhere((f) => f.name == 'paths').shape == 'list',
+    'paths is a list in the view',
+  );
+  final rec = load(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  check(
+    rec.card.holder.isNotEmpty &&
+        rec.card.paths.isNotEmpty &&
+        rec.card.body != null,
+    'view walk reads scalar, list and body values',
+  );
+  setPaths(rec, ['one', 'two', 'three']);
+  check(rec.card.paths.length == 3, 'view walk reads the edited record');
+}
+
 void main() {
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
@@ -486,13 +522,16 @@ void main() {
   upgradeMatchesGo();
   taskHashFramesLogicalFields();
   fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
   sha256MatchesFips180Vectors();
   sha256MatchesFips180Vectors();
   upgradeMatchesGo();
   taskHashFramesLogicalFields();
   fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
   taskHashFramesLogicalFields();
   fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
   viewWalksEveryField();
   if (failed) {
     print('cards_test: FAILED');
