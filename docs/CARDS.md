@@ -228,6 +228,358 @@ Existing targets:
 - `make cards-example` — stage and run the separate `cardsexample` customer module.
 - `make cards-corpus-check` — pin the current declaration and require every SHIPPED case.
 - `make cards-corpus-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
+- `make cards-conformance-go` — run the Go reference driver across all nine conformance surfaces (`load,save,render,parse,bounds,upgrade,edit,taskhash,view`).
+- `make cards-conformance-all` — run `cards-conformance-go` and every language leg's `cards-<lang>-conformance` target (`c`, `cpp`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`) with `--require-surfaces load,save,render,parse,bounds,upgrade,edit,taskhash,view`, printing the 81-line leg-by-surface matrix.
+
+## Checked TLA+ models
+
+Two finite-state TLC models check the facade's upgrade, edit, and cross-language hop contracts (`make tla-card-versioning` and `make tla-card-hops`):
+
+- `tla/CardVersioning.tla` models the atomic retained round trip (`Upgrade`) and strict read (`ReadStrict`) across `Legacy`, `Current`, and `Compatible` declarations:
+  - `TypeOK` — record slots and the last-action observation remain within their finite domains.
+  - `NoFieldLost` — after a successful `Upgrade`, every pre-attempt logical field identity and value survives in the output's known fields or retained tail (`was` renames preserve identity).
+  - `BodyUnchanged` — `Read`, `ReadStrict`, and `Upgrade` (whether published or refused) preserve the stored body byte-for-byte; only `Write` replaces it.
+  - `RefusalKeepsOriginal` — a refused `Upgrade` publishes no replacement and leaves the original slot untouched.
+  - `UnknownIsReported` — physically present unknown fields produce the exact `unknown` count on the report; a compatible writer label alone forces no unknown count.
+  - `ShippedUpgradeSucceeds` — every shipped upgrade triple succeeds, and repeating `Upgrade` on the same declaration is idempotent (`RepeatUpgradeStable`).
+  - Four reversed fault configs (`DropRetained`, `SuppressUnknown`, `ChangeBody`, `RefuseShipped`) prove each invariant bites when violated.
+- `tla/CardHops.tla` models a card record hopping across two language implementations (`A` and `B`) and declarations (`Older` and `Current`) under `Write`, `Read`, `Upgrade`, `Edit`, and `Hash`:
+  - `TypeOK` — the record and observation remain within their finite domains.
+  - `NoFieldLost` — every field identity and value present before an `Upgrade`, `Read`, or refused `Edit` survives; a successful `Edit` mutates only its target field and refuses when any unknown field is present.
+  - `BodyUnchanged` — `Read`, `Upgrade`, `Edit`, and `Hash` never alter the body.
+  - `RefusalKeepsOriginal` — a refused `Upgrade` or `Edit` leaves the stored record unchanged.
+  - `ImplementationsAgree` — for every reachable record, declaration, and retention capacity, `Upgrade` by leg `A` and by leg `B` produce identical output.
+  - `HopOrderIrrelevant` — upgrading by `A` then `B` equals upgrading by `B` then `A` equals one `Upgrade` on the same declaration and capacity.
+  - `TaskHashStable` — editing `needs` or `tier` leaves `TaskHash` unchanged, whereas editing `paths` to a new value changes `TaskHash`.
+  - Four reversed fault configs (`EditDropsUnknown`, `DivergentLeg`, `EditTouchesBody`, `HashSeesNeeds`) prove each invariant bites when violated.
+
+## Every language
+
+Every language leg wraps its generated `Card` codec in an owning facade that enforces the same bounds, retention ceilings, brief parser/renderer, retained upgrade, atomic field edits, task hash, and generated descriptor view, and proves byte-for-byte agreement against `tables/cards/conformance/expected/` under `make cards-conformance-all`.
+
+### C++
+
+Generate the C++ card unit with:
+
+```sh
+./bin/schema generate --lang cpp --out build/tables-generated-cpp/cards tables/cards
+```
+
+Facade (`tables/cards/cpp/cards.hpp`, `tables/cards/cpp/cards.cpp`, namespace `cards`):
+
+| Go name | C++ spelling | Notes |
+| --- | --- | --- |
+| `Record` | `cards::Record` | Owns a defensive `std::vector<uint8_t>` copy of the wire. |
+| `Report` | `cards::TableReport` | Tolerant load/save counters (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `MaxBodyBytes` | `cards::MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `cards::MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `cards::MaxRetainBytes` (`1 << 20`), `cards::MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
+| `Load` | `cards::CardLoad(wire, len, rec, report)` | Tolerant load into `cards::Record`; copies `wire`. |
+| `FromJSON` | `cards::CardFromJSON(text, len, rec, report, refusal_class)` | Strict JSON read and checked save. |
+| `ToJSON` | `cards::CardToJSON(rec, out, report)` | Known-field JSON view. |
+| `Wire` | `cards::CardWire(rec)` | Returns a defensive copy of the owned wire bytes. |
+| `Parse` | `cards::Parse(text, len, rec, refusal_class)` | Admitted brief text to `cards::Record`. |
+| `Render` | `cards::Render(rec, out, report)` | Informational brief text view. |
+| `Upgrade` | `cards::Upgrade(wire, len, out, report, refusal_class)` | Atomic retained region round trip (`CardLoadRetain` / `CardSaveRetain`). |
+| `ReadStrict` | `cards::ReadStrict(wire, len, rec, report, refusal_class)` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `cards::TaskHash(rec, out, refusal_class)` | Framed SHA-256 over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
+| `SetNeeds` | `cards::SetNeeds(rec, needs, refusal_class)` | Atomic `needs` replacement (64-byte element bound, 512 ceiling). |
+| `SetPaths` | `cards::SetPaths(rec, paths, refusal_class)` | Atomic `paths` replacement (192-byte element bound, 512 ceiling). |
+| `SetTier` | `cards::SetTier(rec, tier, refusal_class)` | Atomic `tier` replacement (`cards::Tier`). |
+| `SetPriority` | `cards::SetPriority(rec, priority, refusal_class)` | Atomic `priority` replacement (`cards::Priority`). |
+| `SetColumn` | `cards::SetColumn(rec, column, refusal_class)` | Atomic `column` replacement (`cards::Column`). |
+| `SetHolder` | `cards::SetHolder(rec, holder, refusal_class)` | Atomic `holder` replacement (32-byte bound). |
+| View | `cards::WriteView()` | Walks `cards::UnitView()` in table-name and declaration order. |
+
+Make targets: `make cards-cpp-generate`, `make cards-cpp-test`, `make cards-cpp-conformance`, `make cards-cpp-conformance-negative-control`, `make cards-cpp-conformance-upgrade-negative-control`, `make cards-cpp-conformance-hash-negative-control`.
+
+### C
+
+Generate the C card unit with:
+
+```sh
+./bin/schema generate --lang c --out build/tables-generated-c/cards tables/cards
+```
+
+Facade (`tables/cards/c/cards.h`, `tables/cards/c/cards.c`):
+
+| Go name | C spelling | Notes |
+| --- | --- | --- |
+| `Record` | `CardsRecord` | Owns a heap copy of `wire` and the last `TableReport`; released with `cards_record_clear`. |
+| `Report` | `TableReport` | Generated C report struct (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `MaxBodyBytes` | `CARDS_MAX_BODY_BYTES` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `CARDS_MAX_LIST_ENTRIES` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `CARDS_MAX_RETAIN_BYTES` (`1 << 20`), `CARDS_MAX_RETAIN_IDS` (`4096`) | Caller-owned retention store ceilings per `cards_upgrade` call. |
+| `Load` | `cards_load(wire, wire_len, rec, report, err, err_cap)` | Tolerant load into `CardsRecord`; copies `wire`. |
+| `FromJSON` | `cards_from_json(text, text_len, rec, err, err_cap)` | Strict JSON read and checked save. |
+| `ToJSON` | `cards_to_json(rec, out, out_len, err, err_cap)` | Known-field JSON view. |
+| `Wire` | `cards_wire(rec, out, out_len, err, err_cap)` | Allocates and copies the owned wire bytes. |
+| `Parse` | `cards_parse(text, text_len, rec, err, err_cap)` | Admitted brief text to `CardsRecord`. |
+| `Render` | `cards_render(rec, out, out_len, err, err_cap)` | Informational brief text view. |
+| `Upgrade` | `cards_upgrade(wire, wire_len, out, out_len, report, err, err_cap)` | Atomic retained region round trip (`Card_load_retain` / `Card_save_retain`). |
+| `ReadStrict` | `cards_read_strict(wire, wire_len, rec, err, err_cap)` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `cards_task_hash(rec, hex_out, err, err_cap)` | Framed SHA-256 over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
+| `SetNeeds` | `cards_set_needs(rec, needs, count, err, err_cap)` | Atomic `needs` replacement. |
+| `SetPaths` | `cards_set_paths(rec, paths, count, err, err_cap)` | Atomic `paths` replacement. |
+| `SetTier` | `cards_set_tier(rec, tier, err, err_cap)` | Atomic `tier` replacement (`Tier`). |
+| `SetPriority` | `cards_set_priority(rec, priority, err, err_cap)` | Atomic `priority` replacement (`Priority`). |
+| `SetColumn` | `cards_set_column(rec, column, err, err_cap)` | Atomic `column` replacement (`Column`). |
+| `SetHolder` | `cards_set_holder(rec, holder, err, err_cap)` | Atomic `holder` replacement. |
+| View | `cards_view(out, out_len, err, err_cap)` | Walks `unit_view()` in table-name and declaration order. |
+
+Make targets: `make cards-c-generate`, `make cards-c-test`, `make cards-c-conformance`, `make cards-c-conformance-negative-control`, `make cards-c-conformance-upgrade-negative-control`, `make cards-c-conformance-hash-negative-control`.
+
+### C#
+
+Generate the C# card unit with:
+
+```sh
+./bin/schema generate --lang cs --out build/tables-generated-cs/cards tables/cards
+```
+
+Facade (`tables/cards/cs/Cards.cs`, `tables/cards/cs/Driver/Program.cs`, namespace `Cards`):
+
+| Go name | C# spelling | Notes |
+| --- | --- | --- |
+| `Record` | `Cards.Record` | Owns a private `byte[]` copy of the wire and the decoded `Card`; refusals throw `Cards.CardException`. |
+| `Report` | `Cards.TableReport` (`record.Report`) | Generated C# report class carried on `Record` and `out TableReport`. |
+| `MaxBodyBytes` | `Record.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `Record.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `Record.MaxRetainBytes` (`1 << 20`), `Record.MaxRetainIds` (`4096`) | Caller-owned retention store ceilings per `Record.Upgrade` call. |
+| `Load` | `Record.Load(byte[] wire, out TableReport report)` | Tolerant load into `Record`; copies `wire`. |
+| `FromJSON` | `Record.FromJson(byte[] text)` | Strict JSON read and checked save. |
+| `ToJSON` | `record.ToJson()` | Known-field JSON `byte[]` view. |
+| `Wire` | `record.Wire()` | Returns a fresh `byte[]` copy of the owned wire. |
+| `Parse` | `Record.Parse(byte[] bytes)` | Admitted brief text to `Record`. |
+| `Render` | `record.Render()` | Informational brief text `byte[]` view. |
+| `Upgrade` | `Record.Upgrade(byte[] wire, out TableReport report)` | Atomic retained region round trip (`Schema.CardLoadRetain` / `Schema.CardSaveRetain`). |
+| `ReadStrict` | `Record.ReadStrict(byte[] wire)` | Refuses `Unknown`, `KindMismatch`, `Clamped`, and `Malformed`. |
+| `TaskHash` | `Record.TaskHash(Record record)` | Framed SHA-256 `byte[32]` digest over the six task fields. |
+| `SetNeeds` | `record.SetNeeds(string[] needs)` | Atomic `needs` replacement. |
+| `SetPaths` | `record.SetPaths(string[] paths)` | Atomic `paths` replacement. |
+| `SetTier` | `record.SetTier(Tier tier)` | Atomic `tier` replacement. |
+| `SetPriority` | `record.SetPriority(Priority priority)` | Atomic `priority` replacement. |
+| `SetColumn` | `record.SetColumn(Column column)` | Atomic `column` replacement. |
+| `SetHolder` | `record.SetHolder(string holder)` | Atomic `holder` replacement. |
+| View | `Schema.UnitView()` (`Program.ViewText`) | Walks `Schema.UnitView().Tables.Span` in table-name and declaration order. |
+
+Make targets: `make cards-cs-generate`, `make cards-cs-test`, `make cards-cs-conformance`, `make cards-cs-conformance-negative-control`, `make cards-cs-conformance-upgrade-negative-control`, `make cards-cs-conformance-hash-negative-control`.
+
+### Go
+
+Generate the Go card unit with:
+
+```sh
+./bin/schema generate --lang go --out build/tables-generated-go/cards tables/cards
+```
+
+Facade (`tables/cards/cards.go`, `parse.go`, `render.go`, `upgrade.go`, `edit.go`, package `cards`):
+
+| Go name | Go spelling | Notes |
+| --- | --- | --- |
+| `Record` | `cards.Record` | Owns a defensive `[]byte` copy of the wire and the decoded `Card`. |
+| `Report` | `cards.Report` (`= cards.TableReport`) | Tolerant load/save report counters. |
+| `MaxBodyBytes` | `cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `cards.MaxRetainBytes` (`1 << 20`), `cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
+| `Load` | `cards.Load(wire []byte) (*Record, Report, error)` | Tolerant load into `*Record`; copies `wire`. |
+| `FromJSON` | `cards.FromJSON(text []byte) (*Record, error)` | Strict JSON read and checked save. |
+| `ToJSON` | `cards.ToJSON(rec *Record) ([]byte, Report, error)` | Known-field JSON view. |
+| `Wire` | `(*Record).Wire() []byte` | Returns a defensive copy of the owned wire bytes. |
+| `Parse` | `cards.Parse(text []byte) (*Record, error)` | Admitted brief text to `*Record`. |
+| `Render` | `cards.Render(rec *Record) ([]byte, Report, error)` | Informational brief text view. |
+| `Upgrade` | `cards.Upgrade(wire []byte) ([]byte, Report, error)` | Atomic retained region round trip (`CardLoadRetain` / `CardSaveRetain`). |
+| `ReadStrict` | `cards.ReadStrict(wire []byte) (*Record, Report, error)` | Refuses `Unknown`, `KindMismatch`, `Clamped`, and `Malformed`. |
+| `TaskHash` | `cards.TaskHash(rec *Record) ([32]byte, error)` | Framed SHA-256 digest over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
+| `SetNeeds` | `cards.SetNeeds(rec *Record, needs []string) error` | Atomic `needs` replacement. |
+| `SetPaths` | `cards.SetPaths(rec *Record, paths []string) error` | Atomic `paths` replacement. |
+| `SetTier` | `cards.SetTier(rec *Record, tier Tier) error` | Atomic `tier` replacement. |
+| `SetPriority` | `cards.SetPriority(rec *Record, priority Priority) error` | Atomic `priority` replacement. |
+| `SetColumn` | `cards.SetColumn(rec *Record, column Column) error` | Atomic `column` replacement. |
+| `SetHolder` | `cards.SetHolder(rec *Record, holder string) error` | Atomic `holder` replacement. |
+| View | `cards.UnitView()` | Generated unit descriptor table walked by `tables/cards/cmd/cards-driver/main.go`. |
+
+Make targets: `make cards-generate`, `make cards-test`, `make cards-example`, `make cards-conformance-go`, `make cards-conformance-negative-control`, `make cards-conformance-all`.
+
+### Rust
+
+Generate the Rust card unit with:
+
+```sh
+./bin/schema generate --lang rust --out build/tables-generated-rust/cards/src tables/cards
+```
+
+Facade (`tables/cards/rust/src/lib.rs`, crate `cards`):
+
+| Go name | Rust spelling | Notes |
+| --- | --- | --- |
+| `Record` | `cards::Record` | Owns a private `Vec<u8>` copy of the wire, `Card`, and `TableReport`. |
+| `Report` | `cards::TableReport` (`record.report()`) | Generated report struct (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `MaxBodyBytes` | `cards::MAX_BODY_BYTES` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `cards::MAX_LIST_ENTRIES` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `cards::MAX_RETAIN_BYTES` (`1 << 20`), `cards::MAX_RETAIN_IDS` (`4096`) | Caller-owned retention store ceilings per `upgrade` call. |
+| `Load` | `cards::load(wire: &[u8]) -> Result<(Record, TableReport), String>` | Tolerant load into `Record`; clones `wire`. |
+| `FromJSON` | `cards::from_json(text: &str) -> Result<Record, String>` | Strict JSON read and checked save. |
+| `ToJSON` | `cards::to_json(record: &Record) -> Result<(String, TableReport), String>` | Known-field JSON view. |
+| `Wire` | `Record::wire(&self) -> Vec<u8>` | Returns a cloned `Vec<u8>` of the owned wire. |
+| `Parse` | `cards::parse(text: &[u8]) -> Result<Record, String>` | Admitted brief text to `Record`. |
+| `Render` | `cards::render(record: &Record) -> Result<Vec<u8>, String>` | Informational brief text view. |
+| `Upgrade` | `cards::upgrade(wire: &[u8]) -> Result<(Vec<u8>, TableReport), String>` | Atomic retained round trip (`card_load_retain` / `card_save_retain`). |
+| `ReadStrict` | `cards::read_strict(wire: &[u8]) -> Result<Record, String>` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `cards::task_hash(record: &Record) -> Result<[u8; 32], String>` | Framed SHA-256 digest over the six task fields. |
+| `SetNeeds` | `cards::set_needs(record: &mut Record, needs: &[String]) -> Result<(), String>` | Atomic `needs` replacement. |
+| `SetPaths` | `cards::set_paths(record: &mut Record, paths: &[String]) -> Result<(), String>` | Atomic `paths` replacement. |
+| `SetTier` | `cards::set_tier(record: &mut Record, tier: Tier) -> Result<(), String>` | Atomic `tier` replacement. |
+| `SetPriority` | `cards::set_priority(record: &mut Record, priority: Priority) -> Result<(), String>` | Atomic `priority` replacement. |
+| `SetColumn` | `cards::set_column(record: &mut Record, column: Column) -> Result<(), String>` | Atomic `column` replacement. |
+| `SetHolder` | `cards::set_holder(record: &mut Record, holder: &str) -> Result<(), String>` | Atomic `holder` replacement. |
+| View | `cards::view() -> String` | Walks `card_descriptors::TABLES` in table-name and declaration order. |
+
+Make targets: `make cards-rust-generate`, `make cards-rust-test`, `make cards-rust-conformance`, `make cards-rust-conformance-negative-control`, `make cards-rust-conformance-upgrade-negative-control`, `make cards-rust-conformance-hash-negative-control`.
+
+### Java
+
+Generate the Java card unit with:
+
+```sh
+./bin/schema generate --lang java --out build/tables-generated-java/cards tables/cards
+```
+
+Facade (`tables/cards/java/src/cards/Cards.java`, `tables/cards/java/src/cards/Driver.java`, package `cards`):
+
+| Go name | Java spelling | Notes |
+| --- | --- | --- |
+| `Record` | `Cards.Record` | Owns a private `byte[]` copy of the wire, `CardVariable.Value`, and `TableVariable.Report`; refusals throw `Cards.Refusal`. |
+| `Report` | `TableVariable.Report` (`rec.report`, `UpgradeResult.report`) | Generated report counters. |
+| `MaxBodyBytes` | `Cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `Cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `Cards.MaxRetainBytes` (`1 << 20`), `Cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Cards.upgrade` call. |
+| `Load` | `Cards.load(byte[] wire)` | Tolerant load into `Cards.Record`; copies `wire`. |
+| `FromJSON` | `Cards.fromJSON(byte[] text)` | Strict JSON read and checked save. |
+| `ToJSON` | `Cards.toJSON(Cards.Record record)` | Known-field JSON `byte[]` view. |
+| `Wire` | `record.wire()` | Returns `Arrays.copyOf` of the owned wire bytes. |
+| `Parse` | `Cards.parse(byte[] text)` | Admitted brief text to `Cards.Record`. |
+| `Render` | `Cards.render(Cards.Record record)` | Informational brief text `byte[]` view. |
+| `Upgrade` | `Cards.upgrade(byte[] wire)` | Atomic retained round trip (`CardRetain.loadRetain` / `CardRetain.saveRetain`). |
+| `ReadStrict` | `Cards.readStrict(byte[] wire)` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `Cards.taskHash(byte[] wire)` | Framed SHA-256 64-char hex digest over the six task fields. |
+| `SetNeeds` | `Cards.setNeeds(byte[] wire, List<String> needs)` | Atomic `needs` replacement returning a fresh `Cards.Record`. |
+| `SetPaths` | `Cards.setPaths(byte[] wire, List<String> paths)` | Atomic `paths` replacement. |
+| `SetTier` | `Cards.setTier(byte[] wire, int tier)` | Atomic `tier` replacement. |
+| `SetPriority` | `Cards.setPriority(byte[] wire, int priority)` | Atomic `priority` replacement. |
+| `SetColumn` | `Cards.setColumn(byte[] wire, int column)` | Atomic `column` replacement. |
+| `SetHolder` | `Cards.setHolder(byte[] wire, String holder)` | Atomic `holder` replacement. |
+| View | `Driver.view()` | Walks `*Descriptor.tableType()` in table-name and declaration order. |
+
+Make targets: `make cards-java-generate`, `make cards-java-test`, `make cards-java-conformance`, `make cards-java-conformance-negative-control`, `make cards-java-conformance-upgrade-negative-control`, `make cards-java-conformance-hash-negative-control`.
+
+### JavaScript
+
+Generate the JavaScript card unit with:
+
+```sh
+./bin/schema generate --lang js --out build/tables-generated-js/cards tables/cards
+```
+
+Facade (`tables/cards/js/cards.mjs`, `tables/cards/js/driver.mjs`):
+
+| Go name | JavaScript spelling | Notes |
+| --- | --- | --- |
+| `Record` | `Record` (`cards.Record`) | Owns a private `Uint8Array` copy of the wire, decoded `Card`, and report; refusals carry `CardError`. |
+| `Report` | `TableVariableReport` | Generated report object returned as `{ record, report, error }` / `{ out, report, error }`. |
+| `MaxBodyBytes` | `MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `MaxRetainBytes` (`1 << 20`), `MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
+| `Load` | `Load(wire)` | Tolerant load returning `{ record, report, error }`; copies `wire`. |
+| `FromJSON` | `FromJSON(text)` | Strict JSON read and checked save returning `{ record, error }`. |
+| `ToJSON` | `ToJSON(record)` | Known-field JSON view returning `{ text, report, error }`. |
+| `Wire` | `record.Wire()` | Returns a fresh `Uint8Array` copy of the owned wire. |
+| `Parse` | `Parse(text)` | Admitted brief text to `{ record, error }`. |
+| `Render` | `Render(record)` | Informational brief text view returning `{ text, report, error }`. |
+| `Upgrade` | `Upgrade(wire)` | Atomic retained round trip (`CardLoadRetain` / `CardSaveRetain`) returning `{ out, report, error }`. |
+| `ReadStrict` | `ReadStrict(wire)` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `TaskHash(record)` | Framed SHA-256 64-char hex digest over the six task fields. |
+| `SetNeeds` | `SetNeeds(record, needs)` | Atomic `needs` replacement on `record`. |
+| `SetPaths` | `SetPaths(record, paths)` | Atomic `paths` replacement on `record`. |
+| `SetTier` | `SetTier(record, tier)` | Atomic `tier` replacement on `record`. |
+| `SetPriority` | `SetPriority(record, priority)` | Atomic `priority` replacement on `record`. |
+| `SetColumn` | `SetColumn(record, column)` | Atomic `column` replacement on `record`. |
+| `SetHolder` | `SetHolder(record, holder)` | Atomic `holder` replacement on `record`. |
+| View | `CardsUnitRegistry` (`view()` in `driver.mjs`) | Walks `CardsUnitRegistry.tables` in table-name and declaration order. |
+
+Make targets: `make cards-js-generate`, `make cards-js-test`, `make cards-js-conformance`, `make cards-js-conformance-negative-control`, `make cards-js-conformance-upgrade-negative-control`, `make cards-js-conformance-hash-negative-control`.
+
+### Dart
+
+Generate the Dart card unit with:
+
+```sh
+./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+```
+
+Facade (`tables/cards/dart/lib/cards.dart`):
+
+| Go name | Dart spelling | Notes |
+| --- | --- | --- |
+| `Record` | `Record` | Owns a private `Uint8List` copy of the wire, `Card`, and `TableWireReport`; refusals throw `CardException`. |
+| `Report` | `TableWireReport` (`record.report`, `UpgradeResult.report`) | Generated report object carried on `Record` and `UpgradeResult`. |
+| `MaxBodyBytes` | `maxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `maxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `maxRetainBytes` (`1 << 20`), `maxRetainIds` (`4096`) | Caller-owned retention store ceilings per `upgrade` call. |
+| `Load` | `load(Uint8List wire) -> Record` | Tolerant load into `Record`; copies `wire`. |
+| `FromJSON` | `fromJson(String text) -> Record` | Strict JSON read and checked save. |
+| `ToJSON` | `toJson(Record record) -> String` | Known-field JSON view. |
+| `Wire` | `record.wire() -> Uint8List` | Returns `Uint8List.fromList` of the owned wire. |
+| `Parse` | `parse(String text) -> Record` | Admitted brief text to `Record`. |
+| `Render` | `render(Record record) -> String` | Informational brief text view. |
+| `Upgrade` | `upgrade(Uint8List wire) -> UpgradeResult` | Atomic retained round trip (`cardWireLoadRetain` / `cardWireSaveRetain`). |
+| `ReadStrict` | `readStrict(Uint8List wire) -> Record` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `TaskHash` | `taskHash(Record record) -> Uint8List` (`taskHashHex`) | Framed SHA-256 digest over the six task fields. |
+| `SetNeeds` | `setNeeds(Record r, List<String> needs)` | Atomic `needs` replacement on `r`. |
+| `SetPaths` | `setPaths(Record r, List<String> paths)` | Atomic `paths` replacement on `r`. |
+| `SetTier` | `setTier(Record r, int tier)` | Atomic `tier` replacement on `r`. |
+| `SetPriority` | `setPriority(Record r, int priority)` | Atomic `priority` replacement on `r`. |
+| `SetColumn` | `setColumn(Record r, int column)` | Atomic `column` replacement on `r`. |
+| `SetHolder` | `setHolder(Record r, String holder)` | Atomic `holder` replacement on `r`. |
+| View | `viewText() -> String` | Walks `cardDescriptors()` in table-name and declaration order. |
+
+Make targets: `make cards-dart-generate`, `make cards-dart-test`, `make cards-dart-conformance`, `make cards-dart-conformance-negative-control`, `make cards-dart-conformance-upgrade-negative-control`, `make cards-dart-conformance-hash-negative-control`.
+
+### Elixir
+
+Generate the Elixir card unit with:
+
+```sh
+./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
+```
+
+Facade (`tables/cards/elixir/cards.ex`, module `Cards.Cards`):
+
+| Go name | Elixir spelling | Notes |
+| --- | --- | --- |
+| `Record` | `%Cards.Cards.Record{wire, value, report}` | Struct owning the immutable BEAM binary `wire`, decoded `value` map, and `report`. |
+| `Report` | `record.report` (map from `Cards.Table`) | Tolerant read/save counters (`:retained`, `:retain_lost`, `:widened`, `:unknown`, `:kind_mismatch`, `:clamped`, `:duplicate`, `:malformed`). |
+| `MaxBodyBytes` | `@max_body_bytes` (`64 * 1024`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `@max_list_entries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `@max_retain_bytes` (`1_048_576`), `@max_retain_ids` (`4096`) | Caller-owned retention store ceilings per `Cards.Cards.upgrade/1` call. |
+| `Load` | `Cards.Cards.load(wire)` | Tolerant load returning `{:ok, record, report}` or `{:error, reason, report}`. |
+| `FromJSON` | `Cards.Cards.from_json(text)` | Strict JSON read and checked save returning `{:ok, record}` or `{:error, reason}`. |
+| `ToJSON` | `Cards.Cards.to_json(record)` | Known-field JSON view returning `{:ok, text, report}`. |
+| `Wire` | `Cards.Cards.wire(record)` | Returns the record's owned wire binary. |
+| `Parse` | `Cards.Cards.parse(text)` | Admitted brief text to `{:ok, record}` or `{:error, reason}`. |
+| `Render` | `Cards.Cards.render(record)` | Informational brief text view returning `{:ok, text, report}`. |
+| `Upgrade` | `Cards.Cards.upgrade(wire)` | Atomic retained round trip (`Cards.Table.load_retain` / `Cards.Table.save_retain`). |
+| `ReadStrict` | `Cards.Cards.read_strict(wire)` | Refuses `:unknown`, `:kind_mismatch`, `:clamped`, and `:malformed`. |
+| `TaskHash` | `Cards.Cards.task_hash(record)` | Framed SHA-256 `{:ok, <<digest::binary-size(32)>>}` over the six task fields. |
+| `SetNeeds` | `Cards.Cards.set_needs(record, needs)` | Atomic `needs` replacement returning `{:ok, record}` or `{:error, reason}`. |
+| `SetPaths` | `Cards.Cards.set_paths(record, paths)` | Atomic `paths` replacement. |
+| `SetTier` | `Cards.Cards.set_tier(record, tier)` | Atomic `tier` replacement. |
+| `SetPriority` | `Cards.Cards.set_priority(record, priority)` | Atomic `priority` replacement. |
+| `SetColumn` | `Cards.Cards.set_column(record, column)` | Atomic `column` replacement. |
+| `SetHolder` | `Cards.Cards.set_holder(record, holder)` | Atomic `holder` replacement. |
+| View | `Cards.Cards.view()` | Walks `Cards.Table.descriptors()` in table-name and declaration order. |
+
+Make targets: `make cards-elixir-generate`, `make cards-elixir-test`, `make cards-elixir-conformance`, `make cards-elixir-conformance-negative-control`, `make cards-elixir-conformance-upgrade-negative-control`, `make cards-elixir-conformance-hash-negative-control`.
 
 ## Later sprint integration
 
@@ -236,3 +588,4 @@ recipe is: parse a brief at admission; keep machine fields owned by the server;
 build indexes that correspond to the authoritative record; preserve the wire for
 storage; and hash the task-bearing fields with `TaskHash`. Those verbs arrive
 with sprint integration, not here.
+
