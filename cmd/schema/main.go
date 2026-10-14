@@ -27,8 +27,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -918,27 +921,128 @@ func writeNewLeg(root string, files map[string][]byte, verbose bool) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	return writeNewLegConfined(root, names, files, verbose)
+}
+
+// newLegBeforeCreate runs between the preflight and each file's creation; it
+// is nil outside the tests, which use it to race a file in where one is about
+// to land.
+var newLegBeforeCreate func(rel string)
+
+// writeNewLegConfined lays the named files into root, confined to it. Every
+// output goes through an os.Root, so no path — a symlink planted in the tree
+// or raced in later included — resolves outside --root; a preflight refuses,
+// by name, any output whose path is or passes through a symlink, a file where
+// a directory goes, and any file that already exists, before anything is
+// written; and each file is then created O_CREATE|O_EXCL, so one that appears
+// after the preflight (a file or a dangling symlink alike) is refused rather
+// than written through. Only "does not exist" counts as free: any other lookup
+// error is reported. A failure part-way removes what this run created, so a
+// refusal leaves the tree as it found it.
+func writeNewLegConfined(root string, names []string, files map[string][]byte, verbose bool) (err error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
 	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("new-leg refuses to overwrite %s", path)
+		if perr := newLegPreflight(r, name); perr != nil {
+			return perr
 		}
 	}
+	var written []string // the files this run created
+	var made []string    // the directories this run created, outermost first
+	defer func() {
+		if err == nil {
+			return
+		}
+		for _, w := range slices.Backward(written) {
+			_ = r.Remove(filepath.FromSlash(w))
+		}
+		for _, d := range slices.Backward(made) {
+			_ = r.Remove(filepath.FromSlash(d)) // fails, harmlessly, on one not empty
+		}
+	}()
 	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
+		if derr := newLegMkdirs(r, path.Dir(name), &made); derr != nil {
+			return derr
+		}
+		if newLegBeforeCreate != nil {
+			newLegBeforeCreate(name)
 		}
 		mode := os.FileMode(0o644)
 		if compiler.NewLegExec(name) {
 			mode = 0o755
 		}
-		if err := os.WriteFile(path, files[name], mode); err != nil {
-			return err
+		f, oerr := r.OpenFile(filepath.FromSlash(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		if errors.Is(oerr, fs.ErrExist) {
+			return fmt.Errorf("%s appeared while new-leg was writing — it never overwrites a file", name)
+		}
+		if oerr != nil {
+			return fmt.Errorf("%s: %w", name, oerr)
+		}
+		written = append(written, name)
+		_, werr := f.Write(files[name])
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return fmt.Errorf("%s: %w", name, werr)
 		}
 		if verbose {
-			fmt.Printf("wrote %s\n", path)
+			fmt.Printf("wrote %s\n", filepath.Join(root, filepath.FromSlash(name)))
 		}
+	}
+	return nil
+}
+
+// newLegPreflight walks rel one element at a time with Lstat, so no link is
+// followed: a symlink anywhere on the path is refused, as is a file where a
+// directory goes and a final file that already exists; the first element that
+// does not exist ends the walk, since everything below it is free too.
+func newLegPreflight(r *os.Root, rel string) error {
+	elems := strings.Split(rel, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		info, err := r.Lstat(filepath.FromSlash(p))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("new-leg cannot tell whether %s exists: %w", rel, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("new-leg refuses %s: %s is a symlink, and every output stays a plain path inside --root", rel, p)
+		}
+		if i == len(elems)-1 {
+			if info.IsDir() {
+				return fmt.Errorf("new-leg refuses %s: it is already a directory", rel)
+			}
+			return fmt.Errorf("new-leg refuses to overwrite %s", rel)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("new-leg refuses %s: %s is not a directory", rel, p)
+		}
+	}
+	return nil
+}
+
+// newLegMkdirs creates the directories on dir that are missing, recording each
+// one it made in made (outermost first) so a failed run can remove them again.
+func newLegMkdirs(r *os.Root, dir string, made *[]string) error {
+	if dir == "." || dir == "/" {
+		return nil
+	}
+	elems := strings.Split(dir, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		if _, err := r.Lstat(filepath.FromSlash(p)); err == nil {
+			continue
+		}
+		if err := r.Mkdir(filepath.FromSlash(p), 0o755); err != nil {
+			return fmt.Errorf("new-leg cannot make %s: %w", p, err)
+		}
+		*made = append(*made, p)
 	}
 	return nil
 }
