@@ -269,17 +269,10 @@ func cookWriteElement(b *strings.Builder, u *ir.Unit, c *cookUnit, f *ir.Field, 
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes, ir.TWString:
 		if f.Type.Kind == ir.TString && !fixed {
-			clone := *f
-			clone.Array = ir.ArrayNone
-			clone.ArrayBound = 0
-			parts := ir.FieldPieces(u, &clone, 0)
-			fmt.Fprintf(b, "        if (%s==null || textLength(%s)<0 || textLength(%s)>%d) return false; w.text(%s,%s); putTextCount(w,%s+%d,%s);\n", e, e, e, f.Type.Size, e, at, at, parts[1].Offset, e)
+			fmt.Fprintf(b, "        if (%s==null || textLength(%s)<0 || textLength(%s)>%d) return false; w.text(%s,%s);\n", e, e, e, f.Type.Size, e, at)
 			return
 		}
 		data := e
-		if f.Type.Kind == ir.TString && !fixed {
-			data = e + ".getBytes(java.nio.charset.StandardCharsets.UTF_8)"
-		}
 		length := data + ".length"
 		if fixed {
 			length = e + "Length"
@@ -290,11 +283,7 @@ func cookWriteElement(b *strings.Builder, u *ir.Unit, c *cookUnit, f *ir.Field, 
 			unit = 2
 		}
 		fmt.Fprintf(b, "        for(int j=0;j<%s;j++) w.put(%s+j*%d,%s[j],%d);\n", length, at, unit, data, unit)
-		clone := *f
-		clone.Array = ir.ArrayNone
-		clone.ArrayBound = 0
-		parts := ir.FieldPieces(u, &clone, 0)
-		fmt.Fprintf(b, "        w.put(%s+%d,%s,4);\n", at, parts[1].Offset, length)
+
 	case ir.TBool:
 		fmt.Fprintf(b, "        w.put(%s,%s ? 1 : 0,%d);\n", at, e, width)
 	case ir.TFloat32:
@@ -375,7 +364,6 @@ const javaCookWriter = `public final class TableCookWriter {
             else {put(p++,0xf0|(c>>18),1);put(p++,0x80|((c>>12)&63),1);put(p++,0x80|((c>>6)&63),1);put(p++,0x80|(c&63),1);}
         }
     }
-    static void putTextCount(TableCookWriter w,int at,String value) {w.put(at,textLength(value),4);}
     int carve(int count,int width,int alignment) {
         long start=align(tail,alignment),end=start+(long)count*width;
         if(count<0||end>Integer.MAX_VALUE)return -1;

@@ -281,6 +281,7 @@ func testCookWriteJava(t *testing.T, big bool) {
 fixed table Probe {
  number int64
  ratio float32
+ enabled bool
  label string(8)
  blob bytes(4)
  marks [..4]int32
@@ -288,7 +289,7 @@ fixed table Probe {
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Probe"])
 	report := new(tabletext.Report)
-	if !m.Read(v, []byte(`{"number":-7,"ratio":1.5,"label":"hello","blob":"AQID","marks":[4,5]}`), report) {
+	if !m.Read(v, []byte(`{"number":-7,"ratio":1.5,"enabled":true,"label":"hello","blob":"AQID","marks":[4,5]}`), report) {
 		t.Fatalf("oracle JSON: %+v", report)
 	}
 	want, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
@@ -315,7 +316,7 @@ fixed table Probe {
 	driver := fmt.Sprintf(`package probe;
 public final class Driver {
  public static void main(String[] args) throws Exception {
-  ProbeFixed.Value v=new ProbeFixed.Value();v.number=-7;v.ratio=1.5f;
+  ProbeFixed.Value v=new ProbeFixed.Value();v.number=-7;v.ratio=1.5f;v.enabled=true;
   byte[] text="hello".getBytes(java.nio.charset.StandardCharsets.UTF_8);System.arraycopy(text,0,v.label,0,5);v.labelLength=5;
   v.blob[0]=1;v.blob[1]=2;v.blob[2]=3;v.blobLength=3;
   v.marks[0]=4;v.marks[1]=5;v.marksCount=2;
@@ -367,6 +368,7 @@ func TestCookWriteJavaSharedGraph(t *testing.T) {
 fixed table Meta {
  build int32 = 1
  tag string(8)
+ blob bytes(3)
 }
 table Node {
  value int32
@@ -386,7 +388,7 @@ table Root {
  tail []uint8
 }
 `)
-	text := []byte(`{"first":{"&node":1,"value":7,"next":null,"text":"shared"},"second":{"&node":1},"meta":{"build":9,"tag":"meta"},"values":[1,-2,3],"children":[{"&node":1}],"metas":[{"build":11,"tag":"row😀"}],"rows":[],"padding":[1],"empty":[],"tail":[2]}`)
+	text := []byte(`{"first":{"&node":1,"value":7,"next":null,"text":"shared"},"second":{"&node":1},"meta":{"build":9,"tag":"meta","blob":"AQID"},"values":[1,-2,3],"children":[{"&node":1}],"metas":[{"build":11,"tag":"row😀"}],"rows":[],"padding":[1],"empty":[],"tail":[2]}`)
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Root"])
 	rep := new(tabletext.Report)
@@ -415,6 +417,8 @@ public final class Driver {
   byte[] json=java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(args[0],"input.json"));
   TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=RootVariable.fromJson(json,report);
   if(v==null||report.malformed||v.first!=v.second)throw new AssertionError("load sharing");
+  byte[] wire=RootVariable.save(v);if(wire==null)throw new AssertionError("wire save");
+  v=RootVariable.load(wire,new TableVariable.Report());if(v==null)throw new AssertionError("wire load");
   long size=RootCook.cookMeasure(v);if(size<0)throw new AssertionError("measure");
   for(int order=1;order<=2;order++) {byte[] b=new byte[(int)size];if(!RootCook.cookFrom(v,b,order))throw new AssertionError("cook");java.nio.file.Files.write(java.nio.file.Paths.get(args[0],"cook"+order),b);}
   v.first.next=v.first;
