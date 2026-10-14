@@ -75,7 +75,9 @@ fixed table T
 	if !strings.Contains(src, "Op: tableFixedText, Meta: 1") {
 		t.Error("W7: the text entry's Meta lane (the text flavour) is missing from the emitted plan")
 	}
-	if !strings.Contains(src, "out[q].Arg = 2") {
+	// The arm's guard is stamped as a link of the entry's guard chain
+	// (FIXED-FORM-ALGORITHM §4.1), which tableFixedBuildPlan lays on the Arg lane.
+	if !strings.Contains(src, "Arg: 2, ArgW: ") {
 		t.Error("W7: the guard lane's Arg is not stamped with the arm ordinal 2 in the emitted plan")
 	}
 	// TWO LANES, NOT ONE: the flavour rides Meta on the entry literal and the
@@ -120,20 +122,15 @@ fixed table T
 // entries an inner union already guarded with its own tag.
 func t08GoW16(t *testing.T) {
 	src := t08GoSource(t, t08Nested)
-	for _, want := range []string{
-		"out[q].Guard2 = ",
-		"out[q].Arg2 = ",
-		"out[q].ArgW2 = ",
-	} {
-		if !strings.Contains(src, want) {
-			t.Errorf("W16: the emitted walk never stamps %s; an arm inside an arm answers the outer tag on a second lane", strings.TrimSpace(want))
-		}
+	// THE OUTER TAG LANDS BESIDE THE INNER, NEVER OVER IT: the emitted walk
+	// records ONE MORE LINK of the entry's guard chain per enclosing union
+	// (§4.1, the guard chain), and the plan builder lays the chain's innermost
+	// two on the Guard and Guard2 lanes.
+	if !strings.Contains(src, "links[q] = append(links[q], TableFixedGuardLink{Guard: ") {
+		t.Error("W16: the emitted walk does not record the outer tag as a link of the entry's guard chain")
 	}
-	// THE OUTER TAG LANDS BESIDE THE INNER, NEVER OVER IT: the stamp is guarded
-	// by the first lane, so an entry already guarded keeps its tag and records
-	// the outer one on the second.
-	if !strings.Contains(src, "if out[q].Guard == tableFixedNoGuard") {
-		t.Error("W16: the emitted walk overwrites the first guard lane instead of answering the outer tag on a second")
+	if !strings.Contains(src, "e.Guard2, e.Arg2, e.ArgW2 = chain[k-2].Guard, chain[k-2].Arg, chain[k-2].ArgW") {
+		t.Error("W16: the plan builder does not lay the outer tag on the second lane; an arm inside an arm answers the outer tag on a second lane")
 	}
 	// AND THE CONJUNCTION IS EXERCISED, not merely laid down: the emitted
 	// plan's two lanes are RUN — the leg builds, WRITES and READS a nested
