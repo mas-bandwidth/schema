@@ -229,13 +229,13 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("    (void) b; (void) value;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
-		g.emitFixedWriteField(f, off, "b", "value->", 4)
+		g.emitFixedWriteField(f, off, "b", "value->", 0, 4)
 		off += ir.TableFixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
 }
 
-func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, indent int) {
+func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, indent int) {
 	if f.Type.Optional {
 		/* AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
 		   (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
@@ -244,29 +244,29 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 		ind := strings.Repeat(" ", indent)
 		g.pf("%stable_fixed_put8( %s + %d, %s%s_present ? 1 : 0 );\n", ind, buf, off, val, f.Name)
 		g.pf("%sif ( %s%s_present )\n%s{\n", ind, val, f.Name, ind)
-		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, buf, val, indent+4)
+		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, buf, val, depth, indent+4)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.emitFixedWritePayload(f, off, buf, val, indent)
+	g.emitFixedWritePayload(f, off, buf, val, depth, indent)
 }
 
-func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, indent int) {
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, depth, indent int) {
 	ind := strings.Repeat(" ", indent)
 	base := off
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): no count, no slack.
-		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.KeyEnumRef.Max, 10), buf, val+f.Name, indent)
+		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.KeyEnumRef.Max, 10), buf, val+f.Name, depth, indent)
 	case f.Array == ir.ArrayFixed:
 		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max.
-		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.ArrayBound, 10), buf, val+f.Name, indent)
+		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.ArrayBound, 10), buf, val+f.Name, depth, indent)
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4), exactly as the reference does it.
 		g.fixedWriteBound(fmt.Sprintf("%s%s_count", val, f.Name), f.ArrayBound, "count", ind)
 		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_count );\n", ind, buf, base, val, f.Name)
-		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s%s_count", val, f.Name), buf, val+f.Name, indent)
+		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s%s_count", val, f.Name), buf, val+f.Name, depth, indent)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	case f.Type.Kind == ir.TWString:
@@ -274,15 +274,16 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	default:
-		g.emitFixedWriteElement(f, base, buf, val+f.Name, indent)
+		g.emitFixedWriteElement(f, base, buf, val+f.Name, depth, indent)
 	}
 }
 
-func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
+func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, depth, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, count, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
+	loop := fixedLoopVar(depth)
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, loop, ind, loop, loop, count, loop, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", depth+1, indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
 }
 
@@ -311,7 +312,7 @@ func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); /* the declared %s is the bound (§3.4) */\n", ind, expr, expr, bound, what)
 }
 
-func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, indent int) {
+func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, depth, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
@@ -327,9 +328,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 				// A payload-free arm's whole storage is the tag (§2.6): its case
 				// writes nothing under the tag. "A union writes the tag and the
 				// taken arm only" (docs/FIXED-FORM-ALGORITHM.md §3.1).
-				if v.F != nil {
-					g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.as.%s", expr, v.Name), indent+8)
-				}
+				g.emitFixedWriteArm(v, off+tag, buf, expr, depth, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
@@ -362,6 +361,83 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		}
 		g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
+}
+
+/*
+emitFixedWriteArm is one union arm's fixed-form store, the C twin of the
+
+	reference's (internal/codegen/cpptable/fixedform.go:473). A payload-free arm
+	writes nothing under the tag (§2.6); a string(N) or bytes(N) arm writes its
+	used length then that many units, a wstring(N) arm the same in 2-byte units,
+	a fixed array arm its elements, a counted array arm its count then its live
+	elements, and any other arm the element store as today. The arm's value and
+	companion live inside the arm's own unnamed struct — `value` beside
+	`value_length` or `value_count` (§2.6) — and the writer reads those, not the
+	sibling-field spellings.
+*/
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val string, depth, indent int) {
+	if v.Void() {
+		return // a payload-free arm: the tag alone is its whole storage (§2.6)
+	}
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Type.Kind == ir.TWString:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 2)
+	case f.Type.Kind == ir.TBytes:
+		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedWriteArmLoop(v, off, strconv.FormatInt(f.ArrayBound, 10), buf, armValue(val, v), depth, indent)
+	case f.Array == ir.ArrayCounted:
+		g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
+		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, off, armCount(val, v))
+		g.emitFixedWriteArmLoop(v, off+ir.TableFixedCountBytes, armCount(val, v), buf, armValue(val, v), depth, indent)
+	default:
+		g.emitFixedWriteElement(f, off, buf, armValue(val, v), depth, indent)
+	}
+}
+
+/*
+emitFixedWriteTextArm is a text or bytes arm's store: the used LENGTH, then
+
+	that many UNITS onto the template's zeros — the same emitFixedWriteText store
+	with the arm's companion spellings. The slack behind the used length is the
+	prefill's zero (§3.4).
+*/
+func (g *tableGen) emitFixedWriteTextArm(v ir.UnionVariant, base int64, buf, val, ind string, unit int64) {
+	f := v.F
+	g.fixedWriteBound(armCount(val, v), f.Type.Size, "length", ind)
+	g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s );\n", ind, buf, base, armCount(val, v))
+	scale := ""
+	if unit != 1 {
+		scale = fmt.Sprintf("%d * ", unit)
+	}
+	g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, base+4, armValue(val, v), scale, armCount(val, v))
+}
+
+// emitFixedWriteArmLoop is an array arm's element loop: `count` elements from
+// the arm's value member onto the wire, one element store each.
+func (g *tableGen) emitFixedWriteArmLoop(v ir.UnionVariant, base int64, count string, buf, expr string, depth, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elem := ir.TableFixedElementBytes(v.F)
+	loop := fixedLoopVar(depth)
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, loop, ind, loop, loop, count, loop, ind)
+	g.emitFixedWriteElement(v.F, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", depth+1, indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+// fixedLoopVar names the write body's element-loop counter for a nesting
+// level, the C twin of the reference's. A loop nests when an array arm rides
+// inside an array of unions, and reusing `i` would shadow the outer loop —
+// which the C build's -Wshadow refuses, and which silently makes the write
+// read the wrong element. The name grows one digit per level.
+func fixedLoopVar(depth int) string {
+	if depth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", depth)
 }
 
 // ---- the root's surface ----------------------------------------------------
@@ -961,6 +1037,48 @@ func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
 }
 
+/*
+emitFixedClampArm is one union arm's bounds, the twin of emitFixedClampPayload
+
+	with the arm's storage spellings: a direct text arm carries the text content
+	rule its field path does (emitFixedTextContent), a direct counted array arm
+	its live elements and a direct fixed array arm every slot (§4.6), so a direct
+	text or array arm is bounded exactly as a text or array FIELD is. The arm's
+	value and companion live inside the arm's own unnamed struct (§2.6).
+*/
+func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	f := v.F
+	value := armValue(expr, v)
+	switch {
+	case f.Array == ir.ArrayFixed:
+		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, f.ArrayBound, ind)
+		g.emitFixedClampElement(f, value+"[i]", indent+8)
+		g.pf("%s    }\n%s}\n", ind, ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, armCount(expr, v), ind)
+		g.emitFixedClampElement(f, value+"[i]", indent+8)
+		g.pf("%s    }\n%s}\n", ind, ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContentArm(v, expr, ind)
+	default:
+		g.emitFixedClampElement(f, value, indent)
+	}
+}
+
+// emitFixedTextContentArm is a direct text arm's content rule, the same
+// emitFixedTextContent check with the arm's spellings: the used length is the
+// companion, and the bytes are the arm's own value member (§2.6).
+func (g *tableGen) emitFixedTextContentArm(v ir.UnionVariant, expr, ind string) {
+	f := v.F
+	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s )", armValue(expr, v), armCount(expr, v))
+	if f.Type.Kind == ir.TWString {
+		call = fmt.Sprintf("table_wire_utf16( (const uint8_t *) %s, (int64_t) %s )", armValue(expr, v), armCount(expr, v))
+	}
+	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+	g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
+}
+
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
@@ -982,7 +1100,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 					continue
 				}
 				g.pf("%s    case %s:\n%s    {\n", ind, enumConst(f.Type.Name+"Type", v.Name), ind)
-				g.emitFixedClampElement(v.F, fmt.Sprintf("%s.as.%s", expr, v.Name), indent+8)
+				g.emitFixedClampArm(v, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
