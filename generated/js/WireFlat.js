@@ -447,6 +447,7 @@ function writeProbeSampleFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -560,6 +561,7 @@ function writeProbeSampleFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  if (v > 36000) { v = 36000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1498,6 +1500,7 @@ function writeProbeArrayFlatProduction(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -1632,6 +1635,7 @@ function writeProbeArrayFlatChecked(value, view) {
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -2682,6 +2686,7 @@ function writeTestDataFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -2933,6 +2938,7 @@ function writeTestDataFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3410,6 +3416,7 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3422,6 +3429,7 @@ function writeCompressedProbeFlatProduction(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {
@@ -3446,6 +3454,7 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
   if (sb >= 32) {
@@ -3461,6 +3470,7 @@ function writeCompressedProbeFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  if (v > 10000) { v = 10000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 14;
   if (sb >= 32) {

@@ -242,6 +242,7 @@ export class TableFixedPlan {
     this.unknown = 0;
     this.kindMismatch = 0;
     this.why = 0;
+    this.stage = new TableFixedReport();
   }
 }
 
@@ -500,9 +501,15 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpWidenF: {
         // every f32 value is exactly representable in an f64, infinities and
         // NaN payloads included, so there is nothing to round and nothing to lose
-        TableFixedConv.setUint8(0, src[s]); TableFixedConv.setUint8(1, src[s + 1]);
-        TableFixedConv.setUint8(2, src[s + 2]); TableFixedConv.setUint8(3, src[s + 3]);
-        TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
+        const bits = TableFixedGetU32(src, s);
+        if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+          const payload = bits & 0x007fffff;
+          TableFixedConv.setUint32(8, ((payload & 7) << 29) >>> 0, true);
+          TableFixedConv.setUint32(12, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        } else {
+          TableFixedConv.setUint32(0, bits, true);
+          TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
+        }
         for (let k = 0; k < 8; k++) { dst[d + k] = TableFixedConv.getUint8(8 + k); }
         report.widened++;
         break;

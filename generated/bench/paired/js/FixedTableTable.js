@@ -445,6 +445,9 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // read loop moves a run in 32-bit lanes and a DataView is what has an
   // unaligned word move in this language (§3.4).
   const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  // §4.5, §5.3: stage the record loop's counters so a refusal leaves the
+  // caller's clamped and widened untouched; commit after the loop.
+  const stage = TableFixedResetReport(plan.stage);
   let at = layoutAt + layoutBytes;
   for (let k = 0; k < n; k++) {
     // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
@@ -457,19 +460,22 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];
       for (let i = 0; i < z; i++) { image[o + i] = FixedTableFixedPrefill[o + i]; }
     }
-    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
+    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);
     // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
     // projection: refuse is total, no counter moves and no record lands.
-    if (report.refused !== 0) { return -1; }
-    FixedTableFixedDecode(values[k], imageView, 0, report);
+    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+    FixedTableFixedDecode(values[k], imageView, 0, stage);
     // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is
     // one COPY, so no text op ran, and the decode is where a byte string or
     // a wide string refuses by name.
-    if (report.refused !== 0) { return -1; }
+    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
     at += recordBytes;
   }
-  // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns
-  // (§5.9 #6). On a LAWFUL lineage it lands zero, always (§5.9 #30).
+  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on
+  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and
+  // kindMismatch land zero, always (§5.9 #30).
+  report.clamped += stage.clamped;
+  report.widened += stage.widened;
   report.unknown += censusUnknown;
   report.kindMismatch += censusKind;
   return n;

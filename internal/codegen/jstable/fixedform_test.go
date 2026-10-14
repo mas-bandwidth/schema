@@ -197,7 +197,7 @@ fixed table Root
 			if strings.Contains(load, "if (identity)") {
 				sawIdentityDoor = true
 			}
-			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, report)") {
+			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, stage)") {
 				sawDecodeCall = true
 			}
 		}

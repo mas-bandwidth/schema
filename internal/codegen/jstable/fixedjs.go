@@ -128,8 +128,6 @@ func fixedSetter(t ir.FieldType) (string, bool) {
 	switch t.Kind {
 	case ir.TBool:
 		return "setUint8", false
-	case ir.TFloat32:
-		return "setFloat32", true
 	case ir.TFloat64:
 		return "setFloat64", true
 	}
@@ -201,6 +199,27 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 		g.pf("%s%s.setBigUint64(%s, BigInt.asUintN(64, %s >> 64n), true);\n", ind, view, off(at, 8), expr)
 		return
 	}
+	if t.Kind == ir.TFloat32 {
+		// SPEC-TABLES.md §3.4, §14: carry a float32 NaN's sign and 23-bit payload
+		// bit for bit rather than through setFloat32, which sets the quiet bit on
+		// a signalling NaN.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const v = %s;\n", ind, expr)
+		g.pf("%s  let bits;\n", ind)
+		g.pf("%s  if (v !== v) {\n", ind)
+		g.pf("%s    TableFixedConv.setFloat64(0, v, true);\n", ind)
+		g.pf("%s    const lo = TableFixedConv.getUint32(0, true), hi = TableFixedConv.getUint32(4, true);\n", ind)
+		g.pf("%s    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;\n", ind)
+		g.pf("%s    if (payload === 0) { payload = 0x400000; }\n", ind)
+		g.pf("%s    bits = ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;\n", ind)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    TableFixedConv.setFloat32(0, v, true);\n", ind)
+		g.pf("%s    bits = TableFixedConv.getUint32(0, true);\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s.setUint32(%s, bits, true);\n", ind, view, at)
+		g.pf("%s}\n", ind)
+		return
+	}
 	call, le := fixedSetter(t)
 	if call == "" {
 		g.pf("%s// no storage image for this leaf\n", ind)
@@ -224,6 +243,24 @@ func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
 		if fixedSigned(t) {
 			g.pf("%s%s = BigInt.asIntN(128, %s);\n", ind, lhs, lhs)
 		}
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// SPEC-TABLES.md §3.4, §14: widen a float32 NaN's sign and 23-bit payload
+		// into the top of the double's mantissa by bit surgery rather than through
+		// getFloat32, which sets the quiet bit on a signalling NaN.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const bits = %s.getUint32(%s, true);\n", ind, view, at)
+		g.pf("%s  if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {\n", ind)
+		g.pf("%s    const payload = bits & 0x007fffff;\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);\n", ind)
+		g.pf("%s    %s = TableFixedConv.getFloat64(0, true);\n", ind, lhs)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(0, bits, true);\n", ind)
+		g.pf("%s    %s = TableFixedConv.getFloat32(0, true);\n", ind, lhs)
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	call, le := fixedGetter(t)
@@ -455,12 +492,138 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
 	g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
+	// THE CONTENT RULES APPLY TO THE USED UNITS BEFORE ANY DESTINATION WRITE
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3): REFUSE is total, so a
+	// text violation in the image refuses by name before a single property of
+	// value is touched.
+	g.emitCheckTextStruct(st, "at", 0, "  ")
 	var cur int64
 	for _, f := range st.Fields {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
 		cur += fixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
+}
+
+func fixedStructHasText(st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields {
+		if fixedFieldHasText(f) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldHasText(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+		return true
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedStructHasText(r)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFieldHasText(v.F) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitCheckTextStruct walks st's text fields in view before emitDecodeField
+// writes anything into value (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3).
+func (g *fixedGen) emitCheckTextStruct(st *ir.Struct, base string, at int64, ind string) {
+	if !fixedStructHasText(st) {
+		return
+	}
+	cur := at
+	for _, f := range st.Fields {
+		if fixedFieldHasText(f) {
+			g.emitCheckTextField(f, base, cur, ind)
+		}
+		cur += fixedFieldBytes(f)
+	}
+}
+
+func (g *fixedGen) emitCheckTextField(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Optional {
+		g.pf("%sif (view.getUint8(%s) !== 0) {\n", ind, off(base, at))
+		g.emitCheckTextPayload(f, base, at+fixedPresentBytes, ind+"  ")
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitCheckTextPayload(f, base, at, ind)
+}
+
+func (g *fixedGen) emitCheckTextPayload(f *ir.Field, base string, at int64, ind string) {
+	switch {
+	case f.KeyEnum != "":
+		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), ind)
+	case f.Array == ir.ArrayFixed:
+		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.ArrayBound, f.ArrayBound)
+		g.emitCheckTextLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (!TableFixedTextOk(TableFixedTextUtf8, view, %s, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes))
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (!TableFixedTextOk(TableFixedTextWide, view, %s, n * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes))
+		g.pf("%s}\n", ind)
+	default:
+		g.emitCheckTextElement(f, base, at, ind)
+	}
+}
+
+func (g *fixedGen) emitCheckTextLoop(f *ir.Field, base string, at int64, count, ind string) {
+	elem := fixedElementBytes(f)
+	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+	g.emitCheckTextElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitCheckTextStruct(r, base, at, ind)
+		case *ir.Union:
+			tag := fixedUnionTagBytes(r)
+			g.pf("%s{\n", ind)
+			g.pf("%s  let tag = 0;\n", ind)
+			g.loadTag(ind+"  ", "tag", off(base, at), tag)
+			g.pf("%s  switch (tag) {\n", ind)
+			for i, v := range r.Variants {
+				if v.F != nil && fixedFieldHasText(v.F) {
+					g.pf("%s    case %d: {\n", ind, i+1)
+					g.emitCheckTextPayload(v.F, base, at+tag, ind+"      ")
+					g.pf("%s      break;\n%s    }\n", ind, ind)
+				}
+			}
+			g.pf("%s    default: break;\n%s  }\n", ind, ind)
+			g.pf("%s}\n", ind)
+		}
+	}
 }
 
 // emitDecodeField projects one FIELD out of the image, through the optional
@@ -504,12 +667,9 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		// array into the image; this loop is the pass both paths share.
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString:
+		// Content validity over the used units was checked before any write to
+		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
-		// validity over the stated length, never over N; a violation refuses by
-		// name, writing nothing past it.
-		g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, view, %s, %s.%sLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes), val, name)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	case f.Type.Kind == ir.TBytes:
@@ -517,11 +677,9 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	case f.Type.Kind == ir.TWString:
+		// Content validity over the used units was checked before any write to
+		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
-		// UTF-16 with no zero unit over the stated length, never over 2N.
-		g.pf("%sif (!TableFixedTextOk(TableFixedTextWide, view, %s, %s.%sLength * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes), val, name)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	default:
