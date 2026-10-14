@@ -45,9 +45,16 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	if len(variable) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
+	// The descriptors cover the WHOLE table closure (docs/SPEC-TABLES.md §3.1):
+	// a variable root reaches a fixed table by value and by pointer, so a node
+	// of that type has to be named beside the variable ones. The nil gate above
+	// keeps a fixed-only unit from emitting the variable form at all.
+	closure := ir.TableClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		if u.Tables[name] != nil {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 
@@ -104,45 +111,81 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
-    # DISTINCT blob: a blob two fields share is numbered once, so the saved
+    # DISTINCT node: a node two fields share is numbered once, so the saved
     # wire matches the reference backends byte for byte (§3.1)
     nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {v, i} -> {v, i} end)
+    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
 
     {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
 
-    {body, _ids, order} = save_node_table(nodes, ids, order, body)
+    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
   end
 
-  # collect_nodes is the declaration-order walk of every *string this value
-  # reaches: the flat node table's records, in the order §3.1 numbers them
-  # (root is index 1, the first blob is 2). A blob reached twice is one record.
+  # collect_nodes is the declaration-order DFS walk of every node this value
+  # reaches — a *string/*bytes blob and a table a pointer names — the flat node
+  # table's records, in the order §3.1 numbers them (root is index 1, the first
+  # node is 2). A node reached twice is one record. A node is {type_id, kind,
+  # table_name, content}: kind :blob for a byte buffer, :table for a pointer
+  # pointee.
   defp collect_nodes(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
       case f.t do
         :blob ->
           case Map.get(value, f.name) do
-            nil ->
-              acc
-
-            v ->
-              if Enum.any?(acc, fn e -> e == v end), do: acc, else: [v | acc]
+            nil -> acc
+            v -> push_node(acc, {f.type_id, :blob, nil, v})
           end
 
+        :pointer ->
+          case Map.get(value, f.name) do
+            nil -> acc
+            v ->
+              acc = push_node(acc, {f.type_id, :table, f.elem, v})
+              collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+          end
+
+        :table ->
+          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)
+
         :list ->
-          Enum.reduce(Map.get(value, f.name, []), acc, fn e, acc ->
-            collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
-          end)
+          collect_list_nodes(f, Map.get(value, f.name, []), acc)
 
         _ ->
           acc
       end
     end)
   end
+
+  defp push_node(acc, node) do
+    c = node_content(node)
+
+    if Enum.any?(acc, fn n -> node_content(n) == c end), do: acc, else: [node | acc]
+  end
+
+  defp node_content({_type_id, _kind, _ref, c}), do: c
+
+  # an unbounded array's elements are inline (kind 13) when they are tables and
+  # nodes when they are pointers; scalar and string elements reach no node.
+  defp collect_list_nodes(%{elem_kind: 13} = f, elements, acc) do
+    Enum.reduce(elements, acc, fn e, acc ->
+      collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
+    end)
+  end
+
+  defp collect_list_nodes(%{elem_kind: 17} = f, elements, acc) do
+    Enum.reduce(elements, acc, fn
+      nil, acc -> acc
+      e, acc ->
+        acc = push_node(acc, {f.elem_type_id, :table, f.elem, e})
+        collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
+    end)
+  end
+
+  defp collect_list_nodes(_f, _elements, acc), do: acc
 
   # save_fields writes one body's fields and returns the iodata, the node
   # index map, the id map and the reversed first-use order.
@@ -171,9 +214,46 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       elements ->
         {ref, ids, order} = intern(ids, order, f.id)
+        {body, idx_map, ids, order} = save_list_elements(f, elements, idx_map, ids, order, [])
+        array = [<<f.elem_kind>>, leb_encode(length(elements)), body]
+        {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  defp emit_field(%{t: :pointer} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        idx = Map.fetch!(idx_map, v)
+        {idx_map, ids, order, [acc, leb_encode(ref), <<17>>, leb_encode(idx)]}
+    end
+  end
+
+  defp emit_field(%{t: :table} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
         elem_desc = Map.fetch!(@tables, f.elem)
-        {body, idx_map, ids, order} = save_elements(elem_desc, elements, idx_map, ids, order, [])
-        array = [<<13>>, leb_encode(length(elements)), body]
+        {_idx, ids, order, body} = save_fields(elem_desc, v, idx_map, ids, order, [])
+        framed = [body, <<0>>]
+        {idx_map, ids, order, [acc, leb_encode(ref), <<13>>, leb_encode(IO.iodata_length(framed)), framed]}
+    end
+  end
+
+  defp emit_field(%{t: :bytes} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        array = [<<8>>, leb_encode(byte_size(v)), v]
         {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
     end
   end
@@ -198,7 +278,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width)]}
+        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    end
+  end
+
+  defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name, 0.0) do
+      0.0 ->
+        {idx_map, ids, order, acc}
+
+      v ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, float_bytes(v, f.width)]}
     end
   end
 
@@ -224,28 +315,82 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp save_elements(_desc, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
+  defp save_list_elements(_f, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
 
-  defp save_elements(desc, [e | rest], idx_map, ids, order, acc) do
-    {idx_map, ids, order, body} = save_fields(desc, e, idx_map, ids, order, [])
-    framed = [leb_encode(IO.iodata_length(body) + 1), body, <<0>>]
-    save_elements(desc, rest, idx_map, ids, order, [acc, framed])
+  defp save_list_elements(f, [e | rest], idx_map, ids, order, acc) do
+    {elem, ids, order} = emit_element(f, e, idx_map, ids, order)
+    save_list_elements(f, rest, idx_map, ids, order, [acc, elem])
   end
 
+  # emit_element writes one array element by the list's element kind
+  # (docs/SPEC-TABLES.md §3, §2.9): a table element is a framed body, a pointer
+  # element a node index, a string element its L and bytes, an enum a variant
+  # reference, and every scalar element its own bytes.
+  defp emit_element(%{elem_kind: 13} = f, e, idx_map, ids, order) do
+    elem_desc = Map.fetch!(@tables, f.elem)
+    {_idx, ids, order, body} = save_fields(elem_desc, e, idx_map, ids, order, [])
+    {[leb_encode(IO.iodata_length(body) + 1), body, <<0>>], ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
+    idx = Map.fetch!(idx_map, e)
+    {leb_encode(idx), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 12} = f, e, _idx_map, ids, order) do
+    {[leb_encode(byte_size(e)), e], ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 30} = f, e, _idx_map, ids, order) do
+    vid = Map.fetch!(f.by_name, e)
+    {vref, ids, order} = intern(ids, order, vid)
+    {leb_encode(vref), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: 1} = _f, e, _idx_map, ids, order) do
+    {if(e, do: <<1>>, else: <<0>>), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
+    {float_bytes(e, kind_width(kind)), ids, order}
+  end
+
+  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [2, 3, 4, 5, 6, 7, 8, 9] do
+    {int_bytes(e, kind_width(kind), kind < 6), ids, order}
+  end
+
+  defp emit_element(_f, _e, _idx_map, ids, order), do: {<<>>, ids, order}
+
   # save_node_table writes the reserved node-table field once, when the value
-  # carries a blob (docs/SPEC-TABLES.md §3.1).
-  defp save_node_table([], ids, order, body), do: {body, ids, order}
+  # carries a node (docs/SPEC-TABLES.md §3.1). Each record is the node's type id
+  # reference, its body's L and the body — a blob's raw bytes or a table's field
+  # walk ending in its terminator. Type ids and a table node's field ids intern
+  # in the record's own order, which is the reference's first-use order.
+  defp save_node_table([], _idx_map, ids, order, body), do: {body, ids, order}
 
-  defp save_node_table(nodes, ids, order, body) do
+  defp save_node_table(nodes, idx_map, ids, order, body) do
     {ref, ids, order} = intern(ids, order, @node_id)
-    {sref, ids, order} = intern(ids, order, @string_id)
-    table =
-      for v <- nodes do
-        [leb_encode(sref), leb_encode(byte_size(v)), v]
-      end
-
-    payload = [leb_encode(length(nodes)), table]
+    {records, ids, order} = write_node_records(nodes, idx_map, ids, order, [])
+    payload = [leb_encode(length(nodes)), records]
     {[body, leb_encode(ref), <<12>>, leb_encode(IO.iodata_length(payload)), payload], ids, order}
+  end
+
+  defp write_node_records([], _idx_map, ids, order, acc), do: {acc, ids, order}
+
+  defp write_node_records([node | rest], idx_map, ids, order, acc) do
+    {tref, ids, order} = intern(ids, order, elem(node, 0))
+    {nbody, ids, order} = node_body(node, idx_map, ids, order)
+    acc = [acc, leb_encode(tref), leb_encode(IO.iodata_length(nbody)), nbody]
+    write_node_records(rest, idx_map, ids, order, acc)
+  end
+
+  defp node_body({_type_id, :blob, _ref, bytes}, _idx_map, ids, order),
+    do: {bytes, ids, order}
+
+  defp node_body({_type_id, :table, ref, v}, idx_map, ids, order) do
+    desc = Map.fetch!(@tables, ref)
+    {_idx, ids, order, body} = save_fields(desc, v, idx_map, ids, order, [])
+    {IO.iodata_to_binary([body, <<0>>]), ids, order}
   end
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
@@ -634,6 +779,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp kind_width(3), do: 2
   defp kind_width(4), do: 4
   defp kind_width(5), do: 8
+  defp kind_width(6), do: 1
+  defp kind_width(7), do: 2
+  defp kind_width(8), do: 4
+  defp kind_width(9), do: 8
+  defp kind_width(10), do: 4
+  defp kind_width(11), do: 8
   defp kind_width(_), do: 0
 
   defp read_elements(_desc, _rest, 0, _nodes, _ids, acc, report), do: {Enum.reverse(acc), report}
@@ -816,13 +967,28 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp int_bytes(v, 4), do: <<v::little-signed-32>>
-  defp int_bytes(v, 8), do: <<v::little-signed-64>>
+  defp int_bytes(v, 1, true), do: <<v::little-signed-8>>
+  defp int_bytes(v, 2, true), do: <<v::little-signed-16>>
+  defp int_bytes(v, 4, true), do: <<v::little-signed-32>>
+  defp int_bytes(v, 8, true), do: <<v::little-signed-64>>
+  defp int_bytes(v, 1, false), do: <<v::little-unsigned-8>>
+  defp int_bytes(v, 2, false), do: <<v::little-unsigned-16>>
+  defp int_bytes(v, 4, false), do: <<v::little-unsigned-32>>
+  defp int_bytes(v, 8, false), do: <<v::little-unsigned-64>>
+
+  defp float_bytes(v, 4), do: <<v::little-float-32>>
+  defp float_bytes(v, 8), do: <<v::little-float-64>>
+
+  defp float_of(<<v::little-float-32>>, 4), do: v
+  defp float_of(<<v::little-float-64>>, 8), do: v
+  defp float_of(_payload, _w), do: 0.0
 
   defp int_of(<<v::little-signed-8>>, 1, true), do: v
   defp int_of(<<v::little-signed-16>>, 2, true), do: v
   defp int_of(<<v::little-signed-32>>, 4, true), do: v
   defp int_of(<<v::little-signed-64>>, 8, true), do: v
+  defp int_of(<<v::little-unsigned-8>>, 1, false), do: v
+  defp int_of(<<v::little-unsigned-16>>, 2, false), do: v
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
@@ -1410,11 +1576,11 @@ const variableRetainSource = `
   defp save_retain_internal(table, value, retain, report) do
     desc = Map.fetch!(@tables, table)
     nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {v, i} -> {v, i} end)
+    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
     {_idx_map, ids, order, retain, report, body} =
       save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
 
-    {body, ids, order} = save_node_table(nodes, ids, order, body)
+    {body, ids, order} = save_node_table(nodes, idx_map, ids, order, body)
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]), retain, report}
   end
@@ -2000,10 +2166,12 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
-// tableDescriptor spells one variable table's fields as data the engine walks
+// tableDescriptor spells one table's fields as data the engine walks
 // (docs/SPEC-TABLES.md §3): each field's effective id, its wire kind, and the
 // facts a codec needs — a string's bound, an int's clamp range, an enum's
-// variant names, a list's element table, a *string's blob.
+// variant names, a list's element table, a *string/*bytes blob's type id, a
+// pointer's target. The descriptor covers the closure, fixed tables included,
+// because a pointer can name one.
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
@@ -2023,32 +2191,53 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
 	case f.Type.Pointer && f.Type.Blob():
-		b.WriteString(", t: :blob")
+		blob := "bytes"
+		if f.Type.Kind == ir.TString {
+			blob = "string"
+		}
+		fmt.Fprintf(&b, ", t: :blob, blob: :%s, type_id: 0x%016X", blob, ir.BlobWireTypeId(f))
 	case f.IsList():
-		b.WriteString(", t: :list")
-		fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
+		elemKind := ir.TableWireElemKind(f)
+		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
+		switch elemKind {
+		case ir.TableKindTable:
+			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
+		case ir.TableKindPointer:
+			ref := f.Type.Ref.(*ir.Struct)
+			fmt.Fprintf(&b, ", elem: %q, elem_type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
+		case ir.TableKindEnum:
+			writeEnumMaps(&b, enumRef(f))
+		case ir.TableKindString:
+			fmt.Fprintf(&b, ", size: %d", f.Type.Size)
+		}
 		elemSize, elemAlign := ir.ListElementLayout(u, f)
 		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
+	case f.Type.Pointer && isStruct(f):
+		ref := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(&b, ", t: :pointer, elem: %q, type_id: 0x%016X", ref.Name, ir.TableWireId(ref.WireName()))
+	case isStruct(f):
+		fmt.Fprintf(&b, ", t: :table, elem: %q", f.Type.Name)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(&b, ", t: :bytes, size: %d", f.Type.Size)
 	case enumRef(f) != nil:
-		b.WriteString(", t: :enum, by_name: %{")
-		e := enumRef(f)
-		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "%q => 0x%016X, ", v, ir.TableWireId(e.VariantWireName(i)))
-		}
-		b.WriteString("}, by_id: %{")
-		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "0x%016X => %q, ", ir.TableWireId(e.VariantWireName(i)), v)
-		}
-		b.WriteString("}")
+		b.WriteString(", t: :enum")
+		writeEnumMaps(&b, enumRef(f))
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
 		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
-	case f.Type.Kind == ir.TInt:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		b.WriteString(", t: :int")
-		fmt.Fprintf(&b, ", width: %d, signed: %v", f.Type.Width/8, f.Type.Signed)
+		width := (f.Type.Width + 7) / 8
+		fmt.Fprintf(&b, ", width: %d, signed: %v", width, f.Type.Signed)
+		if f.Type.Kind == ir.TBits {
+			fmt.Fprintf(&b, ", bits: %d", f.Type.Width)
+		}
 		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
 			fmt.Fprintf(&b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
 		}
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		b.WriteString(", t: :float")
+		fmt.Fprintf(&b, ", width: %d", f.Type.Width/8)
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
 	}
@@ -2057,15 +2246,36 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	return b.String()
 }
 
+// writeEnumMaps spells an enum's two name↔id maps (docs/SPEC-TABLES.md §5, §3).
+func writeEnumMaps(b *strings.Builder, e *ir.Enum) {
+	if e == nil {
+		return
+	}
+	b.WriteString(", by_name: %{")
+	for i, v := range e.Variants {
+		fmt.Fprintf(b, "%q => 0x%016X, ", v, ir.TableWireId(e.VariantWireName(i)))
+	}
+	b.WriteString("}, by_id: %{")
+	for i, v := range e.Variants {
+		fmt.Fprintf(b, "0x%016X => %q, ", ir.TableWireId(e.VariantWireName(i)), v)
+	}
+	b.WriteString("}")
+}
+
 // cardShape is the descriptor's shape column (docs/SPEC-TABLES.md §8.1):
 // :value for a scalar or enum field, :list for an unbounded array, :blob for a
-// *string. It is the one column a tool keys a walk on without naming a type.
+// *string/*bytes, :pointer for a pointer to a table, :table for a nested table.
+// It is the one column a tool keys a walk on without naming a type.
 func cardShape(f *ir.Field) string {
 	switch {
 	case f.Type.Pointer && f.Type.Blob():
 		return ":blob"
 	case f.IsList():
 		return ":list"
+	case f.Type.Pointer && isStruct(f):
+		return ":pointer"
+	case isStruct(f):
+		return ":table"
 	default:
 		return ":value"
 	}
