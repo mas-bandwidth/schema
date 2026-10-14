@@ -99,7 +99,6 @@ func variableModules(u *ir.Unit) map[string][]byte {
 func variableRuntimeModule(u *ir.Unit) string {
 	var b strings.Builder
 	b.WriteString(header(runtimeSourceName(u), u.Package, "the variable wire's framing (docs/SPEC-TABLES.md §3, §4, §5)"))
-	b.WriteString(cookRefuseRuntime)
 	b.WriteString(`
 use std::any::Any;
 use std::collections::HashMap;

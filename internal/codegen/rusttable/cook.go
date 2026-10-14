@@ -130,19 +130,6 @@ func cookRuntimeModule(u *ir.Unit) []byte {
 	b.WriteString("use crate::*;\n\n")
 	b.WriteString(cookRuntime)
 	b.WriteString(cookDescriptorRuntime)
-	vc := newVariableClass(u)
-	carried := false
-	for n := range ir.VariableTables(u) {
-		if vc.emitted[n] {
-			carried = true
-			break
-		}
-	}
-	if carried {
-		b.WriteString("pub use crate::variable_runtime::TableCookRefuse;\n")
-	} else {
-		b.WriteString(cookRefuseRuntime)
-	}
 	b.WriteString("// a bool in a cooked record is ONE byte, in this runtime as in the model\n")
 	b.WriteString("const _: () = assert!(core::mem::size_of::<bool>() == 1);\n")
 	return []byte(b.String())
@@ -735,9 +722,7 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.IsList():
-		g.pf("    pub %s: TableCookList,\n", f.Name)
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
+	case f.Type.Pointer:
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
@@ -776,9 +761,6 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 // wire rides the variant-name hash — so the slot is the plain unsigned, not
 // the wire newtype.
 func cookElemType(f *ir.Field) string {
-	if f.Type.Pointer {
-		return "i64"
-	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -873,8 +855,7 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-	case f.IsList():
+	case f.Type.Pointer:
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -939,7 +920,8 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 // <T>CookMeasure, <T>CookMeasureReason and <T>CookFrom — measure before
 // write, a buffer short of the measure writes nothing and returns false, and
 // both byte orders ride (1 little, 2 big, Go's TableByteOrder values). A
-// variable table's writer is emitted separately by variablecook.go.
+// variable table's writer is the region writer (numbering, containers), which
+// this leg does not carry yet, so it keeps its read side only.
 func (g *gen) emitCookWrite(st *ir.Struct) {
 	if !g.cookable(st.Name) || !st.IsTable || st.IsMapEntry() {
 		return
@@ -989,7 +971,9 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 // cookWriteCarried reports whether the cook WRITE side carries every construct
 // the record's by-value closure declares (§7.6): scalars, strings, bytes,
 // fixed and counted arrays, optionals and nested records. A pointer edge, a
-// map, a list or wide text requires the separate variable region writer.
+// map, a list or wide text is the variable region's writer, which this leg
+// does not carry yet, so the table keeps its read side only and the report
+// names it.
 func (g *gen) cookWriteCarried(st *ir.Struct) bool {
 	seen := map[string]bool{}
 	var walk func(s *ir.Struct) bool
@@ -1000,7 +984,7 @@ func (g *gen) cookWriteCarried(st *ir.Struct) bool {
 		seen[s.Name] = true
 		for _, f := range s.Fields {
 			switch {
-			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString, f.Type.Kind == ir.TFixed, f.Type.Width > 64:
+			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString:
 				return false
 			}
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
@@ -1053,20 +1037,7 @@ func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 // serve here: the wire's storage struct and the cooked record are two Rust
 // types (SPEC §6.1 spells string(N) as [u8; N] on the wire and the cooked
 // model as char[N + 1]), and a VARIABLE unit has no wire surface at all.
-const cookRefuseRuntime = `#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TableCookRefuse {
-    Ok,
-    InvalidValue, // a count or a used length outside its declared bound (§7.6)
-}
-
-`
-
-const cookDescriptorRuntime = `
-/// A list header in a cooked record (SPEC-TABLES sections 2.9 and 7.2).
-#[repr(C)]
-#[derive(Clone,Copy,Default)]
-pub struct TableCookList {pub offset:i64,pub count:i32,pub reserved:i32}
-// What a cooked SLOT holds, which is not always what the WIRE carries: an ENUM
+const cookDescriptorRuntime = `// What a cooked SLOT holds, which is not always what the WIRE carries: an ENUM
 // slot holds the ORDINAL at the enum's own derived storage width
 // (docs/SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A
 // walker reads a slot with the width elem_size gives and the signedness this
@@ -1121,6 +1092,12 @@ pub struct TableCookInfo {
 // validates only, so a refusal changes no byte. The refusal is named as Go
 // names it (gotable/refusal.go's TableRefuseInvalidValue); the fixed path can
 // answer only this one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableCookRefuse {
+    Ok,
+    InvalidValue, // a count or a used length outside its declared bound (§7.6)
+}
+
 // table_cook_put writes one scalar unaligned in the chosen byte order (Go's
 // TableByteOrder: 1 little, 2 big). A null buffer is the measure pass.
 pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
@@ -1136,17 +1113,14 @@ pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, orde
 }
 
 // table_cook_raw reads one slot's bytes at the width the descriptor names.
-// Native storage is read in the host order; put selects the target order
-// independently (SPEC-TABLES section 7.6).
 unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
-    let p = unsafe { p.add(at as usize) };
-    unsafe { match width {
-        1 => *p as u64,
-        2 => core::ptr::read_unaligned(p.cast::<u16>()) as u64,
-        4 => core::ptr::read_unaligned(p.cast::<u32>()) as u64,
-        8 => core::ptr::read_unaligned(p.cast::<u64>()),
-        _ => 0, // the generator refuses unsupported wide scalar storage
-    }}
+    let mut v: u64 = 0;
+    unsafe {
+        for i in 0..width as usize {
+            v |= (*p.add(at as usize + i) as u64) << (i * 8);
+        }
+    }
+    v
 }
 
 // table_cook_write_record is Go's record/field/value walk over these
@@ -1187,7 +1161,7 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                         return false;
                     }
                     unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    f.array_bound
+                    used
                 } else if f.is_array {
                     f.array_bound
                 } else {
@@ -1210,7 +1184,7 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                         return false;
                     }
                     unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    f.array_bound
+                    used
                 } else if f.is_array {
                     f.array_bound
                 } else {

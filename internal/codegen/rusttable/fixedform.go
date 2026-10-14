@@ -259,18 +259,6 @@ func (g *gen) fixedRoots() []*ir.Struct {
 	return out
 }
 
-// fixedCookRoots carries form-1 cook inputs independently of form-3's ceiling.
-func (g *gen) fixedCookRoots() []*ir.Struct {
-	var out []*ir.Struct
-	variable := ir.VariableTables(g.unit)
-	for _, st := range orderTables(g.file.Tables) {
-		if st.IsTable && !st.IsMapEntry() && !variable[st.Name] && ir.TableFixedSupported(st, 0) && g.cookable(st.Name) && g.cookWriteCarried(st) {
-			out = append(out, st)
-		}
-	}
-	return out
-}
-
 // unitFixedClosure is the closure walk: every type and every UNION reachable
 // BY VALUE from a fixed root anywhere in the unit — the ones whose writer and
 // scatter have to exist. A nested type is emitted by the file that DECLARES
@@ -280,7 +268,7 @@ func unitFixedClosure(u *ir.Unit, closure map[string]bool) (types, unions map[st
 	types, unions = map[string]bool{}, map[string]bool{}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: closure}
-		for _, st := range append(g.fixedRoots(), g.fixedCookRoots()...) {
+		for _, st := range g.fixedRoots() {
 			fixedCollectTypes(st, types, unions)
 		}
 	}
@@ -292,7 +280,7 @@ func unitFixedClosure(u *ir.Unit, closure map[string]bool) (types, unions map[st
 func anyFixedRoot(u *ir.Unit, closure map[string]bool) bool {
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: closure}
-		if len(g.fixedRoots()) > 0 || len(g.fixedCookRoots()) > 0 {
+		if len(g.fixedRoots()) > 0 {
 			return true
 		}
 	}
@@ -361,13 +349,9 @@ use crate::*;
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
-		g.emitFixedWireBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
-	}
-	for _, st := range g.fixedCookRoots() {
-		g.emitFixedWireRoot(st)
 	}
 	return []byte(g.body.String())
 }

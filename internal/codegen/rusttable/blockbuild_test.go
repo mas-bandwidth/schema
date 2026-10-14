@@ -1,7 +1,6 @@
 package rusttable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -14,9 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"sort"
 )
@@ -126,16 +122,6 @@ fn main() {
 
     // ---- THE COOK WRITE (docs/SPEC-TABLES.md §7.6) ----
     let mut value: ConfigRow = unsafe { core::mem::zeroed() };
-    let wire=std::fs::read("oracle-wire.bin").unwrap();
-    let mut report=TableFixedReport::default();
-    let loaded=config_load(&wire,&mut report).unwrap();
-    assert!(!report.malformed && !report.refused);
-    println!("LOADED {} {} {}",loaded.scale,loaded.samples_count,loaded.samples[0]);
-    for path in ["bad-array-short.bin", "bad-array-tail.bin", "bad-reference.bin"] {
-        let damaged=std::fs::read(path).unwrap();let mut report=TableFixedReport::default();
-        let _=config_load(&damaged,&mut report);assert!(report.malformed,"accepted {path}");
-    }
-    println!("FORGED 3 rejected");
     value.scale = 2.5;
     value.samples_count = 1;
     value.samples = [11, 22, 33];
@@ -183,7 +169,7 @@ fn main() {
 // blockProbeRun generates the unit, drops the probe crate beside its modules
 // and runs it once with rustc. It is the same shape as fixedroadmap_t09_test.go's
 // t09Run: a fixed unit grows no packet module, so `rustc` alone builds it.
-func blockProbeRun(t *testing.T, spillTo string, wire []byte) map[string]string {
+func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -203,23 +189,6 @@ func blockProbeRun(t *testing.T, spillTo string, wire []byte) map[string]string 
 	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(blockProbe()), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "oracle-wire.bin"), wire, 0600); err != nil {
-		t.Fatal(err)
-	}
-	at := bytes.Index(wire, []byte{2, 14, 10, 9, 1})
-	if at < 0 {
-		t.Fatal("Go oracle produced no counted uint64 field")
-	}
-	end := at + 3 + 10
-	short := append(append(append([]byte(nil), wire[:at+2]...), 1, 9), wire[end:]...)
-	tail := append(append(append([]byte(nil), wire[:at+2]...), 11), wire[at+3:end]...)
-	tail = append(append(tail, 0xff), wire[end:]...)
-	noncanonical := append([]byte{1, 0x81, 0}, wire[2:]...)
-	for name, data := range map[string][]byte{"bad-array-short.bin": short, "bad-array-tail.bin": tail, "bad-reference.bin": noncanonical} {
-		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
-			t.Fatal(err)
-		}
 	}
 	bin := filepath.Join(root, "blockbuildprobe")
 	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
@@ -313,21 +282,8 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	t.Parallel()
 
-	variableBitsCookProbeRun(t)
-	largeFixedCookInputProbeRun(t)
-	variableCookProbeRun(t)
 	goGot := goBuilderCookProbeRun(t)
-	wire, err := hex.DecodeString(goGot["WIRE"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := blockProbeRun(t, "", wire)
-	if got["FORGED"] != "3 rejected" {
-		t.Errorf("fixed wire forgery checks: %q", got["FORGED"])
-	}
-	if got["LOADED"] != "2.5 1 11" {
-		t.Errorf("form-1 Go wire did not decode into fixed cook storage: %q", got["LOADED"])
-	}
+	got := blockProbeRun(t, "")
 	if path := os.Getenv("SCHEMA_RUST_BLOCK_OUT"); path != "" {
 		renderBlockProbeRun(t, path)
 	}
@@ -591,188 +547,4 @@ fn main() {
 		t.Fatalf("RenderFrame Rust producer: %v\n%s", err, o)
 	}
 	t.Log("Rust RenderFrame block written for the C++ reader")
-}
-
-// variableCookProbeRun pins the owner's card use case: the real card wire's
-// lists and blobs become the oracle's region bytes in both byte orders.
-func variableCookProbeRun(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("rustc required: %v", err)
-		}
-		t.Skipf("rustc absent: variable cook functional test: %v", err)
-	}
-	u := cardsUnit(t)
-	m := tabletext.NewModel(u)
-	inst := m.New(m.Lookup("Card"))
-	wire, err := os.ReadFile("../../../tables/cards/fuzz/card-populated.wire")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, inst, wire, &report); !ok || err != nil || report.Malformed {
-		t.Fatalf("card wire oracle: %v %+v", err, report)
-	}
-	modules, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := t.TempDir()
-	for _, name := range []string{"variable_runtime.rs", "card_table.rs", "card_variable.rs"} {
-		if err := os.WriteFile(filepath.Join(root, name), modules[name], 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, "wire.bin"), wire, 0600); err != nil {
-		t.Fatal(err)
-	}
-	const source = `mod variable_runtime;mod card_table;mod card_variable;
-use variable_runtime::*;use card_table::*;
-fn hex(b:&[u8])->String{b.iter().map(|v|format!("{v:02x}")).collect()}
-fn main(){
- let wire=std::fs::read("wire.bin").unwrap();let mut report=TableReport::default();
- let mut value=card_load(&wire,&mut report).unwrap();assert!(!report.malformed);
- let (n,reason)=card_cook_measure_reason(&value);assert_eq!(reason,TableCookRefuse::Ok);assert!(n>0);
- for order in [1,2] {
-  let mut out=vec![0xa5;n as usize];
-  assert!(!card_cook_from(&value,&mut out[..n as usize-1],order));assert!(out.iter().all(|b|*b==0xa5));
-  assert!(card_cook_from(&value,&mut out,order));println!("{} {}",order,hex(&out));
- }
- value.id="x".repeat(65);let (bad,reason)=card_cook_measure_reason(&value);
- assert_eq!(bad,-1);assert_eq!(reason,TableCookRefuse::InvalidValue);
- let mut out=vec![0xa5;n as usize];assert!(!card_cook_from(&value,&mut out,1));assert!(out.iter().all(|b|*b==0xa5));
- println!("REFUSE invalid_value unchanged");
-}`
-	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(source), 0600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", "probe", "main.rs")
-	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("card cook runtime compile: %v\n%s", err, out)
-	}
-	cmd = exec.Command(filepath.Join(root, "probe"))
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("card cook runtime: %v\n%s", err, out)
-	}
-	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		k, v, _ := strings.Cut(line, " ")
-		got[k] = v
-	}
-	for _, big := range []bool{false, true} {
-		want, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
-		if err != nil {
-			t.Fatal(err)
-		}
-		key := "1"
-		if big {
-			key = "2"
-		}
-		if got[key] != hex.EncodeToString(want) {
-			t.Errorf("card cook order%s differs from schema cook oracle", key)
-		}
-	}
-	if got["REFUSE"] != "invalid_value unchanged" {
-		t.Errorf("card cook invalid measure/no-write refused incorrectly: %q", got["REFUSE"])
-	}
-}
-
-// Wire bits(10) uses two bytes; its cooked C ABI slot uses four.
-func variableBitsCookProbeRun(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("rustc required: %v", err)
-		}
-		t.Skipf("rustc absent: variable bits cook functional test: %v", err)
-	}
-	u := unitFrom(t, `package bitsprobe
-table BitsRoot {
- b10 bits(10)
- child *BitsRoot
-}
-`)
-	m := tabletext.NewModel(u)
-	inst := m.New(m.Lookup("BitsRoot"))
-	var report tabletext.Report
-	if !m.Read(inst, []byte(`{"b10": 1, "child": null}`), &report) {
-		t.Fatal(report)
-	}
-	wire, err := tablewire.Encode(m, inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	modules, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := t.TempDir()
-	for _, name := range []string{"variable_runtime.rs", "probe_table.rs", "probe_variable.rs"} {
-		if err := os.WriteFile(filepath.Join(root, name), modules[name], 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, "wire.bin"), wire, 0600); err != nil {
-		t.Fatal(err)
-	}
-	source := `mod variable_runtime;mod probe_table;mod probe_variable;
-use variable_runtime::*;use probe_table::*;
-fn main(){let wire=std::fs::read("wire.bin").unwrap();let mut report=TableReport::default();let v=bits_root_load(&wire,&mut report).unwrap();
-for order in [1,2]{let n=bits_root_cook_measure(&v);assert!(n>0);let mut out=vec![0;n as usize];assert!(bits_root_cook_from(&v,&mut out,order));println!("{} {}",order,out.iter().map(|b|format!("{b:02x}")).collect::<String>());}}
-`
-	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(source), 0600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", "probe", "main.rs")
-	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("bits cook compile: %v\n%s", err, out)
-	}
-	cmd = exec.Command(filepath.Join(root, "probe"))
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("bits cook run: %v\n%s", err, out)
-	}
-	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		k, v, _ := strings.Cut(line, " ")
-		got[k] = v
-	}
-	for _, big := range []bool{false, true} {
-		want, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
-		if err != nil {
-			t.Fatal(err)
-		}
-		key := "1"
-		if big {
-			key = "2"
-		}
-		if got[key] != hex.EncodeToString(want) {
-			t.Errorf("bits(10) cooked ABI bytes differ in order %s", key)
-		}
-	}
-}
-
-// A form-3 ceiling must not remove a supported form-1 cook input.
-func largeFixedCookInputProbeRun(t *testing.T) {
-	t.Helper()
-	u := unitFrom(t, `package largeprobe
-table Large { raw bytes(70000) }
-`)
-	modules, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var body strings.Builder
-	for _, data := range modules {
-		body.Write(data)
-	}
-	if !strings.Contains(body.String(), "pub fn large_load(") {
-		t.Fatal("large fixed cook input has no form-1 loader")
-	}
 }
