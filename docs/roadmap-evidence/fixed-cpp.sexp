@@ -95,3 +95,5 @@
 (:id "cpp/C4" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C4") :tested-revision "ac521082f")
 (:id "cpp/C5" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/C5") :tested-revision "ac521082f")
 (:id "cpp/R24" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t05_test.go: TestFixedRoadmapCppT05Evolution/cpp/R24") :tested-revision "ac521082f")
+(:id "cpp/R9/seven-corruptions" :state :done :evidence ("test/tables/fixedform_main.cpp: layout_validation() through refuses(), run by make tables-fixedform") :tested-revision "7f82cdc7bee2a169be2df847a8dd13b6170958fe")
+(:id "cpp/E3/fixed-array-element" :state :done :evidence ("internal/codegen/cpptable/fixedroadmap_t12_test.go: TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element") :tested-revision "7f82cdc7bee2a169be2df847a8dd13b6170958fe")
