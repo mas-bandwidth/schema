@@ -5957,6 +5957,19 @@ test: tables-fixedform
 
 .PHONY: tables-fixedform
 
+# C++ FIXED TABLES: APPENDS AND DEPRECATIONS (cpp/E8, cpp/R19). The OLD files
+# are built in Go from the VOLD_ units' own IR (no corpus read) and the NEW
+# readers are generated with an explicit lock, which is what a same-hash pair
+# (field_deprecate) needs; the subtests then compile and RUN the generated C++
+# probes. The unit tier, TestFixedCppT18OldFiles, runs in process and needs no
+# compiler. SCHEMA_REQUIRE_CORPUS makes a missing compiler a failure, never a
+# silent skip.
+.PHONY: tables-cpp-fixed-t18
+tables-cpp-fixed-t18:
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCppT18FieldEvolution'
+
+test: tables-cpp-fixed-t18
+
 # THE RUN COPY'S NEGATIVE CONTROL, BOTH LEGS AT ONCE. The defect this gate is
 # for was real and it was SILENT: the 17..31-byte branch anchored its tail move
 # at the run's end, so it began 32 - n bytes in front of the run, took a
