@@ -2,11 +2,12 @@ package tablenames
 
 // Dart is the Dart table backend (internal/codegen/darttable).
 //
-// The Dart backend emits the BLOCK and COOK read halves only (the table wire
-// in its previous form was removed; schema#514 brings the id-table wire), so
-// this registry holds the two accelerator runtimes' library-scope names. Where a runtime name is a free
-// function Dart spells it lowerCamelCase and the registry holds the
-// PascalCase form: the two are a bijection (the packet emitter's
+// The Dart backend emits the BLOCK and COOK read halves, the VARIABLE wire
+// (form byte 1) for the unit it owns, the FIXED wire (form byte 3) and the
+// MESSAGE form's announcement (form byte 2), so this registry holds the
+// accelerators' and the wire runtimes' library-scope names. Where a runtime
+// name is a free function Dart spells it lowerCamelCase and the registry holds
+// the PascalCase form: the two are a bijection (the packet emitter's
 // dartName), so one registration covers both.
 const Dart Backend = 1 << 8
 
@@ -88,5 +89,9 @@ func init() {
 		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table (§3.3)"},
 		Name{Name: "TableMessageEntry", What: "one announced entry: an id, a kind and a shape (§3.3)"},
 		Name{Name: "TableReport", What: "the announcement read's report and this form's refusals (§3.3)"},
+		Name{Name: "TableMessageBatchOpen", What: "the message form: open a batch read over an announced vocabulary (§3.3)"},
+		Name{Name: "TableMessageBatchClose", What: "the message form: close a batch read and report its leftover (§3.3)"},
+		Name{Name: "TableMessageRefBits", What: "the message form: the reference width of an n-entry vocabulary, emitted beside the vocabulary (§3.3)"},
+		Name{Name: "TableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (§3.4)"},
 	)
 }

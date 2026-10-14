@@ -15,29 +15,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cardFieldKind is a field's table-wire kind (§3) among the card's closed set:
-// bool 1, int32 4, int64 5, string(N) 12, []T 14, *string 17, enum 30. A field
-// that is not a card construct is refused by name in checkUnsupportedConstructs
-// (§11) and never reaches the descriptor, so 0 is unreachable here.
+// cardFieldKind is a field's table-wire kind (§3): bool 1, the integer/bits
+// kinds 2..9, float 10/11, string(N) 12, bytes(N)/[]T 14, *string/*bytes 17,
+// enum 30. It is [ir.TableWireFieldKind] — the FIELD's kind byte, an array's
+// array kind included — so the descriptor and the writer agree (§8.1).
 func cardFieldKind(f *ir.Field) int {
-	switch {
-	case f.Type.Blob():
-		return wireKindPtr
-	case f.IsList():
-		return wireKindArray
-	case f.Type.Kind == ir.TBool:
-		return wireKindBool
-	case f.Type.Kind == ir.TInt:
-		if f.Type.Width == 32 {
-			return wireKindI32
-		}
-		return wireKindI64
-	case f.Type.Kind == ir.TString:
-		return wireKindString
-	case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
-		return wireKindEnum
-	}
-	return 0
+	return ir.TableWireFieldKind(f)
 }
 
 // cardFieldShape is a field's storage shape (§8.1, the card's three): "value"
