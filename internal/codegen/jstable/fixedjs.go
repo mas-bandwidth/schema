@@ -367,7 +367,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
-					g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+					// A DIRECT ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6):
+					// a text, bytes or array arm writes through the SAME payload
+					// emitters a field of its type does, with the arm's own name
+					// as the member and the union object as the owner.
+					g.emitWritePayload(v.F, base, at+tag, expr, ind+"    ")
 				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
@@ -590,7 +594,11 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
-					g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+					// A DIRECT ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6):
+					// a text, bytes or array arm projects through the SAME
+					// payload emitters a field of its type does, with the arm's
+					// own name as the member and the union object as the owner.
+					g.emitDecodePayload(v.F, base, at+tag, expr, ind+"    ")
 				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
@@ -729,10 +737,17 @@ func jsIntLit(n *big.Int, asBig bool) string {
 // packet classes and the reason a read can fill a value rather than return one.
 
 // fixedDeclaredUnion answers whether a unit declares this name as a UNION.
+// A table-closure union (docs/SPEC-TABLES.md §2.6) assembles beside the decl
+// stream in File.TableUnions, so both lists are searched.
 func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
 			if r, ok := d.(*ir.Union); ok && r.Name == name {
+				return true
+			}
+		}
+		for _, r := range f.TableUnions {
+			if r.Name == name {
 				return true
 			}
 		}
@@ -741,7 +756,8 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 }
 
 // fixedDeclaringFile answers the module basename that declares a non-table
-// named type, so its class can be imported rather than emitted twice.
+// named type, so its class can be imported rather than emitted twice. A
+// table-closure union lives in File.TableUnions, so it is searched too.
 func fixedDeclaringFile(u *ir.Unit, name string) string {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -754,6 +770,11 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 				if r.Name == name {
 					return f.Base
 				}
+			}
+		}
+		for _, r := range f.TableUnions {
+			if r.Name == name {
+				return f.Base
 			}
 		}
 	}

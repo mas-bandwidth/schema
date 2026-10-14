@@ -520,9 +520,15 @@ test-js: tables-js-variable-class
 # FAILURE rather than a skip, but it needs no C++ oracle: its files are built in
 # memory, so it does not take build/fixedform-corpus/.stamp (whose C++ serialize
 # sibling is absent on this bench).
+#
+# TestFixedRoadmapJsT12GuardsWideText (fixed-js-t12-guards-and-wide-text-6) is the
+# direct-arm half of the same row: union-field-arms/js/valid-data — a direct text,
+# bytes or array arm of a table-closure union round-trips through the emitted
+# module, the storage class internal/codegen/js now emits. It rides the same
+# in-memory shape (no C++ oracle), so it joins the t13 name in the one -run list.
 .PHONY: tables-js-fixed-roadmap
 tables-js-fixed-roadmap:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$'
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT12GuardsWideText|TestFixedRoadmapJsT13LayoutHashCollision)$$'
 	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
 
 test-js: tables-js-fixed-roadmap

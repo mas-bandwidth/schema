@@ -238,6 +238,14 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitUnionFunctions(d)
 		}
 	}
+	// A TABLE-CLOSURE UNION has no packet wire (docs/SPEC-TABLES.md §2.6), so it
+	// assembles beside the decl stream and the loop above never meets it — but
+	// the fixed form's table module imports its storage class and tag object for
+	// a by-value union field, so the class is emitted here after every `type`
+	// whose class an arm may name.
+	for _, un := range g.file.TableUnions {
+		g.emitTableUnion(un)
+	}
 }
 
 // emitTagEnum emits a tag enum as a frozen plain object — the JS translation
@@ -486,26 +494,49 @@ func isClassRef(ref ir.Decl) bool {
 // object, then the class — the tag beside one pre-allocated arm per variant;
 // nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
-	members := make([]string, len(d.Variants))
-	docs := make([]string, len(d.Variants))
-	for i, v := range d.Variants {
+	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+}
+
+// emitTableUnion emits a TABLE-CLOSURE union (docs/SPEC-TABLES.md §2.6): the
+// same tag object and storage class a packet union gets, but no Write/Read
+// pair — a union whose arm is a direct text, bytes, array or scalar field has
+// no packet wire, so the fixed form's table module imports the class and the
+// tag and nothing else. The class is what a fixed table's by-value union field
+// lands in (`new <Name>()`), and its arms are the arm's own field-line storage.
+func (g *gen) emitTableUnion(d *ir.Union) {
+	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+}
+
+// emitTagUnion emits the <Name>Type tag object and the <Name> storage class —
+// the part the packet union and the table-closure union share.
+func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
+	members := make([]string, len(variants))
+	docs := make([]string, len(variants))
+	for i, v := range variants {
 		members[i] = ir.GoExportName(v.Name)
 		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members, docs,
-		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+	g.emitTagEnum(name+"Type", members, docs,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", name))
 
-	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
-	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
+	g.pf("%s", ir.DocComment(doc, "", "//"))
+	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", name)
 	g.pf("// union (None). Every read initializes the selected arm as a fresh value\n")
 	g.pf("// before decoding it; unselected arms keep what they last held — the\n")
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
-	g.pf("export class %s {\n", d.Name)
+	g.pf("export class %s {\n", name)
 	g.pf("  constructor() {\n")
-	g.pf("    this.Type = %sType.None;\n", d.Name)
-	for _, v := range d.Variants {
+	g.pf("    this.Type = %sType.None;\n", name)
+	for _, v := range variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
+		if v.Ref == nil {
+			// A DIRECT ARM (docs/SPEC-TABLES.md §2.6): an arm whose payload is
+			// its own field type — a scalar, text, bytes or array — carries its
+			// storage inline, exactly as a field of the same type would.
+			g.emitStorageField(v.F)
+			continue
 		}
 		g.addRef(v.Type, v.Type)
 		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
