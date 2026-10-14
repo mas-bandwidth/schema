@@ -10,8 +10,10 @@
 // §3, §4, §8 and §16 in their id-table form — pointers to tables and the flat
 // node table, blobs (*bytes, *string), unbounded arrays of scalar, string and
 // enum elements and arrays of pointers, the remaining scalars, and nested
-// tables by value. A construct outside the class is refused by name at the
-// backend's boundary (§11).
+// tables by value. A unit that is only a map or a union is refused by name
+// (§11). A unit that also carries unbounded arrays still generates: the roots
+// that reach a map or a union are uncarried and answer an error, and the
+// driver writes <case>.absent rather than a wrong byte.
 package elixirtable
 
 import (
@@ -75,16 +77,15 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 
-	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
-	// this backend carries is admitted; every other variable-class construct is
-	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
-	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
-	// those forms as it did before — none of them reads or writes a form-`1`
-	// byte, so a variable table beside them is not mis-encoded by anything this
-	// leg writes, and refusing the whole unit would take the block and cook
-	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
-	// therefore binds a unit the variable form OWNS: one whose closure holds no
-	// fixed table, which is where the wire this card teaches is the only answer.
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11). A unit whose
+	// closure holds no fixed table is the variable form's own, and a construct
+	// outside the class is refused by name rather than mis-encoded. A unit the
+	// block, cook or fixed form already serves still emits those forms, and
+	// the variable form (form byte 1) is emitted beside them for every
+	// variable table. Refusing that mixed unit here would take the accelerators
+	// down with the wire (docs/SPEC-TABLES.md §2.7, §3.4). A root in it that
+	// reaches a map or a union is named uncarried and answers an error
+	// (§2.6, §2.8); the driver writes <case>.absent.
 	if !closureHoldsFixedTable(u, closure) {
 		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
 			return nil, err

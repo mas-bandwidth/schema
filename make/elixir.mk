@@ -247,7 +247,8 @@ tables-elixir-runtime-pin-negative-control:
 # and fires on a toolchain change as readily as on a code one. It is the long
 # fuzz over both readers and the base-alignment gate, each with its control;
 # the soak, the audit and the bench gate that once sat beside them went with
-# the table wire they measured (schema#515 brings the wire back, and them).
+# the table wire they measured. The variable form is emitted again
+# (tables-elixir-variable-class); those three gates have not returned.
 ELIXIR_RELEASE_FUZZ_N ?= 200000
 
 .PHONY: tables-elixir-release

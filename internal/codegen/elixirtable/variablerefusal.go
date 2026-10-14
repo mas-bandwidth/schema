@@ -8,12 +8,13 @@ import (
 )
 
 // refuseCardUnsupportedVariableConstructs is docs/SPEC-TABLES.md §11's refusal
-// at generation: it refuses, BY NAME, every variable-class construct this
-// backend does not carry on the table wire, while the card record's slice
-// (plain `table` roots and tables as list elements; bool/int32/int64/enum with
-// their defaults and ranges; string(N); *string; and []T lists of tables)
-// passes. The rest of the class stays absent and is refused rather than
-// mis-encoded or silently dropped.
+// at generation, and it binds only a unit the variable form owns (no fixed
+// table in the closure). It refuses, BY NAME, the constructs this backend
+// does not carry: a map (§2.8), an optional (§2.3), an enum-keyed array
+// (§2.4), a 128-bit integer or a fixed-point kind (§15), and a union arm
+// (§2.6). Pointers, blobs, unbounded arrays and the remaining scalars pass.
+// A mixed unit is not refused here; a root that reaches a map or a union is
+// named uncarried and answers an error rather than a wrong byte.
 //
 // A construct this backend does not reach is named as `<table>.<field>: <what>`
 // so the message names the table, the field and the construct together, which
@@ -43,9 +44,10 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 // closureHoldsFixedTable reports whether the unit's table closure holds a
 // `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the block,
 // cook and fixed forms, so refuseCardUnsupportedVariableConstructs — the
-// variable form's own boundary — does not bind it (docs/SPEC-TABLES.md §11):
-// this backend emits no form-`1` byte today (schema#515), so a variable table
-// beside a fixed one is not mis-encoded by anything the leg writes.
+// variable form's own boundary — does not bind it (docs/SPEC-TABLES.md §11).
+// The variable form is still emitted for the variable roots. A root that
+// reaches a map or a union is named uncarried and answers an error, rather
+// than the whole unit being refused.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 	variable := ir.VariableTables(u)
 	for name := range closure {
