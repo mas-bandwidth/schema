@@ -758,6 +758,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%s    n = 1.0;\n", ind)
 	g.pf("%s  }\n", ind)
 	g.pf("%s  v = _fround(_fround(n * %s) + 0.5).floor();\n", ind, f32lit(float64(mivF)))
+	g.pf("%s  if (v > %d) v = %d;\n", ind, maxInt, maxInt)
 	g.pf("%s}\n", ind)
 	g.needV = true
 	g.mergeW(bits, ind)

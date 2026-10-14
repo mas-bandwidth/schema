@@ -619,6 +619,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 36000.0) + 0.5).floor();
+    if (v > 36000) v = 36000;
   }
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -1838,6 +1839,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         n = 1.0;
       }
       v = _fround(_fround(n * 36000.0) + 0.5).floor();
+      if (v > 36000) v = 36000;
     }
     scratch |= v << scratchBits;
     scratchBits += 16;
@@ -3083,6 +3085,7 @@ int writeTestData(TestData value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3586,6 +3589,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3605,6 +3609,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    if (v > 10000) v = 10000;
   }
   scratch |= v << scratchBits;
   scratchBits += 14;

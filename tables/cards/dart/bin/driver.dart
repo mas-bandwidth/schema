@@ -17,13 +17,24 @@ import 'dart:io';
 
 import '../lib/cards.dart';
 
-const List<String> surfaces = ['load', 'save', 'render', 'parse', 'bounds'];
+const List<String> surfaces = [
+  'load',
+  'save',
+  'render',
+  'parse',
+  'bounds',
+  'upgrade',
+  'edit',
+  'taskhash',
+  'view',
+];
 
 class Case {
   final String surface;
   final String name;
   final String input;
-  Case(this.surface, this.name, this.input);
+  final List<String> edits;
+  Case(this.surface, this.name, this.input, this.edits);
 }
 
 List<Case> readManifest(String path) {
@@ -38,7 +49,7 @@ List<Case> readManifest(String path) {
       stderr.writeln('driver: malformed manifest line "$line"');
       exit(1);
     }
-    out.add(Case(f[0], f[1], f[2]));
+    out.add(Case(f[0], f[1], f[2], f.length > 3 ? f.sublist(3) : <String>[]));
   }
   return out;
 }
@@ -63,6 +74,15 @@ String refusalClass(Object err) {
   }
   if (msg.contains('stranded header key')) {
     return 'stranded-key ${quotedWord(msg)}';
+  }
+  if (msg.contains('retained') && msg.contains('lost')) {
+    return 'retain-lost';
+  }
+  if (msg.contains('unknown') && msg.contains('loss events')) {
+    return 'unknown-present';
+  }
+  if (msg.contains('unknown field')) {
+    return 'unknown-present';
   }
   return 'malformed';
 }
@@ -137,6 +157,59 @@ void one(String surface, Case c, String outdir) {
       }
       writeFile(outdir, c.name, 'txt', utf8.encode(text));
       break;
+    case 'upgrade':
+      final wire = File(c.input).readAsBytesSync();
+      try {
+        if (Platform.environment['CARDS_DART_SABOTAGE_UPGRADE'] == '1') {
+          // the upgrade negative control: an ordinary rewrite drops the
+          // retained field, so upgrade alone goes red.
+          final rec = load(wire);
+          writeFile(outdir, c.name, 'wire', rec.wire());
+          writeReport(outdir, c.name, rec.report);
+        } else {
+          final r = upgrade(wire);
+          writeFile(outdir, c.name, 'wire', r.wire);
+          writeReport(outdir, c.name, r.report);
+        }
+      } on CardException catch (e) {
+        refuse(outdir, c.name, refusalClass(e));
+      }
+      break;
+    case 'edit':
+      final wire = File(c.input).readAsBytesSync();
+      try {
+        final rec = load(wire);
+        applyEdit(rec, c.edits.isEmpty ? '' : c.edits[0]);
+        writeFile(outdir, c.name, 'wire', rec.wire());
+      } on CardException catch (e) {
+        refuse(outdir, c.name, refusalClass(e));
+      }
+      break;
+    case 'taskhash':
+      final wire = File(c.input).readAsBytesSync();
+      try {
+        final rec = load(wire);
+        if (Platform.environment['CARDS_DART_SABOTAGE_HASH'] == '1') {
+          // the hash negative control: needs rides in the SHA-256 frame, so
+          // the digest is a valid 64-digit hex that differs from the task hash
+          // (which excludes needs), and taskhash alone goes red
+          // (tla/CardHops.tla: TaskHashStable).
+          writeFile(
+            outdir,
+            c.name,
+            'hex',
+            utf8.encode(taskHashHexWithNeeds(rec)),
+          );
+        } else {
+          writeFile(outdir, c.name, 'hex', utf8.encode(taskHashHex(rec)));
+        }
+      } on CardException catch (e) {
+        refuse(outdir, c.name, refusalClass(e));
+      }
+      break;
+    case 'view':
+      writeFile(outdir, 'view', 'txt', utf8.encode(viewText()));
+      break;
     case 'parse':
       final text = File(c.input).readAsStringSync();
       try {
@@ -147,6 +220,63 @@ void one(String surface, Case c, String outdir) {
       }
       break;
   }
+}
+
+// applyEdit applies one manifest edit line (needs=a,b, tier=heavy,
+// priority=blocker, paths=x,y, column=review or holder=h) through the Set*
+// edit of the same name (tables/cards/conformance/FORMAT.md).
+void applyEdit(Record rec, String edit) {
+  final i = edit.indexOf('=');
+  if (i < 0) {
+    throw CardException('cards: malformed edit "$edit"');
+  }
+  final key = edit.substring(0, i);
+  final value = edit.substring(i + 1);
+  List<String> list() => value.isEmpty ? <String>[] : value.split(',');
+  switch (key) {
+    case 'needs':
+      setNeeds(rec, list());
+      break;
+    case 'paths':
+      setPaths(rec, list());
+      break;
+    case 'tier':
+      setTier(rec, parseTier(value));
+      break;
+    case 'priority':
+      setPriority(rec, parsePriority(value));
+      break;
+    case 'column':
+      setColumn(rec, parseColumn(value));
+      break;
+    case 'holder':
+      setHolder(rec, value);
+      break;
+    default:
+      throw CardException('cards: unknown edit "$key"');
+  }
+}
+
+int parseColumn(String s) {
+  switch (s) {
+    case 'waiting':
+      return Column.waiting;
+    case 'ready':
+      return Column.ready;
+    case 'working':
+      return Column.working;
+    case 'review':
+      return Column.review;
+    case 'merging':
+      return Column.merging;
+    case 'landed':
+      return Column.landed;
+    case 'plan':
+      return Column.plan;
+    case 'check':
+      return Column.check;
+  }
+  throw CardException('cards: unknown column "$s"');
 }
 
 int run(List<String> args) {
@@ -172,7 +302,7 @@ int run(List<String> args) {
   final surface = verb;
   final outdir = args[2];
   if (!surfaces.contains(surface)) {
-    return 2; // upgrade, edit, taskhash, view: another card's surfaces
+    return 2;
   }
   final cases = readManifest(manifest);
   Directory(outdir).createSync(recursive: true);

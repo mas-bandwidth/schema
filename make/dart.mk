@@ -570,12 +570,28 @@ cards-dart-driver: cards-dart-generate
 	$(DART) compile exe -o build/cards-driver-dart tables/cards/dart/bin/driver.dart >/dev/null
 
 # cards-dart-conformance runs the harness `cards` subcommand over the Dart
-# driver with the five surfaces this card owns required; upgrade, edit, taskhash
-# and view are a-dart-card-upgrades-edits-and-walks-the-shared-corpus's and are
-# answered absent.
+# driver with all nine surfaces required and no absence accepted.
 .PHONY: cards-dart-conformance
 cards-dart-conformance: build/conformance-harness cards-dart-driver
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# cards-dart-conformance-upgrade-negative-control: a test-only switch drops
+# one retained field; upgrade alone must go red.
+.PHONY: cards-dart-conformance-upgrade-negative-control
+cards-dart-conformance-upgrade-negative-control: build/conformance-harness cards-dart-driver
+	@if CARDS_DART_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-dart-upgrade-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with a retained field dropped'; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-dart-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-dart-upgrade-neg.log; exit 1; }
+	@echo 'cards Dart upgrade negative control: one dropped retained field turns exactly upgrade red'
+
+# cards-dart-conformance-hash-negative-control: a test-only switch adds needs
+# to the hash; taskhash alone must go red.
+.PHONY: cards-dart-conformance-hash-negative-control
+cards-dart-conformance-hash-negative-control: build/conformance-harness cards-dart-driver
+	@if CARDS_DART_SABOTAGE_HASH=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/dart/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-dart-hash-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with needs in the hash'; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-dart-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-dart-hash-neg.log; exit 1; }
+	@echo 'cards Dart hash negative control: needs in the hash turns exactly taskhash red'
 
 # cards-dart-conformance-negative-control: the same check against the driver
 # with a test-only environment switch that changes one rendered byte, required
@@ -588,4 +604,4 @@ cards-dart-conformance-negative-control: build/conformance-harness cards-dart-dr
 	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-dart-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-dart-conformance-neg.log; exit 1; }
 	@echo 'cards Dart negative control: one changed rendered byte turns exactly render red'
 
-test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control
+test-dart: cards-dart-test cards-dart-conformance cards-dart-conformance-negative-control cards-dart-conformance-upgrade-negative-control cards-dart-conformance-hash-negative-control
