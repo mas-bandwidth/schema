@@ -8,10 +8,11 @@
 //   driver <manifest> <surface> <outdir>
 //
 // It answers every surface this port carries from ONE binary — the block
-// surfaces and the cook surfaces, cook-forgery included. The five WIRE-CARRYING
-// surfaces (wire, report, json-read, json-write, json-hostile) are ABSENT:
-// Java emits no table wire, because the port that wrote the wire's previous
-// form was removed rather than carried (schema#517 brings the id-table form).
+// surfaces, the cook surfaces (cook-forgery included) and the WIRE-CARRYING
+// surfaces (wire, report, json-read, json-write) the variable form (form byte
+// 1, docs/SPEC-TABLES.md §3) carries for the roots this leg's variable wire
+// answers: graphdemo's Scene and blobdemo's Catalog. Every other case a
+// surface meets is answered `<case>.absent` (test/conformance/README.md).
 // The C# leg splits the cook surfaces off into a second project because its
 // cook side lives in another assembly; Java's generated units are packages of
 // one classpath, so the corpus units, the block unit and the pointered unit

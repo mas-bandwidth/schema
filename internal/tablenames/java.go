@@ -30,6 +30,25 @@ func init() {
 		// are named for a DECLARATION and are refused by the backend's own
 		// file-collision check rather than by a registry of fixed names.
 		Name{Name: "TableFixed", What: "the fixed form's runtime: the plan entry, the report, the layout reader with its seven named rules, the ONE read loop and the plan compiler (docs/SPEC-TABLES.md §3.4)"},
+		// THE VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1, and
+		// the TEXT FORM's (§16): one class each at package scope, beside the
+		// per-table <Type>Variable codecs. Emitted for a unit whose variable
+		// tables this backend carries, and claimed beside any table on this
+		// list's own rule: a name free today is a collision the day a table in
+		// that unit becomes a variable root.
+		Name{Name: "TableVariable", What: "the variable form's runtime: the LEB128 reader/writer, the id-table trailer, the flat node table and the report (docs/SPEC-TABLES.md §3, §3.1, §4)"},
+		Name{Name: "TableJson", What: "the text form's runtime: JSON in and out of a table (docs/SPEC-TABLES.md §16)"},
+		// THE RETAIN-UNKNOWN runtime (§6.6) and the reflection descriptors the
+		// variable form's fields describe (§8, §8.3), emitted beside the
+		// variable form.
+		Name{Name: "TableRetain", What: "the retain-unknown storage and resolving walk (docs/SPEC-TABLES.md §6.6)"},
+		Name{Name: "TableFieldInfo", What: "a table field's reflection descriptor (docs/SPEC-TABLES.md §8)"},
+		Name{Name: "TableTypeInfo", What: "a table type's reflection descriptor (docs/SPEC-TABLES.md §8)"},
+		Name{Name: "TableRegistry", What: "the unit's registry of table descriptors (docs/SPEC-TABLES.md §8.3)"},
+		// THE MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3),
+		// form byte 2: one public type holding the announcement, its reader and
+		// the resolved vocabulary.
+		Name{Name: "TableVocabulary", What: "the message form's announcement surface (docs/SPEC-TABLES.md §3.3)"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)
 }

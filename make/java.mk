@@ -596,13 +596,15 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 	@touch $@
 
 # THE JAVA LEG. One command answers every surface this port carries — the
-# block surfaces and the cook surfaces; the five wire-carrying surfaces are
-# ABSENT, because Java emits no table wire (schema#517). The corpus units, the
-# block unit and the pointered unit are packages of ONE classpath, so a single
-# JVM start-up covers the cook's node dump and the cook forgery battery too —
-# which the C# leg hands to a second project because its cook side is a second
-# assembly. `blockhome` is not on this classpath and does not need to be; the
-# tables-java-compile gate is what proves it builds.
+# block surfaces, the cook surfaces and the WIRE-CARRYING surfaces (wire,
+# report, json-read, json-write) the variable form (docs/SPEC-TABLES.md §3)
+# carries for the roots this leg's variable wire answers: graphdemo's Scene and
+# blobdemo's Catalog. The corpus units, the block unit and the pointered unit
+# are packages of ONE classpath, so a single JVM start-up covers the cook's
+# node dump and the cook forgery battery too — which the C# leg hands to a
+# second project because its cook side is a second assembly. `blockhome` is not
+# on this classpath and does not need to be; the tables-java-compile gate is
+# what proves it builds.
 .PHONY: build-conformance-java
 build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
