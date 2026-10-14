@@ -432,8 +432,22 @@ public final class Driver {
    if(!broken.malformed)throw new AssertionError("malformed bounded-byte JSON accepted");
   }
   System.out.println("malformed bounded-byte JSON: unterminated quote and bad escape refused without exception");
+  for(int which=0;which<2;which++) {
+   TableVariable.Writer w=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));
+   w.put8(1);w.putLeb(w.ref(which==0?@@METAS@@:@@CHILDREN@@));w.put8(14);w.putLeb(3);
+   w.put8(which==0?13:17);w.put8(0x82);w.put8(0);w.put8(0);w.trailer();
+   TableVariable.Report damaged=new TableVariable.Report();
+   RootVariable.Value prefix=RootVariable.load(java.util.Arrays.copyOf(w.buf,w.off),damaged);
+   if(prefix==null||!damaged.malformed||damaged.refused||!prefix.metas.isEmpty()||!prefix.children.isEmpty())throw new AssertionError("nonminimal collection count refused instead of malformed: "+which);
+  }
+  System.out.println("nonminimal struct and pointer collection counts retain a malformed prefix");
  }
 }`
+	for _, f := range u.Tables["Root"].Fields {
+		if f.Name == "metas" || f.Name == "children" {
+			driver = strings.ReplaceAll(driver, "@@"+strings.ToUpper(f.Name)+"@@", fmt.Sprintf("0x%016xL", ir.TableFieldId(f)))
+		}
+	}
 	dp := filepath.Join(dir, "Driver.java")
 	if err := os.WriteFile(dp, []byte(driver), 0o644); err != nil {
 		t.Fatal(err)
