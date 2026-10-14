@@ -409,6 +409,14 @@ tables-java-versioning: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# Fixed-form oracle and hostile-input evidence (§5.9 manifest, §7 controls).
+.PHONY: tables-java-fixed-t18
+tables-java-fixed-t18: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
+
+test-java: tables-java-fixed-t18
+
 # THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
 # `tables-go-variable-class`: the variable form's codecs for the pointered,
 # blob and list corpora round-trip against the committed reference bytes. It is
