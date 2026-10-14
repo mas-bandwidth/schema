@@ -1,4 +1,5 @@
-// The BLOCK FORM (docs/SPEC-TABLES.md §19): the Dart READ half.
+// The BLOCK FORM (docs/SPEC-TABLES.md §19): the Dart READ half and, since the
+// fill path landed, the WRITE half's begin (§19.1).
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side, in <Base>Block.dart, which a consumer imports only if it reads a
@@ -120,7 +121,8 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half and\n", g.unit.Package)
+	fmt.Fprintf(&h, "// begin, the fill path's first half (§19.1).\n")
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
 	h.WriteString("// the side: import this library only if you read a block. The unit's\n")
@@ -260,10 +262,99 @@ func (g *blockGen) emitBlock(bl *ir.BlockLayout) {
 		g.needRow(a.ElemName)
 	}
 
+	g.emitBlockBuild(bl)
 	g.trimBlank()
 	g.emitBlockOpen(bl)
 	g.emitBlockDescriptors(bl)
 	g.pf("}\n\n")
+}
+
+// emitBlockBuild writes the block's FILL half (docs/SPEC-TABLES.md §19.1):
+// `begin`, which lays down the prologue and one triple per out-of-line array
+// and NOT ONE OTHER BYTE — never a row and never the padding between arrays.
+// The image is the reference's: the same three prologue words at the same
+// offsets, each triple's offset_of rounded up to the array's own alignment,
+// its count and its pitch, and the used extent rounded to §19.1's 64 bytes.
+//
+// EVERY CHECK RUNS BEFORE THE FIRST WRITE, so a refused begin leaves the
+// caller's bytes exactly as they were — the clause §19.1 states for the
+// producer side and the reason the count bounds are named through a
+// TableBlockRefusal rather than thrown.
+//
+// DART HAS NO ALLOCATOR TO OWN: the reference leg's Begin takes a storage that
+// allocated a maximum-sized extent, and here the caller hands the bytes it
+// owns and the aligned base inside them, which is the same requirement said in
+// the currency this language has — the extent from `base` must hold the
+// declared maximum, exactly as the storage's allocation does.
+func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("  // ---- the block fill path: begin (docs/SPEC-TABLES.md §19.1) ----\n")
+	g.pf("  /// Writes the prologue and this block's triples, and NOTHING else: no row\n")
+	g.pf("  /// and no padding between arrays is touched, so what a caller put in the\n")
+	g.pf("  /// extent stays there. Returns the built block — its used extent in\n")
+	g.pf("  /// [Block.length] — or null on a refusal, which [refusal] then names: the\n")
+	g.pf("  /// array whose declared maximum a count violates, the count and the bound.\n")
+	g.pf("  ///\n")
+	g.pf("  /// `base` is the block's first byte within `bytes` and §19.1's 64-byte\n")
+	g.pf("  /// alignment is required of it; the extent from it must hold\n")
+	g.pf("  /// [blockMaxBytes], the size a producer's storage allocates.\n")
+	head := fmt.Sprintf("  static %sBlock? begin(Uint8List bytes, int base, {", name)
+	var params []string
+	for _, a := range bl.Arrays {
+		params = append(params, fmt.Sprintf("required int %s", dartName(a.Field.Name)))
+	}
+	params = append(params, "TableBlockRefusal? refusal")
+	one := head + strings.Join(params, ", ") + "}) {"
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s\n", head)
+		for i, p := range params {
+			sep := ","
+			if i == len(params)-1 {
+				sep = ","
+			}
+			g.pf("    %s%s\n", p, sep)
+		}
+		g.pf("  }) {\n")
+	}
+	g.pf("    if (refusal != null) {\n")
+	g.pf("      refusal.array = '';\n      refusal.count = 0;\n      refusal.maximum = 0;\n    }\n")
+	for _, a := range bl.Arrays {
+		field := dartName(a.Field.Name)
+		g.pf("    // the DECLARED MAXIMUM (§19.1): a count past it would run the array out\n")
+		g.pf("    // of the extent a consumer sizes by the maximum, so it is refused here\n")
+		g.pf("    // and again by [open] on the reader's side.\n")
+		g.pf("    if (%s < 0 || %s > %d) {\n", field, field, a.Max)
+		g.pf("      if (refusal != null) {\n")
+		g.pf("        refusal.array = '%s';\n        refusal.count = %s;\n        refusal.maximum = %d;\n      }\n",
+			a.Field.Name, field, a.Max)
+		g.pf("      return null;\n    }\n")
+	}
+	g.pf("    if (base < 0 || base %% %d != 0) {\n      return null; // the base's alignment\n    }\n", ir.BlockAlign)
+	g.pf("    if (bytes.length - base < blockMaxBytes) {\n")
+	g.pf("      return null; // the caller's bytes cannot hold the declared maximum\n    }\n")
+	g.pf("    final view = ByteData.view(\n")
+	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n")
+	g.pf("    // the prologue's three words (§19.1), little-endian as this build is\n")
+	g.pf("    view.setUint64(base, tableBlockMagic, Endian.little);\n")
+	g.pf("    view.setUint64(base + 8, tableBuildVersion, Endian.little);\n")
+	g.pf("    view.setUint64(base + 16, tableBlockByteOrder, Endian.little);\n")
+	g.pf("    var offset = projectionSize;\n")
+	for _, a := range bl.Arrays {
+		field := dartName(a.Field.Name)
+		alignment := int64(ir.BlockAlign)
+		if a.ElemAlign() > alignment {
+			alignment = a.ElemAlign()
+		}
+		g.pf("    offset = (offset + %d) & ~%d;\n", alignment-1, alignment-1)
+		g.pf("    view.setUint64(base + %d, offset, Endian.little);\n", a.OffsetOfOffset)
+		g.pf("    view.setUint32(base + %d, %s, Endian.little);\n", a.CountOffset, field)
+		g.pf("    view.setUint32(base + %d, %d, Endian.little);\n", a.StrideOffset, a.Stride)
+		g.pf("    offset += %s * %d;\n", field, a.Stride)
+	}
+	g.pf("    final used = (offset + %d) & ~%d;\n", ir.BlockAlign-1, ir.BlockAlign-1)
+	g.pf("    return %sBlock(bytes, view, base, used);\n  }\n\n", name)
 }
 
 // needRow records the import one record's cursor needs. ONE RECORD HAS ONE
