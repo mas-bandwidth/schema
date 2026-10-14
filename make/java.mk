@@ -84,12 +84,16 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
-	# the POINTERED unit: its cook readers are the reason it is here — the two
-	# ACCELERATORS need no codec (§7, §19), so a pointered unit's cooks open.
+	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
+	# variable-class codecs ride this stamp. tables/lists is NOT generated here:
+	# the compiler refuses the unit whole for java because Mixed holds an array
+	# of unions and Holders declares a map, so its rows answer absent and the
+	# lists corpus rides TestVariableClassBeyondCardConstructsJava instead.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
+	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
@@ -604,6 +608,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
+		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java \
@@ -632,6 +637,7 @@ conformance-negative-control-java-block: build/conformance-harness
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema ./cmd/schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/blobs tables/blobs
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/block tables/block
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v1 test/tables/V1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v2 test/tables/V2.schema

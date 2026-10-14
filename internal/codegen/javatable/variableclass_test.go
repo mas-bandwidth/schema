@@ -49,7 +49,7 @@ func TestVariableClassBeyondCardConstructsJava(t *testing.T) {
 			root:      "Save",
 			wire:      filepath.Join("..", "..", "..", "testdata", "wire", "tables", "list_scalars.bin"),
 			json:      filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "json", "list_scalars.json"),
-			wantFiles: []string{"SaveVariable.java", "MixedVariable.java"},
+			wantFiles: []string{"SaveVariable.java"},
 		},
 		{
 			name:      "pointers",

@@ -442,9 +442,9 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 		if why := variableFormRefusal(f); why != "" {
 			return fmt.Errorf("table %s field %s: %s is not carried by the Java variable form (docs/SPEC-TABLES.md §11)", st.Name, f.Name, why)
 		}
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayList {
-			if elem, ok := f.Type.Ref.(*ir.Struct); ok {
-				if err := refuseVariableFormClosure(elem, seen); err != nil {
+		if f.Type.Kind == ir.TNamed {
+			if target, ok := f.Type.Ref.(*ir.Struct); ok {
+				if err := refuseVariableFormClosure(target, seen); err != nil {
 					return err
 				}
 			}
@@ -462,15 +462,32 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 // without being refused. The by-name refusal is [refuseVariableForm]'s own job,
 // on the card's path.
 func cardVariableTables(u *ir.Unit) []*ir.Struct {
+	if len(ir.VariableTables(u)) == 0 {
+		return nil
+	}
 	var out []*ir.Struct
+	seen := map[string]bool{}
 	for _, st := range u.Tables {
-		if st == nil || st.FixedDeclared || st.IsMapEntry() {
+		if st == nil || st.IsMapEntry() || seen[st.Name] {
 			continue
 		}
 		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
+			seen[st.Name] = true
 			out = append(out, st)
 		}
 	}
+	for _, st := range u.Structs {
+		if st == nil || st.IsMapEntry() || seen[st.Name] {
+			continue
+		}
+		if refuseVariableFormClosure(st, map[string]bool{}) == nil {
+			seen[st.Name] = true
+			out = append(out, st)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
 	return out
 }
 
@@ -494,8 +511,13 @@ func variableFormRefusal(f *ir.Field) string {
 			return "" // the *string byte buffer, the card's own construct (§2.5)
 		case f.Type.Kind == ir.TBytes && f.Type.Blob():
 			return "" // the *bytes byte buffer (§2.5)
+		case f.Type.Kind == ir.TNamed:
+			if _, ok := f.Type.Ref.(*ir.Struct); ok {
+				return "" // pointer to a table (§2.1, §3.1)
+			}
+			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
 		default:
-			return "a pointer to a table outside a list element (docs/SPEC-TABLES.md §2.1)"
+			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
 		}
 	}
 	if f.Type.Kind == ir.TNamed {

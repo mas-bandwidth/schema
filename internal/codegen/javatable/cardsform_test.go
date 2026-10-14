@@ -31,14 +31,6 @@ table BadMap { m map[int32]Child }
 			wantRefuses: []string{"BadMap", "m", "map"},
 		},
 		{
-			name: "pointer to table outside list",
-			definition: `package probe
-table Child {}
-table BadPointer { c *Child }
-`,
-			wantRefuses: []string{"BadPointer", "c", "pointer"},
-		},
-		{
 			name: "optional ?T",
 			definition: `package probe
 table Child {}

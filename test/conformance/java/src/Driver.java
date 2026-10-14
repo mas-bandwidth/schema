@@ -635,6 +635,148 @@ public final class Driver {
         return 0;
     }
 
+    // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
+    //
+    // The variable form, form byte 1, over the roots this leg's variable wire
+    // carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
+    // Catalog (blobdemo). Every other case is answered `<case>.absent` — a root
+    // whose unit this leg does not generate (tables/lists, which the compiler
+    // refuses for java whole because of its array of unions and map), or one its
+    // variable wire does not carry (a union, a map, an optional, an enum-keyed
+    // array) — which the matrix counts as the row of work that is left, never as
+    // a pass.
+
+    private static int failInt(String msg) {
+        System.err.println(msg);
+        return 1;
+    }
+
+    private static boolean noText(String[] f) {
+        return f.length > 5 && "no-text".equals(f[5]);
+    }
+
+    private static void spillAbsent(String out, String name) throws IOException {
+        Files.write(Path.of(out, name + ".absent"), new byte[0]);
+    }
+
+    private static int surfaceWire(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            String name = f[1];
+            String pkg = f[2];
+            String root = f[3];
+            Path wirePath = Paths.get(f[4]);
+            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
+                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.load(wire, rep);
+                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
+                byte[] saved = graphdemo.SceneVariable.save(v);
+                if (saved == null) return failInt(name + ": save refused the value");
+                spill(out, name, saved);
+            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
+                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.load(wire, rep);
+                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
+                byte[] saved = blobdemo.CatalogVariable.save(v);
+                if (saved == null) return failInt(name + ": save refused the value");
+                spill(out, name, saved);
+            } else {
+                spillAbsent(out, name);
+            }
+        }
+        return 0;
+    }
+
+    private static int surfaceReport(String out) throws IOException {
+        for (String[] f : kind("report")) {
+            String name = f[1];
+            String pkg = f[2];
+            String root = f[3];
+            Path wirePath = Paths.get(f[4]);
+            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
+                boolean ok = graphdemo.SceneVariable.load(wire, rep) != null;
+                String malformed = (rep.malformed || (!ok && !rep.refused)) ? "true" : "false";
+                String verdict = rep.refused ? "refused" : "read";
+                spill(out, name, String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                        rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, 0, malformed, verdict));
+            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
+                boolean ok = blobdemo.CatalogVariable.load(wire, rep) != null;
+                String malformed = (rep.malformed || (!ok && !rep.refused)) ? "true" : "false";
+                String verdict = rep.refused ? "refused" : "read";
+                spill(out, name, String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                        rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, 0, malformed, verdict));
+            } else {
+                spillAbsent(out, name);
+            }
+        }
+        return 0;
+    }
+
+    private static int surfaceJsonRead(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            if (noText(f)) continue;
+            String name = f[1];
+            String pkg = f[2];
+            String root = f[3];
+            Path jsonPath = Paths.get("testdata/conformance/tables/json", name + ".json");
+            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
+                byte[] json = Files.readAllBytes(jsonPath);
+                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
+                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.fromJson(json, rep);
+                if (v == null || rep.malformed || rep.refused) return failInt(name + ": fromJson refused the text");
+                byte[] saved = graphdemo.SceneVariable.save(v);
+                if (saved == null) return failInt(name + ": save refused the value");
+                spill(out, name, saved);
+            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
+                byte[] json = Files.readAllBytes(jsonPath);
+                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
+                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.fromJson(json, rep);
+                if (v == null || rep.malformed || rep.refused) return failInt(name + ": fromJson refused the text");
+                byte[] saved = blobdemo.CatalogVariable.save(v);
+                if (saved == null) return failInt(name + ": save refused the value");
+                spill(out, name, saved);
+            } else {
+                spillAbsent(out, name);
+            }
+        }
+        return 0;
+    }
+
+    private static int surfaceJsonWrite(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            if (noText(f)) continue;
+            String name = f[1];
+            String pkg = f[2];
+            String root = f[3];
+            Path wirePath = Paths.get(f[4]);
+            if ("graphdemo".equals(pkg) && "Scene".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                graphdemo.TableVariable.Report rep = new graphdemo.TableVariable.Report();
+                graphdemo.SceneVariable.Value v = graphdemo.SceneVariable.load(wire, rep);
+                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
+                byte[] json = graphdemo.SceneVariable.toJson(v);
+                if (json == null) return failInt(name + ": toJson refused the value");
+                spill(out, name + ".json", json);
+            } else if ("blobdemo".equals(pkg) && "Catalog".equals(root)) {
+                byte[] wire = Files.readAllBytes(wirePath);
+                blobdemo.TableVariable.Report rep = new blobdemo.TableVariable.Report();
+                blobdemo.CatalogVariable.Value v = blobdemo.CatalogVariable.load(wire, rep);
+                if (v == null || rep.refused) return failInt(name + ": load refused " + f[4]);
+                byte[] json = blobdemo.CatalogVariable.toJson(v);
+                if (json == null) return failInt(name + ": toJson refused the value");
+                spill(out, name + ".json", json);
+            } else {
+                spillAbsent(out, name + ".json");
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -643,9 +785,12 @@ public final class Driver {
         readManifest(args[0]);
         String surface = args[1];
         if (surface.equals("list")) {
-            // the five WIRE-CARRYING surfaces are ABSENT: Java emits no table
-            // wire (docs/SPEC-TABLES.md §3); schema#517 is the port's row.
-            System.out.print("block\nblock-foreign\n"
+            // the WIRE-CARRYING surfaces ride the id-table form (docs/SPEC-TABLES.md
+            // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
+            // graphdemo's Scene and blobdemo's Catalog — and answer every other
+            // case ABSENT, one by one.
+            System.out.print("wire\nreport\njson-read\njson-write\n"
+                    + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
             return 0;
         }
@@ -655,6 +800,10 @@ public final class Driver {
         }
         String out = args[2];
         switch (surface) {
+            case "wire": return surfaceWire(out);
+            case "report": return surfaceReport(out);
+            case "json-read": return surfaceJsonRead(out);
+            case "json-write": return surfaceJsonWrite(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);
