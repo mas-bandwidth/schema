@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -418,6 +421,48 @@ func variableModuleBytes(t *testing.T, u *ir.Unit) []byte {
 	return nil
 }
 
+// oracleRetainReport is THE ORACLE'S COUNTERS for one retain round trip
+// (docs/SPEC-TABLES.md §6.6, internal/tablewire DecodeRetain and EncodeRetain):
+// the newer Entry the text spells, saved, loaded by the older declaration into
+// a store of `capacity` bytes and `idCapacity` ids, and saved again — the load's
+// report, and the same report once the save has added to it, which is how the
+// JavaScript leg's caller-owned report accumulates. The counters the probes
+// below hold the JavaScript leg to are these, never a number written here.
+func oracleRetainReport(t *testing.T, newer, older *ir.Unit, text string, capacity, idCapacity int) (load, total tabletext.Report) {
+	t.Helper()
+	nm := tabletext.NewModel(newer)
+	in := nm.New(nm.Lookup("Entry"))
+	var read tabletext.Report
+	if !nm.Read(in, []byte(text), &read) || read != (tabletext.Report{}) {
+		t.Fatalf("the oracle did not read %s cleanly: %+v", text, read)
+	}
+	wire, err := tablewire.Encode(nm, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	om := tabletext.NewModel(older)
+	inst := om.New(om.Lookup("Entry"))
+	retain := tablewire.Retain{Capacity: capacity, IdCapacity: idCapacity}
+	var rep tabletext.Report
+	if _, err := tablewire.DecodeRetain(om, inst, wire, &retain, &rep); err != nil {
+		t.Fatal(err)
+	}
+	load = rep
+	if _, err := tablewire.EncodeRetain(om, inst, &retain, &rep); err != nil {
+		t.Fatal(err)
+	}
+	return load, rep
+}
+
+// retainCounters spells a report's three retain-side counters for a probe.
+func retainCounters(prefix string, r tabletext.Report) []string {
+	return []string{
+		prefix + "_UNKNOWN", strconv.Itoa(r.Unknown),
+		prefix + "_RETAINED", strconv.Itoa(r.Retained),
+		prefix + "_LOST", strconv.Itoa(r.RetainLost),
+	}
+}
+
 // retainNodeProbe runs a node probe script from `dir`, where newer and older
 // modules were written as CardsVariable.js and OldVariable.js.
 func retainNodeProbe(t *testing.T, dir, script string) string {
@@ -471,12 +516,12 @@ if (v === null || report.malformed || report.refused !== 0) {
   console.log("load", JSON.stringify(report)); process.exit(1);
 }
 if (v.id !== "retain") { console.log("id", v.id); process.exit(1); }
-if (report.unknown !== 3 || report.retained !== 2 || report.retainLost !== 1) {
+if (report.unknown !== LOAD_UNKNOWN || report.retained !== LOAD_RETAINED || report.retainLost !== LOAD_LOST) {
   console.log("load report", JSON.stringify(report)); process.exit(1);
 }
 const saved = older.EntrySaveRetain(v, retain, report);
 if (saved === null) { console.log("save null"); process.exit(1); }
-if (report.retained !== 2 || report.retainLost !== 1) {
+if (report.retained !== SAVE_RETAINED || report.retainLost !== SAVE_LOST) {
   console.log("save report", JSON.stringify(report)); process.exit(1);
 }
 const back = newer.EntryLoad(saved, new newer.TableVariableReport());
@@ -491,6 +536,14 @@ for (let i = 0; i < saved.length; i++) { if (saved[i] !== saved2[i]) { console.l
 console.log("retained", saved.length, "bytes, unknown", report.unknown, "retained", report.retained, "lost", report.retainLost);
 console.log("SAVED_HEX " + Buffer.from(saved).toString("hex"));
 `
+	// THE COUNTERS ARE THE ORACLE'S: the *string blob record the older root
+	// cannot place counts one unknown at the record (§3.1) and one retain_lost
+	// (§6.6), beside the field that named it
+	load, total := oracleRetainReport(t, newer, older,
+		`{"id": "retain", "future": 42, "future_text": "kept text", "future_note": "lost note"}`, 4096, 64)
+	t.Logf("the oracle's counters: load unknown=%d retained=%d retain_lost=%d; after the save retain_lost=%d",
+		load.Unknown, load.Retained, load.RetainLost, total.RetainLost)
+	script = strings.NewReplacer(append(retainCounters("LOAD", load), retainCounters("SAVE", total)...)...).Replace(script)
 	out := retainNodeProbe(t, dir, script)
 	saved := savedHexFromOutput(t, out)
 
@@ -547,11 +600,11 @@ const wireCopy = new Uint8Array(wire);
   const retain = new older.TableVariableRetain(new Uint8Array(0), new Array(64));
   const report = new older.TableVariableReport();
   const v = older.EntryLoadRetain(wire, retain, report);
-  if (v === null || report.retained !== 0 || report.retainLost !== 3) {
+  if (v === null || report.retained !== ZERO_RETAINED || report.retainLost !== ZERO_LOST) {
     console.log("zero bytes", JSON.stringify(report)); process.exit(1);
   }
   const saved = older.EntrySaveRetain(v, retain, report);
-  if (saved === null || report.retainLost !== 3) { console.log("zero save", JSON.stringify(report)); process.exit(1); }
+  if (saved === null || report.retainLost !== ZEROSAVE_LOST) { console.log("zero save", JSON.stringify(report)); process.exit(1); }
   // nothing retained, so the save is the plain save of the known field alone.
   const plain = older.EntrySave(v);
   if (saved.length !== plain.length) { console.log("plain length"); process.exit(1); }
@@ -563,13 +616,13 @@ const wireCopy = new Uint8Array(wire);
   const retain = new older.TableVariableRetain(new Uint8Array(4096), new Array(1));
   const report = new older.TableVariableReport();
   const v = older.EntryLoadRetain(wire, retain, report);
-  if (v === null || report.retained !== 2 || report.retainLost !== 1) {
+  if (v === null || report.retained !== IDS_RETAINED || report.retainLost !== IDS_LOST) {
     console.log("id load", JSON.stringify(report)); process.exit(1);
   }
   const saved = older.EntrySaveRetain(v, retain, report);
   if (saved === null) { console.log("id save null"); process.exit(1); }
   // exactly one record rides without its id, so retainLost grows by one.
-  if (report.retainLost !== 2) { console.log("id save report", JSON.stringify(report)); process.exit(1); }
+  if (report.retainLost !== IDSSAVE_LOST || IDSSAVE_LOST !== IDS_LOST + 1) { console.log("id save report", JSON.stringify(report)); process.exit(1); }
   // the record that did fit must still ride: the tight id list drops one
   // retained record as a named loss, never both silently (§6.6).
   const plain = older.EntrySave(v);
@@ -596,5 +649,15 @@ const wireCopy = new Uint8Array(wire);
 for (let i = 0; i < wire.length; i++) { if (wire[i] !== wireCopy[i]) { console.log("input changed", i); process.exit(1); } }
 console.log("loss is named: zero bytes, short ids and an unknown variant all report, input unchanged");
 `
+	// THE COUNTERS ARE THE ORACLE'S, for the same two stores (§6.6)
+	const text = `{"id": "retain", "future": 7, "future_text": "kept", "future_note": "note"}`
+	zeroLoad, zeroTotal := oracleRetainReport(t, newer, older, text, 0, 64)
+	idsLoad, idsTotal := oracleRetainReport(t, newer, older, text, 4096, 1)
+	var pairs []string
+	pairs = append(pairs, retainCounters("ZEROSAVE", zeroTotal)...)
+	pairs = append(pairs, retainCounters("IDSSAVE", idsTotal)...)
+	pairs = append(pairs, retainCounters("ZERO", zeroLoad)...)
+	pairs = append(pairs, retainCounters("IDS", idsLoad)...)
+	script = strings.NewReplacer(pairs...).Replace(script)
 	retainNodeProbe(t, dir, script)
 }

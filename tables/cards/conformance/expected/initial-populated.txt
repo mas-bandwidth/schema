@@ -1,0 +1,16 @@
+RESULT: initial-card sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa tier: heavy
+REPO: mas-bandwidth/schema
+BASE: sprint/schema-finish
+KIND: feature
+PRIORITY: high
+PATHS: tables/cards/Card.schema, make/go.mk
+NEW: tables/cards/upgrade.go
+SHARED: tables/cards/cards.go
+DEPENDS-ON: dep-alpha, dep-beta
+TEST: TestEveryCorpusRecordReadsWithTheCurrentModel
+DONE-WHEN: make cards-test
+DEADLINE: finish within 90 minutes.
+SOURCE: docs/CONTRIBUTING.md résumé→世界
+x-extra: extra value →世界
+compatibility body →世界 with "quotes" and	tabs
+and lines🚀—exact

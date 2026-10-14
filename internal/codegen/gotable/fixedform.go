@@ -1078,8 +1078,18 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
 					continue
 				}
+				// An arm is a field line: its payload gets the per-element
+				// walk a declared field gets, not a single-element clamp.
+				// Name the copy after the arm, as the union's own storage
+				// does (unions.go), and hand it to emitFixedClampField: a
+				// fixed array walks to its bound, a counted array to its live
+				// Count, an optional only when present. §3.4 walks LIVE
+				// elements only, so a fixed array never touches slack and a
+				// counted array never touches [Count:].
+				arm := *v.F
+				arm.Name = v.Name
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedClampElement(v.F, expr+"."+ir.GoExportName(v.Name), tabs+1)
+				g.emitFixedClampField(&arm, expr, tabs+1)
 			}
 			g.pf("%s}\n", ind)
 			return

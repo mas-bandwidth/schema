@@ -426,3 +426,64 @@ void main(List<String> args) {
 		t.Fatalf("probe did not report ok: %s", out)
 	}
 }
+
+// TestCardTextFormEnumNoneRoundTrips pins the enum zero value in the JSON
+// text form (docs/SPEC-TABLES.md §16, §16.2; internal/tabletext EnumValue):
+// storage value 0 spells "None" on write and "None" reads back as 0 with no
+// unknown count, for every enum the card closure names. Without it a card
+// whose enum fields sit at their default refuses on write and counts a loss
+// on read, so the facade can never publish it.
+func TestCardTextFormEnumNoneRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	u := cardsUnit(t)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Dart should accept card constructs for the text form: %v", err)
+	}
+	wire, ok := files["CardsWire.dart"]
+	if !ok || len(wire) == 0 {
+		t.Fatal("Generate emitted no CardsWire.dart for the card closure")
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probe := `import 'dart:io';
+
+import 'CardsWire.dart';
+
+void check(bool ok, String msg) {
+  if (!ok) {
+    stderr.writeln('FAIL: $msg');
+    exit(1);
+  }
+}
+
+void main() {
+  final text = cardToJson(Card());
+  check(text.contains('"priority": "None"'), 'enum 0 not spelled None on write: $text');
+  check(text.contains('"tier": "None"'), 'enum 0 not spelled None on write: $text');
+
+  final rep = TableTextReport();
+  final card = cardFromJson('{"priority":"None","tier":"None"}', rep);
+  check(card.priority == 0 && card.tier == 0, 'None did not read as 0');
+  check(rep.unknown == 0, 'None counted unknown on read: ${rep.unknown}');
+
+  stdout.writeln('ok');
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("card text form enum None round trip: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("probe did not report ok: %s", out)
+	}
+}

@@ -966,6 +966,19 @@ const tableFixedWireSource = `
             }
         }
 
+        // The split is metadata beside the plan, never consulted by the run
+        // loop (FIXED-FORM-ALGORITHM §5.9 #42), so a caller that only runs the
+        // plan compiles without it.
+        public static int Compile(
+            TableFixedLayoutView theirs,
+            ReadOnlySpan<byte> my_layout,
+            ReadOnlySpan<TableFixedDst> dst,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
+            return Compile(theirs, my_layout, dst, plan, report, out _);
+        }
+
         public static int Compile(
             TableFixedLayoutView theirs,
             ReadOnlySpan<byte> my_layout,

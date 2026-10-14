@@ -1,5 +1,5 @@
 (:id "rust/F8" :state :done :evidence ("internal/codegen/rusttable/fixedform_ragged_tail_test.go: TestFixedFormRaggedTail") :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5")
-(:id "rust/F12" :state :unknown :note "the rust leg has no layout-announcement carrier (no stream or batch announce surface in fixedruntime.go) to refuse a second layout for a held hash on, and the page names no rust surface for one; nothing is decided here")
+(:id "rust/F12" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t13_test.go: TestFixedRoadmapRustT13LayoutHashCollision (a held layout hash over different layout bytes or over a different layout length refuses layout_malformed)") :tested-revision "a65253917f713598789ce8b0e789968c416d15d7")
 (:id "rust/F9" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/F9") :tested-revision "d9169a05b35c3af94e10ae753d8ed9499a8e69f5")
 (:id "rust/F10" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/F10") :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5")
 (:id "rust/R7" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t01_test.go: TestFixedRoadmapT01Framing/rust/R7") :tested-revision "56e29251ab0dfa8f3ce6cd34e9f9a647b342b4a5")
