@@ -152,7 +152,7 @@ static void build_fleet( FleetBuilder & b, bool reversed )
         const int k = reversed ? 2 - i : i;
         ShipConfig * ship = FleetShipsInsert( b.main, fleet->ships, names[k] );
         CHECK( ship != NULL );
-        memcpy( ship->name, names[k], strlen( names[k] ) );
+        memcpy( (void *) ship->name, names[k], strlen( names[k] ) );
         ship->name_length = (int32_t) strlen( names[k] );
         ship->health = health[k];
     }
@@ -164,7 +164,7 @@ static void build_fleet( FleetBuilder & b, bool reversed )
     TableRef * slot = FleetByIdInsert( b.main, fleet->by_id, 7 );
     ShipConfig * shared = ShipConfigEmplace( b.main, *slot );
     CHECK( shared != NULL );
-    memcpy( shared->name, "shared", 6 );
+    memcpy( (void *) shared->name, "shared", 6 );
     shared->name_length = 6;
     shared->health = 50;
     *FleetByIdInsert( b.main, fleet->by_id, 12 ) = *slot;
@@ -274,7 +274,7 @@ static void test_builder()
     // CONTROL: a key longer than N on insert is REFUSED. The insert's NULL
     // goes red if a control clamps instead — a truncated key is a merged entry.
     char over[64];
-    memset( over, 'k', sizeof( over ) );
+    memset( (void *) over, 'k', sizeof( over ) );
     over[40] = 0;
     CHECK( FleetShipsInsert( b.main, fleet->ships, over ) == NULL );
     CHECK_EQ( fleet->ships.count, 1 );
@@ -1058,10 +1058,10 @@ static void test_text()
         // under either answer.
         char first[257];
         char second[257];
-        memset( first, 'a', 255 );
+        memset( (void *) first, 'a', 255 );
         first[255] = 'b';
         first[256] = 0;
-        memcpy( second, first, sizeof( first ) );
+        memcpy( (void *) second, first, sizeof( first ) );
         second[255] = 'c';
         char both[1024];
         snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"after\":5}",
@@ -1386,7 +1386,7 @@ static void test_depth()
         const int64_t measured_past = DepthMeasure( past );
         CHECK_EQ( DepthSave( past, rides, sizeof( rides ) ), measured_past );
         CHECK_EQ( DepthCookMeasure( past ), -1 );
-        memset( rides, 0xa5, sizeof( rides ) );
+        memset( (void *) rides, 0xa5, sizeof( rides ) );
         CHECK( !DepthCook( past, rides, sizeof( rides ), TableByteOrder::Little ) );
         for ( size_t byte = 0; byte < sizeof( rides ); byte++ ) { CHECK_EQ( rides[byte], 0xa5 ); }
         CHECK( !past.Lock() );
@@ -1432,7 +1432,7 @@ static void test_text_values()
         CHECK( entry != NULL );
         if ( entry == NULL ) { return; }
         const size_t length = strlen( values[i] );
-        memcpy( entry->value, values[i], length );
+        memcpy( (void *) entry->value, values[i], length );
         entry->value_length = (int32_t) length;
     }
 
@@ -1458,7 +1458,7 @@ static void test_text_values()
             TextBlobsEntry * entry = TextBlobsInsert( b.main, t->blobs, keys[i] );
             CHECK( entry != NULL );
             if ( entry == NULL ) { return; }
-            memcpy( entry->value, payload[i], sizeof( payload[i] ) );
+            memcpy( (void *) entry->value, payload[i], sizeof( payload[i] ) );
             entry->value_length = (int32_t) sizeof( payload[i] );
         }
     }
@@ -1564,7 +1564,7 @@ static void test_text_values()
         TextNamesEntry * first = TextNamesInsert( dup.main, d->names, "alpha" );
         CHECK( first != NULL );
         if ( first == NULL ) { return; }
-        memcpy( first->value, "first", 5 );
+        memcpy( (void *) first->value, "first", 5 );
         first->value_length = 5;
 
         TextNamesEntry * repeat = TextNamesInsert( dup.main, d->names, "alpha" );
@@ -2057,7 +2057,7 @@ static void test_byte_blob_values()
         uint8_t * bytes = TableBytesEmplace( cb.main, *slot, 4 );
         CHECK( bytes != NULL );
         if ( bytes == NULL ) { return; }
-        memcpy( bytes, payload[i], 4 );
+        memcpy( (void *) bytes, payload[i], 4 );
     }
     c->after = 8;
 

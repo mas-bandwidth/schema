@@ -236,9 +236,9 @@ static void walk_opened( const Info * info, const uint8_t * base, int64_t bytes,
         uint64_t offset_of = 0;
         uint32_t count = 0;
         uint32_t stride = 0;
-        memcpy( &offset_of, base + f.offset_of_offset, 8 );
-        memcpy( &count, base + f.count_offset, 4 );
-        memcpy( &stride, base + f.stride_offset, 4 );
+        memcpy( (void *) &offset_of, base + f.offset_of_offset, 8 );
+        memcpy( (void *) &count, base + f.count_offset, 4 );
+        memcpy( (void *) &stride, base + f.stride_offset, 4 );
 
         const Info * element = f.element();
 
@@ -284,7 +284,7 @@ static void walk_opened( const Info * info, const uint8_t * base, int64_t bytes,
             const size_t span = (size_t) ( (uint64_t) count * (uint64_t) stride );
             if ( span > walk_scratch_bytes )
                 defect( "an opened block's array is larger than any storage this build can size" );
-            memcpy( walk_scratch, base + offset_of, span );
+            memcpy( (void *) walk_scratch, base + offset_of, span );
             sink += walk_scratch[0] + walk_scratch[span - 1];
         }
         array++;
@@ -393,7 +393,7 @@ static int64_t render_seed_block( int v, uint8_t * out )
     RenderFrameBlockStorage storage;
     if ( !storage.Create( plain_allocator() ) )
         return -1;
-    memset( storage.base, 0x5a, (size_t) RenderFrameBlockMaxBytes ); // the tail is unspecified; pin it for reproducibility
+    memset( (void *) storage.base, 0x5a, (size_t) RenderFrameBlockMaxBytes ); // the tail is unspecified; pin it for reproducibility
     RenderFrameBlock block;
     if ( !RenderFrameBlockBegin( block, storage, c ) )
     {
@@ -402,7 +402,7 @@ static int64_t render_seed_block( int v, uint8_t * out )
     }
     block.projection->version = RenderVersion;
     const int64_t bytes = RenderFrameBlockBytes( block );
-    memcpy( out, storage.base, (size_t) bytes );
+    memcpy( (void *) out, storage.base, (size_t) bytes );
     storage.Destroy();
     return bytes;
 }
@@ -452,7 +452,7 @@ static int64_t padded_seed_block( int v, uint8_t * out )
     PaddedFrameBlockStorage storage;
     if ( !storage.Create( plain_allocator() ) )
         return -1;
-    memset( storage.base, 0x5a, (size_t) PaddedFrameBlockMaxBytes );
+    memset( (void *) storage.base, 0x5a, (size_t) PaddedFrameBlockMaxBytes );
     PaddedFrameBlock block;
     if ( !PaddedFrameBlockBegin( block, storage, c ) )
     {
@@ -460,7 +460,7 @@ static int64_t padded_seed_block( int v, uint8_t * out )
         return -1;
     }
     const int64_t bytes = PaddedFrameBlockBytes( block );
-    memcpy( out, storage.base, (size_t) bytes );
+    memcpy( (void *) out, storage.base, (size_t) bytes );
     storage.Destroy();
     return bytes;
 }
@@ -501,7 +501,7 @@ static int64_t part_seed_block( int v, uint8_t * out )
     PartFrameBlockStorage storage;
     if ( !storage.Create( TableBlockDefaultAllocator() ) )
         return -1;
-    memset( storage.base, 0x5a, (size_t) PartFrameBlockMaxBytes );
+    memset( (void *) storage.base, 0x5a, (size_t) PartFrameBlockMaxBytes );
     PartFrameBlock block;
     if ( !PartFrameBlockBegin( block, storage, c ) )
     {
@@ -509,7 +509,7 @@ static int64_t part_seed_block( int v, uint8_t * out )
         return -1;
     }
     const int64_t bytes = PartFrameBlockBytes( block );
-    memcpy( out, storage.base, (size_t) bytes );
+    memcpy( (void *) out, storage.base, (size_t) bytes );
     storage.Destroy();
     return bytes;
 }
@@ -549,7 +549,7 @@ static void build_units()
         RenderFrameBlock::CamerasMax, RenderFrameBlock::ShipsMax, RenderFrameBlock::TurretsMax,
         RenderFrameBlock::MissilesMax, RenderFrameBlock::DynamicPropsMax, RenderFrameBlock::StaticPropsMax,
         RenderFrameBlock::CosmeticPropsMax, RenderFrameBlock::LasersMax, RenderFrameBlock::ExplosionsMax };
-    memcpy( render.maxima, render_maxima, sizeof( render_maxima ) );
+    memcpy( (void *) render.maxima, render_maxima, sizeof( render_maxima ) );
     render.seed_block = render_seed_block;
     render.open_and_walk = render_open_and_walk;
     build_slots( render, RenderFrameBlock::Type() );
@@ -714,9 +714,9 @@ static void mutate_random( Rng & rng, const Unit & unit, uint8_t * buffer, int64
             const uint64_t offset_a = unit.slots[3 + 3 * a].offset;
             const uint64_t offset_b = unit.slots[3 + 3 * b].offset;
             uint8_t swap[16];
-            memcpy( swap, buffer + offset_a, 16 );
-            memcpy( buffer + offset_a, buffer + offset_b, 16 );
-            memcpy( buffer + offset_b, swap, 16 );
+            memcpy( (void *) swap, buffer + offset_a, 16 );
+            memcpy( (void *) ( buffer + offset_a ), buffer + offset_b, 16 );
+            memcpy( (void *) ( buffer + offset_b ), swap, 16 );
             describe( "the triples of arrays %d and %d swapped whole", a, b );
             return;
         }
@@ -733,7 +733,7 @@ static void mutate_random( Rng & rng, const Unit & unit, uint8_t * buffer, int64
             if ( b >= a ) b++;
             const uint64_t offset_a = unit.slots[3 + 3 * a].offset;
             const uint64_t offset_b = unit.slots[3 + 3 * b].offset;
-            memcpy( buffer + offset_a, buffer + offset_b, 8 ); // a starts where b starts
+            memcpy( (void *) ( buffer + offset_a ), buffer + offset_b, 8 ); // a starts where b starts
             describe( "array %d's rows moved on top of array %d's", a, b );
             return;
         }
@@ -813,7 +813,7 @@ static void run_one( const Unit & unit, int vector, const char * pass, int64_t i
     }
     const int64_t copied = claim < extent ? claim : extent;
     if ( copied > 0 )
-        memcpy( region.base, seed_block, (size_t) copied );
+        memcpy( (void *) region.base, seed_block, (size_t) copied );
     // extension with GARBAGE: the bytes past the seed block are not zeros
     if ( claim > copied )
     {
@@ -889,7 +889,7 @@ static void run_unit( Unit & unit, int unit_index )
             site.unit = unit.name; site.vector = vector; site.pass = "valid"; site.index = 0;
             Region region;
             region.create( extent, 0 );
-            memcpy( region.base, seed_block, (size_t) extent );
+            memcpy( (void *) region.base, seed_block, (size_t) extent );
             describe( "the valid block, unmutated" );
             mutants_run++;
             if ( !unit.open_and_walk( region.base, extent, unit ) )
@@ -956,7 +956,7 @@ static void run_unit( Unit & unit, int unit_index )
                 printf( "FAILED: the fuzzer could not allocate a %lld-byte region\n", (long long) extent );
                 exit( 1 );
             }
-            memcpy( region.base, seed_block, (size_t) extent );
+            memcpy( (void *) region.base, seed_block, (size_t) extent );
             int64_t index = 0;
             static const int widths[4] = { 1, 2, 4, 8 };
             for ( int s = 0; s < unit.num_slots; s++ )
@@ -970,7 +970,7 @@ static void run_unit( Unit & unit, int unit_index )
                         if ( !selected( unit.name, vector, "slot", index ) )
                             continue;
                         site.unit = unit.name; site.vector = vector; site.pass = "slot"; site.index = index;
-                        memcpy( region.base, seed_block, (size_t) unit.projection_size );
+                        memcpy( (void *) region.base, seed_block, (size_t) unit.projection_size );
                         const uint64_t value = boundary_value( unit.slots[s], v );
                         write_word( region.base, extent, unit.slots[s].offset, widths[w], value );
                         describe( "%d-bit overwrite of %s at %llu with 0x%llx", widths[w] * 8,

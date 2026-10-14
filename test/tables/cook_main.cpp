@@ -172,11 +172,11 @@ enum HeaderWord
 static uint64_t read64( const uint8_t * p )
 {
     uint64_t v;
-    memcpy( &v, p, sizeof( v ) );
+    memcpy( (void *) &v, p, sizeof( v ) );
     return v;
 }
 
-static void write64( uint8_t * p, uint64_t v ) { memcpy( p, &v, sizeof( v ) ); }
+static void write64( uint8_t * p, uint64_t v ) { memcpy( (void *) p, &v, sizeof( v ) ); }
 
 // A cooked file's own alignment rule, re-derived here rather than asked of the
 // code under test: the data part begins at align_up( 64, alignment ).
@@ -255,9 +255,9 @@ static File place( const uint8_t * source, uint64_t source_length, uint64_t clai
     file.allocation = (uint8_t *) p;
     file.base = file.allocation + lead;
     const uint64_t copy = claim < source_length ? claim : source_length;
-    memcpy( file.base, source, (size_t) copy );
+    memcpy( (void *) file.base, source, (size_t) copy );
     if ( copy < claim )
-        memset( file.base + copy, 0, (size_t) ( claim - copy ) );
+        memset( (void *) ( file.base + copy ), 0, (size_t) ( claim - copy ) );
     return file;
 }
 
@@ -469,10 +469,10 @@ static void dump_scalar( char * out, size_t size, const uint8_t * at, uint8_t ki
         case 2: case 3: case 4: case 5: // the SIGNED integers
         {
             int64_t v = 0;
-            if ( width == 1 ) { int8_t t; memcpy( &t, at, 1 ); v = t; }
-            else if ( width == 2 ) { int16_t t; memcpy( &t, at, 2 ); v = t; }
-            else if ( width == 4 ) { int32_t t; memcpy( &t, at, 4 ); v = t; }
-            else { memcpy( &v, at, 8 ); }
+            if ( width == 1 ) { int8_t t; memcpy( (void *) &t, at, 1 ); v = t; }
+            else if ( width == 2 ) { int16_t t; memcpy( (void *) &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { int32_t t; memcpy( (void *) &t, at, 4 ); v = t; }
+            else { memcpy( (void *) &v, at, 8 ); }
             snprintf( out, size, "%lld", (long long) v );
             return;
         }
@@ -480,9 +480,9 @@ static void dump_scalar( char * out, size_t size, const uint8_t * at, uint8_t ki
         {
             uint64_t v = 0;
             if ( width == 1 ) { v = *at; }
-            else if ( width == 2 ) { uint16_t t; memcpy( &t, at, 2 ); v = t; }
-            else if ( width == 4 ) { uint32_t t; memcpy( &t, at, 4 ); v = t; }
-            else { memcpy( &v, at, 8 ); }
+            else if ( width == 2 ) { uint16_t t; memcpy( (void *) &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { uint32_t t; memcpy( (void *) &t, at, 4 ); v = t; }
+            else { memcpy( (void *) &v, at, 8 ); }
             snprintf( out, size, "%llu", (unsigned long long) v );
             return;
         }
@@ -538,7 +538,7 @@ static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInf
         int32_t used = -1;
         if ( f.counted && f.count_offset != 0xffffffffu )
         {
-            memcpy( &used, storage + f.count_offset, sizeof( used ) );
+            memcpy( (void *) &used, storage + f.count_offset, sizeof( used ) );
             if ( used < 0 || used > f.array_bound )
                 fail( "%s.%s carries a count companion of %d, outside [ 0, %d ]",
                       type->name, f.name, used, f.array_bound );
@@ -547,7 +547,7 @@ static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInf
         if ( f.is_pointer )
         {
             int64_t delta = 0;
-            memcpy( &delta, storage + f.offset, sizeof( delta ) );
+            memcpy( (void *) &delta, storage + f.offset, sizeof( delta ) );
             if ( delta == 0 )
             {
                 dump_line( name, "null" ); // NULL IN A REGION IS A DELTA OF ZERO (§6.3)
@@ -1100,7 +1100,7 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
     // SOURCE ONE: the unlocked builder, references in the arena encoding
     for ( int i = 0; i < 2; i++ )
     {
-        memset( mine, 0xCD, (size_t) need );
+        memset( (void *) mine, 0xCD, (size_t) need );
         counting = true;
         live = counters.allocs - counters.frees;
         const bool ok = graphdemo::SceneCook( builder, mine, (uint64_t) need, orders[i] );
@@ -1126,7 +1126,7 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
             fail( "the graph's own wire did not load clean" );
         for ( int i = 0; i < 2; i++ )
         {
-            memset( mine, 0xCD, (size_t) need );
+            memset( (void *) mine, 0xCD, (size_t) need );
             counting = true;
             live = counters.allocs - counters.frees;
             if ( graphdemo::SceneCookMeasure( loaded, pair ) != need )
@@ -1144,7 +1144,7 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
     if ( !builder.Lock() ) fail( "the graph did not lock" );
     for ( int i = 0; i < 2; i++ )
     {
-        memset( mine, 0xCD, (size_t) need );
+        memset( (void *) mine, 0xCD, (size_t) need );
         counting = true;
         live = counters.allocs - counters.frees;
         if ( graphdemo::SceneCookMeasure( builder ) != need )
@@ -1161,7 +1161,7 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
               (long long) allocations );
 
     // A SHORT CAPACITY WRITES NOTHING
-    memset( mine, 0xCD, (size_t) need );
+    memset( (void *) mine, 0xCD, (size_t) need );
     if ( graphdemo::SceneCook( builder, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little ) )
         fail( "SceneCook wrote into a buffer one byte short of its own measure" );
     for ( int64_t at = 0; at < need; at++ )
@@ -1264,7 +1264,7 @@ static void mode_cookwrite( const Root * root, const char * little_path, const c
             fail( "%sCookMeasure says %lld bytes and the tool's %s is %llu",
                   root->name, (long long) need, paths[i], (unsigned long long) length );
 
-        memset( mine, 0xCD, (size_t) need ); // nothing the writer leaves is inherited
+        memset( (void *) mine, 0xCD, (size_t) need ); // nothing the writer leaves is inherited
         counting = true;
         const bool ok = is_settings
             ? graphdemo::SettingsCook( settings, mine, (uint64_t) need, orders[i] )
@@ -1294,7 +1294,7 @@ static void mode_cookwrite( const Root * root, const char * little_path, const c
               (long long) allocations );
 
     // A SHORT CAPACITY WRITES NOTHING
-    memset( mine, 0xCD, (size_t) need );
+    memset( (void *) mine, 0xCD, (size_t) need );
     const bool refused = is_settings
         ? graphdemo::SettingsCook( settings, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little )
         : graphdemo::StampCook( stamp, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little );
@@ -1450,7 +1450,7 @@ static void expect_refusal( const Root * root, const uint8_t * source, uint64_t 
         if ( width == 8 )
             write64( file.base + at, value );
         else
-            memcpy( file.base + at, &value, (size_t) width );
+            memcpy( (void *) ( file.base + at ), &value, (size_t) width );
     }
     describe( "%s", what );
     forged++;
@@ -1465,7 +1465,7 @@ static void expect_open( const Root * root, const uint8_t * source, uint64_t len
 {
     File file = place( source, length, length, 0 );
     if ( at != UINT64_MAX )
-        memcpy( file.base + at, &value, (size_t) width );
+        memcpy( (void *) ( file.base + at ), &value, (size_t) width );
     describe( "%s", what );
     forged++;
     const void * opened = root->open( file.base, file.length );
@@ -1501,10 +1501,10 @@ static void mode_forge( const Root * root, const char * path )
     for ( int b = 0; b < 8; b++ )
     {
         uint8_t bytes8[8];
-        memcpy( bytes8, source, 8 );
+        memcpy( (void *) bytes8, source, 8 );
         bytes8[b] = (uint8_t) ( bytes8[b] ^ 0xff );
         uint64_t forgedMagic = 0;
-        memcpy( &forgedMagic, bytes8, 8 );
+        memcpy( (void *) &forgedMagic, bytes8, 8 );
         expect_refusal( root, source, length, length, 0, WordMagic, 8, forgedMagic, "one byte of the magic" );
     }
     {
@@ -1513,7 +1513,7 @@ static void mode_forge( const Root * root, const char * path )
         uint8_t r[8];
         for ( int i = 0; i < 8; i++ )
             r[i] = m[7 - i];
-        memcpy( &swapped, r, 8 );
+        memcpy( (void *) &swapped, r, 8 );
         expect_refusal( root, source, length, length, 0, WordMagic, 8, swapped,
                         "the magic byte-reversed: a cook of the other byte order" );
     }
@@ -1729,10 +1729,10 @@ static void mode_emit_forgeries( const Root * root, const char * path )
     for ( int b = 0; b < 8; b++ )
     {
         uint8_t bytes8[8];
-        memcpy( bytes8, source, 8 );
+        memcpy( (void *) bytes8, source, 8 );
         bytes8[b] = (uint8_t) ( bytes8[b] ^ 0xff );
         uint64_t forgedMagic = 0;
-        memcpy( &forgedMagic, bytes8, 8 );
+        memcpy( (void *) &forgedMagic, bytes8, 8 );
         snprintf( name, sizeof( name ), "cook_magic_byte%d", b );
         emit_word( r, name, WordMagic, 8, forgedMagic, "one byte of the magic" );
     }
@@ -1740,7 +1740,7 @@ static void mode_emit_forgeries( const Root * root, const char * path )
         uint8_t rev[8];
         for ( int i = 0; i < 8; i++ ) rev[i] = source[7 - i];
         uint64_t swapped = 0;
-        memcpy( &swapped, rev, 8 );
+        memcpy( (void *) &swapped, rev, 8 );
         emit_word( r, "cook_magic_reversed", WordMagic, 8, swapped,
                    "the magic byte-reversed: a cook of the other byte order" );
     }
@@ -2197,7 +2197,7 @@ static void mode_fuzz( const Root * root, const char * path, uint64_t seed, int6
             const uint8_t * base = (const uint8_t *) result;
             if ( base < file.base || base + root->size > file.base + file.length )
                 fail( "an opened cook's root storage leaves the length the caller passed" );
-            memcpy( walk_scratch, base, (size_t) root->size );
+            memcpy( (void *) walk_scratch, base, (size_t) root->size );
             sink += walk_scratch[0] + walk_scratch[root->size - 1];
 
             if ( axis == 0 && claim == length && lead == 0 )

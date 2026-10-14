@@ -589,7 +589,7 @@ static void form_header_cases()
     // residue, `malformed`, with nothing decoded and nothing written.
     {
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
@@ -605,7 +605,7 @@ static void form_header_cases()
     {
         const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
@@ -622,7 +622,7 @@ static void form_header_cases()
     {
         const uint8_t short2[3] = { 2, 1, 0 };
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
@@ -641,7 +641,7 @@ static void form_header_cases()
         std::vector<uint8_t> zero = good;
         zero[0] = 0;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
@@ -660,7 +660,7 @@ static void form_header_cases()
         std::vector<uint8_t> reserved = good;
         reserved[3] = 1;
         tblfx1::FxRoot v;
-        std::memset( &v, 0xAB, sizeof( v ) );
+        std::memset( (void *) &v, 0xAB, sizeof( v ) );
         const tblfx1::FxRoot poison = v;
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
@@ -758,7 +758,7 @@ static void slack_case()
     v.gone = 44;
     v.nested.a = 55;
     v.nested.b = 66;
-    std::memset( v.label, 0xAA, sizeof( v.label ) );
+    std::memset( (void *) v.label, 0xAA, sizeof( v.label ) );
     v.label[0] = 'h';
     v.label[1] = 'i';
     v.label_length = 2;
@@ -785,11 +785,11 @@ static void slack_case()
     // discriminate and are not passing for some other reason.
     {
         uint8_t whole[sizeof( v.label )];
-        std::memcpy( whole, v.label, sizeof( v.label ) );
+        std::memcpy( (void *) whole, v.label, sizeof( v.label ) );
         check( std::memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
                "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
         int32_t marks[4];
-        std::memcpy( marks, v.marks, sizeof( marks ) );
+        std::memcpy( (void *) marks, v.marks, sizeof( marks ) );
         check( marks[3] == 0x5A5A5A5A,
                "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
     }
@@ -1127,7 +1127,7 @@ static void owed7_nested_union_outer_tag_case()
 static void owed8_width8_ordinal_read_whole_case()
 {
     alignas( tblfu1::TableFixedEntry ) uint8_t blob[512];
-    std::memset( blob, 0, sizeof( blob ) );
+    std::memset( (void *) blob, 0, sizeof( blob ) );
     tblfu1::TableFixedEntry * plan = reinterpret_cast<tblfu1::TableFixedEntry *>( blob );
     const uint32_t map_at = 256;
     uint16_t * map = reinterpret_cast<uint16_t *>( blob + map_at );
@@ -1144,11 +1144,11 @@ static void owed8_width8_ordinal_read_whole_case()
 
     uint8_t src[8] = { 0, 0, 0, 0, 1, 0, 0, 0 }; // 2^32, needs all eight bytes
     uint8_t dst[8];
-    std::memset( dst, 0xAB, sizeof( dst ) );
+    std::memset( (void *) dst, 0xAB, sizeof( dst ) );
     tblfu1::TableReport r;
     tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
     uint64_t landed = 0;
-    std::memcpy( &landed, dst, 8 );
+    std::memcpy( (void *) &landed, dst, 8 );
     check( landed == 0, "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant" );
     check( r.clamped >= 1, "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing" );
 }
@@ -1170,7 +1170,7 @@ static void owed10_no_layout_writes_nothing_case()
     tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
 
     tblfu2::FuRoot back;
-    std::memset( &back, 0xAB, sizeof( back ) );
+    std::memset( (void *) &back, 0xAB, sizeof( back ) );
     const tblfu2::FuRoot poison = back;
     tblfu2::TableReport r;
     std::vector<tblfu2::TableFixedEntry> plan( 1024 );
@@ -1442,7 +1442,7 @@ static void absent_optional_case()
     v.name_length = 6;
     v.link_present = false;
     v.link.value = 0x5A5A5A;
-    std::memset( v.link.tag, 0x5A, sizeof( v.link.tag ) );
+    std::memset( (void *) v.link.tag, 0x5A, sizeof( v.link.tag ) );
     v.link.tag_length = 5;
     check( (uint8_t) v.link.tag[0] == 0x5Au, "CONTROL: the absent payload really is stained in storage" );
 
@@ -1516,7 +1516,7 @@ static void text_content_case()
         tblfx1::FxRootReset( v );
         v.keep = 1234u;
         v.nested.a = 7;
-        std::memcpy( v.label, cases[k].bytes, (size_t) cases[k].length );
+        std::memcpy( (void *) v.label, cases[k].bytes, (size_t) cases[k].length );
         v.label_length = cases[k].length;
 
         std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
@@ -1556,7 +1556,7 @@ static void text_content_case()
     {
         tblfx1::FxRoot v;
         tblfx1::FxRootReset( v );
-        std::memcpy( v.label, "\xC3\xA9t\xC3\xA9", 5 ); // "été"
+        std::memcpy( (void *) v.label, "\xC3\xA9t\xC3\xA9", 5 ); // "été"
         v.label_length = 5;
         std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
         tblfx1::FxRootFixedSave( &v, 1, w.data(), (int64_t) w.size() );
@@ -1597,14 +1597,14 @@ static void guard_width_case()
     plan[1].arg = 1; plan[1].meta = 0; plan[1].dstsize = 0; plan[1].sign = 0;
     plan[1].argw = 2;
 
-    std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) dst, 0, sizeof( dst ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
-    std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) dst, 0, sizeof( dst ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
@@ -1612,8 +1612,8 @@ static void guard_width_case()
     // is the old one-byte compare, and the SAME 0x0101 record then fires arm 1.
     src[1] = 0x01;
     plan[1].argw = 1;
-    std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    std::memset( (void *) dst, 0, sizeof( dst ) );
+    std::memset( (void *) &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 
@@ -1621,12 +1621,12 @@ static void guard_width_case()
     // and a byte lane would wrap it to 0, so the entry would never run.
     src[0] = 0x00; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
     plan[1].arg = 256; plan[1].argw = 2;
-    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( (void *) dst, 0, sizeof( dst ) );
     r = {};
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "ARG LANE: tag 256 at width 2 takes arm 256" );
     src[1] = 0x00;
-    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( (void *) dst, 0, sizeof( dst ) );
     r = {};
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0, "ARG LANE: tag 0 does not take arm 256" );
@@ -1801,7 +1801,7 @@ static void record_bound_case()
                                                        plan.data(), 1024, &guarded, &fill_at, &fill_count, &r );
         check( made >= 0 && !r.refused && !r.malformed, "W10: a text entry ending EXACTLY at root.size is not a refusal" );
         uint8_t body[16];
-        std::memset( body, 0, sizeof( body ) );
+        std::memset( (void *) body, 0, sizeof( body ) );
         tblfx1::TableFixedPut32( body, 4242u );          // keep
         tblfx1::TableFixedPut32( body + 4, 2u );          // the label's length
         body[8] = 'h'; body[9] = 'i';
@@ -2125,7 +2125,7 @@ static void nested_union_case()
                "W16: THE B ARM'S OWN FIELD IS WHOLE — no inner entry's bytes landed in the storage it shares with the inner tag" );
         check( back.tier == tblfg1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
         uint32_t stain_after = 0;
-        std::memcpy( &stain_after, stain_at, sizeof( stain_after ) );
+        std::memcpy( (void *) &stain_after, stain_at, sizeof( stain_after ) );
         check( stain_after == 0x5A5A5A5Au,
                "W16: and the storage no entry of this read owns is UNTOUCHED — the identity plan prefills nothing (§4.3)" );
         check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
@@ -2487,8 +2487,8 @@ static std::vector<uint8_t> slurp( const char * dir, const char * name, bool & o
     return out;
 }
 
-static uint32_t bits32( float f ) { uint32_t b; std::memcpy( &b, &f, 4 ); return b; }
-static uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
+static uint32_t bits32( float f ) { uint32_t b; std::memcpy( (void *) &b, &f, 4 ); return b; }
+static uint64_t bits64( double d ) { uint64_t b; std::memcpy( (void *) &b, &d, 8 ); return b; }
 
 // WHAT THIS FORM'S FLOAT RUNG ACTUALLY DOES TO A NaN, stated as arithmetic so
 // the claim is readable rather than inherited from the machine: the sign rides,

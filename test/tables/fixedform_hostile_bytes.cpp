@@ -49,7 +49,7 @@ void check( bool ok, const char * what )
 uint8_t byte_of( const void * p )
 {
     uint8_t v = 0;
-    std::memcpy( &v, p, 1 );
+    std::memcpy( (void *) &v, p, 1 );
     return v;
 }
 

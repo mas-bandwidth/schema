@@ -278,7 +278,7 @@ static void test_blob_read_path_allocates_nothing()
         root->alias = small; // one node, two names
         blobdemo::TableStringSlot note = builder.AllocString( 5 );
         CHECK( !note.null() );
-        memcpy( note.data, "blobs", 5 );
+        memcpy( (void *) note.data, "blobs", 5 );
         root->note = note;
         blobdemo::TableSlot<blobdemo::Asset> asset = builder.Alloc<blobdemo::Asset>();
         CHECK( !asset.null() );

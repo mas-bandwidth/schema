@@ -40,7 +40,7 @@ static void test_blob_span()
 
     blobdemo::CatalogBuilder builder;
     blobdemo::Catalog * root = builder.GetRoot();
-    memcpy( root->name, "span", 5 );
+    memcpy( (void *) root->name, "span", 5 );
     root->name_length = 4;
 
     blobdemo::TableBytesSlot slot = builder.AllocBytes( big );
@@ -52,13 +52,13 @@ static void test_blob_span()
     // allocate AFTER the span: a chain of assets and a second blob, so the
     // cursor moves on over whatever the span left behind
     blobdemo::TableSlot<blobdemo::Asset> head = builder.Alloc<blobdemo::Asset>();
-    memcpy( head->name, "after", 6 );
+    memcpy( (void *) head->name, "after", 6 );
     head->name_length = 5;
     CHECK( blobdemo::TableStringEmplace( builder.main, head->caption, "tail", 4 ) != NULL );
     root->head = head;
     blobdemo::TableStringSlot note = builder.AllocString( 24 );
     CHECK( !note.null() );
-    memcpy( note.data, "twenty-four chars long!!", 24 );
+    memcpy( (void *) note.data, "twenty-four chars long!!", 24 );
     root->note = note;
 
     // the blob is intact in the arena, after everything above

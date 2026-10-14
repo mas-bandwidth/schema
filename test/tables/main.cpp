@@ -96,7 +96,7 @@ static int32_t keyed_index( E key ) { return (int32_t) key - 1; }
 static void set_string( char * dest, int32_t & length, const char * s )
 {
     length = (int32_t) strlen( s );
-    memcpy( dest, s, length + 1 );
+    memcpy( (void *) dest, s, length + 1 );
 }
 
 // check_exact_capacity is the go-wide guarantee: <X>Save into a buffer of
@@ -813,11 +813,11 @@ static void test_flags_are_positional()
     {
         WireBuilder spell;
         spell.count = seen.count;
-        memcpy( spell.ids, seen.ids, sizeof( spell.ids ) );
+        memcpy( (void *) spell.ids, seen.ids, sizeof( spell.ids ) );
         spell.leb( spell.ref( perks->id ) );
         CHECK( spell.count == seen.count ); // the writer named it: no entry is added here
         reference_bytes = spell.n;
-        memcpy( reference, spell.body, (size_t) reference_bytes );
+        memcpy( (void *) reference, spell.body, (size_t) reference_bytes );
     }
     bool found = false;
     for ( int64_t i = 0; i + reference_bytes + 9 <= wrote; i++ )
@@ -836,7 +836,7 @@ static void test_wide_extents()
 {
     static tabledemo::WideBlob blob;
     blob.label_length = 70000;
-    memset( blob.label, 'w', 70000 );
+    memset( (void *) blob.label, 'w', 70000 );
     blob.label[70000] = 0;
     blob.payload_length = 70000;
     for ( int32_t i = 0; i < 70000; i++ ) blob.payload[i] = (uint8_t) ( i & 0xff );
@@ -1159,7 +1159,7 @@ static void test_reflection()
         const tabledemo::TableFieldInfo * mult = demo_field( arms->arms[tag].table, "multiplier" );
         CHECK( mult != NULL );
         float read = 0.0f;
-        memcpy( &read, (const uint8_t *) payload + mult->offset, sizeof( read ) );
+        memcpy( (void *) &read, (const uint8_t *) payload + mult->offset, sizeof( read ) );
         CHECK( read == 3.5f );
     }
 
@@ -1186,7 +1186,7 @@ static void test_reflection()
     const tabledemo::TableFieldInfo * exp = demo_field( tabledemo::ProfileConfigTableType(), "experience" );
     CHECK( exp != NULL );
     uint32_t read_back;
-    memcpy( &read_back, (const uint8_t *) &p + exp->offset, sizeof( read_back ) );
+    memcpy( (void *) &read_back, (const uint8_t *) &p + exp->offset, sizeof( read_back ) );
     CHECK( read_back == 777 );
 }
 
@@ -1397,7 +1397,7 @@ static void test_pointer_lifecycle()
     // the region relocates by PURE MEMCPY: self-relative references need no
     // fix-up, so a copy at a different address reads the same
     uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
-    memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+    memcpy( (void *) moved, builder.Region(), (size_t) builder.RegionBytes() );
     check_scene( (const graphdemo::Scene *) moved );
     free( moved );
 
@@ -1559,7 +1559,7 @@ static void test_pointer_shared_node()
 
         // a region holding a back-reference still relocates by pure memcpy
         uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
-        memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+        memcpy( (void *) moved, builder.Region(), (size_t) builder.RegionBytes() );
         const graphdemo::Scene * copy = (const graphdemo::Scene *) moved;
         const graphdemo::TreeNode * mt = graphdemo::TreeNodeAt( copy->tree );
         CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( mt->left )->left ) ==
@@ -1981,7 +1981,7 @@ static void dirty_the_heap( int pattern )
     for ( int i = 0; i < 6; i++ )
     {
         blocks[i] = malloc( 4u << 20 );
-        memset( blocks[i], pattern, 4u << 20 );
+        memset( (void *) blocks[i], pattern, 4u << 20 );
     }
     for ( int i = 0; i < 6; i++ ) { free( blocks[i] ); }
 }
@@ -1994,7 +1994,7 @@ static void test_lock_deterministic_on_dirty_heap()
     CHECK( first.Lock() );
     int64_t bytes = first.RegionBytes();
     uint8_t * saved = (uint8_t *) malloc( (size_t) bytes );
-    memcpy( saved, first.Region(), (size_t) bytes );
+    memcpy( (void *) saved, first.Region(), (size_t) bytes );
 
     dirty_the_heap( 0x5C ); // a DIFFERENT pattern, so any leak shows as a diff
     graphdemo::SceneBuilder second;
@@ -3586,7 +3586,7 @@ static tabledemo::RootConfig json_corpus_root()
     tabledemo::ProfileConfig & p = root.profiles[0];
     set_string( p.name, p.name_length, "Ada \xc3\xa9 \xe2\x9c\x93" ); // multi-byte UTF-8
     const uint8_t icon[5] = { 0x00, 0x01, 0xfe, 0xff, 0x7f };
-    memcpy( p.icon, icon, sizeof( icon ) );
+    memcpy( (void *) p.icon, icon, sizeof( icon ) );
     p.icon_length = (int32_t) sizeof( icon );
     p.experience = 4294967295u;            // u32 at its ceiling
     p.tilt = -128;                         // i8 at its floor
@@ -4547,7 +4547,7 @@ static void test_json_pinned_text()
     for ( const auto & row : base64 )
     {
         tabledemo::ProfileConfig profile;
-        memcpy( profile.icon, row.bytes, (size_t) row.length );
+        memcpy( (void *) profile.icon, row.bytes, (size_t) row.length );
         profile.icon_length = row.length;
         int64_t n = tabledemo::ProfileConfigToJsonMeasure( profile );
         if ( n < 0 ) { printf( "FAIL json pinned base64: refused\n" ); failures++; continue; }
@@ -7197,7 +7197,7 @@ static void test_form_byte_refusals()
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t forged[256];
-        memcpy( forged, wire, (size_t) bytes );
+        memcpy( (void *) forged, wire, (size_t) bytes );
         forged[0] = forms[i];
         pin_table_golden( names[i], forged, bytes );
 
@@ -7216,7 +7216,7 @@ static void test_form_byte_refusals()
     // damaged is a refusal, never damage
     {
         static uint8_t both[256];
-        memcpy( both, wire, (size_t) bytes );
+        memcpy( (void *) both, wire, (size_t) bytes );
         both[0] = 0xFF;
         tblv1::Cfg out;
         tblv1::TableReport report;
@@ -7242,7 +7242,7 @@ static void test_form_byte_refusals()
         CHECK( reason == graphdemo::ok ); // a measure that answers writes nothing
 
         static uint8_t forged_scene[8192];
-        memcpy( forged_scene, scene_wire, (size_t) scene_bytes );
+        memcpy( (void *) forged_scene, scene_wire, (size_t) scene_bytes );
         forged_scene[0] = 3;
         reason = graphdemo::ok;
         CHECK( graphdemo::SceneLoadMeasure( forged_scene, scene_bytes, NULL, &reason ) == -1 );
@@ -8229,11 +8229,11 @@ static void build_blob_catalog( blobdemo::CatalogBuilder & builder )
     set_string( root->name, root->name_length, "art" );
     blobdemo::TableBytesSlot thumb = builder.AllocBytes( 5 );
     CHECK( !thumb.null() && thumb.length == 5 );
-    memcpy( thumb.data, kBlobThumb, 5 );
+    memcpy( (void *) thumb.data, kBlobThumb, 5 );
     root->thumb = thumb;
     blobdemo::TableStringSlot note = builder.AllocString( 11 );
     CHECK( !note.null() );
-    memcpy( note.data, "hello blobs", 11 );
+    memcpy( (void *) note.data, "hello blobs", 11 );
     root->note = note;
     blobdemo::TableSlot<blobdemo::Asset> first = builder.Alloc<blobdemo::Asset>();
     set_string( first->name, first->name_length, "brick" );
@@ -8317,7 +8317,7 @@ static void test_blob_lifecycle()
 
     // the region relocates by pure memcpy: a blob view is one add from the slot
     uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
-    memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+    memcpy( (void *) moved, builder.Region(), (size_t) builder.RegionBytes() );
     check_blob_catalog( (const blobdemo::Catalog *) moved );
     free( moved );
 
@@ -8350,16 +8350,16 @@ static void test_blob_shared_node()
     blobdemo::CatalogBuilder shared;
     set_string( shared.GetRoot()->name, shared.GetRoot()->name_length, "twin" );
     blobdemo::TableBytesSlot one = shared.AllocBytes( 4 );
-    memcpy( one.data, "\x10\x20\x30\x40", 4 );
+    memcpy( (void *) one.data, "\x10\x20\x30\x40", 4 );
     shared.GetRoot()->thumb = one;
     shared.GetRoot()->alias = one;
 
     blobdemo::CatalogBuilder twice;
     set_string( twice.GetRoot()->name, twice.GetRoot()->name_length, "twin" );
     blobdemo::TableBytesSlot a = twice.AllocBytes( 4 );
-    memcpy( a.data, "\x10\x20\x30\x40", 4 );
+    memcpy( (void *) a.data, "\x10\x20\x30\x40", 4 );
     blobdemo::TableBytesSlot b = twice.AllocBytes( 4 );
-    memcpy( b.data, "\x10\x20\x30\x40", 4 );
+    memcpy( (void *) b.data, "\x10\x20\x30\x40", 4 );
     twice.GetRoot()->thumb = a;
     twice.GetRoot()->alias = b;
 
@@ -8515,7 +8515,7 @@ static void test_blob_record_length_off_by_one()
     blobdemo::CatalogBuilder builder;
     set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "art" );
     blobdemo::TableBytesSlot thumb = builder.AllocBytes( 5 );
-    memcpy( thumb.data, kBlobThumb, 5 );
+    memcpy( (void *) thumb.data, kBlobThumb, 5 );
     builder.GetRoot()->thumb = thumb;
     static uint8_t wire[512];
     int64_t wrote = blobdemo::CatalogSave( builder, wire, sizeof( wire ) );
@@ -8532,11 +8532,11 @@ static void test_blob_record_length_off_by_one()
         seen.seed( wire, wrote );
         WireBuilder spell;
         spell.count = seen.count;
-        memcpy( spell.ids, seen.ids, sizeof( spell.ids ) );
+        memcpy( (void *) spell.ids, seen.ids, sizeof( spell.ids ) );
         spell.leb( spell.ref( blobdemo::kTableBytesTypeId ) );
         CHECK( spell.count == seen.count ); // the writer named it
         reference_bytes = spell.n;
-        memcpy( reference, spell.body, (size_t) reference_bytes );
+        memcpy( (void *) reference, spell.body, (size_t) reference_bytes );
     }
     int64_t at = -1;
     for ( int64_t i = 0; i + reference_bytes + 1 <= wrote; i++ )
@@ -8697,7 +8697,7 @@ static void test_blob_json()
     {
         blobdemo::CatalogBuilder shared;
         blobdemo::TableBytesSlot one = shared.AllocBytes( 4 );
-        memcpy( one.data, "\x10\x20\x30\x40", 4 );
+        memcpy( (void *) one.data, "\x10\x20\x30\x40", 4 );
         shared.GetRoot()->thumb = one;
         shared.GetRoot()->alias = one;
         CHECK( shared.Lock() );
@@ -8858,7 +8858,7 @@ static void test_blob_golden_wire()
         blobdemo::CatalogBuilder builder;
         set_string( builder.GetRoot()->name, builder.GetRoot()->name_length, "twin" );
         blobdemo::TableBytesSlot one = builder.AllocBytes( 4 );
-        memcpy( one.data, "\x10\x20\x30\x40", 4 );
+        memcpy( (void *) one.data, "\x10\x20\x30\x40", 4 );
         builder.GetRoot()->thumb = one;
         builder.GetRoot()->alias = one; // one node, two names: no-text in the manifest
         int64_t wrote = blobdemo::CatalogSave( builder, buffer, sizeof( buffer ) );

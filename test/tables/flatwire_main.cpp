@@ -20,7 +20,7 @@
 static void set_string( char * storage, int32_t & length, const char * text )
 {
     length = (int32_t) strlen( text );
-    memcpy( storage, text, (size_t) length + 1 );
+    memcpy( (void *) storage, text, (size_t) length + 1 );
 }
 
 static int reload( const char * in, const char * out )

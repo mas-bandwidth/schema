@@ -53,7 +53,7 @@ using namespace tabledemo;
 static void set_string( char * storage, int32_t & length, const char * text )
 {
     length = (int32_t) strlen( text );
-    memcpy( storage, text, (size_t) length + 1 );
+    memcpy( (void *) storage, text, (size_t) length + 1 );
 }
 
 // The instance the tree at tables/pack/config declares, built by hand. Every

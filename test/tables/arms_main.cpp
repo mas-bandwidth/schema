@@ -322,8 +322,8 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         CHECK( b.RegionBytes() <= (int64_t) sizeof( relocated ) );
         if ( b.RegionBytes() <= (int64_t) sizeof( relocated ) )
         {
-            memset( relocated, 0, sizeof( relocated ) );
-            memcpy( relocated, b.Region(), (size_t) b.RegionBytes() );
+            memset( (void *) relocated, 0, sizeof( relocated ) );
+            memcpy( (void *) relocated, b.Region(), (size_t) b.RegionBytes() );
             check( (const Root *) relocated, relocated, b.RegionBytes(), "the relocated region" );
         }
 
