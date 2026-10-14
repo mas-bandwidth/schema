@@ -23,4 +23,14 @@
     <Compile Include="$(CardsGeneratedDir)/*.cs" />
   </ItemGroup>
 
+  <!-- The package-private seam, the C# spelling of Go's in-package tests and
+       driver: the test program and the conformance driver are friend
+       assemblies, so they reach the internal retention and hash seams the way
+       tables/cards's own _test.go files reach package-private upgrade() and
+       r.failEdit (tables/cards/upgrade.go, edit.go). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CardsTests" />
+    <InternalsVisibleTo Include="CardsDriver" />
+  </ItemGroup>
+
 </Project>
