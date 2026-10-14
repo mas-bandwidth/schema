@@ -87,9 +87,10 @@ what proves them across releases, #463, named in its section below.
     or `malformed` still loses what those counters name. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
     SPEC-TABLES.md §6.6. The C++ reference carries it; the eight ports do not.
-11. **This page moves with the facts.** No mechanical gate reads this page
-    today; #446 adds one, the evolution table's fixtures, and the rest is
-    review.
+11. **This page moves with the facts.** #446's golden now reads the evolution
+    table below — `TestEvolutionTableFrames` in `internal/baseline` runs one
+    fixture per row through all three frames and pins the verdicts — and the
+    rest is review.
 
 ## Two wires, two stories
 
@@ -272,11 +273,11 @@ Three mechanisms judge an edit, and each sees what the others cannot:
   wrote is still this build's.
 
 One table reconciles them. It is the single statement of what an edit does;
-SPEC-TABLES.md §4, §18.2 and §20.4 will derive from it once it has a fixture
-per row, each edit run through all three frames with the verdicts pinned
-(#446), so that it can go red. Every cell was run against the tool; the rows
-that name an issue describe the committed rule and say what the repository
-does today.
+SPEC-TABLES.md §4, §18.2 and §20.4 derive from it by citation, and #446 gives
+it a golden — one fixture per row, each edit run through all three frames with
+the verdicts pinned (`TestEvolutionTableFrames`), so that it can go red. Every
+cell was run against the tool; the rows that name an issue describe the
+committed rule and say what the repository does today.
 
 | the edit | the read report | the baseline | the build version |
 |---|---|---|---|
