@@ -1,6 +1,7 @@
 package cstable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -309,6 +310,62 @@ type fixedPlanEntry struct {
 	guard2 int64
 	arg2   uint64
 	argw2  byte
+	// links is THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1), one link per
+	// enclosing union, recorded INNERMOST FIRST as stampGuard runs inner unions
+	// before the outer one; fixedGuardPool turns it OUTERMOST FIRST and lays a
+	// chain past the two lanes into the pool as offset+count (guardIndex, a byte
+	// offset into the pool, and guardCount).
+	links      []fixedGuardLink
+	guardIndex int
+	guardCount int
+}
+
+// fixedGuardLink is ONE LINK of a guard chain: the tag's byte offset, the
+// ordinal it must hold and the width it is compared at (§4.1).
+type fixedGuardLink struct {
+	guard int64
+	arg   uint64
+	argw  byte
+}
+
+// fixedGuardLinkBytes is a link as the pool lays it: guard u32, arg u64 and
+// argw u8, little-endian, the same thirteen bytes the runtime's compiled pool
+// lays behind its entries (TableFixedWire.GuardLinkBytes).
+const fixedGuardLinkBytes = 13
+
+// fixedGuardPool is THE GUARD CHAIN laid down (docs/FIXED-FORM-ALGORITHM.md
+// §4.1): every entry whose chain runs past the two lanes gets offset+count into
+// one pool of links, OUTERMOST FIRST, deduped by content so two entries under
+// one chain share one slice. A chain of one or two is the two-lane special case
+// and carries nothing else. The only bound is the layout's 64, which the build's
+// own depth bound already holds the type to.
+func fixedGuardPool(plan []fixedPlanEntry) []byte {
+	var pool []byte
+	index := map[string]int{}
+	for i := range plan {
+		links := plan[i].links
+		if len(links) <= 2 {
+			continue
+		}
+		var key strings.Builder
+		var laid []byte
+		for k := len(links) - 1; k >= 0; k-- {
+			l := links[k]
+			fmt.Fprintf(&key, "%d:%d:%d;", l.guard, l.arg, l.argw)
+			laid = binary.LittleEndian.AppendUint32(laid, uint32(l.guard))
+			laid = binary.LittleEndian.AppendUint64(laid, l.arg)
+			laid = append(laid, l.argw)
+		}
+		at, ok := index[key.String()]
+		if !ok {
+			at = len(pool)
+			index[key.String()] = at
+			pool = append(pool, laid...)
+		}
+		plan[i].guardIndex = at
+		plan[i].guardCount = len(links)
+	}
+	return pool
 }
 
 // fixedPartitionPlan stable-partitions the built plan into every UNGUARDED
@@ -341,6 +398,8 @@ func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
 				if last.op == e.op && e.op == 0 &&
 					last.guard == e.guard && last.arg == e.arg &&
 					last.argw == e.argw && last.meta == e.meta &&
+					last.guard2 == e.guard2 && last.arg2 == e.arg2 && last.argw2 == e.argw2 &&
+					len(last.links) == len(e.links) &&
 					last.src+last.size == e.src && last.dst == e.dst {
 					last.size += e.size
 					continue
@@ -460,15 +519,21 @@ func (b *fixedRootBuild) addPlan(e fixedPlanEntry) {
 // hold (§4.1 "the entry runs when BOTH tags hold their ordinal").
 func (b *fixedRootBuild) stampGuard(at int, guard int64, arg uint64, argw byte) {
 	for q := at; q < len(b.plan); q++ {
+		// ONE MORE LINK OF THE GUARD CHAIN (§4.1): an arm three unions deep keeps
+		// all three, and the two lanes hold the innermost two, never a lane
+		// written over another.
+		b.plan[q].links = append(b.plan[q].links, fixedGuardLink{guard: guard, arg: arg, argw: argw})
 		if b.plan[q].guard == kFixedNoGuard {
 			b.plan[q].guard = guard
 			b.plan[q].arg = arg
 			b.plan[q].argw = argw
 			continue
 		}
-		b.plan[q].guard2 = guard
-		b.plan[q].arg2 = arg
-		b.plan[q].argw2 = argw
+		if b.plan[q].guard2 == kFixedNoGuard {
+			b.plan[q].guard2 = guard
+			b.plan[q].arg2 = arg
+			b.plan[q].argw2 = argw
+		}
 	}
 }
 
@@ -1686,6 +1751,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// of unguarded entries, carried beside the plan as metadata and never
 	// consulted by the run loop, which tests the guard per entry (allowed).
 	plan, planSplit := fixedPartitionPlan(b.plan)
+	guardPool := fixedGuardPool(plan)
 	b.plan = plan
 
 	block := fixedBlockBytes(b.entries)
@@ -1753,6 +1819,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// it, but the partition it names is what a plan-execution test holds this
 	// leg to.
 	g.pf("public const int %sFixedPlanSplit = %d;\n\n", name, planSplit)
+	// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1): the links of
+	// every chain past the two lanes, OUTERMOST FIRST, thirteen bytes a link. An
+	// entry carries offset+count into it; the identity read hands it to the run
+	// loop as the plan's bytes.
+	g.pf("public static readonly byte[] %sFixedGuardPool = new byte[] {", name)
+	for i, by := range guardPool {
+		if i%16 == 0 {
+			g.pf("\n   ")
+		}
+		g.pf(" 0x%02x,", by)
+	}
+	g.pf("\n};\n\n")
 	g.pf("public static readonly TableFixedPlan %sFixedPlan = new TableFixedPlan(new TableFixedEntry[] {\n", name)
 	for _, p := range b.plan {
 		guardStr := "TableFixedWire.NoGuard"
@@ -1772,7 +1850,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		if p.guard2 == kFixedNoGuard {
+		if p.guard2 == kFixedNoGuard && p.guardCount == 0 {
 			g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d),\n",
 				p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw)
 			continue
@@ -1784,8 +1862,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw2 == 0 {
 			argw2 = 1
 		}
-		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d),\n",
-			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2)
+		if p.guardCount == 0 {
+			g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d),\n",
+				p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2)
+			continue
+		}
+		// AND A CHAIN PAST THE TWO LANES (§4.1): offset+count into the pool.
+		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d, %du, %du),\n",
+			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2, p.guardIndex, p.guardCount)
 	}
 	g.pf("});\n\n")
 
@@ -1915,7 +1999,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
 	g.pf("    long record_bytes = known.RecordBytes;\n")
-	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
+	// THE IDENTITY PLAN'S BYTES ARE ITS GUARD POOL (§4.1): it carries no remap
+	// table, and a chain past the two lanes is read out of the pool here.
+	g.pf("    ReadOnlySpan<byte> planBytes = %sFixedGuardPool;\n", name)
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
 	g.pf("    int census_unknown = 0;\n")
