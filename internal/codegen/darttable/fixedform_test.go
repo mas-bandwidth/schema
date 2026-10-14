@@ -118,18 +118,29 @@ func dumpFn(t *testing.T, src, fn string) string {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	var all string
-	for _, b := range files {
-		all += string(b)
+
+	var source string
+	for _, data := range files {
+		if strings.Contains(string(data), fn) {
+			if source != "" {
+				t.Fatalf("ambiguous generated function %s", fn)
+			}
+			source = string(data)
+		}
 	}
-	i := strings.Index(all, fn)
+	i := strings.Index(source, fn)
 	if i < 0 {
-		t.Fatalf("no %s in generated unit:\n%s", fn, all)
+		t.Fatalf("no %s in generated unit", fn)
 	}
-	body := all[i:]
-	if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
-		body = body[:j+1]
+	body := source[i:]
+	// Generated top-level functions close at column zero. Do not include another
+	// library's runtime merely because this is the last void function in its file.
+	end := strings.Index(body, "\n}\n")
+	if end < 0 {
+		t.Fatalf("unterminated generated function %s", fn)
 	}
+	body = body[:end+3]
+
 	return body
 }
 

@@ -7,7 +7,8 @@
 // unbounded arrays of scalars, strings and enums, carried-value maps and
 // optional carried values, fixed positional arrays and enum-keyed arrays.
 // Table-body and payload-free union arms, 128-bit integers and fixed-point
-// values also ride. Other arm payloads and wstring stay refused (§11) on a unit
+// values and bounded wide text also ride. Other arm payloads stay refused
+// (§11) on a unit
 // the variable form owns, and nothing here encodes one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
@@ -99,7 +100,7 @@ func isByValueTable(f *ir.Field) bool {
 // unbounded array of a carried element, carried-value maps, and optional
 // carried values, fixed positional arrays, enum-keyed arrays, and unions
 // of table-body/payload-free arms, 128-bit integers and fixed-point values.
-// Other arm payloads and wstring are not: the
+// Bounded wide text also rides; other arm payloads are not carried: the
 // wire form is not claimed for them (§11). seen breaks a pointer cycle — a
 // table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
@@ -119,7 +120,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	if u := unionRef(f); u != nil {
 		return f.Array == ir.ArrayNone && cardWireUnion(u, seen)
 	}
-	if f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TWString && f.Array != ir.ArrayNone {
 		return false
 	}
 	if f.Type.Blob() && f.Array == ir.ArrayNone {
@@ -136,7 +137,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 
 func cardScalarOrTable(f *ir.Field, seen map[string]bool) bool {
 	switch f.Type.Kind {
-	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TFixed:
+	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TFixed, ir.TWString:
 		return true
 	case ir.TInt:
 		return true
@@ -338,8 +339,9 @@ func listElementKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 
 // dartListElemType is the Dart storage element type for a `[]T` field: the
 // scalar/enum spellings the storage class uses, and the table name for table
-// elements. Enums and every integer kind store as Dart `int`; the two float
-// kinds as `double`; string/bytes as `String`.
+// elements. Native integers and enums use int; 128-bit values use BigInt.
+// Fixed-point values hold raw scaled integers. Floats use double and inline
+// text uses String.
 func dartListElemType(f *ir.Field) string {
 	switch {
 	case wireWide(f):
@@ -350,7 +352,7 @@ func dartListElemType(f *ir.Field) string {
 		return "int"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return "double"
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		return "String"
 	case f.Type.Kind == ir.TNamed:
 		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
@@ -587,7 +589,7 @@ final class WireState {
 }
 
 final class TableWireWriter {
-` + wideWireWriterMembers + `
+` + wideWireWriterMembers + wideTextWriterMembers + `
   final List<int> buf = <int>[];
   final WireState state;
   List<int> path = <int>[];
@@ -675,7 +677,7 @@ int _textBoundary(Uint8List d, int off, int len, int bound) {
 // TableWireReader holds the whole buffer and resolves the id table once at
 // open (§3): a body names an id by POSITION and the reader dispatches on it.
 final class TableWireReader {
-` + wideWireReaderMembers + `
+` + wideWireReaderMembers + wideTextReaderMembers + `
   final Uint8List data;
   int pos;
   int limit;
@@ -1154,7 +1156,7 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  int %s = %s;\n", name, g.intDefault(f))
 		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 			g.pf("  double %s = %s;\n", name, g.floatDefault(f))
-		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 			g.pf("  String %s = %s;\n", name, g.stringDefault(f))
 		case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
 			g.pf("  int %s = %s;\n", name, g.enumDefault(f))
@@ -1268,6 +1270,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		default:
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
+	case f.Type.Kind == ir.TWString:
+		g.emitSaveWideText(f, expr, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif (%s) {\n", ind, optionalRide(f, fmt.Sprintf("%s != %s", expr, g.stringDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1647,6 +1651,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.emitLoadWideText(f, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindString)
 		g.pf("%s\t{\n", ind)

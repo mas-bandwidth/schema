@@ -163,6 +163,8 @@ func TestDartWideVariableSourcesAreCarried(t *testing.T) {
 	u := unitFromSource(t, `package probe
  table Root { value int128 | min=-170141183460469231731687303715884105728,max=170141183460469231731687303715884105727
  scaled fixed(8,8) | min=-128,max=127
+ caption wstring(3)
+ texts map[uint16]wstring(3)
  body *string }
  `)
 	files, err := New().Generate(u, "dart", Options{})

@@ -14,7 +14,7 @@
 //
 // Maps, optional values, fixed/keyed arrays and table-body/payload-free
 // union arms, 128-bit integers and exact fixed-point values share this runtime.
-// Other arm payloads and wstring remain
+// Bounded wide text transcodes at the boundary; other arm payloads remain
 // refused (§11). A shared node is "&node" (§16.7).
 package darttable
 
@@ -123,7 +123,7 @@ func (g *wireGen) emitTextRuntime() {
 // the card's constructs can move — an unknown property, a kind mismatch, a
 // clamp.
 final class TableTextReport {
-` + textNumberMembers + textBigIntegerMembers + textFixedMembers + `
+` + textNumberMembers + textBigIntegerMembers + textFixedMembers + textWideMembers + `
   bool malformed = false;
   final Expando<List<MapEntry<String,dynamic>>> _entries = Expando();
   Iterable<MapEntry<dynamic,dynamic>> entries(Map obj) => _entries[obj] ?? obj.entries;
@@ -556,6 +556,8 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
 		g.pf("\tout.raw(%s);\n", jsonIntText(f, "v."+name))
+	case f.Type.Kind == ir.TWString:
+		g.pf("assert(v.%s.codeUnits.length<=%d);out.raw(_jsonString(TableTextReport.wideJSONText(v.%s)));\n", name, f.Type.Size, name)
 	case f.Type.Kind == ir.TString:
 		g.pf("\tout.raw(_jsonString(v.%s));\n", name)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as base64 in the text (§16.7)
@@ -599,12 +601,16 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
-	if wireWide(f) && f.Array == ir.ArrayNone {
-		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
+	if (wireWide(f) || f.Type.Kind == ir.TWString) && f.Array == ir.ArrayNone {
+		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(r.malformed)break;if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
 		if f.Type.Optional {
 			g.pf("if(item==null){v.%sPresent=false;v.%s=%s;continue;}v.%sPresent=true;\n", name, name, wideWireDefault(f), name)
 		}
-		g.pf("v.%s=%s;}}break;\n", name, g.wideJSONRead(f, "item", "v."+name))
+		if f.Type.Kind == ir.TWString {
+			g.pf("v.%s=TableTextReport.wideField(item,r,%d,v.%s);}}break;\n", name, f.Type.Size, name)
+		} else {
+			g.pf("v.%s=%s;}}break;\n", name, g.wideJSONRead(f, "item", "v."+name))
+		}
 		return
 	}
 	if f.Type.Optional {

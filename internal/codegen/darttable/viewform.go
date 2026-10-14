@@ -82,7 +82,7 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 	switch {
 	case f.Type.Blob():
 		// *string is unbounded (§2.5): no declared bound.
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString:
 		bound = fmt.Sprintf("%d", f.Type.Size)
 	case f.HasIntRange:
 		if wireWide(f) {
