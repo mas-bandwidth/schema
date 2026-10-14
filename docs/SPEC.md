@@ -2793,8 +2793,12 @@ does not satisfy that control. These controls also run through `make test`.
 
 **Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
 wire for compressed floats: a fused multiply-add diverges by one quantization
-step at boundary values, so all C and C++ conformance builds compile with
-`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
+step at boundary values, so every leg computes a compressed float's
+quantization without fused multiply-add — the C and C++ conformance builds
+compile with `-ffp-contract=off`, Go rounds each product explicitly (an
+explicit rounding conversion of each product), and java, cs and elixir rely
+on the language's strict semantics (Glenn, 2026-10-12, all features across
+all languages) — and the golden-wire corpus pins compressed-float values
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop
