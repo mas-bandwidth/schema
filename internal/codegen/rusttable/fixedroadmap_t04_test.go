@@ -79,8 +79,8 @@ func t04Fn(text, name string) string {
 		return ""
 	}
 	rest := text[at:]
-	if end := strings.Index(rest, "\n}\n"); end >= 0 {
-		return rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n}\n"); ok {
+		return before
 	}
 	return rest
 }

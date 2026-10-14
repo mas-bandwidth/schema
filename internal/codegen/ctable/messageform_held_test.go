@@ -46,7 +46,6 @@ fixed table Root {
 	}
 	cMessageManifestRows(t)
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			runCGenerated(t, schema, clause.probe)
@@ -353,7 +352,7 @@ func cMessageManifestRows(t *testing.T) {
 	}
 	units, connections := map[string]string{}, map[string][]string{}
 	var rows [][]string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue

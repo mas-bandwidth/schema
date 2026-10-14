@@ -80,8 +80,8 @@ func t04Fn(text, name string) string {
 		return ""
 	}
 	rest := text[at:]
-	if end := strings.Index(rest, "\n}\n"); end >= 0 {
-		return rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n}\n"); ok {
+		return before
 	}
 	return rest
 }
@@ -156,12 +156,12 @@ func t04HexBytes(t *testing.T, text, marker string) []byte {
 		t.Fatalf("the emitted source carries no %q", marker)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "]);")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "]);")
+	if !ok {
 		t.Fatalf("the emitted byte run after %q is not closed", marker)
 	}
 	var out []byte
-	for field := range strings.FieldsSeq(rest[:end]) {
+	for field := range strings.FieldsSeq(before) {
 		field = strings.TrimSuffix(field, ",")
 		if field == "" || !strings.HasPrefix(field, "0x") {
 			continue

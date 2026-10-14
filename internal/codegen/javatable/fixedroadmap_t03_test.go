@@ -57,8 +57,8 @@ func t03Method(src, sig string) string {
 		return ""
 	}
 	rest := src[i:]
-	if j := strings.Index(rest, "\n    }\n"); j >= 0 {
-		return rest[:j]
+	if before, _, ok := strings.Cut(rest, "\n    }\n"); ok {
+		return before
 	}
 	return rest
 }

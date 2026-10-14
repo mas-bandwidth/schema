@@ -200,7 +200,7 @@ func cardOutputs(surface, name, expectedDir string) ([]string, error) {
 // requireSet parses --require into the set of surfaces an absence fails.
 func requireSet(list string) map[string]bool {
 	out := map[string]bool{}
-	for _, s := range strings.Split(list, ",") {
+	for s := range strings.SplitSeq(list, ",") {
 		if s = strings.TrimSpace(s); s != "" {
 			out[s] = true
 		}

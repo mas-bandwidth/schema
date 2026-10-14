@@ -30,7 +30,6 @@ fixed table Root {
 		{"form_byte", msgFormByteProbe},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			runGenerated(t, schema, "package probe\n"+clause.probe)

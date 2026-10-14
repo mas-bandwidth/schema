@@ -28,7 +28,6 @@ fixed table Root {
 		{"terminal", msgStrictTerminalProbe},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			runGenerated(t, schema, "package probe\n"+clause.probe)

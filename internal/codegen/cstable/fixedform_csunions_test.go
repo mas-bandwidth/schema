@@ -147,8 +147,8 @@ func TestFixedArmWritesAreFieldLines(t *testing.T) {
 	t.Parallel()
 	_, msgs := generateRepoSchema(t, "tables/messages/Messages.schema")
 	if strings.Contains(msgs, "/* ? */") {
-		i := strings.Index(msgs, "/* ? */")
-		t.Errorf("Messages: an arm still spells the fallback type: %q", strings.SplitN(msgs[strings.LastIndex(msgs[:i], "\n")+1:], "\n", 2)[0])
+		before, _, _ := strings.Cut(msgs, "/* ? */")
+		t.Errorf("Messages: an arm still spells the fallback type: %q", strings.SplitN(msgs[strings.LastIndex(before, "\n")+1:], "\n", 2)[0])
 	}
 	for _, want := range []string{
 		"t.Origin.NoteLength = (int)v", // the string arm's used length is a slot

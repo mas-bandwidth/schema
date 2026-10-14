@@ -64,11 +64,11 @@ func t05Run(t *testing.T) string {
 func t05TextOp(t *testing.T) string {
 	t.Helper()
 	src := t05Run(t)
-	i := strings.Index(src, "case tableFixedText:")
-	if i < 0 {
+	_, after, ok := strings.Cut(src, "case tableFixedText:")
+	if !ok {
 		t.Fatal("t05: the read loop carries no `case tableFixedText:`")
 	}
-	rest := src[i+len("case tableFixedText:"):]
+	rest := after
 	if j := strings.Index(rest, "\n\t\tcase tableFixed"); j >= 0 {
 		rest = rest[:j]
 	}
