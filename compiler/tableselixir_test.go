@@ -15,24 +15,24 @@ import (
 // TestElixirEmitsTableModules: the elixir target adds the BLOCK and COOK read
 // halves, <Base>Block.ex and <Base>Cook.ex with their runtime modules and the
 // unit's BuildVersion, beside the packet ones for a unit with tables, and adds
-// NOTHING for a unit without. It emits no <Base>Table.ex and no
-// TableRuntime.ex at all: the table wire's Elixir port wrote the form that
-// preceded the id-table wire and was removed rather than carried (schema#515
-// brings the current wire to Elixir).
+// NOTHING for a unit without. A unit with tables also grows Table.ex, the
+// variable form's id-table codec, one module per unit, and TableMessage.ex
+// when a fixed root owes the message announcement. It emits no
+// TableRuntime.ex: that name is another backend's.
 func TestElixirEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "elixir", Options{})
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex"} {
+	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex", "Table.ex", "TableMessage.ex"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang elixir emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	for name := range with {
-		if strings.HasSuffix(name, "Table.ex") || name == "TableRuntime.ex" {
-			t.Errorf("--lang elixir emitted %s: the previous-form table wire was removed and nothing emits it", name)
+		if name == "TableRuntime.ex" {
+			t.Errorf("--lang elixir emitted %s: that module is another backend's", name)
 		}
 	}
 
@@ -152,12 +152,10 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 // TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for:
 // a declaration named for a generated module is refused by the checker in a
 // unit that declares a table, because that is where the backend writes the
-// module. None of the three is view surface: the descriptors are the view
-// file's, and these are the block and cook runtimes and the build version, so
-// a TABLE-FREE unit keeps every one of them (docs/SPEC-TABLES.md §11,
-// schema#672).
+// module. None of these is view surface, so a TABLE-FREE unit keeps every
+// one of them (docs/SPEC-TABLES.md §11, schema#672).
 func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
-	for _, name := range []string{"BlockRuntime", "CookRuntime", "BuildVersion"} {
+	for _, name := range []string{"BlockRuntime", "CookRuntime", "BuildVersion", "Table", "TableMessage"} {
 		t.Run(name, func(t *testing.T) {
 			refused := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
 			errs := checkErrors(t, refused)
