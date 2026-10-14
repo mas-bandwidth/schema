@@ -6035,7 +6035,7 @@ build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-gen
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 	@rm -rf build/fixedform-corpus
@@ -6054,14 +6054,37 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
 
-# THE SIBLING RUNTIME IS A STATED BENCH PREREQUISITE. The oracle dump links the
-# C++ reference, which includes serialize.h from the guard checkout $(SERIALIZE)
-# (a sibling of this repo, the same checkout the C++ targets are built against).
-# Refuse by name when it is absent instead of failing mid-generate with a
-# cryptic include error.
+# THE CORPUS FINDS ITS OWN RUNTIME (the "Fix, this attempt" rule). The oracle
+# dump links the C++ reference, which includes serialize.h from the checkout
+# $(SERIALIZE) (normally a sibling of this repo, the same checkout the C++
+# targets are built against). A clean bench workspace has no sibling repo, so
+# when no explicit SERIALIZE was named the corpus fetches the pinned runtime
+# (serialize @ $(SERIALIZE_PIN), the checkout docs/TUTORIAL.md names) INSIDE the
+# workspace and compiles against that. A SERIALIZE named on the command line
+# (or in the environment) that is absent still refuses by name, and so does a
+# fetch that fails or produces no header: a gate with no blade is the exact
+# silence this refusal exists to forbid.
+SERIALIZE_PIN     ?= v1.16.2
+SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
+SERIALIZE_FETCHED := build/serialize
+SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
+
+$(SERIALIZE_RUNTIME)/serialize.h:
+	@if test -f "$(SERIALIZE)/serialize.h"; then :; \
+	elif test "$(origin SERIALIZE)" != "file"; then \
+		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
+		git clone --depth 1 --branch "$(SERIALIZE_PIN)" "$(SERIALIZE_REPO)" "$(SERIALIZE_RUNTIME)" \
+			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
+
 .PHONY: tables-fixedform-corpus-check
-tables-fixedform-corpus-check:
-	@test -f $(SERIALIZE)/serialize.h || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; exit 1; }
+tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h
 
 .PHONY: tables-fixedform-corpus
 
