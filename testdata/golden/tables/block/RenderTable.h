@@ -2371,6 +2371,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2410,6 +2422,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2672,7 +2691,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2686,8 +2705,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -14928,19 +14965,19 @@ constexpr int64_t RenderCameraFixedLayoutBytes = (int64_t) sizeof( RenderCameraF
 // layout lands values through.
 constexpr TableFixedDst RenderCameraFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderCamera
-    { (uint32_t) __builtin_offsetof( RenderCamera, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderCamera, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderCamera, camera_id ), 0, 0, 0, 0 }, // camera_id
-    { (uint32_t) __builtin_offsetof( RenderCamera, camera_type ), 0, 0, 0, 0 }, // camera_type
-    { (uint32_t) __builtin_offsetof( RenderCamera, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderCamera, fov ), 0, 0, 0, 0 }, // fov
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // camera_id
+    { 60, 0, 0, 0, 0 }, // camera_type
+    { 64, 0, 0, 0, 0 }, // target_object_id
+    { 68, 0, 0, 0, 0 }, // fov
 };
 
 // THE IDENTITY PLAN, coalesced out of 11 leaves by the schema compiler —
@@ -14952,10 +14989,15 @@ constexpr TableFixedDst RenderCameraFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderCameraFixedPlan[] = {
-    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderCameraFixedPlanCount = 1;
 constexpr int32_t RenderCameraFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderCameraFixedGuards[] = {
+};
+constexpr int32_t RenderCameraFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -15171,7 +15213,7 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
     {
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCameraFixedGuards );
         TableFixedClampKnownRanges( RenderCameraFixedKnownRanges[lineage_at], RenderCameraFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -15246,31 +15288,31 @@ constexpr int64_t RenderShipFixedLayoutBytes = (int64_t) sizeof( RenderShipFixed
 // layout lands values through.
 constexpr TableFixedDst RenderShipFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderShip
-    { (uint32_t) __builtin_offsetof( RenderShip, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderShip, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderShip, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderShip, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderShip, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderShip, thrust ), 0, 0, 0, 0 }, // thrust
-    { (uint32_t) __builtin_offsetof( RenderShip, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderShip, ship_type ), 0, 0, 0, 0 }, // ship_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // target_object_id
+    { 72, 0, 0, 0, 0 }, // thrust
+    { 76, 0, 0, 0, 0 }, // object_sequence
+    { 77, 0, 0, 0, 0 }, // ship_type
     { 0, 0, 0, 0, 0 }, // Fighter
     { 0, 0, 0, 0, 0 }, // Bomber
     { 0, 0, 0, 0, 0 }, // Freighter
-    { (uint32_t) __builtin_offsetof( RenderShip, team ), 0, 0, 0, 0 }, // team
+    { 78, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
     { 0, 0, 0, 0, 0 }, // Gold
-    { (uint32_t) __builtin_offsetof( RenderShip, has_target_lock ), 0, 0, 0, 0 }, // has_target_lock
-    { (uint32_t) __builtin_offsetof( RenderShip, predicted_explode ), 0, 0, 0, 0 }, // predicted_explode
+    { 79, 0, 0, 0, 0 }, // has_target_lock
+    { 80, 0, 0, 0, 0 }, // predicted_explode
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -15282,11 +15324,16 @@ constexpr TableFixedDst RenderShipFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderShipFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
-    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // has_target_lock
+    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
 };
 constexpr int32_t RenderShipFixedPlanCount = 2;
 constexpr int32_t RenderShipFixedPlanGuarded = 2;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderShipFixedGuards[] = {
+};
+constexpr int32_t RenderShipFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -15519,7 +15566,7 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderShipFixedGuards );
         TableFixedClampKnownRanges( RenderShipFixedKnownRanges[lineage_at], RenderShipFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderShipFixedClamp( values[k], report ) )
@@ -15592,23 +15639,23 @@ constexpr int64_t RenderTurretFixedLayoutBytes = (int64_t) sizeof( RenderTurretF
 // layout lands values through.
 constexpr TableFixedDst RenderTurretFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderTurret
-    { (uint32_t) __builtin_offsetof( RenderTurret, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderTurret, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderTurret, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, parent_object_id ), 0, 0, 0, 0 }, // parent_object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, turret_index ), 0, 0, 0, 0 }, // turret_index
-    { (uint32_t) __builtin_offsetof( RenderTurret, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderTurret, team ), 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 32, 0, 0, 0, 0 }, // flags
+    { 40, 0, 0, 0, 0 }, // object_id
+    { 44, 0, 0, 0, 0 }, // parent_object_id
+    { 48, 0, 0, 0, 0 }, // turret_index
+    { 52, 0, 0, 0, 0 }, // target_object_id
+    { 56, 0, 0, 0, 0 }, // object_sequence
+    { 57, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
     { 0, 0, 0, 0, 0 }, // Gold
-    { (uint32_t) __builtin_offsetof( RenderTurret, has_target_lock ), 0, 0, 0, 0 }, // has_target_lock
+    { 58, 0, 0, 0, 0 }, // has_target_lock
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -15620,11 +15667,16 @@ constexpr TableFixedDst RenderTurretFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderTurretFixedPlan[] = {
-    { 0u, 0u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
-    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // has_target_lock
+    { 0u, 0u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
 };
 constexpr int32_t RenderTurretFixedPlanCount = 2;
 constexpr int32_t RenderTurretFixedPlanGuarded = 2;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderTurretFixedGuards[] = {
+};
+constexpr int32_t RenderTurretFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -15849,7 +15901,7 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderTurretFixedGuards );
         TableFixedClampKnownRanges( RenderTurretFixedKnownRanges[lineage_at], RenderTurretFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderTurretFixedClamp( values[k], report ) )
@@ -15925,22 +15977,22 @@ constexpr int64_t RenderMissileFixedLayoutBytes = (int64_t) sizeof( RenderMissil
 // layout lands values through.
 constexpr TableFixedDst RenderMissileFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderMissile
-    { (uint32_t) __builtin_offsetof( RenderMissile, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderMissile, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderMissile, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderMissile, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderMissile, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderMissile, missile_type ), 0, 0, 0, 0 }, // missile_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // object_sequence
+    { 69, 0, 0, 0, 0 }, // missile_type
     { 0, 0, 0, 0, 0 }, // Seeker
     { 0, 0, 0, 0, 0 }, // Dumb
-    { (uint32_t) __builtin_offsetof( RenderMissile, team ), 0, 0, 0, 0 }, // team
+    { 70, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -15956,10 +16008,15 @@ constexpr TableFixedDst RenderMissileFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderMissileFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderMissileFixedPlanCount = 1;
 constexpr int32_t RenderMissileFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderMissileFixedGuards[] = {
+};
+constexpr int32_t RenderMissileFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -16187,7 +16244,7 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderMissileFixedGuards );
         TableFixedClampKnownRanges( RenderMissileFixedKnownRanges[lineage_at], RenderMissileFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderMissileFixedClamp( values[k], report ) )
@@ -16264,23 +16321,23 @@ constexpr int64_t RenderDynamicPropFixedLayoutBytes = (int64_t) sizeof( RenderDy
 // layout lands values through.
 constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderDynamicProp
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, prop_type ), 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // object_sequence
+    { 69, 0, 0, 0, 0 }, // prop_type
     { 0, 0, 0, 0, 0 }, // Rock
     { 0, 0, 0, 0, 0 }, // Station
     { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, team ), 0, 0, 0, 0 }, // team
+    { 70, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -16296,10 +16353,15 @@ constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderDynamicPropFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderDynamicPropFixedPlanCount = 1;
 constexpr int32_t RenderDynamicPropFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderDynamicPropFixedGuards[] = {
+};
+constexpr int32_t RenderDynamicPropFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -16528,7 +16590,7 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderDynamicPropFixedGuards );
         TableFixedClampKnownRanges( RenderDynamicPropFixedKnownRanges[lineage_at], RenderDynamicPropFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderDynamicPropFixedClamp( values[k], report ) )
@@ -16605,23 +16667,23 @@ constexpr int64_t RenderStaticPropFixedLayoutBytes = (int64_t) sizeof( RenderSta
 // layout lands values through.
 constexpr TableFixedDst RenderStaticPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderStaticProp
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, scale ), 0, 0, 0, 0 }, // scale
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, static_prop_id ), 0, 0, 0, 0 }, // static_prop_id
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, prop_type ), 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // scale
+    { 64, 0, 0, 0, 0 }, // flags
+    { 72, 0, 0, 0, 0 }, // static_prop_id
+    { 76, 0, 0, 0, 0 }, // prop_type
     { 0, 0, 0, 0, 0 }, // Rock
     { 0, 0, 0, 0, 0 }, // Station
     { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, team ), 0, 0, 0, 0 }, // team
+    { 77, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -16637,10 +16699,15 @@ constexpr TableFixedDst RenderStaticPropFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderStaticPropFixedPlan[] = {
-    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderStaticPropFixedPlanCount = 1;
 constexpr int32_t RenderStaticPropFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderStaticPropFixedGuards[] = {
+};
+constexpr int32_t RenderStaticPropFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -16869,7 +16936,7 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderStaticPropFixedGuards );
         TableFixedClampKnownRanges( RenderStaticPropFixedKnownRanges[lineage_at], RenderStaticPropFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderStaticPropFixedClamp( values[k], report ) )
@@ -16947,24 +17014,24 @@ constexpr int64_t RenderCosmeticPropFixedLayoutBytes = (int64_t) sizeof( RenderC
 // layout lands values through.
 constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderCosmeticProp
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, scale ), 0, 0, 0, 0 }, // scale
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, cosmetic_prop_id ), 0, 0, 0, 0 }, // cosmetic_prop_id
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_sequence ), 0, 0, 0, 0 }, // prop_sequence
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_type ), 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // scale
+    { 64, 0, 0, 0, 0 }, // flags
+    { 72, 0, 0, 0, 0 }, // cosmetic_prop_id
+    { 76, 0, 0, 0, 0 }, // prop_sequence
+    { 77, 0, 0, 0, 0 }, // prop_type
     { 0, 0, 0, 0, 0 }, // Rock
     { 0, 0, 0, 0, 0 }, // Station
     { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, team ), 0, 0, 0, 0 }, // team
+    { 78, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -16980,10 +17047,15 @@ constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderCosmeticPropFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderCosmeticPropFixedPlanCount = 1;
 constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderCosmeticPropFixedGuards[] = {
+};
+constexpr int32_t RenderCosmeticPropFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -17213,7 +17285,7 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCosmeticPropFixedGuards );
         TableFixedClampKnownRanges( RenderCosmeticPropFixedKnownRanges[lineage_at], RenderCosmeticPropFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderCosmeticPropFixedClamp( values[k], report ) )
@@ -17287,20 +17359,20 @@ constexpr int64_t RenderLaserFixedLayoutBytes = (int64_t) sizeof( RenderLaserFix
 // layout lands values through.
 constexpr TableFixedDst RenderLaserFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderLaser
-    { (uint32_t) __builtin_offsetof( RenderLaser, start ), 0, 0, 0, 0 }, // start
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderLaser, finish ), 0, 0, 0, 0 }, // finish
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderLaser, t ), 0, 0, 0, 0 }, // t
-    { (uint32_t) __builtin_offsetof( RenderLaser, laser_id ), 0, 0, 0, 0 }, // laser_id
-    { (uint32_t) __builtin_offsetof( RenderLaser, laser_type ), 0, 0, 0, 0 }, // laser_type
+    { 0, 0, 0, 0, 0 }, // start
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // finish
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 48, 0, 0, 0, 0 }, // t
+    { 56, 0, 0, 0, 0 }, // laser_id
+    { 60, 0, 0, 0, 0 }, // laser_type
     { 0, 0, 0, 0, 0 }, // Pulse
     { 0, 0, 0, 0, 0 }, // Beam
-    { (uint32_t) __builtin_offsetof( RenderLaser, team ), 0, 0, 0, 0 }, // team
+    { 61, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -17316,10 +17388,15 @@ constexpr TableFixedDst RenderLaserFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderLaserFixedPlan[] = {
-    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderLaserFixedPlanCount = 1;
 constexpr int32_t RenderLaserFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderLaserFixedGuards[] = {
+};
+constexpr int32_t RenderLaserFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -17545,7 +17622,7 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderLaserFixedGuards );
         TableFixedClampKnownRanges( RenderLaserFixedKnownRanges[lineage_at], RenderLaserFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderLaserFixedClamp( values[k], report ) )
@@ -17621,22 +17698,22 @@ constexpr int64_t RenderExplosionFixedLayoutBytes = (int64_t) sizeof( RenderExpl
 // layout lands values through.
 constexpr TableFixedDst RenderExplosionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderExplosion
-    { (uint32_t) __builtin_offsetof( RenderExplosion, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderExplosion, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderExplosion, t ), 0, 0, 0, 0 }, // t
-    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_id ), 0, 0, 0, 0 }, // explosion_id
-    { (uint32_t) __builtin_offsetof( RenderExplosion, parent_object_id ), 0, 0, 0, 0 }, // parent_object_id
-    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_type ), 0, 0, 0, 0 }, // explosion_type
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // t
+    { 64, 0, 0, 0, 0 }, // explosion_id
+    { 68, 0, 0, 0, 0 }, // parent_object_id
+    { 72, 0, 0, 0, 0 }, // explosion_type
     { 0, 0, 0, 0, 0 }, // Small
     { 0, 0, 0, 0, 0 }, // Large
-    { (uint32_t) __builtin_offsetof( RenderExplosion, team ), 0, 0, 0, 0 }, // team
+    { 73, 0, 0, 0, 0 }, // team
     { 0, 0, 0, 0, 0 }, // Red
     { 0, 0, 0, 0, 0 }, // Blue
     { 0, 0, 0, 0, 0 }, // Green
@@ -17652,10 +17729,15 @@ constexpr TableFixedDst RenderExplosionFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry RenderExplosionFixedPlan[] = {
-    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t RenderExplosionFixedPlanCount = 1;
 constexpr int32_t RenderExplosionFixedPlanGuarded = 1;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink RenderExplosionFixedGuards[] = {
+};
+constexpr int32_t RenderExplosionFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -17883,7 +17965,7 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderExplosionFixedGuards );
         TableFixedClampKnownRanges( RenderExplosionFixedKnownRanges[lineage_at], RenderExplosionFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !RenderExplosionFixedClamp( values[k], report ) )

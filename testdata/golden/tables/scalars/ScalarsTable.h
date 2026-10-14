@@ -2339,6 +2339,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2378,6 +2390,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2640,7 +2659,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2654,8 +2673,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -6753,41 +6790,41 @@ constexpr int64_t SimStateFixedLayoutBytes = (int64_t) sizeof( SimStateFixedLayo
 // layout lands values through.
 constexpr TableFixedDst SimStateFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // SimState
-    { (uint32_t) __builtin_offsetof( SimState, tilt ), 0, 0, 0, 0 }, // tilt
-    { (uint32_t) __builtin_offsetof( SimState, angle ), 0, 0, 0, 0 }, // angle
-    { (uint32_t) __builtin_offsetof( SimState, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( SimState, reach ), 0, 0, 0, 0 }, // reach
-    { (uint32_t) __builtin_offsetof( SimState, ticks ), 0, 0, 0, 0 }, // ticks
-    { (uint32_t) __builtin_offsetof( SimState, ratio ), 0, 0, 0, 0 }, // ratio
-    { (uint32_t) __builtin_offsetof( SimState, speed ), 0, 0, 0, 0 }, // speed
-    { (uint32_t) __builtin_offsetof( SimState, span ), 0, 0, 0, 0 }, // span
-    { (uint32_t) __builtin_offsetof( SimState, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( SimState, frames ), 0, 0, 0, 0 }, // frames
-    { (uint32_t) __builtin_offsetof( SimState, flux ), 0, 0, 0, 0 }, // flux
-    { (uint32_t) __builtin_offsetof( SimState, energy ), 0, 0, 0, 0 }, // energy
-    { (uint32_t) __builtin_offsetof( SimState, entity_id ), 0, 0, 0, 0 }, // entity_id
-    { (uint32_t) __builtin_offsetof( SimState, scale ), 0, 0, 0, 0 }, // scale
-    { (uint32_t) __builtin_offsetof( SimState, samples ), (uint32_t) sizeof( int32_t ), 0, 0, 0 }, // samples
+    { 0, 0, 0, 0, 0 }, // tilt
+    { 4, 0, 0, 0, 0 }, // angle
+    { 8, 0, 0, 0, 0 }, // position
+    { 16, 0, 0, 0, 0 }, // reach
+    { 32, 0, 0, 0, 0 }, // ticks
+    { 36, 0, 0, 0, 0 }, // ratio
+    { 40, 0, 0, 0, 0 }, // speed
+    { 48, 0, 0, 0, 0 }, // span
+    { 64, 0, 0, 0, 0 }, // mass
+    { 80, 0, 0, 0, 0 }, // frames
+    { 96, 0, 0, 0, 0 }, // flux
+    { 112, 0, 0, 0, 0 }, // energy
+    { 128, 0, 0, 0, 0 }, // entity_id
+    { 144, 0, 0, 0, 0 }, // scale
+    { 148, 4, 0, 0, 0 }, // samples
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( SimState, weights ), (uint32_t) sizeof( uint16_t ), (uint32_t) __builtin_offsetof( SimState, weights_count ), 1, 0 }, // weights
+    { 160, 2, 168, 1, 0 }, // weights
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( SimState, axes ), (uint32_t) sizeof( int64_t ), 0, 0, 0 }, // axes
+    { 176, 8, 0, 0, 0 }, // axes
     { 0, 0, 0, 0, 0 }, // Axis
     { 0, 0, 0, 0, 0 }, // X
     { 0, 0, 0, 0, 0 }, // Y
     { 0, 0, 0, 0, 0 }, // Z
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( SimState, seeds ), (uint32_t) sizeof( serialize::uint128_t ), (uint32_t) __builtin_offsetof( SimState, seeds_count ), 1, 0 }, // seeds
+    { 208, 16, 240, 1, 0 }, // seeds
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( SimState, pose ), 0, 0, 0, 0 }, // pose
-    { (uint32_t) __builtin_offsetof( Pose, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( Pose, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( Pose, heading ), 0, 0, 0, 0 }, // heading
-    { 0, 0, (uint32_t) __builtin_offsetof( SimState, spawn_present ), 0, 0 }, // spawn ?
-    { (uint32_t) __builtin_offsetof( SimState, spawn ), 0, 0, 0, 0 }, // spawn
-    { (uint32_t) __builtin_offsetof( Pose, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( Pose, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( Pose, heading ), 0, 0, 0, 0 }, // heading
+    { 248, 0, 0, 0, 0 }, // pose
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
+    { 0, 0, 296, 0, 0 }, // spawn ?
+    { 272, 0, 0, 0, 0 }, // spawn
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
 };
 
 // THE IDENTITY PLAN, coalesced out of 27 leaves by the schema compiler —
@@ -6799,23 +6836,28 @@ constexpr TableFixedDst SimStateFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry SimStateFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tilt
-    { 1u, 4u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // angle
-    { 34u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // speed
-    { 38u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // span
-    { 46u, 64u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // mass
-    { 66u, 96u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // flux
-    { 130u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // weights count
-    { 134u, 160u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // weights, whole
-    { 142u, 176u, 24u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // axes, whole
-    { 166u, 240u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // seeds count
-    { 170u, 208u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // seeds, whole
-    { 202u, 248u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
-    { 222u, 296u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn present
-    { 223u, 272u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // x
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tilt
+    { 1u, 4u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // angle
+    { 34u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // speed
+    { 38u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // span
+    { 46u, 64u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // mass
+    { 66u, 96u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // flux
+    { 130u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // weights count
+    { 134u, 160u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // weights, whole
+    { 142u, 176u, 24u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // axes, whole
+    { 166u, 240u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // seeds count
+    { 170u, 208u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // seeds, whole
+    { 202u, 248u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 222u, 296u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn present
+    { 223u, 272u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
 };
 constexpr int32_t SimStateFixedPlanCount = 14;
 constexpr int32_t SimStateFixedPlanGuarded = 14;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink SimStateFixedGuards[] = {
+};
+constexpr int32_t SimStateFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -7069,7 +7111,7 @@ inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uin
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SimStateFixedGuards );
         TableFixedClampKnownRanges( SimStateFixedKnownRanges[lineage_at], SimStateFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !SimStateFixedClamp( values[k], report ) )

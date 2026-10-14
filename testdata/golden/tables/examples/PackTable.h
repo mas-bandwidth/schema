@@ -2478,6 +2478,18 @@ inline bool TableFixedSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
 }
 
+// TableFixedGuardLink is ONE LINK of a guard chain: the offset of the tag byte,
+// the ordinal it must hold, and the width it is compared at. A chain is a
+// CONJUNCTION — every link must hold — and it is laid down OUTERMOST FIRST, so
+// the first link is the outermost union's tag and the last the innermost one
+// (§4.1, §5.8 row 6). The only bound on a chain's length is the layout's 64.
+struct TableFixedGuardLink
+{
+    uint32_t guard = 0;
+    uint64_t arg = 0;
+    uint8_t argw = 1;
+};
+
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
 // entry belongs to an arm, and kTableFixedNoGuard when it does not.
@@ -2517,6 +2529,13 @@ struct TableFixedEntry
     uint32_t guard2 = kTableFixedNoGuard;
     uint64_t arg2 = 0;
     uint8_t argw2 = 1;
+    // guard_count / guard_index ARE THE GUARD CHAIN (§5.8 row 6): when guard_count
+    // is nonzero the entry's conditions are the count links at byte offset
+    // guard_index in the plan's guard pool, OUTERMOST FIRST, and guard/arg and
+    // guard2/arg2 are not used (they are the two-lane spelling of chains of
+    // length one and two). Zero count is "the two inline lanes only".
+    uint32_t guard_count = 0;
+    uint32_t guard_index = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2779,7 +2798,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
                            const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report )
+                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2793,8 +2812,26 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
-        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        if ( p.guard_count > 0 )
+        {
+            // THE POOLED CHAIN (§5.8 row 6): offset+count into a pool of
+            // (guard, arg, argw) links, OUTERMOST FIRST, every link a
+            // CONJUNCTION. A chain past two nested unions rides here whole.
+            // guard_index is a BYTE OFFSET from the pool's base.
+            bool matches = true;
+            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+            }
+            if ( !matches ) { continue; }
+        }
+        else
+        {
+            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+        }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -10121,9 +10158,9 @@ constexpr int64_t GunnerSettingsFixedLayoutBytes = (int64_t) sizeof( GunnerSetti
 // layout lands values through.
 constexpr TableFixedDst GunnerSettingsFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // GunnerSettings
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerSettings, tracking ), 0, 0, 0, 0 }, // tracking
-    { (uint32_t) __builtin_offsetof( GunnerSettings, callsign_length ), 0, (uint32_t) __builtin_offsetof( GunnerSettings, callsign ), 0, 1 }, // callsign
+    { 0, 0, 0, 0, 0 }, // reaction
+    { 4, 0, 0, 0, 0 }, // tracking
+    { 32, 0, 5, 0, 1 }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 3 leaves by the schema compiler —
@@ -10135,12 +10172,17 @@ constexpr TableFixedDst GunnerSettingsFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry GunnerSettingsFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t GunnerSettingsFixedPlanCount = 3;
 constexpr int32_t GunnerSettingsFixedPlanGuarded = 3;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink GunnerSettingsFixedGuards[] = {
+};
+constexpr int32_t GunnerSettingsFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10351,7 +10393,7 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, GunnerSettingsFixedGuards );
         TableFixedClampKnownRanges( GunnerSettingsFixedKnownRanges[lineage_at], GunnerSettingsFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !GunnerSettingsFixedClamp( values[k], report ) )
@@ -10416,16 +10458,16 @@ constexpr int64_t ShipEntryFixedLayoutBytes = (int64_t) sizeof( ShipEntryFixedLa
 // layout lands values through.
 constexpr TableFixedDst ShipEntryFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // ShipEntry
-    { (uint32_t) __builtin_offsetof( ShipEntry, display_name_length ), 0, (uint32_t) __builtin_offsetof( ShipEntry, display_name ), 0, 1 }, // display_name
-    { (uint32_t) __builtin_offsetof( ShipEntry, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( ShipEntry, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( int32_t ), (uint32_t) __builtin_offsetof( ShipEntry, hardpoints_count ), 1, 0 }, // hardpoints
+    { 36, 0, 0, 0, 1 }, // display_name
+    { 40, 0, 0, 0, 0 }, // health
+    { 44, 0, 0, 0, 0 }, // mass
+    { 48, 4, 64, 1, 0 }, // hardpoints
     { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, (uint32_t) __builtin_offsetof( ShipEntry, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( ShipEntry, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerSettings, tracking ), 0, 0, 0, 0 }, // tracking
-    { (uint32_t) __builtin_offsetof( GunnerSettings, callsign_length ), 0, (uint32_t) __builtin_offsetof( GunnerSettings, callsign ), 0, 1 }, // callsign
+    { 0, 0, 104, 0, 0 }, // gunner ?
+    { 68, 0, 0, 0, 0 }, // gunner
+    { 0, 0, 0, 0, 0 }, // reaction
+    { 4, 0, 0, 0, 0 }, // tracking
+    { 32, 0, 5, 0, 1 }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
@@ -10437,17 +10479,22 @@ constexpr TableFixedDst ShipEntryFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry ShipEntryFixedPlan[] = {
-    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 64u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
+    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 64u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t ShipEntryFixedPlanCount = 8;
 constexpr int32_t ShipEntryFixedPlanGuarded = 8;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink ShipEntryFixedGuards[] = {
+};
+constexpr int32_t ShipEntryFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10666,7 +10713,7 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ShipEntryFixedGuards );
         TableFixedClampKnownRanges( ShipEntryFixedKnownRanges[lineage_at], ShipEntryFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !ShipEntryFixedClamp( values[k], report ) )
@@ -10729,13 +10776,13 @@ constexpr int64_t GlobalSettingsFixedLayoutBytes = (int64_t) sizeof( GlobalSetti
 // layout lands values through.
 constexpr TableFixedDst GlobalSettingsFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // GlobalSettings
-    { (uint32_t) __builtin_offsetof( GlobalSettings, tick_rate ), 0, 0, 0, 0 }, // tick_rate
-    { (uint32_t) __builtin_offsetof( GlobalSettings, difficulty ), 0, 0, 0, 0 }, // difficulty
+    { 0, 0, 0, 0, 0 }, // tick_rate
+    { 4, 0, 0, 0, 0 }, // difficulty
     { 0, 0, 0, 0, 0 }, // Easy
     { 0, 0, 0, 0, 0 }, // Normal
     { 0, 0, 0, 0, 0 }, // Hard
-    { (uint32_t) __builtin_offsetof( GlobalSettings, build_note_length ), 0, (uint32_t) __builtin_offsetof( GlobalSettings, build_note ), 0, 1 }, // build_note
-    { (uint32_t) __builtin_offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( float ), 0, 0, 0 }, // spawn_delays
+    { 56, 0, 5, 0, 1 }, // build_note
+    { 60, 4, 0, 0, 0 }, // spawn_delays
     { 0, 0, 0, 0, 0 }, // element
 };
 
@@ -10748,12 +10795,17 @@ constexpr TableFixedDst GlobalSettingsFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry GlobalSettingsFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tick_rate
-    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // build_note
-    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_delays, whole
+    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tick_rate
+    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
+    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
 };
 constexpr int32_t GlobalSettingsFixedPlanCount = 3;
 constexpr int32_t GlobalSettingsFixedPlanGuarded = 3;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink GlobalSettingsFixedGuards[] = {
+};
+constexpr int32_t GlobalSettingsFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10969,7 +11021,7 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, GlobalSettingsFixedGuards );
         TableFixedClampKnownRanges( GlobalSettingsFixedKnownRanges[lineage_at], GlobalSettingsFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !GlobalSettingsFixedClamp( values[k], report ) )
@@ -11071,50 +11123,50 @@ constexpr int64_t PackConfigFixedLayoutBytes = (int64_t) sizeof( PackConfigFixed
 // layout lands values through.
 constexpr TableFixedDst PackConfigFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // PackConfig
-    { (uint32_t) __builtin_offsetof( PackConfig, version ), 0, 0, 0, 0 }, // version
-    { (uint32_t) __builtin_offsetof( PackConfig, global ), 0, 0, 0, 0 }, // global
-    { (uint32_t) __builtin_offsetof( GlobalSettings, tick_rate ), 0, 0, 0, 0 }, // tick_rate
-    { (uint32_t) __builtin_offsetof( GlobalSettings, difficulty ), 0, 0, 0, 0 }, // difficulty
+    { 0, 0, 0, 0, 0 }, // version
+    { 4, 0, 0, 0, 0 }, // global
+    { 0, 0, 0, 0, 0 }, // tick_rate
+    { 4, 0, 0, 0, 0 }, // difficulty
     { 0, 0, 0, 0, 0 }, // Easy
     { 0, 0, 0, 0, 0 }, // Normal
     { 0, 0, 0, 0, 0 }, // Hard
-    { (uint32_t) __builtin_offsetof( GlobalSettings, build_note_length ), 0, (uint32_t) __builtin_offsetof( GlobalSettings, build_note ), 0, 1 }, // build_note
-    { (uint32_t) __builtin_offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( float ), 0, 0, 0 }, // spawn_delays
+    { 56, 0, 5, 0, 1 }, // build_note
+    { 60, 4, 0, 0, 0 }, // spawn_delays
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( PackConfig, ships ), (uint32_t) sizeof( ShipEntry ), 0, 0, 0 }, // ships
+    { 76, 108, 0, 0, 0 }, // ships
     { 0, 0, 0, 0, 0 }, // ShipType
     { 0, 0, 0, 0, 0 }, // Fighter
     { 0, 0, 0, 0, 0 }, // Bomber
     { 0, 0, 0, 0, 0 }, // Scout
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( ShipEntry, display_name_length ), 0, (uint32_t) __builtin_offsetof( ShipEntry, display_name ), 0, 1 }, // display_name
-    { (uint32_t) __builtin_offsetof( ShipEntry, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( ShipEntry, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( int32_t ), (uint32_t) __builtin_offsetof( ShipEntry, hardpoints_count ), 1, 0 }, // hardpoints
+    { 36, 0, 0, 0, 1 }, // display_name
+    { 40, 0, 0, 0, 0 }, // health
+    { 44, 0, 0, 0, 0 }, // mass
+    { 48, 4, 64, 1, 0 }, // hardpoints
     { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, (uint32_t) __builtin_offsetof( ShipEntry, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( ShipEntry, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerSettings, tracking ), 0, 0, 0, 0 }, // tracking
-    { (uint32_t) __builtin_offsetof( GunnerSettings, callsign_length ), 0, (uint32_t) __builtin_offsetof( GunnerSettings, callsign ), 0, 1 }, // callsign
-    { (uint32_t) __builtin_offsetof( PackConfig, thresholds ), (uint32_t) sizeof( int32_t ), 0, 0, 0 }, // thresholds
+    { 0, 0, 104, 0, 0 }, // gunner ?
+    { 68, 0, 0, 0, 0 }, // gunner
+    { 0, 0, 0, 0, 0 }, // reaction
+    { 4, 0, 0, 0, 0 }, // tracking
+    { 32, 0, 5, 0, 1 }, // callsign
+    { 400, 4, 0, 0, 0 }, // thresholds
     { 0, 0, 0, 0, 0 }, // Difficulty
     { 0, 0, 0, 0, 0 }, // Easy
     { 0, 0, 0, 0, 0 }, // Normal
     { 0, 0, 0, 0, 0 }, // Hard
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( PackConfig, reserves ), (uint32_t) sizeof( ShipEntry ), (uint32_t) __builtin_offsetof( PackConfig, reserves_count ), 1, 0 }, // reserves
+    { 412, 108, 736, 1, 0 }, // reserves
     { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( ShipEntry, display_name_length ), 0, (uint32_t) __builtin_offsetof( ShipEntry, display_name ), 0, 1 }, // display_name
-    { (uint32_t) __builtin_offsetof( ShipEntry, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( ShipEntry, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( int32_t ), (uint32_t) __builtin_offsetof( ShipEntry, hardpoints_count ), 1, 0 }, // hardpoints
+    { 36, 0, 0, 0, 1 }, // display_name
+    { 40, 0, 0, 0, 0 }, // health
+    { 44, 0, 0, 0, 0 }, // mass
+    { 48, 4, 64, 1, 0 }, // hardpoints
     { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, (uint32_t) __builtin_offsetof( ShipEntry, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( ShipEntry, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerSettings, tracking ), 0, 0, 0, 0 }, // tracking
-    { (uint32_t) __builtin_offsetof( GunnerSettings, callsign_length ), 0, (uint32_t) __builtin_offsetof( GunnerSettings, callsign ), 0, 1 }, // callsign
+    { 0, 0, 104, 0, 0 }, // gunner ?
+    { 68, 0, 0, 0, 0 }, // gunner
+    { 0, 0, 0, 0, 0 }, // reaction
+    { 4, 0, 0, 0, 0 }, // tracking
+    { 32, 0, 5, 0, 1 }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 61 leaves by the schema compiler —
@@ -11126,62 +11178,67 @@ constexpr TableFixedDst PackConfigFixedDst[] = {
 // FIRST, then the arms: the entries that are nearly all of a plan never
 // test a guard at all.
 constexpr TableFixedEntry PackConfigFixedPlan[] = {
-    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // version
-    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // build_note
-    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_delays, whole
-    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 137u, 180u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
-    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 235u, 288u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
-    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 333u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
-    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // thresholds, whole
-    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reserves count
-    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 447u, 516u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
-    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 545u, 624u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
-    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // display_name
-    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
-    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints count
-    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // hardpoints, whole
-    { 643u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
-    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
-    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // tracking
-    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // callsign
+    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // version
+    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
+    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
+    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 137u, 180u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 235u, 288u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 333u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thresholds, whole
+    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reserves count
+    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 447u, 516u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 545u, 624u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
+    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
+    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
+    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
+    { 643u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
+    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
+    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t PackConfigFixedPlanCount = 53;
 constexpr int32_t PackConfigFixedPlanGuarded = 53;
+// THE GUARD POOL: the (guard, arg, argw) links every chain above points
+// into, OUTERMOST FIRST (§5.8 row 6).
+constexpr TableFixedGuardLink PackConfigFixedGuards[] = {
+};
+constexpr int32_t PackConfigFixedGuardCount = 0;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -11454,7 +11511,7 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
         // back before the refusal returns, so the refusing record moves none.
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PackConfigFixedGuards );
         TableFixedClampKnownRanges( PackConfigFixedKnownRanges[lineage_at], PackConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !PackConfigFixedClamp( values[k], report ) )
