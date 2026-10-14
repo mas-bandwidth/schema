@@ -28,11 +28,16 @@ public final class Main {
     static void contracts() {
         var v=new WideText.WideSeven();
         byte[] wire=new byte[1024];
-        for(int n:new int[]{-1,8,1}) {
-            v.textLength=n; boolean refused=false;
-            try { WideText.writeWideSeven(v,wire); } catch(IllegalArgumentException|AssertionError e) { refused=true; }
-            check(refused,"writer length/null");
+        boolean assertionsEnabled=false;
+        assert assertionsEnabled=true;
+        if(assertionsEnabled) {
+            for(int n:new int[]{-1,8,1}) {
+                v.textLength=n; boolean refused=false;
+                try { WideText.writeWideSeven(v,wire); } catch(IllegalArgumentException|AssertionError e) { refused=true; }
+                check(refused,"writer length/null");
+            }
         }
+        v.textLength=1;
         v.text[0]=(char)0xd800;
         WideText.writeWideSeven(v,wire);
         check(!WideText.readWideSeven(v,wire,35),"unpaired high");

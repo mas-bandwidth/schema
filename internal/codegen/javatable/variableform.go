@@ -69,6 +69,7 @@ public int unknown;
         public final long[] ids;
         public final Report report;
         public boolean fail;
+        public boolean rootBody;
 
         public Reader(byte[] buf, long[] ids, Report report) {
             this.buf = buf;
@@ -292,6 +293,7 @@ public int unknown;
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
+        r.rootBody = true;
         return r;
     }
 
@@ -424,6 +426,7 @@ public int unknown;
         public String value;
         public byte[] bytes;
         public Object table;
+        public boolean textMalformed;
         public NodeRecord(long typeId, byte[] body) { this.typeId = typeId; this.body = body; }
     }
 
@@ -471,6 +474,7 @@ public int unknown;
                 if (!textValid(rec.body, 0, rec.body.length)) {
                     r.report.malformed = true;
                     rec.typeId = 0;
+                    rec.textMalformed = true;
                 } else {
                     rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
                 }
@@ -1346,6 +1350,13 @@ func variableDefault(f *ir.Field) string {
 	if f.Type.Pointer {
 		return "null"
 	}
+	if f.Type.Kind == ir.TBytes {
+		vals := make([]string, len(f.DefBytes))
+		for i, value := range f.DefBytes {
+			vals[i] = fmt.Sprintf("(byte)%d", value)
+		}
+		return "new byte[]{" + strings.Join(vals, ",") + "}"
+	}
 	if f.HasDefault {
 		switch f.Type.Kind {
 		case ir.TBool:
@@ -1532,7 +1543,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, false, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
+	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	b.WriteString("                else { report.malformed = true; return false; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return false;\n")
@@ -1651,7 +1662,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "                    }\n")
 	fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
 	fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
-	fmt.Fprintf(&b, "                } else {\n")
+	fmt.Fprintf(&b, "                } else if (!rec.textMalformed) { // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
 	fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
 	fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
 	fmt.Fprintf(&b, "                        report.unknown++;\n")
@@ -2078,6 +2089,8 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        %sVariable.jsonFields(b, graph, v.%s, depth);\n", target.Name, m)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "        TableJson.esc(b,java.util.Base64.getEncoder().encodeToString(v.%s));\n", m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        TableJson.esc(b, v.%s);\n", m)
 	case f.Type.Kind == ir.TBool:
@@ -2164,6 +2177,8 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                if (in.peek() == '{' ) {\n")
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
@@ -2213,7 +2228,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 17) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (!ar.fail && n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
 		fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    v.%sIdx.add(ar.leb());\n", m)
@@ -2230,13 +2245,22 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
 		fmt.Fprintf(b, "                        if (ek == 13) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
-		fmt.Fprintf(b, "                            if (!ar.fail && n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		if retain {
+			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
+		}
 		fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
 		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
-		fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		if retain {
+			fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
+			fmt.Fprintf(b, "                                    %sRetain.readFieldsRetain(er, elem, nt, retain, report, path, depth + 1);\n", target.Name)
+		} else {
+			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		}
+		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
 		fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
@@ -2253,9 +2277,19 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                if (kind == 13) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader br = r.body();\n")
 		fmt.Fprintf(b, "                    if (br != null) {\n")
-		fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		fmt.Fprintf(b, "                        v.%s = new %sVariable.Value();\n", m, target.Name)
+		if retain {
+			fmt.Fprintf(b, "                        retain.discardField(path, depth, %d); path[2 * depth] = %d; path[2 * depth + 1] = 0;\n", ordinal, ordinal)
+			fmt.Fprintf(b, "                        %sRetain.readFieldsRetain(br, v.%s, nt, retain, report, path, depth + 1);\n", target.Name, m)
+		} else {
+			fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		}
+		fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
+	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = \"\"; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -2540,6 +2574,8 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "                w.putBytes(sw.buf, 0, sw.off);\n")
 		fmt.Fprintf(b, "            } else { w.ids.count = mark; }\n")
 		fmt.Fprintf(b, "        }\n")
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "        if(v.%s!=null&&!java.util.Arrays.equals(v.%s,%s)){w.putLeb(w.ref(F_%s));w.put8(14);TableVariable.Writer aw=w.sub(new byte[v.%s.length+16]);aw.put8(6);aw.putLeb(v.%s.length);aw.putBytes(v.%s,0,v.%s.length);w.putLeb(aw.off);w.putBytes(aw.buf,0,aw.off);}\n", m, m, variableDefault(f), m, m, m, m, m)
 	case f.Type.Kind == ir.TString:
 		def := variableDefault(f)
 		if def == "\"\"" {

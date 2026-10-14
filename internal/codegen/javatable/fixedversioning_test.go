@@ -45,6 +45,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
@@ -105,6 +106,93 @@ var sameHashRows = map[string]bool{
 	"field_undeprecate":  true,
 }
 
+// splitManifest preserves quoted and escaped delimiters in the oracle's text.
+func splitManifest(text string, delimiter rune) []string {
+	var out []string
+	start := 0
+	quoted, escaped := false, false
+	for i, r := range text {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '"' {
+			quoted = !quoted
+			continue
+		}
+		separate := r == delimiter
+		if delimiter == 0 {
+			separate = unicode.IsSpace(r)
+		}
+		if !quoted && separate {
+			if i > start {
+				out = append(out, text[start:i])
+			}
+			start = i + len(string(r))
+		}
+	}
+	if start < len(text) {
+		out = append(out, text[start:])
+	}
+	return out
+}
+
+// manifestRow reads one reference file's fields without assuming an ordering
+// or inventing an expected value (FIXED-FORM-ALGORITHM §5.9, manifest oracle).
+func manifestRows(corpus string) ([]map[string]string, error) {
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return nil, fmt.Errorf("the corpus manifest is not readable: %w", err)
+	}
+	var rows []map[string]string
+	for line := range strings.SplitSeq(string(data), "\n") {
+		fields := map[string]string{}
+		for _, token := range splitManifest(line, 0) {
+			if key, value, ok := strings.Cut(token, "="); ok {
+				fields[key] = value
+			}
+		}
+		if fields["file"] != "" {
+			rows = append(rows, fields)
+		}
+	}
+	return rows, nil
+}
+func manifestRow(corpus, file string) (map[string]string, error) {
+	rows, err := manifestRows(corpus)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row["file"] == file {
+			return row, nil
+		}
+	}
+	return nil, fmt.Errorf("the manifest carries no row for %s", file)
+}
+
+func manifestEntries(corpus, file, section string) (map[string]string, error) {
+	row, err := manifestRow(corpus, file)
+	if err != nil {
+		return nil, err
+	}
+	text, ok := row[section]
+	if !ok {
+		return nil, fmt.Errorf("manifest %s has no %s (refused=%s)", file, section, row["refused"])
+	}
+	values := map[string]string{}
+	for _, pair := range splitManifest(text, ',') {
+		if key, value, ok := strings.Cut(pair, "="); ok {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
+
 // manifestFloatBits is the FLOAT half of the corpus oracle (schema#1164,
 // Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
 // read an old writer"). Every compressed-float row on every leg asserted a
@@ -121,38 +209,16 @@ var sameHashRows = map[string]bool{
 // float oracle that can degrade to "not checked" is the vacuity this repairs.
 func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	entries, err := manifestEntries(corpus, file, section)
 	if err != nil {
-		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+		t.Fatal(err)
 	}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		var values string
-		named := false
-		for field := range strings.FieldsSeq(line) {
-			k, v, ok := strings.Cut(field, "=")
-			if !ok {
-				continue
-			}
-			switch k {
-			case "file":
-				named = v == file
-			case section:
-				values = v
-			}
+	for key, value := range entries {
+		if key == path || strings.HasPrefix(key, path+"@") {
+			return parseDumpedFloatBits(t, value)
 		}
-		if !named {
-			continue
-		}
-		for pair := range strings.SplitSeq(values, ",") {
-			k, v, ok := strings.Cut(pair, "=")
-			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
-				continue
-			}
-			return parseDumpedFloatBits(t, v)
-		}
-		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
 	}
-	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	t.Fatalf("the manifest's %s for %s carries no %s - the oracle and bytes have come apart", section, file, path)
 	return 0
 }
 

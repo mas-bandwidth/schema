@@ -83,9 +83,21 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        retain.used = 0; retain.idUsed = 0;\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
+	b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
+	b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+	b.WriteString("                if (!rec.textMalformed && rec.typeId != TableVariable.STRING_ID && rec.typeId != TableVariable.BYTES_ID) {\n")
+	fmt.Fprintf(&b, "                    rec.table = %sVariable.createNode(rec.typeId);\n", st.Name)
+	b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
+	b.WriteString("                }\n            }\n")
+	b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
+	fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }\n", st.Name)
+	b.WriteString("            }\n        }\n")
 	fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 	b.WriteString("        if (report.refused) { return null; }\n")
 	fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
+	b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
+	fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
+	b.WriteString("        }\n")
 	b.WriteString("        return v;\n")
 	b.WriteString("    }\n\n")
 
@@ -112,7 +124,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		writeFieldRead(&b, u, st, f, true, i)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
-	b.WriteString("                if (nt != null) { r.skip(kind); }\n")
+	b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	b.WriteString("                else { report.malformed = true; return; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
 	b.WriteString("                report.malformed = true; return;\n")
@@ -338,6 +350,31 @@ public final class TableRetain {
     public int idCapacity;
     public int used;
     public int idUsed;
+
+    // §6.6: an accepted replacement discards the old body's retained tail,
+    // including descendants, without moving either cumulative report counter.
+    void discardField(int[] path, int depth, int field) {
+        int write = 0;
+        for (int at = 0; at < used;) {
+            int len = (bytes[at]&255)|((bytes[at+1]&255)<<8)|((bytes[at+2]&255)<<16)|((bytes[at+3]&255)<<24);
+            int d = bytes[at+4]&255;
+            boolean match = d > depth;
+            for (int k = 0; match && k < depth; k++) {
+                int p = at+5+8*k;
+                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
+                int i=(bytes[p+4]&255)|((bytes[p+5]&255)<<8)|((bytes[p+6]&255)<<16)|((bytes[p+7]&255)<<24);
+                match = f==path[2*k] && i==path[2*k+1];
+            }
+            if (match) {
+                int p=at+5+8*depth;
+                int f=(bytes[p]&255)|((bytes[p+1]&255)<<8)|((bytes[p+2]&255)<<16)|((bytes[p+3]&255)<<24);
+                match=f==field;
+            }
+            if (!match) { System.arraycopy(bytes,at,bytes,write,len); write+=len; }
+            at+=len;
+        }
+        used=write;
+    }
 
     public TableRetain(int byteCapacity, int idCapacity) {
         this.bytes = new byte[byteCapacity];
