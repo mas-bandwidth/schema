@@ -571,6 +571,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	for _, l := range pool {
 		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
 	}
+	if len(pool) == 0 {
+		// AN EMPTY POOL STILL DECLARES ONE LINK: `T x[] = {}` is an array of
+		// size 0, which MSVC refuses (C2466) and ISO C++ does not allow. No
+		// chain points here (every entry's count is 0), and the count below
+		// stays 0, so the placeholder is never read.
+		g.pf("    { 0u, 0u, 0 }, // placeholder: no chain points into an empty pool\n")
+	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedGuardCount = %d;\n\n", st.Name, len(pool))
 
