@@ -87,7 +87,8 @@ function TableVariableSameBytes(a, b) {
 
 // THE LINK: each descriptor learns its fields by id and by text key, and each
 // table reference its codec, once, when the module loads.
-function TableVariableLink(codecs) {
+function TableVariableLink(codecs, unions) {
+  TableVariableLinkUnions(codecs, unions);
   for (const name of Object.keys(codecs)) {
     const c = codecs[name];
     c.byId = new Map();
@@ -96,8 +97,7 @@ function TableVariableLink(codecs) {
       c.byId.set(fd.id, fd);
       c.byKey.set(fd.key, fd);
       fd.q = TableVariableJsonString(fd.key);
-      if (fd.t !== undefined) { fd.c = codecs[fd.t]; }
-      if (fd.e !== undefined && fd.e.t !== undefined) { fd.e.c = codecs[fd.e.t]; }
+      TableVariableLinkDesc(fd, codecs, unions);
     }
   }
   for (const name of Object.keys(codecs)) {
@@ -131,30 +131,46 @@ class TableVariableNodes {
 // order: fields in declaration order, array elements in index order, a nested
 // table or a table element descended in place
 function TableVariableEdges(c, v, out) {
-  for (const fd of c.fields) {
-    const val = v[fd.n];
-    switch (fd.s) {
-      case "sblob": case "bblob":
-        if (val !== null) { out.push({ blob: true, fd, holder: v, val }); }
-        break;
-      case "ptr":
-        if (val !== null) { out.push({ blob: false, c: fd.c, val }); }
-        break;
-      case "tab":
-        TableVariableEdges(fd.c, val, out);
-        break;
-      case "arr": {
-        const n = TableVariableCount(fd, val);
-        if (fd.e.s === "ptr") {
-          for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
-        } else if (fd.e.s === "tab") {
-          for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out); }
-        }
-        break;
+  for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out); }
+  return out;
+}
+
+// one field's edges, read at v[fd.n]: an absent optional has none (§2.3), a
+// map's are its entries' in key order (§2.8), a union's its set arm's (§2.6)
+function TableVariableFieldEdges(fd, v, out) {
+  const val = v[fd.n];
+  if (fd.opt && val === null) { return; }
+  switch (fd.s) {
+    case "sblob": case "bblob":
+      if (val !== null) { out.push({ blob: true, fd, holder: v, val }); }
+      break;
+    case "ptr":
+      if (val !== null) { out.push({ blob: false, c: fd.c, val }); }
+      break;
+    case "tab":
+      TableVariableEdges(fd.c, val, out);
+      break;
+    case "map":
+      for (const e of TableVariableMapEntries(fd, val)) { TableVariableEdges(fd.c, e, out); }
+      break;
+    case "union":
+      TableVariableUnionEdges(fd.u, val, out);
+      break;
+    case "keyed":
+      if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out); } }
+      break;
+    case "arr": {
+      const n = TableVariableCount(fd, val);
+      if (fd.e.s === "ptr") {
+        for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
+      } else if (fd.e.s === "tab") {
+        for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out); }
+      } else if (fd.e.s === "union") {
+        for (let i = 0; i < n; i++) { TableVariableUnionEdges(fd.e.u, val[i], out); }
       }
+      break;
     }
   }
-  return out;
 }
 
 function TableVariableNumber(c, root) {
@@ -210,7 +226,7 @@ function TableVariableWriteInt(w, width, v) {
 // an enum value's reference: the variant name's id, 0 for None, and -1 for a
 // value no variant names, which the save refuses (§5)
 function TableVariableEnumRef(e, ids, val) {
-  if (val === null) { return 0; }
+  if (val === null || val === "None") { return 0; }
   for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
   return -1;
 }
@@ -237,7 +253,20 @@ function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
 // table nothing either.
 function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
+  if (fd.opt) {
+    // ABSENT IS NOT WRITTEN; PRESENT ALWAYS RIDES (§2.3)
+    if (val === null) { return true; }
+    return TableVariableWritePresent(fd, w, ids, nodes, v, retain, path);
+  }
   switch (fd.s) {
+    case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
+    case "keyed": return TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path);
+    case "union":
+      // None elides: the absence of the field is the None (§3)
+      if (val === null) { return true; }
+      w.leb(ids.ref(fd.id));
+      w.u8(15);
+      return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
     case "bool":
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); }
       return true;
@@ -340,6 +369,10 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
       return true;
     }
     case "ptr": w.leb(val === null ? 0 : nodes.index.get(val)); return true;
+    case "union":
+      // a None element rides as the single zero byte: position is identity (§3)
+      if (val === null) { w.leb(0); return true; }
+      return TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
     case "tab": {
       const body = new TableVariableWriter();
       path.push({ o: fd.o, i: i });
@@ -359,6 +392,16 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null).
 function TableVariableSave(c, v, retain, report) {
+  const outer = TableVariableEntryCache;
+  TableVariableEntryCache = new Map();
+  try {
+    return TableVariableSaveWalk(c, v, retain, report);
+  } finally {
+    TableVariableEntryCache = outer;
+  }
+}
+
+function TableVariableSaveWalk(c, v, retain, report) {
   const nodes = TableVariableNumber(c, v);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
@@ -440,7 +483,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
-  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [] };
+  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
   if (raw !== null) {
     const place = c.place;
     for (const rec of raw) {
@@ -525,6 +568,14 @@ function TableVariableResolve(st, report) {
       }
     }
   }
+  // a map's entries resolved in place: each Map is built again from them, so a
+  // pointer or a blob an entry's value holds lands in the Map (§2.8, §3.1)
+  if (st.maps !== undefined) {
+    for (const { m, ents } of st.maps) {
+      m.clear();
+      for (const e of ents) { m.set(e.key, e.value); }
+    }
+  }
 }
 
 // ONE BODY (§3, §4): fields by id in any order, a field this table cannot name
@@ -569,7 +620,8 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
         const x = TableVariableScalar(r, fd, kind, report);
         if (x === undefined) { return false; }
         v[fd.n] = x;
-        report.widened++;
+        // a map entry's KEY widening is the map's one count (mapField)
+        if (!(c.entry && fd.n === "key")) { report.widened++; }
         continue;
       }
       // the escape kind 31 and the payload-free kind 32 at a named position take
@@ -579,6 +631,8 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       continue;
     }
     if (!TableVariableReadField(fd, r, table, v, report, st, retain, path)) { return false; }
+    // the field rode, so an optional is PRESENT; a None it holds is "None" (§2.3)
+    if (fd.opt && fd.s === "enum" && v[fd.n] === null) { v[fd.n] = "None"; }
   }
 }
 
@@ -686,6 +740,16 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
     }
     case "bytes": case "arr":
       return TableVariableReadArray(fd, r, table, v, report, st, retain, path);
+    case "map":
+      return TableVariableReadMap(fd, r, table, v, report, st, retain, path);
+    case "keyed":
+      return TableVariableReadKeyed(fd, r, table, v, report, st, retain, path);
+    case "union": {
+      const x = TableVariableUnionRead(fd.u, r, table, report, st, retain, path, fd.o);
+      if (x === undefined) { return false; }
+      v[fd.n] = x;
+      return true;
+    }
   }
   return false;
 }
@@ -699,18 +763,34 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
+  TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path);
+  r.at = end;
+  return true;
+}
+
+// AN ARRAY BODY between r.at and end — a FIELD's after its own L, an ARM's
+// under the arm's L (decode.go arrayBody). It answers whether the body was
+// SELECTED: false for a damaged count or a foreign element kind, where an arm
+// holding it reads None. A present optional array that rode with its own
+// element kind is present even when its body is inert (§2.3).
+function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
+  const L = end - r.at;
   if (L >= 2) {
     const sub = new TableVariableReader(r.b, r.at, end);
     const ek = sub.u8();
     const count = sub.leb();
-    if (sub.bad) { report.malformed = true; r.at = end; return true; }
+    if (sub.bad) {
+      report.malformed = true;
+      if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
+      return false;
+    }
     if (ek !== fd.ek) {
-      if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
+      if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; return false; }
       report.widened++;
     }
     let keep = count;
     if (fd.list) {
-      if (count > 0x7fffffff) { v[fd.n] = []; report.malformed = true; r.at = end; return true; }
+      if (count > 0x7fffffff) { v[fd.n] = []; report.malformed = true; return false; }
     } else if (count > fd.bound) {
       keep = fd.bound;
       report.clamped++;
@@ -730,13 +810,21 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
       v[fd.n] = out;
     }
   }
-  r.at = end;
+  if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
   return true;
 }
 
 function TableVariableReadElement(fd, r, table, out, report, st, retain, path, ek) {
   const e = fd.e, i = out.length;
   switch (e.s) {
+    case "union": {
+      // an ARM HEADER in its place (decode.go element): null for None
+      if (r.at >= r.end) { report.malformed = true; return false; }
+      const x = TableVariableUnionRead(e.u, r, table, report, st, retain, path, fd.o);
+      if (x === undefined) { return false; }
+      out.push(x);
+      return true;
+    }
     case "ptr": {
       const index = r.leb();
       if (r.bad) { report.malformed = true; return false; }
@@ -864,6 +952,16 @@ function TableVariableTextCount(c, root, g) {
 }
 
 function TableVariableToJson(c, v) {
+  const outer = TableVariableEntryCache;
+  TableVariableEntryCache = new Map();
+  try {
+    return TableVariableToJsonWalk(c, v);
+  } finally {
+    TableVariableEntryCache = outer;
+  }
+}
+
+function TableVariableToJsonWalk(c, v) {
   const g = { count: new Map(), labels: new Map(), next: 0, blobs: new Map() };
   if (!TableVariableTextCount(c, v, g)) { return null; }
   const out = [];
@@ -885,6 +983,8 @@ function TableVariableJsonValue(c, v, depth, g, out) {
 function TableVariableJsonFields(c, v, depth, g, out, state) {
   const ind = "\n" + "  ".repeat(depth + 1);
   for (const fd of c.fields) {
+    // an ABSENT optional writes no key: the absent key is the absence (§16.2)
+    if (fd.opt && v[fd.n] === null) { continue; }
     out.push(state.any ? "," : "{");
     state.any = true;
     out.push(ind + fd.q + ": ");
@@ -927,6 +1027,8 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       return true;
     case "str": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
+    case "map": return TableVariableJsonMap(fd, val, depth, g, out);
+    case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
       const n = TableVariableCount(fd, val);
       if (n === 0) { out.push("[]"); return true; }
@@ -948,8 +1050,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
   switch (d.s) {
     case "ptr": return TableVariableJsonPointer(d.c, val, depth, g, out);
     case "tab": return TableVariableJsonValue(d.c, val, depth, g, out);
+    case "union": return TableVariableJsonUnion(d.u, val, depth, g, out);
     case "enum":
-      if (val === null) { out.push("\"None\""); return true; }
+      if (val === null || val === "None") { out.push("\"None\""); return true; }
       for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "bool": out.push(val ? "true" : "false"); return true;
@@ -1207,14 +1310,22 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       if (seen.has(fd)) { report.duplicate++; }
       seen.add(fd);
       const shape = inp.shape();
-      if (shape === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+      if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+        // null is the ABSENCE: an optional reads absent, a pointer null (§16.2)
         if (!inp.literal("null")) { return false; }
         v[fd.n] = null;
-      } else if (shape !== fd.js) {
-        report.kindMismatch++;
-        if (!inp.skip(depth + 1, graph)) { return false; }
-      } else if (!TableVariableTextField(fd, inp, v, depth, graph, report)) {
-        return false;
+      } else {
+        // PRESENCE OF THE KEY IS PRESENCE (§16.2): an optional whose key is
+        // here is present, at its default until a value is placed — a value of
+        // the wrong shape included
+        if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
+        if (shape !== fd.js) {
+          report.kindMismatch++;
+          if (!inp.skip(depth + 1, graph)) { return false; }
+        } else if (!TableVariableTextField(fd, inp, v, depth, graph, report)) {
+          return false;
+        }
+        if (fd.opt && fd.s === "enum" && v[fd.n] === null) { v[fd.n] = "None"; }
       }
     }
     const ch = inp.peek();
@@ -1290,6 +1401,8 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       return true;
     }
     case "arr": return TableVariableTextArray(fd, inp, v, depth, graph, report);
+    case "map": return TableVariableTextMap(fd, inp, v, depth, graph, report);
+    case "keyed": return TableVariableTextKeyed(fd, inp, v, depth, graph, report);
   }
   return TableVariableTextScalar(fd, inp, v, fd.n, depth, graph, report);
 }
@@ -1390,6 +1503,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
 function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
   switch (d.s) {
     case "ptr": return TableVariableTextPointer(d, inp, holder, key, depth, graph, report);
+    case "union": return TableVariableTextUnion(d, inp, holder, key, depth, graph, report);
     case "tab": {
       const inst = d.c.make();
       holder[key] = inst;

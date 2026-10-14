@@ -136,6 +136,7 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.emitRuntime()
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
+	g.pf("%s", jsVariableArmsRuntime)
 	g.pf("%s", jsVariableTextRuntime)
 	g.emitDescriptors(closure)
 	for _, st := range closure {
@@ -569,6 +570,18 @@ func (g *variableGen) emitTableClass(st *ir.Struct) {
 // defaultExpr is a field's declared default in JavaScript storage.
 func (g *variableGen) defaultExpr(f *ir.Field) string {
 	switch {
+	case f.Type.Optional:
+		// ABSENT is null (docs/SPEC-TABLES.md §2.3): presence is the value
+		return "null"
+	case f.IsMap():
+		// a map is a JavaScript Map from key to value (§2.8)
+		return "new Map()"
+	case unionOf(f) != nil && f.Array == ir.ArrayNone:
+		// None is null; an arm is { arm: "<name>", value } (§2.6)
+		return "null"
+	case f.KeyEnum != "":
+		// one slot per keyed variant, each at the element's default (§2.4)
+		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -592,6 +605,30 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return floatDefault(f)
 	}
 	return intDefault(f)
+}
+
+// elemDefaultExpr is one keyed slot's declared default: the field's own
+// default, which every slot holds until a value is placed (§2.4).
+func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
+	if tableOf(f) != nil {
+		return "new " + tableOf(f).Name + "()"
+	}
+	plain := *f
+	plain.KeyEnum, plain.KeyEnumRef = "", nil
+	plain.Array, plain.ArrayBound = ir.ArrayNone, 0
+	return g.defaultExpr(&plain)
+}
+
+// unionOf returns the union a field names — as a field or as an array's
+// element — or nil.
+func unionOf(f *ir.Field) *ir.Union {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	if un, ok := f.Type.Ref.(*ir.Union); ok {
+		return un
+	}
+	return nil
 }
 
 // jsStr renders a JavaScript string literal: JSON's spelling, which is a
@@ -670,6 +707,7 @@ func intDefault(f *ir.Field) string {
 // the node types a load rooted at it can PLACE — the tables a pointer below it
 // targets and the blob kinds below it (decodenodes.go's placeable set).
 func (g *variableGen) emitCodecs(closure []*ir.Struct) {
+	g.emitUnionDescriptors(closure)
 	g.pf("const TableVariableCodecs = {\n")
 	for _, st := range closure {
 		g.pf("  %s: {\n", st.Name)
@@ -677,6 +715,9 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		// a map's generated entry (§2.8): its key's widening is the MAP's one
+		// count, never the entry's (internal/tablewire bodyAt)
+		g.pf("    entry: %v,\n", st.IsMapEntry())
 		g.pf("    fields: [\n")
 		for i, f := range st.Fields {
 			g.pf("      %s,\n", g.fieldDesc(f, i))
@@ -692,18 +733,39 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
-	g.pf("TableVariableLink(TableVariableCodecs);\n\n")
+	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n\n")
 }
 
 // fieldDesc renders one field's descriptor: its property name, its text key,
 // its wire id, its ordinal (the retain path's step, §6.6), the kind its header
 // carries, its shape and the JSON shape its text takes (§16.2), and what the
-// shape needs.
+// shape needs. An OPTIONAL ?T (§2.3) is its value's descriptor with `opt`.
 func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
+	return g.fieldDescNamed(f, f.Name, ordinal)
+}
+
+// fieldDescNamed is fieldDesc under the property name the storage holds the
+// value at: the field's own, or "value" for a union arm's field line, whose
+// holder is the arm object { arm, value } (§2.6).
+func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, k: %d, ",
-		jsStr(f.Name), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	if f.Type.Optional {
+		b.WriteString("opt: true, ")
+	}
 	switch {
+	case f.IsMap():
+		// kind 14 over element kind 13, an array of the generated entry (§2.8)
+		key := ir.MapKeyField(f)
+		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d }",
+			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size)
+	case f.KeyEnum != "":
+		// kind 16: (key reference, L, element) per present slot (§2.4, §3.2)
+		fmt.Fprintf(&b, "s: \"keyed\", js: \"o\", ek: %d, slots: %s, e: %s }",
+			ir.TableWireElemKind(f), keyedSlots(f), g.keyedElemDesc(f))
+	case unionOf(f) != nil && f.Array == ir.ArrayNone:
+		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
 		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, bound: %d, ek: %d, e: %s }",
 			f.Array == ir.ArrayList, f.ArrayBound, ir.TableWireElemKind(f), g.elemDesc(f))
@@ -740,6 +802,9 @@ func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
 // the element's type carries, at its zero (§2.9; tabletext elementZero).
 func (g *variableGen) elemDesc(f *ir.Field) string {
 	switch {
+	case unionOf(f) != nil:
+		// an element of an array of unions is an arm header in its place (§3)
+		return fmt.Sprintf("{ s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Type.Pointer:
 		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
