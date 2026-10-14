@@ -72,14 +72,14 @@ func dartBoundLiteral(n *big.Int) string {
 	return dartU64Literal(n.Uint64())
 }
 
-// tableRef is the table a field names, or nil for a scalar, an enum, a blob,
-// a union or a non-table struct (docs/SPEC-TABLES.md §2.1).
+// tableRef is the record body a field names, including a declared type.
+// Both record bodies use kind 13 on this form (docs/SPEC-TABLES.md §2.1).
 func tableRef(f *ir.Field) *ir.Struct {
 	if f.Type.Kind != ir.TNamed {
 		return nil
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
-	if !ok || !st.IsTable {
+	if !ok {
 		return nil
 	}
 	return st
@@ -159,7 +159,7 @@ func cardWireTable(st *ir.Struct) bool {
 }
 
 func cardWireTableSeen(st *ir.Struct, seen map[string]bool) bool {
-	if st == nil || !st.IsTable {
+	if st == nil {
 		return false
 	}
 	if st.IsMapEntry() && st.Fields[0].Type.Width == 128 {

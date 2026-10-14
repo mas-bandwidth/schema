@@ -9,7 +9,7 @@ import (
 
 func unionRef(f *ir.Field) *ir.Union { u, _ := f.Type.Ref.(*ir.Union); return u }
 
-// This first arm slice carries table bodies and payload-free selections (§2.6).
+// This arm slice carries table/type bodies and payload-free selections (§2.6).
 // Scalar and array arm payloads remain refused until their own bare codecs land.
 func cardWireUnion(u *ir.Union, seen map[string]bool) bool {
 	if seen["union:"+u.Name] {
@@ -18,7 +18,7 @@ func cardWireUnion(u *ir.Union, seen map[string]bool) bool {
 	seen["union:"+u.Name] = true
 	defer delete(seen, "union:"+u.Name)
 	for _, a := range u.Variants {
-		if !a.Void() && (!a.Body() || !a.Ref.IsTable || !cardWireTableSeen(a.Ref, seen)) {
+		if !a.Void() && (!a.Body() || !cardWireTableSeen(a.Ref, seen)) {
 			return false
 		}
 	}
