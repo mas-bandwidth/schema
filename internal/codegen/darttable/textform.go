@@ -264,21 +264,45 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		} else {
 			g.pf("\tif (v.%s == null) { out.raw('null'); } else { out.raw(_jsonString(base64Encode(v.%s!))); }\n", name, name)
 		}
-	case f.IsList(): // []T of tables rides as an array of objects (§2.9, §16.2)
-		g.pf("\tif (v.%s.isEmpty) {\n", name)
-		g.pf("\t\tout.raw('[]');\n")
-		g.pf("\t} else {\n")
-		g.pf("\t\tout.raw('[');\n")
-		g.pf("\t\tvar first = true;\n")
-		g.pf("\t\tfor (final e in v.%s) {\n", name)
-		g.pf("\t\t\tif (!first) { out.raw(','); }\n")
-		g.pf("\t\t\tfirst = false;\n")
-		g.pf("\t\t\tout.line(depth + 2);\n")
-		g.pf("\t\t\t%sToJsonBody(out, e, depth + 2);\n", dartName(f.Type.Name))
-		g.pf("\t\t}\n")
-		g.pf("\t\tout.line(depth + 1);\n")
-		g.pf("\t\tout.raw(']');\n")
-		g.pf("\t}\n")
+	case f.IsList(): // []T rides as an array of objects or of its element's own spelling (§2.9, §16.2)
+		if listElementKind(f) == wireKindTable {
+			g.pf("\tif (v.%s.isEmpty) {\n", name)
+			g.pf("\t\tout.raw('[]');\n")
+			g.pf("\t} else {\n")
+			g.pf("\t\tout.raw('[');\n")
+			g.pf("\t\tvar first = true;\n")
+			g.pf("\t\tfor (final e in v.%s) {\n", name)
+			g.pf("\t\t\tif (!first) { out.raw(','); }\n")
+			g.pf("\t\t\tfirst = false;\n")
+			g.pf("\t\t\tout.line(depth + 2);\n")
+			g.pf("\t\t\t%sToJsonBody(out, e, depth + 2);\n", dartName(f.Type.Name))
+			g.pf("\t\t}\n")
+			g.pf("\t\tout.line(depth + 1);\n")
+			g.pf("\t\tout.raw(']');\n")
+			g.pf("\t}\n")
+		} else {
+			g.pf("\tif (v.%s.isEmpty) {\n", name)
+			g.pf("\t\tout.raw('[]');\n")
+			g.pf("\t} else {\n")
+			g.pf("\t\tout.raw('[');\n")
+			g.pf("\t\tvar first = true;\n")
+			g.pf("\t\tfor (final e in v.%s) {\n", name)
+			g.pf("\t\t\tif (!first) { out.raw(','); }\n")
+			g.pf("\t\t\tfirst = false;\n")
+			switch listElementKind(f) {
+			case wireKindBool:
+				g.pf("\t\t\tout.raw(e ? 'true' : 'false');\n")
+			case wireKindF32, wireKindF64:
+				g.pf("\t\t\tout.raw(_jsonFloat(e));\n")
+			case wireKindEnum:
+				g.pf("\t\t\tout.raw(_jsonEnum(e, %sName, '%s.%s'));\n", dartName(enumRef(f).Name), st.Name, f.Name)
+			default:
+				g.pf("\t\t\tout.raw(e.toString());\n")
+			}
+			g.pf("\t\t}\n")
+			g.pf("\t\tout.raw(']');\n")
+			g.pf("\t}\n")
+		}
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
@@ -335,15 +359,36 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.IsList():
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
-		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, f.Type.Name)
+		et := dartListElemType(f)
+		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
 		g.pf("\t\t\t\tfor (final item in val) {\n")
-		g.pf("\t\t\t\t\tif (item is Map<String, dynamic>) {\n")
-		g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
-		g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r);\n", dartName(f.Type.Name))
-		g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
-		g.pf("\t\t\t\t\t} else {\n")
-		g.pf("\t\t\t\t\t\tr.kindMismatch++;\n")
-		g.pf("\t\t\t\t\t}\n")
+		if listElementKind(f) == wireKindTable {
+			g.pf("\t\t\t\t\tif (item is Map<String, dynamic>) {\n")
+			g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
+			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r);\n", dartName(f.Type.Name))
+			g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
+			g.pf("\t\t\t\t\t} else {\n")
+			g.pf("\t\t\t\t\t\tr.kindMismatch++;\n")
+			g.pf("\t\t\t\t\t}\n")
+		} else {
+			switch listElementKind(f) {
+			case wireKindBool:
+				g.pf("\t\t\t\t\tif (item is bool) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
+			case wireKindF32, wireKindF64:
+				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r));\n", name)
+			case wireKindEnum:
+				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
+			default:
+				lo, hi := "null", "null"
+				if f.HasIntRange {
+					lo, hi = f.IntMin.String(), f.IntMax.String()
+				}
+				if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+					hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
+				}
+				g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item, r, %s, %s));\n", name, lo, hi)
+			}
+		}
 		g.pf("\t\t\t\t}\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:

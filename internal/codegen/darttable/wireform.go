@@ -232,6 +232,34 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// listElementKind is the element kind an unbounded array's body opens with
+// (docs/SPEC-TABLES.md §2.9, §3): 13 for `[]T` of tables, 12 for `[]string`,
+// 30 for `[]E` of enums, and the scalar kind otherwise.
+func listElementKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
+
+// dartListElemType is the Dart storage element type for a `[]T` field: the
+// scalar/enum spellings the storage class uses, and the table name for table
+// elements. Enums and every integer kind store as Dart `int`; the two float
+// kinds as `double`; string/bytes as `String`.
+func dartListElemType(f *ir.Field) string {
+	switch {
+	case f.Type.Kind == ir.TBool:
+		return "bool"
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+		return "int"
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		return "double"
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		return "String"
+	case f.Type.Kind == ir.TNamed:
+		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+			return "int"
+		}
+		return f.Type.Name
+	}
+	return "int"
+}
+
 // widenKinds is the list of integer kinds a field declared at declKind WIDENS
 // from (§4): every kind below it on its own signed (2..5) or unsigned (6..9)
 // ladder, each with its payload width. The declaration's own kind is not here.
@@ -810,7 +838,8 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 				g.pf("  Uint8List? %s;\n", name)
 			}
 		case f.IsList():
-			g.pf("  List<%s> %s = <%s>[];\n", f.Type.Name, name, f.Type.Name)
+			et := dartListElemType(f)
+			g.pf("  List<%s> %s = <%s>[];\n", et, name, et)
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
 		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
@@ -896,28 +925,12 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\tw.putLeb(w.state.nodeIndexForBlob(_kBytesBlobId, %s!));\n", ind, expr)
 		}
 		g.pf("%s}\n", ind)
-	case f.IsList(): // []T rides as kind 14, element kind 13 (§2.9, §3)
-		// The field's reference is interned BEFORE the element bodies, so the
-		// id table stays in first-use order (§3): the field's id precedes the
-		// element ids a member body names.
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
-		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
-		g.pf("%s\tfinal s = w.sub();\n", ind)
-		g.pf("%s\ts.putByte(%d);\n", ind, ir.TableWireElemKind(f))
-		g.pf("%s\ts.putLeb(%s.length);\n", ind, expr)
-		g.pf("%s\tfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
-		g.pf("%s\t\tfinal e = %s[i];\n", ind, expr)
-		g.pf("%s\t\tfinal b = s.sub();\n", ind)
-		g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
-		g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
-		g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
-		g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
-		g.pf("%s\t}\n", ind)
-		g.pf("%s\tw.putLeb(ref);\n", ind)
-		g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
-		g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
-		g.pf("%s\tw.putBytes(s.buf);\n", ind)
-		g.pf("%s}\n", ind)
+	case f.IsList(): // []T rides as kind 14; element kind 13 for tables, else the element's own (§2.9, §3)
+		if listElementKind(f) == wireKindTable {
+			g.emitSaveTableList(f, expr, ind, id, ordinal)
+		} else {
+			g.emitSaveScalarList(f, expr, ind, id)
+		}
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1001,6 +1014,89 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	}
 }
 
+// emitSaveTableList writes a `[]T` of tables as kind 14 over element kind 13
+// (docs/SPEC-TABLES.md §2.9, §3): each element is a framed body, and the
+// field's reference is interned BEFORE the element bodies so the id table
+// stays in first-use order (§3).
+func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
+	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
+	g.pf("%s\tfinal s = w.sub();\n", ind)
+	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
+	g.pf("%s\ts.putLeb(%s.length);\n", ind, expr)
+	g.pf("%s\tfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
+	g.pf("%s\t\tfinal e = %s[i];\n", ind, expr)
+	g.pf("%s\t\tfinal b = s.sub();\n", ind)
+	g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
+	g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
+	g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
+	g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
+	g.pf("%s\t}\n", ind)
+	g.pf("%s\tw.putLeb(ref);\n", ind)
+	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
+	g.pf("%s\tw.putBytes(s.buf);\n", ind)
+	g.pf("%s}\n", ind)
+}
+
+// emitSaveScalarList writes a `[]T` of scalars, strings or enums as kind 14
+// over the element's own kind (docs/SPEC-TABLES.md §2.9, §3): a scalar rides
+// at its kind's width, a bool as one byte, a string length-framed, an enum as
+// its variant id's reference. The count the value decides, then the payloads.
+func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
+	elemKind := listElementKind(f)
+	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
+	g.pf("%s\tfinal s = w.sub();\n", ind)
+	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
+	g.pf("%s\ts.putLeb(%s.length);\n", ind, expr)
+	g.pf("%s\tfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
+	g.pf("%s\t\tfinal e = %s[i];\n", ind, expr)
+	switch elemKind {
+	case wireKindString:
+		g.pf("%s\t\tfinal b = utf8.encode(e);\n", ind)
+		g.pf("%s\t\ts.putLeb(b.length);\n", ind)
+		g.pf("%s\t\ts.putBytes(b);\n", ind)
+	case wireKindEnum:
+		e := enumRef(f)
+		g.pf("%s\t\tif (e == 0) {\n", ind)
+		g.pf("%s\t\t\ts.putLeb(0);\n", ind)
+		g.pf("%s\t\t} else {\n", ind)
+		g.pf("%s\t\t\tint vid = 0;\n", ind)
+		g.pf("%s\t\t\tswitch (e) {\n", ind)
+		for i := range e.Variants {
+			vid := ir.TableWireId(e.VariantWireName(i))
+			g.pf("%s\t\t\t\tcase %d: vid = %s;\n", ind, i+1, dartU64Literal(vid))
+		}
+		g.pf("%s\t\t\t}\n", ind)
+		g.pf("%s\t\t\ts.putLeb(s.refFor(vid));\n", ind)
+		g.pf("%s\t\t}\n", ind)
+	case wireKindBool:
+		g.pf("%s\t\ts.putByte(e ? 1 : 0);\n", ind)
+	case wireKindF32:
+		g.pf("%s\t\ts.putU32(_f32Bits(e));\n", ind)
+	case wireKindF64:
+		g.pf("%s\t\ts.putU64(_f64Bits(e));\n", ind)
+	default:
+		put := "putU64"
+		switch ir.TableKindWidth(elemKind) {
+		case 1:
+			put = "putByte"
+		case 2:
+			put = "putU16"
+		case 4:
+			put = "putU32"
+		}
+		g.pf("%s\t\ts.%s(e);\n", ind, put)
+	}
+	g.pf("%s\t}\n", ind)
+	g.pf("%s\tw.putLeb(ref);\n", ind)
+	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
+	g.pf("%s\tw.putBytes(s.buf);\n", ind)
+	g.pf("%s}\n", ind)
+}
+
 // emitLoadBody emits <name>WireLoadBody: the tolerant read of one table body
 // (§4) — unknown ids skipped and counted, absent fields at their defaults,
 // kind mismatch counted, out-of-range values clamped, a widened kind counted.
@@ -1073,30 +1169,35 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
-	case f.IsList(): // []T of tables rides as kind 14, element kind 13 (§2.9, §3)
+	case f.IsList(): // []T rides as kind 14; element kind 13 for tables, else the element's own (§2.9, §3)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, f.Type.Name)
+		et := dartListElemType(f)
+		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
 		g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
-		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, ir.TableWireElemKind(f))
+		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, listElementKind(f))
 		g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
-		g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
-		g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
-		g.pf("%s\t\t\tvar e = %s();\n", ind, f.Type.Name)
-		g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
-		g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
-		g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
-		g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
-		g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
-		g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
+		if listElementKind(f) == wireKindTable {
+			g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
+			g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
+			g.pf("%s\t\t\tvar e = %s();\n", ind, f.Type.Name)
+			g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
+			g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
+			g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
+			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
+			g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
+			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
+		} else {
+			g.emitLoadScalarListElem(f, "v."+name, "arr", ind)
+		}
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
@@ -1273,6 +1374,75 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	default:
 		g.pf("%s\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\tbreak;\n", ind)
+	}
+}
+
+// emitLoadScalarListElem emits the tolerant read of ONE element of a `[]T`
+// of scalars, strings or enums, appending it to the destination list (dest is
+// `v.field`). A scalar reads at its kind's width, a bool one byte, a string
+// length-framed, an enum a variant id reference (§2.9, §3).
+func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind string) {
+	elemKind := listElementKind(f)
+	switch elemKind {
+	case wireKindString:
+		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)
+		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
+		g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
+	case wireKindEnum:
+		e := enumRef(f)
+		g.pf("%s\t\t\tfinal vref = %s.readLeb();\n", ind, arr)
+		g.pf("%s\t\t\tif (vref == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tif (vref == 0) { %s.add(0); break; }\n", ind, dest)
+		g.pf("%s\t\t\tfinal vid = %s.refToId[vref];\n", ind, arr)
+		g.pf("%s\t\t\tif (vid == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tswitch (vid) {\n", ind)
+		for i := range e.Variants {
+			vid := ir.TableWireId(e.VariantWireName(i))
+			g.pf("%s\t\t\t\tcase %s: %s.add(%d);\n", ind, dartU64Literal(vid), dest, i+1)
+		}
+		g.pf("%s\t\t\t\tdefault: %s.add(0); r.report.unknown++;\n", ind, dest)
+		g.pf("%s\t\t\t}\n", ind)
+	case wireKindBool:
+		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t%s.add(%s.readByte() != 0);\n", ind, dest, arr)
+	case wireKindF32:
+		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+	case wireKindF64:
+		g.pf("%s\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+	default:
+		w := ir.TableKindWidth(elemKind)
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		g.pf("%s\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+		switch w {
+		case 1:
+			if signed {
+				g.pf("%s\t\t\t%s.add(_signExtend(%s.readByte(), 1));\n", ind, dest, arr)
+			} else {
+				g.pf("%s\t\t\t%s.add(%s.readByte());\n", ind, dest, arr)
+			}
+		case 2:
+			g.pf("%s\t\t\tvar raw = 0;\n", ind)
+			for b := 0; b < 2; b++ {
+				g.pf("%s\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
+			}
+			if signed {
+				g.pf("%s\t\t\t%s.add(_signExtend(raw, 2));\n", ind, dest)
+			} else {
+				g.pf("%s\t\t\t%s.add(raw);\n", ind, dest)
+			}
+		case 4:
+			if signed {
+				g.pf("%s\t\t\t%s.add(_signExtend(readU32(%s.data, %s.pos), 4)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+			} else {
+				g.pf("%s\t\t\t%s.add(readU32(%s.data, %s.pos)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+			}
+		default:
+			g.pf("%s\t\t\t%s.add(readU64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		}
 	}
 }
 
