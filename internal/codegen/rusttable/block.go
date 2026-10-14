@@ -312,6 +312,13 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	}
 	b.pf("    let used = (off + 63) / 64 * 64;\n")
 	b.pf("    if used > capacity {\n        return None;\n    }\n")
+	// THE MEASURE PASS ABOVE WALKED `off` TO THE END OF THE EXTENT; THE WRITE
+	// PASS LAYS THE TRIPLES FROM THE PROJECTION'S END AGAIN, exactly as
+	// gotable/blockbuild.go:50-55 walks one `offset` from Projection.Size and
+	// assigns each triple in the same step (§19.1). Without this the second
+	// array's offset_of is the first array's END, and a reader that trusts the
+	// triples walks past every array body.
+	b.pf("    off = %d;\n", bl.Projection.Size)
 	b.pf("    unsafe {\n")
 	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
 	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
