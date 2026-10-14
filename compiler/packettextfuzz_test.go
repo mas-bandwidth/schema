@@ -291,7 +291,7 @@ func runPacketTextFuzz(t *testing.T, bin string) (divergence string, cases int) 
 		names = append(names, seed.name+"#0")
 		// the random pass draws from the seed's own mutants; thirty per seed
 		// keeps the corpus deterministic and the compile+run inside a test
-		for i := 0; i < 30; i++ {
+		for i := range 30 {
 			add(packetTextMutants(payload, i))
 			names = append(names, fmt.Sprintf("%s#%d", seed.name, i+1))
 		}
