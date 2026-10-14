@@ -115,6 +115,7 @@ void main(){
  check(TableTextReport.integerValue(12.0)==BigInt.from(12)&&TableTextReport.integerValue(12.5)==null,'native integral/fraction');
  check(TableTextReport.integerValue(double.infinity)==null&&TableTextReport.integerValue(double.nan)==null,'nonfinite integer mismatch');
  check(TableTextReport.floatValue(TableTextReport.number('1.25'))==1.25,'fraction float conversion');
+ for(final token in ['-0','-0.0','-0e4','-0.000e-99999999999999999999']){final value=TableTextReport.number(token);final report=TableTextReport();check(TableTextReport.floatValue(value)!.isNegative,'negative zero sign '+token);check(TableTextReport.integerValue(value)==BigInt.zero&&TableTextReport.integerField(value,report,null,null,true,42)==0&&report.clamped==0&&report.kindMismatch==0,'negative zero integer '+token);}
  check(TableTextReport.floatValue(TableTextReport.number('1e999999999999999999'))!.isInfinite,'huge exponent float nonfinite');
  check(TableTextReport.floatValue(TableTextReport.number('1e-999999999999999999'))==0.0,'tiny float underflow without integer rounding');
  final mismatch=TableTextReport();check(TableTextReport.integerField(TableTextReport.number('1.00001'),mismatch,null,null,false,42)==42&&mismatch.kindMismatch==1,'mismatch preserves fallback');

@@ -1,8 +1,8 @@
 package darttable
 
-// textNumberMembers is injected into TableTextReport. A fractional token keeps
-// its spelling in a record until its destination asks for a float; integer
-// placement never passes through binary floating point (SPEC-TABLES §16.2).
+// textNumberMembers is injected into TableTextReport. Fractional and negative-
+// zero tokens keep their spelling in a record until a float destination reads
+// them; integer placement stays exact and treats negative zero as zero (§16.2).
 const textNumberMembers = `
   static final _numberGrammar = RegExp(r'^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$');
   static RegExpMatch? _numberMatch(String token) {
@@ -37,7 +37,7 @@ const textNumberMembers = `
   static dynamic number(String token) {
     if(_numberMatch(token)==null)throw FormatException('invalid JSON number',token);
     final integer=_numberInteger(token);
-    if(integer==null)return (number:token);
+    if(integer==null||(integer==BigInt.zero&&token.startsWith('-')))return (number:token);
     final lo=-(BigInt.one<<63),hi=(BigInt.one<<63)-BigInt.one;
     return integer>=lo&&integer<=hi?integer.toInt():integer;
   }
