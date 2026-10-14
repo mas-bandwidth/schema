@@ -888,6 +888,28 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today,
+// and the reason is a gap upstream of this driver rather than in it: the emitted
+// cook runtime has <T>_cook_measure / <T>_cook_measure_reason / <T>_cook_from
+// (internal/codegen/rusttable/cook.go), but this leg emits NO id-table (form 1)
+// WIRE reader for a FIXED table — `scopedVariableModules` (variablecodec.go)
+// emits `<name>_load`/`<name>_save` only for the variable roots, and the fixed
+// tables' `_records.rs` modules hold the row structs and nothing that turns the
+// manifest's `testdata/wire/tables/<case>.bin` into a row. The reference leg's
+// driver loads that wire (`c.load`) and then measures and writes; without the
+// same read here there is no value to cook, so writing bytes to compare against
+// `cook-write/<case>.cook` is impossible for any row. The rows the leg does
+// carry cook writers for (WideBlob, KeyedConfig) stay named as not done for
+// exactly this reason. Implement the fixed-table form-1 wire reader in the
+// emitted runtime first, then drive <T>_cook_from from here for those rows and
+// keep maps, optional arrays, pointers, lists and wide text `.absent`.
+fn surface_cook_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook-write") {
+        spill_absent(out, &f[1]);
+        spill_absent(out, &format!("{}-be", f[1]));
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -909,7 +931,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
         );
         return;
     }
@@ -924,6 +946,7 @@ fn main() {
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
