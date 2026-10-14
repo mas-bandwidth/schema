@@ -18,6 +18,9 @@ func variableElement(f *ir.Field) *ir.Field {
 }
 
 func variableDefaultTest(f *ir.Field, expr string) string {
+	if variableWide(f) && f.Type.Width > 64 {
+		return expr + ".equals(" + variableWideDefault(f) + ")"
+	}
 	if f.Array != ir.ArrayNone || f.IsMap() {
 		return expr + ".isEmpty()"
 	}

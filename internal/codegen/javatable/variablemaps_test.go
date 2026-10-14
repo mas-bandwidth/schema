@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -14,6 +15,15 @@ func runVariableProbe(t *testing.T, u *ir.Unit, driver string) {
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
+	}
+	packet, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		if data := packet[name]; data != nil {
+			files[name] = data
+		}
 	}
 	dir := t.TempDir()
 	var sources []string

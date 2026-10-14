@@ -204,26 +204,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
-	// ACCELERATORS, NOT OF THE FIXED FORM (ir.WideTableKinds). A block row and
-	// a cooked node are laid out in the ID-TABLE's kind vocabulary, which has
-	// no fixed-point and no 128-bit kind in this backend yet (schema#366) —
-	// but §3.4's fixed form carries both by its own constant-size table, a
-	// `fixed(I, F)` riding as the raw scaled integer at its storage width and
-	// an `int128`/`uint128` as sixteen bytes, the low half then the high.
-	//
-	// THE DAY THAT RULE NAMED IS THIS ONE. The `false` the other ports still
-	// pass is now this backend's OWN answer — `fixedRoots` is the set of roots
-	// this emitter lays out, its coverage and not the reference's — so a
-	// wide-kind unit keeps its form-3 codec and only the two accelerators stand
-	// down. A unit that loses them AND has no fixed form to put in their place
-	// is still refused whole and by name, exactly as it was before the form
-	// arrived.
-	//
-	// The scope question is asked BEFORE checkNames, which is the order the tip
-	// and darttable both use: a unit §15 refuses whole is refused for that,
-	// not for a reserved spelling inside it.
-	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0)
+	// The variable wire carries fixed-point and 128-bit values (§15).
+	// Accelerators retain their separately named limitation; having a real
+	// wire codec prevents that limitation from refusing the whole unit.
+	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0 || len(cardVariableTables(u)) > 0)
 	if scope.Unit {
 		return nil, scope.Refusal
 	}
@@ -521,33 +505,7 @@ func variableFormRefusal(f *ir.Field) string {
 			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
 		}
 	}
-	// An UNBOUNDED ARRAY (§2.9) is carried for scalar, string, enum and flags
-	// elements, and for lists of tables ([]T). The element classes the
-	// variable form does not yet carry — bytes(N), fixed(I, F), wstring(N) and
-	// a 128-bit kind — are refused by name rather than mis-encoded as a single
-	// value. A union element is refused by the union rule above, array or not.
-	if f.Array == ir.ArrayList {
-		switch f.Type.Kind {
-		case ir.TBytes:
-			return "an unbounded array of bytes (docs/SPEC-TABLES.md §2.9)"
-		case ir.TFixed:
-			return "an unbounded array of a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
-		case ir.TWString:
-			return "an unbounded array of a wstring(N) kind (docs/SPEC-TABLES.md §15)"
-		case ir.TInt:
-			if f.Type.Width > 64 {
-				return "an unbounded array of a wide int128 kind (docs/SPEC-TABLES.md §15)"
-			}
-		}
-	}
-	switch f.Type.Kind {
-	case ir.TFixed:
-		return "a fixed(I, F) kind (docs/SPEC-TABLES.md §15)"
-	case ir.TInt:
-		if f.Type.Width > 64 {
-			return "a wide int128 kind (docs/SPEC-TABLES.md §15)"
-		}
-	}
+
 	return ""
 }
 

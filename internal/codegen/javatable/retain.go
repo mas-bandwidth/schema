@@ -293,6 +293,12 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        {int mark=w.ids.count;long ref=w.ref(%sVariable.F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);int count=%sVariable.writeKeyedPayload_%s(body,nodes,v.%s);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", st.Name, varMember(f), st.Name, varMember(f), varMember(f))
 		return
 	}
+	if variableWide(f) && f.Array == ir.ArrayNone {
+		var body strings.Builder
+		writeFieldSave(&body, u, st, f)
+		b.WriteString(strings.ReplaceAll(body.String(), "F_"+varMember(f), st.Name+"Variable.F_"+varMember(f)))
+		return
+	}
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
 	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
