@@ -201,3 +201,136 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 		}
 	})
 }
+
+// The announced duplicate scan keys on each entry's DECLARED byte extent, as
+// cpptable does after #741 and as tablewire does with `seen.Key() == e.Key()`.
+// A resolved quantized float32 keeps only the derived QMin, QDelta and QCount,
+// never the declared max and res it consumed, so comparing resolved entries
+// refuses two declared shapes that derive one quantization — the unit's own
+// announcement included (#722). Go's == on float32 also equates +0 and -0,
+// whose declared bytes differ.
+func TestGoAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization(t *testing.T) {
+	t.Parallel()
+	const probeSchema = `package probe
+
+fixed table Root {
+	n int32
+}
+`
+	text := tableMessageRuntime(unitFrom(t, probeSchema))
+
+	if strings.Contains(text, "v.Entries[i]==e") {
+		t.Fatal("the emitted duplicate scan still compares resolved entries, not declared byte extents")
+	}
+	if !strings.Contains(text, "if o.Max-o.Min==src.Offset-began") || !strings.Contains(text, "words[j]!=words[began+j-o.Min]") {
+		t.Fatal("the emitted duplicate scan does not compare the entries' declared byte extents")
+	}
+	if !strings.Contains(text, "e.Shape.Min=began;e.Shape.Max=src.Offset") {
+		t.Fatal("the emitted scan does not park the accepted entry's declared byte extent")
+	}
+	if !strings.Contains(text, "src.Offset=0;for i:=int64(0);i<count;i++ {e,ok:=tableMessageEntryRead(&src)") {
+		t.Fatal("the emitted announce does not resolve the parked entries in a second pass")
+	}
+
+	t.Run("declared_shapes", func(t *testing.T) {
+		t.Parallel()
+		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
+		out, err := runGeneratedEdited(t, probeSchema, declaredShapesProbeTest, nil)
+		if err != nil {
+			t.Fatalf("generated test failed: %v\n%s", err, out)
+		}
+	})
+}
+
+const declaredShapesProbeTest = `package probe
+
+import (
+	"encoding/binary"
+	"math"
+	"testing"
+)
+
+func leb(v uint64) []byte {
+	var out []byte
+	for v >= 0x80 {
+		out = append(out, uint8(v)|0x80)
+		v >>= 7
+	}
+	return append(out, uint8(v))
+}
+
+// quantized spells one declared quantized float32 entry: its id, kind 10,
+// packing 2, then the declared lo, hi and res as fixed four-byte floats.
+func quantized(id uint64, lo, hi, res float32) []byte {
+	out := binary.LittleEndian.AppendUint64(nil, id)
+	out = append(out, 10, 2)
+	out = binary.LittleEndian.AppendUint32(out, math.Float32bits(lo))
+	out = binary.LittleEndian.AppendUint32(out, math.Float32bits(hi))
+	return binary.LittleEndian.AppendUint32(out, math.Float32bits(res))
+}
+
+// announce frames vocabulary words as §3.3 spells them: one build version, one
+// vocabulary body, the terminator, then the two reserved ids and their count.
+func announce(words []byte) []byte {
+	sub := append([]byte{6}, leb(uint64(len(words)))...)
+	sub = append(sub, words...)
+	field := append([]byte{2, 14}, leb(uint64(len(sub)))...)
+	field = append(field, sub...)
+	out := append([]byte{1}, binary.LittleEndian.AppendUint64([]byte{1, 9}, BuildVersion)...)
+	out = append(out, field...)
+	out = append(out, 0x00)
+	out = binary.LittleEndian.AppendUint64(out, 0xfffffffffffffffe)
+	out = binary.LittleEndian.AppendUint64(out, 0xfffffffffffffffd)
+	return binary.LittleEndian.AppendUint64(out, 2)
+}
+
+func TestTwoDeclaredShapesDeriveOneQuantization(t *testing.T) {
+	// (0, 8, 1.0) and (0, 8, 1.1) declare different bytes and derive one
+	// quantization: delta 8 and count ceil(8/res) = 8 for both.
+	words := append(quantized(0x1000, 0, 8, 1.0), quantized(0x1000, 0, 8, 1.1)...)
+	var storage [16]TableMessageEntry
+	var vocab TableVocabulary
+	vocab.Init(storage[:])
+	var report TableReport
+	if !AnnounceRead(&vocab, announce(words), &report) || !vocab.Announced {
+		t.Fatalf("two declared shapes deriving one quantization were refused: %+v", report)
+	}
+	if vocab.Count != 2 {
+		t.Fatalf("count %d, want 2", vocab.Count)
+	}
+	for i := 0; i < 2; i++ {
+		s := vocab.Entries[i].Shape
+		if s.Kind != 10 || s.Packing != 2 || s.QMin != 0 || s.QDelta != 8 || s.QCount != 8 || s.Bits != 4 {
+			t.Fatalf("entry %d resolved to %+v, want the derived quantization", i, s)
+		}
+		if s.Min != 0 || s.Max != 0 {
+			t.Fatalf("entry %d kept its parked byte extent %d..%d, not the resolved shape", i, s.Min, s.Max)
+		}
+	}
+
+	// Two byte-identical entries are still malformed: one triple, two slots.
+	var identical TableVocabulary
+	identical.Init(storage[:])
+	var identicalReport TableReport
+	same := append(quantized(0x2000, 0, 8, 1.0), quantized(0x2000, 0, 8, 1.0)...)
+	if AnnounceRead(&identical, announce(same), &identicalReport) || !identicalReport.Malformed {
+		t.Fatalf("two byte-identical entries were accepted: %+v", identicalReport)
+	}
+
+	// +0 and -0 declare different bytes and == equates them, so the scan that
+	// keyed on resolved entries refused this pair too.
+	var signed TableVocabulary
+	signed.Init(storage[:])
+	var signedReport TableReport
+	zeros := append(quantized(0x3000, 0, 8, 1.0), quantized(0x3000, math.Float32frombits(0x80000000), 8, 1.0)...)
+	if !AnnounceRead(&signed, announce(zeros), &signedReport) || !signed.Announced {
+		t.Fatalf("a +0 and a -0 declared minimum were refused: %+v", signedReport)
+	}
+	if got, want := math.Float32bits(signed.Entries[0].Shape.QMin), uint32(0); got != want {
+		t.Fatalf("entry 0 QMin bits %08x, want %08x", got, want)
+	}
+	if got, want := math.Float32bits(signed.Entries[1].Shape.QMin), uint32(0x80000000); got != want {
+		t.Fatalf("entry 1 QMin bits %08x, want %08x", got, want)
+	}
+}
+`
