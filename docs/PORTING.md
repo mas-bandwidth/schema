@@ -1486,3 +1486,38 @@ technique in and lost the leg with its table wire (#515).
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
+
+### J6 — The card conformance check
+
+**Method.** Every language leg that carries `tables/cards` drives the
+43-case shared corpus in `tables/cards/conformance/MANIFEST.txt` (`./build/conformance-harness cards`
+in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
+`SCHEMA_REQUIRE_CARDS_CORPUS=1`) across all nine surfaces (`load` 4/4,
+`save` 4/4, `render` 4/4, `parse` 2/2, `bounds` 12/12, `upgrade` 5/5,
+`edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
+verdict against the Go reference answers (`tla/CardVersioning.tla`,
+`tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
+eight non-Go legs with all nine surfaces required.
+
+**Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
+and `make cards-conformance-all` in `make/go.mk`.
+
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir.
+
+**Measured effect.** Structural: every leg's card codec, facade bounds, brief
+parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
+descriptor view agree byte for byte on the 43-case corpus.
+
+**Negative control.** `cards-conformance-negative-control`,
+`cards-c-conformance-negative-control`, `cards-cpp-conformance-negative-control`,
+`cards-cs-conformance-negative-control`, `cards-rust-conformance-negative-control`,
+`cards-java-conformance-negative-control`, `cards-js-conformance-negative-control`,
+`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`.
+
+**Targets:** none
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) |
+
+
