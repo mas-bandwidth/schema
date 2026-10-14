@@ -53,7 +53,6 @@ func TestSharedRoadmapCompile(t *testing.T) {
 		{id: "shared/S6", run: testSharedS6},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			tc.run(t)
@@ -226,7 +225,6 @@ func testSharedS6(t *testing.T) {
 	}
 
 	for _, target := range fixedLineageShipTargets {
-		target := target
 		t.Run(target, func(t *testing.T) {
 			files, err := c.Generate(u, target, nil)
 			if err != nil {

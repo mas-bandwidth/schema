@@ -658,7 +658,6 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		{"form_byte", cppHeldFormByte},
 	}
 	for _, clause := range clauses {
-		clause := clause
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := cppHeldProbe(t, unitPath, clause.body)
@@ -691,7 +690,6 @@ func TestMessageFormHeldCPP(t *testing.T) {
 	}
 
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			conn, ok := connections[row.connection]
