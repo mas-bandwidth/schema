@@ -109,5 +109,7 @@ func init() {
 	// refused a schema the reference writes bytes for and this port reads.
 	valueDefaultTargets = append(valueDefaultTargets, "rust")
 	registerListCarrier("rust") // and the unbounded array codec (docs/SPEC-TABLES.md §2.9)
-	registerBuiltin(rustTarget{}, true, false, false, true)
+	registerMapCarrier("rust")
+	registerOptionalArrayCarrier("rust")
+	registerBuiltin(rustTarget{}, true, true, true, true)
 }
