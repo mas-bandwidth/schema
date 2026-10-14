@@ -6089,16 +6089,41 @@ SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
 SERIALIZE_GO_FETCHED := build/serialize.go
 SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
+# THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
+# offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
+# directory of bare mirrors laid out as <owner>/<repo>.git (for example
+# $NOVA_MIRRORS/mas-bandwidth/serialize.git), which is why the runtime fetches
+# below try that layout FIRST and fall back to the network repository
+# ($(SERIALIZE_REPO)/$(SERIALIZE_GO_REPO)) only when NOVA_MIRRORS is unset, when
+# the mirror is absent, or when the mirror clone fails (for example the mirror
+# lacks the pin tag). file:// makes git honour --depth against a local path. A
+# failure from BOTH still refuses by name, as before; the pins are unchanged.
+#
+# fetch-runtime PIN MIRROR-REL REPO DEST WHAT — clone DEST at tag PIN from
+# $NOVA_MIRRORS/MIRROR-REL first, else from REPO, saying which source it used.
+# WHAT names the runtime ("C" or "Go") in the echo. Returns non-zero when both
+# clones fail, so the caller refuses by name.
+define fetch-runtime
+if test -n "$(NOVA_MIRRORS)" && test -d "$(NOVA_MIRRORS)/$(2)" && \
+   git clone --depth 1 --branch "$(1)" "file://$(NOVA_MIRRORS)/$(2)" "$(4)"; then \
+	echo "tables $(5) versioning: fetched $(1) from the mirror $(NOVA_MIRRORS)/$(2) into $(4)"; \
+else \
+	rm -rf "$(4)"; \
+	echo "tables $(5) versioning: fetching $(3) @ $(1) into $(4)"; \
+	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
+fi
+endef
+
 $(SERIALIZE_GO_RUNTIME)/go.mod:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
 		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
 	else \
-		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
+		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
 		rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
 		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
-		git clone --depth 1 --branch "$(SERIALIZE_GO_PIN)" "$(SERIALIZE_GO_REPO)" "$(SERIALIZE_GO_RUNTIME)" \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO_RUNTIME),Go) \
 			|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
 	fi
 	@test -f "$@" || { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch produced no $(SERIALIZE_GO_RUNTIME)/go.mod; name it as a bench prerequisite" >&2; exit 1; }
@@ -6109,10 +6134,10 @@ $(SERIALIZE_RUNTIME)/serialize.h:
 		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
 	else \
-		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
 		rm -rf "$(SERIALIZE_RUNTIME)"; \
 		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
-		git clone --depth 1 --branch "$(SERIALIZE_PIN)" "$(SERIALIZE_REPO)" "$(SERIALIZE_RUNTIME)" \
+		$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$(SERIALIZE_RUNTIME),C) \
 			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
 	fi
 	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
