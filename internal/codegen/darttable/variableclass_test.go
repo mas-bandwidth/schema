@@ -184,6 +184,14 @@ void main() {
     stdout.writeln('FAIL: scalar values did not survive the round trip');
     exit(1);
   }
+  final text = scalarKindsToJson(v);
+  final t = scalarKindsFromJson(text);
+  if (t.u8 != 200 || t.u64 != -1 || t.i8 != -128 ||
+      t.i16 != -32768 || t.f32 != 1.5 || t.f64 != -0.25 ||
+      t.mask != 511 || t.blob != 'abc') {
+    stdout.writeln('FAIL: scalar values did not survive the text round trip');
+    exit(1);
+  }
   stdout.writeln('ok');
 }
 `
