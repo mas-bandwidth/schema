@@ -2246,12 +2246,20 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                        if (ek == 13) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
 		fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+		if retain {
+			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
+		}
 		fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
 		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
-		fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		if retain {
+			fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
+			fmt.Fprintf(b, "                                    %sRetain.readFieldsRetain(er, elem, nt, retain, report, path, depth + 1);\n", target.Name)
+		} else {
+			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		}
 		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
 		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		fmt.Fprintf(b, "                                }\n")
@@ -2269,7 +2277,13 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                if (kind == 13) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader br = r.body();\n")
 		fmt.Fprintf(b, "                    if (br != null) {\n")
-		fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		fmt.Fprintf(b, "                        v.%s = new %sVariable.Value();\n", m, target.Name)
+		if retain {
+			fmt.Fprintf(b, "                        retain.discardField(path, depth, %d); path[2 * depth] = %d; path[2 * depth + 1] = 0;\n", ordinal, ordinal)
+			fmt.Fprintf(b, "                        %sRetain.readFieldsRetain(br, v.%s, nt, retain, report, path, depth + 1);\n", target.Name, m)
+		} else {
+			fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
+		}
 		fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
