@@ -498,10 +498,7 @@ func (g *gen) emitCookAccessor(st *ir.Struct, fl ir.FieldLayout) {
 		g.pf("  # NULL IS ZERO. :error is a delta that resolves past the region.\n")
 		g.pf("  def %s_node_%s(region, node), do: C.deref(region, node + %d)\n", lo, f.Name, fl.Offset)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		used := pieces[len(pieces)-1].Offset
-		if !f.Type.Optional {
-			used = pieces[1].Offset
-		}
+		used := pieces[1].Offset
 		g.pf("  def %s_node_%s(region, node), do: C.text(region, node + %d, C.i32(region, node + %d))\n",
 			lo, f.Name, fl.Offset, used)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
