@@ -45,6 +45,7 @@ func (g *gen) cookModule() []byte {
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
 		g.emitCookHandle(st)
+		g.emitCookWrite(st)
 	}
 	b.WriteString(g.body.String())
 	return []byte(b.String())
@@ -129,6 +130,19 @@ func cookRuntimeModule(u *ir.Unit) []byte {
 	b.WriteString("use crate::*;\n\n")
 	b.WriteString(cookRuntime)
 	b.WriteString(cookDescriptorRuntime)
+	vc := newVariableClass(u)
+	carried := false
+	for n := range ir.VariableTables(u) {
+		if vc.emitted[n] {
+			carried = true
+			break
+		}
+	}
+	if carried {
+		b.WriteString("pub use crate::variable_runtime::TableCookRefuse;\n")
+	} else {
+		b.WriteString(cookRefuseRuntime)
+	}
 	b.WriteString("// a bool in a cooked record is ONE byte, in this runtime as in the model\n")
 	b.WriteString("const _: () = assert!(core::mem::size_of::<bool>() == 1);\n")
 	return []byte(b.String())
@@ -721,7 +735,9 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.Type.Pointer:
+	case f.IsList():
+		g.pf("    pub %s: TableCookList,\n", f.Name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
@@ -760,6 +776,9 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 // wire rides the variant-name hash — so the slot is the plain unsigned, not
 // the wire newtype.
 func cookElemType(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "i64"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -854,7 +873,8 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+	case f.IsList():
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -914,6 +934,86 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    }\n}\n\n")
 }
 
+// emitCookWrite is the cooked form's WRITE side for one FIXED table
+// (docs/SPEC-TABLES.md §7.6): the Rust spelling of gotable/cookwrite.go's
+// <T>CookMeasure, <T>CookMeasureReason and <T>CookFrom — measure before
+// write, a buffer short of the measure writes nothing and returns false, and
+// both byte orders ride (1 little, 2 big, Go's TableByteOrder values). A
+// variable table's writer is emitted separately by variablecook.go.
+func (g *gen) emitCookWrite(st *ir.Struct) {
+	if !g.cookable(st.Name) || !st.IsTable || st.IsMapEntry() {
+		return
+	}
+	if ir.VariableTables(g.unit)[st.Name] || !g.cookWriteCarried(st) {
+		return
+	}
+	n := st.Name
+	layout := ir.RecordLayout(g.unit, st)
+	align := layout.Align
+	if align < 8 {
+		align = 8
+	}
+	data := (layout.Size + align - 1) & -align
+	total := 64 + data + 16
+	g.pf("// ---- %s's cook WRITE side (docs/SPEC-TABLES.md §7.6) ----\n", n)
+	g.pf("// The Rust spelling of Go's %sCookMeasure, %sCookMeasureReason and\n", n, n)
+	g.pf("// %sCookFrom (gotable/cookwrite.go): the measure is a constant for a\n", n)
+	g.pf("// fixed table, so the reason is always Ok; a buffer short of it, a bad\n")
+	g.pf("// byte order or a value outside a declared bound writes NOTHING and\n")
+	g.pf("// returns false.\n")
+	g.pf("pub fn %s(_value: &%sRow) -> i64 {\n    %d\n}\n\n", fn(n, "cook_measure"), n, total)
+	g.pf("pub fn %s(value: &%sRow) -> (i64, TableCookRefuse) {\n    (%s(value), TableCookRefuse::Ok)\n}\n\n",
+		fn(n, "cook_measure_reason"), n, fn(n, "cook_measure"))
+	g.pf("pub fn %s(value: &%sRow, buffer: &mut [u8], order: u64) -> bool {\n", fn(n, "cook_from"), n)
+	g.pf("    unsafe {\n")
+	g.pf("        if order != 1 && order != 2 {\n            return false;\n        }\n")
+	g.pf("        if (buffer.len() as i64) < %d {\n            return false;\n        }\n", total)
+	g.pf("        let p = value as *const %sRow as *const u8;\n", n)
+	g.pf("        let out = buffer.as_mut_ptr();\n")
+	g.pf("        // the measure pass: no buffer, so a refusal changes no byte (Go's\n")
+	g.pf("        // first record walk with a nil buffer)\n")
+	g.pf("        if !table_cook_write_record(p, %s(), core::ptr::null_mut(), 64, order) {\n            return false;\n        }\n", fn(n, "cook_info"))
+	g.pf("        core::ptr::write_bytes(out, 0, %d);\n", total)
+	g.pf("        table_cook_put(out, 0, TABLE_COOK_MAGIC, 8, order);\n")
+	g.pf("        table_cook_put(out, 8, BUILD_VERSION, 8, order);\n")
+	g.pf("        table_cook_put(out, 16, order, 8, order);\n")
+	g.pf("        table_cook_put(out, 24, %d, 8, order);\n", data)
+	g.pf("        table_cook_put(out, 32, 16, 8, order); // one node: 1 * 16\n")
+	g.pf("        table_cook_put(out, 40, %d, 8, order);\n", align)
+	g.pf("        if !table_cook_write_record(p, %s(), out, 64, order) {\n            return false;\n        }\n", fn(n, "cook_info"))
+	g.pf("        table_cook_put(out, %d, 0, 8, order);\n", 64+data)
+	g.pf("        table_cook_put(out, %d, 0x%016x, 8, order);\n", 64+data+8, ir.TableWireId(st.WireName()))
+	g.pf("        true\n    }\n}\n\n")
+}
+
+// cookWriteCarried reports whether the cook WRITE side carries every construct
+// the record's by-value closure declares (§7.6): scalars, strings, bytes,
+// fixed and counted arrays, optionals and nested records. A pointer edge, a
+// map, a list or wide text requires the separate variable region writer.
+func (g *gen) cookWriteCarried(st *ir.Struct) bool {
+	seen := map[string]bool{}
+	var walk func(s *ir.Struct) bool
+	walk = func(s *ir.Struct) bool {
+		if seen[s.Name] {
+			return true
+		}
+		seen[s.Name] = true
+		for _, f := range s.Fields {
+			switch {
+			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString, f.Type.Kind == ir.TFixed, f.Type.Width > 64:
+				return false
+			}
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+				if !walk(ref) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return walk(st)
+}
+
 // cookRegionAligns is every alignment a region rooted at this record can
 // hold: the root's own and every record reachable from it.
 func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
@@ -953,7 +1053,20 @@ func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 // serve here: the wire's storage struct and the cooked record are two Rust
 // types (SPEC §6.1 spells string(N) as [u8; N] on the wire and the cooked
 // model as char[N + 1]), and a VARIABLE unit has no wire surface at all.
-const cookDescriptorRuntime = `// What a cooked SLOT holds, which is not always what the WIRE carries: an ENUM
+const cookRefuseRuntime = `#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableCookRefuse {
+    Ok,
+    InvalidValue, // a count or a used length outside its declared bound (§7.6)
+}
+
+`
+
+const cookDescriptorRuntime = `
+/// A list header in a cooked record (SPEC-TABLES sections 2.9 and 7.2).
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub struct TableCookList {pub offset:i64,pub count:i32,pub reserved:i32}
+// What a cooked SLOT holds, which is not always what the WIRE carries: an ENUM
 // slot holds the ORDINAL at the enum's own derived storage width
 // (docs/SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A
 // walker reads a slot with the width elem_size gives and the signedness this
@@ -1000,6 +1113,121 @@ pub struct TableCookInfo {
     pub align: i32,
     pub num_fields: i32,
     pub fields: &'static [TableCookFieldInfo],
+}
+
+// ---- the cook WRITE side (docs/SPEC-TABLES.md §7.6) ----
+// The Rust spelling of gotable/cookwrite.go's writer, the fixed path: put
+// takes the byte order, and a record walk with a NULL buffer measures and
+// validates only, so a refusal changes no byte. The refusal is named as Go
+// names it (gotable/refusal.go's TableRefuseInvalidValue); the fixed path can
+// answer only this one.
+// table_cook_put writes one scalar unaligned in the chosen byte order (Go's
+// TableByteOrder: 1 little, 2 big). A null buffer is the measure pass.
+pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
+    if out.is_null() {
+        return;
+    }
+    unsafe {
+        for i in 0..width as usize {
+            let shift = if order == 2 { width as usize - 1 - i } else { i };
+            *out.add(at as usize + i) = (value >> (shift * 8)) as u8;
+        }
+    }
+}
+
+// table_cook_raw reads one slot's bytes at the width the descriptor names.
+// Native storage is read in the host order; put selects the target order
+// independently (SPEC-TABLES section 7.6).
+unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
+    let p = unsafe { p.add(at as usize) };
+    unsafe { match width {
+        1 => *p as u64,
+        2 => core::ptr::read_unaligned(p.cast::<u16>()) as u64,
+        4 => core::ptr::read_unaligned(p.cast::<u32>()) as u64,
+        8 => core::ptr::read_unaligned(p.cast::<u64>()),
+        _ => 0, // the generator refuses unsupported wide scalar storage
+    }}
+}
+
+// table_cook_write_record is Go's record/field/value walk over these
+// descriptors: present bytes first, every count checked against its declared
+// bound before anything is written, elements at their own width in the chosen
+// order. A null out means measure and validate only (§7.6's measure pass).
+pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
+    for i in 0..t.num_fields as usize {
+        let f = &t.fields[i];
+        let dest = at + f.offset as i64;
+        if f.present_offset >= 0 {
+            let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };
+            unsafe { table_cook_put(out, at + f.present_offset as i64, if present != 0 { 1 } else { 0 }, 1, order); }
+        }
+        match f.storage {
+            TableCookStorage::String | TableCookStorage::Bytes => {
+                let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                if used < 0 || used > f.array_bound {
+                    return false;
+                }
+                unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                for k in 0..used as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k, 1) };
+                    unsafe { table_cook_put(out, dest + k, v, 1, order); }
+                }
+            }
+            TableCookStorage::Record => {
+                if f.is_pointer {
+                    return false; // a pointer edge is the region writer's, not carried yet
+                }
+                let info = match f.record {
+                    Some(r) => r(),
+                    None => return false,
+                };
+                let count: i32 = if f.count_offset >= 0 {
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                    if used < 0 || used > f.array_bound {
+                        return false;
+                    }
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                    f.array_bound
+                } else if f.is_array {
+                    f.array_bound
+                } else {
+                    1
+                };
+                for k in 0..count as i64 {
+                    let src = unsafe { p.add((f.offset as i64 + k * f.elem_size as i64) as usize) };
+                    if unsafe { !table_cook_write_record(src, info, out, dest + k * f.elem_size as i64, order) } {
+                        return false;
+                    }
+                }
+            }
+            TableCookStorage::Reference => {
+                return false; // the variable region's writer, not carried yet
+            }
+            _ => {
+                let count: i32 = if f.count_offset >= 0 {
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                    if used < 0 || used > f.array_bound {
+                        return false;
+                    }
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                    f.array_bound
+                } else if f.is_array {
+                    f.array_bound
+                } else {
+                    1
+                };
+                for k in 0..count as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k * f.elem_size as i64, f.elem_size as u32) };
+                    if f.storage == TableCookStorage::Bool {
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order); }
+                    } else {
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, v, f.elem_size as u32, order); }
+                    }
+                }
+            }
+        }
+    }
+    true
 }
 
 `

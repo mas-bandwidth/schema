@@ -19,7 +19,7 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 // is read, and a miss is `malformed` rather than a panic.
 func fixedRuntimeModule(u *ir.Unit) []byte {
 	return []byte(header(runtimeSourceName(u), u.Package,
-		"THE FIXED FORM's shared runtime (docs/SPEC-TABLES.md §3.4)") + fixedRuntimeBody)
+		"THE FIXED FORM's shared runtime (docs/SPEC-TABLES.md §3.4)") + fixedRuntimeBody + fixedWireRuntime)
 }
 
 const fixedRuntimeBody = `//

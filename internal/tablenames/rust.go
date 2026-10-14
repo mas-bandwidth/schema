@@ -5,6 +5,8 @@ const Rust Backend = 1 << 2
 
 func init() {
 	define(Rust,
+		Name{Name: "TableCookList", What: "a cooked list header, signed delta and count (sections 2.9 and 7.2)"},
+		Name{Name: "TableFixedWireReader", What: "the bounded form-1 cursor for fixed cook inputs (sections 3 and 4)"},
 		Name{Name: "TableBlockTriple", What: "one array's (offset_of, count, stride)"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
@@ -18,6 +20,10 @@ func init() {
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+		Name{Name: "TableCookRefuse", What: "the cook write's refusal reasons, each one by name (§7.6); the Rust spelling of gotable/refusal.go's TableRefuseInvalidValue for the fixed path"},
+		Name{Name: "TableCookPut", What: "the cook write's one unaligned scalar put, in the chosen byte order (§7.6)", Scoped: true},
+		Name{Name: "TableCookWriteRecord", What: "the cook write's record walk over the cook descriptors; a null buffer measures and validates only, so a refusal changes no byte (§7.6)", Scoped: true},
+		Name{Name: "TableCookRaw", What: "the cook write's raw slot read at the descriptor's width (§7.6)", Scoped: true},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a

@@ -548,6 +548,22 @@ tables-rust-variable-class:
 
 test-rust: tables-rust-variable-class
 
+# THE BLOCK BUILD AND THE COOK WRITE (docs/SPEC-TABLES.md §19.1, §7.6): the
+# Rust leg's producer surfaces, pinned to the Go builder and Go's cook writer
+# (gotable/blockbuild.go, gotable/cookwrite.go) by
+# TestBlockBuildAndCookWriteRust, which recomputes every emitted constant from
+# the same ir layouts the Go emitter holds. SCHEMA_REQUIRE_CORPUS=1 makes the
+# functional test fail by name rather than skip, so this target never passes
+# on a SKIP.
+tables-rust-block-build: build/schema_test_block
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 SCHEMA_RUST_BLOCK_OUT="$(CURDIR)/build/block-rust.bin" \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run TestBlockBuildAndCookWriteRust -v
+	./build/schema_test_block --rust-block build/block-rust.bin
+	@echo 'tables Rust block build and cook write: the producer surfaces match the Go reference'
+
+test-rust: tables-rust-block-build
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle

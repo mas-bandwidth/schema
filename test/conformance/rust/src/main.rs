@@ -888,6 +888,67 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+// Cook inputs are the manifest's public form-1 wire files, decoded by the
+// emitted runtime. The fixed and variable writers preserve measure/no-write
+// semantics in both target byte orders (SPEC-TABLES section 7.6).
+fn surface_cook_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook-write") {
+        let instance = manifest.of_kind("instance").find(|i| i[1] == f[1])
+            .unwrap_or_else(|| fail(&format!("{}: missing instance", f[1])));
+        let wire = slurp(&instance[4]);
+        macro_rules! fixed {
+            ($unit:ident, $load:ident, $measure:ident, $cook:ident) => {{
+                let mut report = $unit::TableFixedReport::default();
+                let value = $unit::$load(&wire, &mut report)
+                    .unwrap_or_else(|| fail(&format!("{}: cook input refused", f[1])));
+                if report.malformed || report.refused { fail(&format!("{}: cook input damaged", f[1])); }
+                let n = $unit::$measure(&value);
+                if n < 1 { fail(&format!("{}: cook measure refused", f[1])); }
+                for order in [1, 2] {
+                    let name = if order == 1 { f[1].clone() } else { format!("{}-be", f[1]) };
+                    let mut buffer = vec![0xa5u8; n as usize];
+                    if $unit::$cook(&value, &mut buffer[..n as usize - 1], order) || buffer.iter().any(|b| *b != 0xa5) {
+                        fail(&format!("{name}: short capacity changed bytes"));
+                    }
+                    if !$unit::$cook(&value, &mut buffer, order) { fail(&format!("{name}: cook write refused")); }
+                    spill(out, &name, &buffer);
+                }
+            }};
+        }
+        macro_rules! variable {
+            ($unit:ident, $load:ident, $measure:ident, $cook:ident) => {{
+                let mut report = $unit::TableReport::default();
+                let value = $unit::$load(&wire, &mut report)
+                    .unwrap_or_else(|| fail(&format!("{}: cook input refused", f[1])));
+                if report.malformed || report.refused { fail(&format!("{}: cook input damaged", f[1])); }
+                let (n, reason) = $unit::$measure(&value);
+                if n < 1 || reason != $unit::TableCookRefuse::Ok { fail(&format!("{}: cook measure refused", f[1])); }
+                for order in [1, 2] {
+                    let name = if order == 1 { f[1].clone() } else { format!("{}-be", f[1]) };
+                    let mut buffer = vec![0xa5u8; n as usize];
+                    if $unit::$cook(&value, &mut buffer[..n as usize - 1], order) || buffer.iter().any(|b| *b != 0xa5) {
+                        fail(&format!("{name}: short capacity changed bytes"));
+                    }
+                    if !$unit::$cook(&value, &mut buffer, order) { fail(&format!("{name}: cook write refused")); }
+                    spill(out, &name, &buffer);
+                }
+            }};
+        }
+        match (instance[2].as_str(), instance[3].as_str()) {
+            ("blobdemo", "Catalog") => variable!(blobdemo, catalog_load, catalog_cook_measure_reason, catalog_cook_from),
+            ("graphdemo", "Scene") => variable!(graphdemo, scene_load, scene_cook_measure_reason, scene_cook_from),
+            ("tabledemo", "WideBlob") => fixed!(tabledemo, wide_blob_load, wide_blob_cook_measure, wide_blob_cook_from),
+            ("tabledemo", "KeyedConfig") => fixed!(tabledemo, keyed_config_load, keyed_config_cook_measure, keyed_config_cook_from),
+            ("tblp3", "Chain") => fixed!(tblp3, chain_load, chain_cook_measure, chain_cook_from),
+            ("tblp1", "Chain") => fixed!(tblp1, chain_load, chain_cook_measure, chain_cook_from),
+            _ => {
+                spill_absent(out, &f[1]);
+                spill_absent(out, &format!("{}-be", f[1]));
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -909,7 +970,7 @@ fn main() {
             // case ABSENT, one by one; the message and retain surfaces are still
             // absent whole (the message form's batch and retention beyond the card
             // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write"
         );
         return;
     }
@@ -924,6 +985,7 @@ fn main() {
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
