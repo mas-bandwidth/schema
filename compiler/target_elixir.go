@@ -31,13 +31,39 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "elixir"); err != nil {
+	// refuseUnported, split so a unit that carries unbounded arrays
+	// (docs/SPEC-TABLES.md §2.9) is not refused whole for a map (§2.8) or a
+	// union the closure also holds (§2.6). A unit that is only that construct
+	// is still refused by name — the cross-target gates. On a mixed unit
+	// (tables/lists) the codec names those roots uncarried and the driver
+	// writes <case>.absent rather than a wrong byte (§11).
+	if err := refuseValueDefaults(u, "elixir"); err != nil {
 		return nil, err
+	}
+	if err := refuseWasRows(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseVoidArms(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseBytes(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if err := refuseStrings(u, "elixir"); err != nil {
+		return nil, err
+	}
+	if !elixirListsBesideUncarried(u) {
+		if err := refuseTableArms(u, "elixir"); err != nil {
+			return nil, err
+		}
+		if err := refuseUnionArrays(u, "elixir"); err != nil {
+			return nil, err
+		}
+		if err := refuseMaps(u, "elixir"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseOptionalArrays(u, "elixir"); err != nil {
-		return nil, err
-	}
-	if err := refuseMaps(u, "elixir"); err != nil {
 		return nil, err
 	}
 	if err := refuseLists(u, "elixir"); err != nil {
@@ -62,6 +88,15 @@ func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage
 		files[name] = data
 	}
 	return files, nil
+}
+
+// elixirListsBesideUncarried reports whether the unit declares an unbounded
+// array this backend emits (docs/SPEC-TABLES.md §2.9). Such a unit still
+// generates when a map or a union sits beside those lists: the lists are the
+// carried wire, and the other roots are uncarried rather than a refusal of
+// the whole unit (§2.6, §2.8, §11).
+func elixirListsBesideUncarried(u *ir.Unit) bool {
+	return len(ir.ListFields(u)) > 0
 }
 
 // elixirTableLineage is the lock's lineage in the Elixir backend's own spelling.
