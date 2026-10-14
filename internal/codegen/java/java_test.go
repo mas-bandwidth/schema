@@ -190,3 +190,98 @@ func compressedFloatJavaTools(t *testing.T) (javac, javaBin string) {
 	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""
 }
+
+// TestJavaWStringWriteChecksAreDebugOnly generates the writer for
+// `type Wide { text wstring(2) }` and asserts that its text carries
+// no unconditional check (release) while the checks are still present
+// as asserts (debug tier).
+func TestJavaWStringWriteChecksAreDebugOnly(t *testing.T) {
+	t.Parallel()
+
+	const src = `package wtest
+
+type Wide {
+	text wstring(2)
+}
+`
+	f, errs := parser.Parse("W.schema", []byte(src))
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "W.schema", Name: "W.schema", Base: "W", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) != 0 {
+		t.Fatal(cerrs)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["W.java"])
+	if text == "" {
+		t.Fatal("W.java not emitted")
+	}
+
+	// no unconditional throw anywhere: release never refuses or throws
+	for _, bad := range []string{
+		`throw new IllegalArgumentException("wstring length")`,
+		`throw new IllegalArgumentException("wstring null unit")`,
+	} {
+		if strings.Contains(text, bad) {
+			t.Errorf("release writer carries unconditional check %q", bad)
+		}
+	}
+
+	// Length lives in the checkWrite predicate (the same dormant assert every
+	// other Java write contract uses). The null-unit check cannot join that
+	// walk without a functions.go change, so it is the Java analogue of the
+	// C# twin's Debug.Assert: an inline assert in the write loop, gone
+	// without -ea. Release carries neither as an unconditional throw.
+	write := funcBody(t, text, "public static int writeWide(")
+	if !strings.Contains(write, "assert checkWriteWide(value, data);") {
+		t.Errorf("writeWide missing its checkWrite predicate call")
+	}
+	if !strings.Contains(write, "assert v != 0;") {
+		t.Errorf("debug writer missing null-unit check assert")
+	}
+	for _, bad := range []string{
+		"assert value.textLength",
+		"throw ",
+	} {
+		if strings.Contains(write, bad) {
+			t.Errorf("writeWide carries an unconditional or inline length check %q", bad)
+		}
+	}
+
+	check := funcBody(t, text, "private static boolean checkWriteWide(")
+	for _, want := range []string{
+		"assert value.textLength >= 0;",
+		"assert value.textLength <= 2;",
+	} {
+		if !strings.Contains(check, want) {
+			t.Errorf("checkWriteWide missing contract check %q", want)
+		}
+	}
+	read := funcBody(t, text, "public static boolean readWide(")
+	if !strings.Contains(read, "if (v == 0 || v > 0xFFFF) return false;") {
+		t.Errorf("read-side null-unit check must stay unconditional")
+	}
+}
+
+// funcBody returns the text of the first function whose signature line
+// contains sig, from that signature through its outer closing brace (the
+// first line holding exactly four spaces and a closing brace).
+func funcBody(t *testing.T, text, sig string) string {
+	t.Helper()
+	i := strings.Index(text, sig)
+	if i < 0 {
+		t.Fatalf("function %q not found in generated text", sig)
+	}
+	rest := text[i:]
+	j := strings.Index(rest, "\n    }\n")
+	if j < 0 {
+		t.Fatalf("closing brace of %q not found", sig)
+	}
+	return rest[:j]
+}
