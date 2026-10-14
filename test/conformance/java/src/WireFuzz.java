@@ -66,13 +66,16 @@ public final class WireFuzz {
             if (!available[(int) index]) {
                 loaded = 0;
                 measure = -1;
+            } else if ((measure = cards.CardVariable.loadMeasure(wire)) < 0) {
+                // A region framing refusal precedes Load and moves no report
+                // counter (SPEC-TABLES §6.5, count_over_length / extent_cap).
+                loaded = 0;
             } else if (retain[(int) index]) {
                 // THE RETAINING PAIR (docs/SPEC-TABLES.md §6.6): the same mutant
                 // read and re-saved through the caller-owned storage, with the two
                 // counters read after the save so they accumulate across the pair.
                 cards.TableRetain store = new cards.TableRetain(1 << 20, (1 << 20) / 8);
                 cards.CardVariable.Value v = cards.CardRetain.loadRetain(wire, store, report);
-                measure = cards.CardVariable.loadMeasure(wire);
                 loaded = v != null ? 1 : 0;
                 if (v != null) {
                     savedBytes = cards.CardRetain.saveRetain(v, store, report);
@@ -80,7 +83,6 @@ public final class WireFuzz {
                 }
             } else {
                 cards.CardVariable.Value v = cards.CardVariable.load(wire, report);
-                measure = cards.CardVariable.loadMeasure(wire);
                 loaded = v != null ? 1 : 0;
                 if (v != null) {
                     savedBytes = cards.CardVariable.save(v);
