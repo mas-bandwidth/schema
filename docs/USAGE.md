@@ -3838,6 +3838,26 @@ if (!ok) {
 }
 ```
 
+The Java accelerators read the same two forms, as members of the generated
+`<Table>Block` and `<Root>Cook` types. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-java-usage`:
+
+<!-- java-table-usage -->
+```java
+// open the cook another build wrote; a null is a foreign build, a corrupt
+// file or the other byte order — fall back to the tolerant wire
+SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
+if (cook != null) {
+    int root = cook.root();
+    int at = cook.at(SceneRow.headSlot(root), ListNodeRow.size);
+    while (at >= 0) {            // -1 is null AND a delta whose record does not fit
+        use(ListNodeRow.value(cook.data(), at));
+        at = cook.at(ListNodeRow.nextSlot(at), ListNodeRow.size);
+    }
+}
+```
+<!-- /java-table-usage -->
+
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
 and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
 `<name>_save`, `<name>_load` and their bodies index caller-owned slices and
