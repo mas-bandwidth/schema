@@ -270,7 +270,13 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    static int get32(byte[] b, int at) { return (b[at] & 0xff) | (b[at + 1] & 0xff) << 8 | (b[at + 2] & 0xff) << 16 | (b[at + 3] & 0xff) << 24; }\n")
 	b.WriteString("    static long get64(byte[] b, int at) { long v = 0; for (int i = 0; i < 8; i++) { v |= (long) (b[at + i] & 0xff) << (8 * i); } return v; }\n\n")
 	b.WriteString("}\n")
-	return b.String(), nil
+	source := b.String()
+	if st.IsMapEntry() {
+		for _, signature := range []string{st.Name + "Variable.Value loadRetain(", "long measureRetain(", "byte[] saveRetain("} {
+			source = strings.ReplaceAll(source, "public static "+signature, "static "+signature)
+		}
+	}
+	return source, nil
 }
 
 // writeFieldSaveRetain emits the canonical write of one field for the retaining

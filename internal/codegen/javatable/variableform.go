@@ -1737,7 +1737,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// Entries are codec bodies reached through their holder, never roots
 		// (SPEC-TABLES §2.8). Keep root conveniences out of the public API.
 		for _, signature := range []string{"byte[] save(", "Value load(", "long loadMeasure(", "byte[] toJson(", "Value fromJson("} {
-			source = strings.ReplaceAll(source, "public static "+signature, "private static "+signature)
+			source = strings.ReplaceAll(source, "public static "+signature, "static "+signature)
 		}
 	}
 	return source, nil
