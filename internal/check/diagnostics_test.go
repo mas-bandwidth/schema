@@ -729,6 +729,14 @@ func TestGoodCornersStillCompile(t *testing.T) {
 				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
 				"B.schema": "package t\ntype Far { q V }\n",
 			}},
+		// A QUALIFIED native name is accepted and kept whole (schema#451):
+		// `math::Vec2` is the global engine type's own spelling, so no global
+		// alias is needed. It rides from another file like the bare form.
+		{name: "cpp_native with a ::-qualified name",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = math::Vec2, cpp_include = \"math/vec2.h\" { x float64 }\n",
+				"B.schema": "package t\ntype Body { p V }\n",
+			}},
 		// A BASE NAME THAT ONLY LOOKS LIKE A C HEADER (#521 G-20). The list is
 		// the C standard's own and is compared whole: a name that merely
 		// contains one, or that spells a C++ header (which carries no `.h`,

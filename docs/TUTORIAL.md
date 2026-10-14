@@ -1021,8 +1021,9 @@ Two rules govern the mapping. It applies where the type is referenced from **a
 different schema file** than the one that declares it, which is why `Vector2`
 lives in `Vectors.schema` and `ShipState` in `Game.schema`. Declare and use it
 in one file and the generated output carries no trace of the mapping. And the
-name is a **global** identifier, spelled `::GameVector2` in the output, so a
-namespaced engine type needs a global alias.
+name is a C++ type name, emitted `::`-qualified: a bare `GameVector2` becomes
+`::GameVector2`, and a namespaced `math::Vector2` becomes `::math::Vector2`
+with no global alias needed.
 
 From here on the compile line gains `-I .`, so the compiler finds
 `game_vector2.h` beside your schema files.
