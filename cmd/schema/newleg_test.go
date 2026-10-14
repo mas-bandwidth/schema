@@ -220,7 +220,7 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 	// the planted lua is now a registered target, so a second run is refused by
 	// the driver's own name rule before any file is looked at
 	if got, err := exec.Command(bin, "new-leg", "--root", tree, "lua").CombinedOutput(); err == nil ||
-		!strings.Contains(string(got), "already") {
+		!strings.Contains(string(got), "refuses to overwrite") {
 		t.Errorf("a second new-leg lua did not refuse by name (err %v):\n%s", err, got)
 	}
 	if got, err := exec.Command(bin, "new-leg", "--root", tree, "go").CombinedOutput(); err == nil ||
@@ -228,7 +228,7 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 		t.Errorf("new-leg go (an existing leg) was not refused (err %v):\n%s", err, got)
 	}
 	if got, err := exec.Command(bin, "new-leg", "--root", tree, "Lua-5").CombinedOutput(); err == nil ||
-		!strings.Contains(string(got), "leg name") {
+		!strings.Contains(string(got), "needs a lowercase identifier") {
 		t.Errorf("new-leg with a name that is no Go package name was not refused (err %v):\n%s", err, got)
 	}
 }
