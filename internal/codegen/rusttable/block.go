@@ -294,6 +294,7 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("// §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
 	b.pf("// storage, every count and the whole extent are checked before any byte\n")
 	b.pf("// of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("/// # Safety\n/// `buf` must name `capacity` writable bytes at the 64-byte base alignment\n/// required by SPEC-TABLES section 19.1, with no competing access.\n")
 	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
 	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
 	b.pf("    let _ = counts;\n")

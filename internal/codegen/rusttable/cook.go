@@ -728,7 +728,7 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
-	case f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TWString, f.Type.Width > 64:
 		// WIDE TEXT's cooked storage (docs/SPEC-TABLES.md §7.2, and ir's own
 		// model in blocklayout.go): char16_t[N + 1] at two, then the int32 used
 		// length in CODE UNITS. Without this case a `wstring(N)` fell to the
@@ -984,7 +984,7 @@ func (g *gen) cookWriteCarried(st *ir.Struct) bool {
 		seen[s.Name] = true
 		for _, f := range s.Fields {
 			switch {
-			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString:
+			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString, f.Type.Width > 64:
 				return false
 			}
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
@@ -1114,13 +1114,14 @@ pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, orde
 
 // table_cook_raw reads one slot's bytes at the width the descriptor names.
 unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
-    let mut v: u64 = 0;
-    unsafe {
-        for i in 0..width as usize {
-            v |= (*p.add(at as usize + i) as u64) << (i * 8);
-        }
-    }
-    v
+    let p = unsafe { p.add(at as usize) };
+    unsafe { match width {
+        1 => *p as u64,
+        2 => core::ptr::read_unaligned(p.cast::<u16>()) as u64,
+        4 => core::ptr::read_unaligned(p.cast::<u32>()) as u64,
+        8 => core::ptr::read_unaligned(p.cast::<u64>()),
+        _ => 0, // the generator refuses unsupported wide scalar storage
+    }}
 }
 
 // table_cook_write_record is Go's record/field/value walk over these
@@ -1161,7 +1162,7 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                         return false;
                     }
                     unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    used
+                    f.array_bound
                 } else if f.is_array {
                     f.array_bound
                 } else {
@@ -1184,7 +1185,7 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                         return false;
                     }
                     unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
-                    used
+                    f.array_bound
                 } else if f.is_array {
                     f.array_bound
                 } else {
