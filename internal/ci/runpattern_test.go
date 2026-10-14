@@ -200,7 +200,7 @@ func listNames(t *testing.T, root, pattern, pkg string) []string {
 // wrote down; the gate refuses an empty reason and a stale where, so a pattern
 // cannot leave the gate silently.
 type runPatternException struct {
-	where string // "make/go.mk:163"
+	where string // "make/go.mk:191"
 	why   string // why the pattern cannot be listed
 }
 
@@ -209,13 +209,13 @@ type runPatternException struct {
 // exist until `make` builds them, and one is a $(3) template with no value
 // until the caller expands it.
 var runPatternExceptions = []runPatternException{
-	{"make/go.mk:163", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
-	{"make/go.mk:168", "same separate test/go-tables module, -run Fuzz"},
-	{"make/go.mk:169", "same separate test/go-tables module, -run Fuzz under -race"},
-	{"make/go.mk:206", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:447", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:462", "same separate test/go-tables module, -run '^TestUsage$$'"},
-	{"Makefile:4934", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"make/go.mk:191", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
+	{"make/go.mk:196", "same separate test/go-tables module, -run Fuzz"},
+	{"make/go.mk:197", "same separate test/go-tables module, -run Fuzz under -race"},
+	{"make/go.mk:234", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
+	{"make/go.mk:509", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:524", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"Makefile:5319", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every
