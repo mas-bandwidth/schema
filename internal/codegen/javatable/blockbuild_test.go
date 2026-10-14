@@ -418,6 +418,11 @@ public final class Driver {
   TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=RootVariable.fromJson(json,report);
   if(v==null||report.malformed||v.first!=v.second)throw new AssertionError("load sharing");
   byte[] wire=RootVariable.save(v);if(wire==null)throw new AssertionError("wire save");
+  byte[] badText=wire.clone();boolean foundText=false;
+  for(int i=0;i+6<=badText.length;i++)if(badText[i]=='s'&&badText[i+1]=='h'&&badText[i+2]=='a'&&badText[i+3]=='r'&&badText[i+4]=='e'&&badText[i+5]=='d'){badText[i]=0;foundText=true;break;}
+  TableVariable.Report invalidText=new TableVariable.Report();RootVariable.Value textPrefix=RootVariable.load(badText,invalidText);
+  if(!foundText||textPrefix==null||!invalidText.malformed||invalidText.unknown!=0||invalidText.refused||textPrefix.first.text!=null)throw new AssertionError("malformed text node counted as an unknown type");
+  System.out.println("malformed text node clears its pointer without an unknown-type count");
   v=RootVariable.load(wire,new TableVariable.Report());if(v==null)throw new AssertionError("wire load");
   long size=RootCook.cookMeasure(v);if(size<0)throw new AssertionError("measure");
   for(int order=1;order<=2;order++) {byte[] b=new byte[(int)size];if(!RootCook.cookFrom(v,b,order))throw new AssertionError("cook");java.nio.file.Files.write(java.nio.file.Paths.get(args[0],"cook"+order),b);}

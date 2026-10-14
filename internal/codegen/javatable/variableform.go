@@ -1658,7 +1658,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "                    }\n")
 	fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
 	fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
-	fmt.Fprintf(&b, "                } else {\n")
+	fmt.Fprintf(&b, "                } else if (rec.typeId != 0) { // §3.1: malformed text was already cleared, not unknown.\n")
 	fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
 	fmt.Fprintf(&b, "                    if (rec.table == null) {\n")
 	fmt.Fprintf(&b, "                        report.unknown++;\n")
