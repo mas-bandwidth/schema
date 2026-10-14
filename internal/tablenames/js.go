@@ -1,8 +1,9 @@
 package tablenames
 
-// Js is the JavaScript table backend (internal/codegen/jstable). It is the
-// READING TIER: no struct layout, so it reads both accelerators and
-// produces neither.
+// Js is the JavaScript table backend (internal/codegen/jstable). No struct
+// layout, so it reads both accelerators and the cook, and produces the BLOCK
+// BUILD side only: §19.1's Begin writes a block's prologue and triples and
+// never a row, while a cook and a block are still read, not written.
 const Js Backend = 1 << 7
 
 func init() {

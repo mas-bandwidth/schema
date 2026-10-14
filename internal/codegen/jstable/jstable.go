@@ -5,12 +5,13 @@
 // <Package>Block.js / <Package>Cook.js, where everything shared lands
 // (runtimeHome, below). Table wire codecs are deferred to #516.
 //
-// THE READING TIER. JavaScript has no struct layout of its own — no offsetof,
-// no sizeof, no way to place a field — so this backend reads the two
-// accelerators and never produces them: a block and a cook are opened over
-// bytes another language wrote, and every field is read at the offset the
-// compiler settled, through a DataView with an explicit little-endian flag at
-// every call.
+// THE READING TIER, WITH ONE BUILDER. JavaScript has no struct layout of its
+// own — no offsetof, no sizeof, no way to place a field — so this backend
+// reads both accelerators and writes only a block's §19.1 prologue and
+// triples (block.go emitBlockBuild, the build side): a block and a cook are
+// opened over bytes another language wrote, every field is read at the offset
+// the compiler settled, through a DataView with an explicit little-endian
+// flag at every call.
 package jstable
 
 import (
