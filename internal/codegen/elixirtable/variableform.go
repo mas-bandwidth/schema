@@ -1379,39 +1379,151 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # writer emits every field in declaration order, defaults included,
   # pretty-printed two spaces per level and ending with exactly one newline
   # (§16.1); the reader places every key it can name, counts the rest and
-  # clamps rather than truncating (§16.2). A root in @uncarried answers an
-  # error and is not walked (§2.6, §2.8, §11).
+  # clamps rather than truncating (§16.2). A node named more than once is
+  # defined once under "&node" and named by "&node" alone after (§16.7).
+  # A root in @uncarried answers an error and is not walked (§2.6, §2.8, §11).
+  # Sharing is content equality, the same rule save uses for one node record.
 
   def to_json(table, _value) when table in @uncarried, do: {:error, :uncarried}
 
   def to_json(table, value) when is_map(value) do
     desc = Map.fetch!(@tables, table)
-    {:ok, IO.iodata_to_binary([json_object(desc, Map.merge(defaults(desc), value), 0), "\n"])}
+    value = Map.merge(defaults(desc), value)
+    counts = tally_refs(desc, value, %{})
+
+    shared_blob =
+      Enum.any?(counts, fn
+        {{:blob, _}, n} -> n > 1
+        _ -> false
+      end)
+
+    if shared_blob do
+      # a blob's text is a string, which has no first key for "&node" (§16.7)
+      {:error, :shared}
+    else
+      Process.put(:elixir_json_refs, counts)
+      Process.put(:elixir_json_labels, %{})
+      Process.put(:elixir_json_next, 0)
+      Process.put(:elixir_json_refuse, false)
+
+      try do
+        text = IO.iodata_to_binary([json_object(desc, value, 0), "\n"])
+
+        if Process.get(:elixir_json_refuse) do
+          {:error, :shared}
+        else
+          {:ok, text}
+        end
+      after
+        Process.delete(:elixir_json_refs)
+        Process.delete(:elixir_json_labels)
+        Process.delete(:elixir_json_next)
+        Process.delete(:elixir_json_refuse)
+      end
+    end
   end
 
   def from_json(table, _text) when table in @uncarried, do: {:error, :uncarried}
 
   def from_json(table, text) when is_binary(text) do
     desc = Map.fetch!(@tables, table)
+    Process.put(:elixir_json_defs, %{})
+    Process.put(:elixir_json_open, %{})
+    Process.put(:elixir_json_bad, false)
 
-    case json_value(text) do
-      {:ok, doc, _rest} when is_map(doc) ->
-        {value, report} = json_fields(desc, doc)
-        {:ok, Map.merge(defaults(desc), value), report}
+    try do
+      case json_value(text) do
+        {:ok, doc, _rest} when is_map(doc) ->
+          # the root takes no label (§16.7): a reference to it is a cycle
+          if Map.has_key?(doc, "&node") or Process.get(:elixir_json_bad) do
+            {:error, :malformed, empty_report()}
+          else
+            {value, report} = json_fields(desc, doc)
 
-      {:ok, _other, _rest} ->
-        {:error, :malformed, empty_report()}
+            if Process.get(:elixir_json_bad) do
+              {:error, :malformed, report}
+            else
+              {:ok, Map.merge(defaults(desc), value), report}
+            end
+          end
 
-      :error ->
-        {:error, :malformed, empty_report()}
+        {:ok, _other, _rest} ->
+          {:error, :malformed, empty_report()}
+
+        :error ->
+          {:error, :malformed, empty_report()}
+      end
+    after
+      Process.delete(:elixir_json_defs)
+      Process.delete(:elixir_json_open)
+      Process.delete(:elixir_json_bad)
+    end
+  end
+
+  # tally_refs counts pointer slots and blob slots. A node named twice is one
+  # label (§16.7). Descent is once per content, so a shared child is not
+  # counted again through its parent.
+  defp tally_refs(desc, value, acc) do
+    Enum.reduce(desc.fields, acc, fn f, acc ->
+      tally_field(f, Map.get(value, f.name), acc)
+    end)
+  end
+
+  defp tally_field(%{t: :pointer, elem: name}, v, acc) when is_map(v), do: tally_node(name, v, acc)
+
+  defp tally_field(%{t: :blob}, v, acc) when is_binary(v),
+    do: Map.update(acc, {:blob, v}, 1, &(&1 + 1))
+
+  defp tally_field(%{t: :table, elem: name}, v, acc) when is_map(v) do
+    child = Map.fetch!(@tables, name)
+    tally_refs(child, Map.merge(defaults(child), v), acc)
+  end
+
+  defp tally_field(%{t: :list, elem_kind: 17, elem: name}, elements, acc) when is_list(elements) do
+    Enum.reduce(elements, acc, fn
+      v, acc when is_map(v) -> tally_node(name, v, acc)
+      _, acc -> acc
+    end)
+  end
+
+  defp tally_field(%{t: :list, elem_kind: 13, elem: name}, elements, acc) when is_list(elements) do
+    child = Map.fetch!(@tables, name)
+
+    Enum.reduce(elements, acc, fn
+      v, acc when is_map(v) -> tally_refs(child, Map.merge(defaults(child), v), acc)
+      _, acc -> acc
+    end)
+  end
+
+  defp tally_field(_f, _v, acc), do: acc
+
+  defp tally_node(name, v, acc) do
+    key = {:table, name, v}
+    prev = Map.get(acc, key, 0)
+    acc = Map.put(acc, key, prev + 1)
+
+    if prev == 0 do
+      child = Map.fetch!(@tables, name)
+      tally_refs(child, Map.merge(defaults(child), v), acc)
+    else
+      acc
     end
   end
 
   # json_object writes one instance's fields in declaration order, defaults
   # included (§16.1: a text is for people and tools, so elision is not for it).
   # A value is SPARSE — only the fields the wire carried — so each level folds
-  # the descriptor's defaults back in before a field is read.
-  defp json_object(desc, value, depth) do
+  # the descriptor's defaults back in before a field is read. label 0 is a
+  # plain object. A positive label is a definition: "&node" first, then the
+  # fields (§16.7). The depth cap is the reader's (§16.2).
+  defp json_object(desc, value, depth), do: json_object(desc, value, depth, 0)
+
+  defp json_object(_desc, _value, depth, _label) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
+  defp json_object(desc, value, depth, label) do
     value = Map.merge(defaults(desc), value)
 
     entries =
@@ -1420,7 +1532,43 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
          json_field(f, Map.get(value, f.name), depth + 1)]
       end)
 
-    ["{", Enum.intersperse(entries, ","), "\n", indent(depth), "}"]
+    cond do
+      label != 0 and entries == [] ->
+        Process.put(:elixir_json_refuse, true)
+        "null"
+
+      label != 0 ->
+        head = ["{\n", indent(depth + 1), "\"&node\": ", Integer.to_string(label)]
+        [head, Enum.map(entries, fn e -> [",", e] end), "\n", indent(depth), "}"]
+
+      true ->
+        ["{", Enum.intersperse(entries, ","), "\n", indent(depth), "}"]
+    end
+  end
+
+  # json_node writes one pointer target. A node named once is a plain object.
+  # A node named again is defined at the first write, label from 1, and every
+  # later write is {"&node": N} alone (§16.7).
+  defp json_node(table, value, depth) do
+    key = {:table, table, value}
+    n = Map.get(Process.get(:elixir_json_refs, %{}), key, 1)
+
+    if n < 2 do
+      json_object(Map.fetch!(@tables, table), value, depth)
+    else
+      labels = Process.get(:elixir_json_labels, %{})
+
+      case Map.get(labels, key) do
+        nil ->
+          next = Process.get(:elixir_json_next, 0) + 1
+          Process.put(:elixir_json_next, next)
+          Process.put(:elixir_json_labels, Map.put(labels, key, next))
+          json_object(Map.fetch!(@tables, table), value, depth, next)
+
+        label ->
+          ["{\n", indent(depth + 1), "\"&node\": ", Integer.to_string(label), "\n", indent(depth), "}"]
+      end
+    end
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
@@ -1444,8 +1592,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
   # string or enum a quoted name, and a scalar its own spelling.
   defp json_list_elem(%{elem_kind: 13} = f, e, depth), do: json_object(Map.fetch!(@tables, f.elem), e, depth)
-  defp json_list_elem(%{elem_kind: 17} = f, nil, _depth), do: "null"
-  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_object(Map.fetch!(@tables, f.elem), e, depth)
+  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
+  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
   defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
   defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
@@ -1456,8 +1604,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
   defp json_field(%{t: :table} = f, v, depth), do: json_object(Map.fetch!(@tables, f.elem), v || %{}, depth)
-  defp json_field(%{t: :pointer} = f, nil, _depth), do: "null"
-  defp json_field(%{t: :pointer} = f, v, depth), do: json_object(Map.fetch!(@tables, f.elem), v, depth)
+  defp json_field(%{t: :pointer} = _f, nil, _depth), do: "null"
+  defp json_field(%{t: :pointer} = f, v, depth), do: json_node(f.elem, v, depth)
   defp json_field(%{t: :blob}, nil, _depth), do: "null"
   defp json_field(%{t: :blob, blob: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
   defp json_field(%{t: :blob}, v, _depth), do: ["\"", json_escape(v), "\""]
@@ -1610,11 +1758,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :table}, _raw, report),
     do: {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
-  defp json_read_field(%{t: :pointer} = f, nil, report), do: {nil, report}
+  defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
 
   defp json_read_field(%{t: :pointer} = f, raw, report) when is_map(raw) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), raw)
-    {v, merge_report(report, elem_report)}
+    json_read_node(f.elem, raw, report)
   end
 
   defp json_read_field(%{t: :pointer}, _raw, report),
@@ -1647,11 +1794,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {v, merge_report(report, elem_report)}
   end
 
-  defp json_read_list_elem(%{elem_kind: 17} = f, nil, report), do: {nil, report}
+  defp json_read_list_elem(%{elem_kind: 17} = _f, nil, report), do: {nil, report}
 
   defp json_read_list_elem(%{elem_kind: 17} = f, e, report) when is_map(e) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), e)
-    {v, merge_report(report, elem_report)}
+    json_read_node(f.elem, e, report)
   end
 
   defp json_read_list_elem(%{elem_kind: 12} = f, e, report) when is_binary(e) do
@@ -1677,6 +1823,58 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [2, 3, 4, 5, 6, 7, 8, 9] and is_integer(e), do: {e, report}
   defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [10, 11] and is_number(e), do: {e * 1.0, report}
   defp json_read_list_elem(_f, _e, report), do: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+  # json_read_node reads one pointer object (§16.7). "&node" alone, after the
+  # label is defined, is that node. "&node" plus fields defines it. A label
+  # with no definition, a second definition, or a reference while the
+  # definition is still open is malformed. A label of another table is a kind
+  # mismatch and the pointer reads null.
+  defp json_read_node(table, raw, report) do
+    case Map.fetch(raw, "&node") do
+      :error ->
+        {v, elem_report} = json_fields(Map.fetch!(@tables, table), raw)
+        {v, merge_report(report, elem_report)}
+
+      {:ok, label} when is_integer(label) and label > 0 and map_size(raw) == 1 ->
+        cond do
+          Map.has_key?(Process.get(:elixir_json_open, %{}), label) ->
+            Process.put(:elixir_json_bad, true)
+            {nil, %{report | malformed: true}}
+
+          true ->
+            case Process.get(:elixir_json_defs, %{}) do
+              %{^label => {^table, value}} ->
+                {value, report}
+
+              %{^label => _} ->
+                {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+              _ ->
+                Process.put(:elixir_json_bad, true)
+                {nil, %{report | malformed: true}}
+            end
+        end
+
+      {:ok, label} when is_integer(label) and label > 0 ->
+        defs = Process.get(:elixir_json_defs, %{})
+        open = Process.get(:elixir_json_open, %{})
+
+        if Map.has_key?(defs, label) or Map.has_key?(open, label) do
+          Process.put(:elixir_json_bad, true)
+          {nil, %{report | malformed: true}}
+        else
+          Process.put(:elixir_json_open, Map.put(open, label, true))
+          {v, elem_report} = json_fields(Map.fetch!(@tables, table), Map.delete(raw, "&node"))
+          Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+          Process.put(:elixir_json_defs, Map.put(Process.get(:elixir_json_defs, %{}), label, {table, v}))
+          {v, merge_report(report, elem_report)}
+        end
+
+      _ ->
+        Process.put(:elixir_json_bad, true)
+        {nil, %{report | malformed: true}}
+    end
+  end
 
   # merge_report folds one nested value's report into the enclosing one
   # (§16.2): the counters sum and malformed sticks, so an event inside a list
