@@ -114,7 +114,10 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
 	b.WriteString(uncarriedAttribute(uncarriedRootNames(u)))
+	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
+	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	b.WriteString(variableRuntimeSource)
+	b.WriteString(cookWriteSource)
 	b.WriteString(variableRetainSource)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
@@ -2883,16 +2886,16 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{size: %d, string_blob: %v, variable: %v, fields: [\n",
-		st.Name, ml.Size, str, ir.VariableTables(u)[st.Name])
+	fmt.Fprintf(&b, "    %q => %%{size: %d, align: %d, type_id: 0x%016X, record: %d, has_extent: %v, string_blob: %v, variable: %v, fields: [\n",
+		st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name])
 	for i, f := range st.Fields {
-		b.WriteString("      " + fieldDescriptor(u, f, i))
+		b.WriteString("      " + fieldDescriptor(u, f, i, ml.FieldByName(f.Name)))
 	}
 	b.WriteString("    ]},\n")
 	return b.String()
 }
 
-func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
+func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) string {
 	var b strings.Builder
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireFieldKind(f)
@@ -2960,6 +2963,7 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 		// optional writes its frame even when the body is all defaults.
 		b.WriteString(", optional: true")
 	}
+	writeCookLayout(&b, u, f, fl)
 	fmt.Fprintf(&b, ", shape: %s, bound: %s", cardShape(f), cardBound(f))
 	fmt.Fprintf(&b, ", default: %s", variableFieldDefault(f))
 	b.WriteString("},\n")

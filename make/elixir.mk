@@ -477,6 +477,19 @@ tables-elixir-variable-class: build/conformance/manifest.txt
 
 test-elixir: tables-elixir-variable-class
 
+# THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
+# builds the pinned block golden and cooks the carried instances to `schema cook`
+# in both byte orders; a short buffer returns false and writes nothing. It is a
+# FUNCTIONAL test, so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain into a
+# failure. The conformance run answers cook-write for the instances this leg
+# carries and writes <case>.absent for the rest.
+.PHONY: tables-elixir-block-build
+tables-elixir-block-build: build/conformance/manifest.txt
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
+	./build/conformance-harness run --only elixir
+
+test-elixir: tables-elixir-block-build
+
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 # ---------------------------------------------------------------------------

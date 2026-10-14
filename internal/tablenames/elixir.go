@@ -2,11 +2,13 @@ package tablenames
 
 // Elixir is the Elixir table backend (internal/codegen/elixirtable).
 //
-// The Elixir backend emits the BLOCK and COOK read halves and the FIXED FORM
-// (docs/SPEC-TABLES.md §3.4, form byte 3), which is this backend's first table
-// WIRE; form 1 was the form that preceded the id-table wire and was removed,
-// and schema#515 brings the current one. It claims no TableRuntime: that name
-// is another backend's.
+// The Elixir backend emits the BLOCK form (read and build), the COOKED form
+// (open and cook_from) and the FIXED FORM (docs/SPEC-TABLES.md §3.4, form byte
+// 3), which is this backend's first table WIRE; form 1 was the form that
+// preceded the id-table wire and was removed, and schema#515 brings the
+// current one. It claims no TableRuntime: that name is another backend's. The
+// variable-form codec is the module Table, which a declaration of that name
+// already collides with by the file-module rule, so it is not a second claim.
 const Elixir Backend = 1 << 6
 
 func init() {

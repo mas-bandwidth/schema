@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write and report ride the <Unit>.Table codec, the rest the block and
   # cook readers
-  @surfaces ~w(wire json-read json-write report cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  @surfaces ~w(wire json-read json-write report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -572,6 +572,70 @@ defmodule Driver do
             _ ->
               write_absent(outdir, name <> ".json")
           end
+      end
+    end
+  end
+
+  defp run("cook-write", rows, outdir) do
+    instances =
+      Map.new(rows(rows, "instance"), fn [name | rest] -> {name, rest} end)
+
+    for [name | _] <- rows(rows, "cook-write") do
+      case Map.get(instances, name) do
+        [unit, root, wire | _] ->
+          cook_one(table_module(unit), root, wire, outdir, name)
+
+        _ ->
+          write_absent(outdir, name)
+          write_absent(outdir, name <> "-be")
+      end
+    end
+  end
+
+  # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
+  # short buffer, then write both byte orders. A root this leg does not carry
+  # writes <case>.absent rather than a wrong byte.
+  defp cook_one(nil, _root, _wire, outdir, name) do
+    write_absent(outdir, name)
+    write_absent(outdir, name <> "-be")
+  end
+
+  defp cook_one(mod, root, wire, outdir, name) do
+    if not function_exported?(mod, :cook_from, 4) or not mod.carried?(root) do
+      write_absent(outdir, name)
+      write_absent(outdir, name <> "-be")
+    else
+      case mod.load(root, File.read!(wire)) do
+        {:ok, value, report} ->
+          if Map.get(report, :malformed, false) do
+            write_absent(outdir, name)
+            write_absent(outdir, name <> "-be")
+          else
+            case mod.cook_measure_reason(root, value) do
+              {size, :ok} when is_integer(size) and size > 0 ->
+                for {order, suffix} <- [{:little, ""}, {:big, "-be"}] do
+                  stamp = :binary.copy(<<0xA5>>, size)
+                  short = binary_part(stamp, 0, size - 1)
+
+                  if mod.cook_from(root, value, short, order) != false do
+                    raise "short cook buffer wrote #{name}#{suffix}"
+                  end
+
+                  case mod.cook_from(root, value, stamp, order) do
+                    {true, out} -> write(outdir, name <> suffix, binary_part(out, 0, size))
+                    _ -> raise "cook write refused #{name}#{suffix}"
+                  end
+                end
+
+              _ ->
+                write_absent(outdir, name)
+                write_absent(outdir, name <> "-be")
+            end
+          end
+
+        _ ->
+          write_absent(outdir, name)
+          write_absent(outdir, name <> "-be")
       end
     end
   end
