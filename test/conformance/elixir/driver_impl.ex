@@ -578,7 +578,10 @@ defmodule Driver do
 
   defp run("report", rows, outdir) do
     for [name, unit, root, wire] <- rows(rows, "report") do
-      write(outdir, name, report_line(table_module(unit), root, wire))
+      case report_line(table_module(unit), root, wire) do
+        :absent -> write_absent(outdir, name)
+        line -> write(outdir, name, line)
+      end
     end
   end
 
@@ -601,7 +604,11 @@ defmodule Driver do
     end
   end
 
-  defp report_line(nil, _root, _wire), do: "0,0,0,0,0,false,absent\n"
+  # A unit with no variable-form codec, and a root the codec names uncarried,
+  # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
+  # is a wrong answer against the reference's "read"; the sidecar is the
+  # absence the harness already counts as a missing feature.
+  defp report_line(nil, _root, _wire), do: :absent
 
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
@@ -615,7 +622,7 @@ defmodule Driver do
         "0,0,0,0,0,true,read\n"
 
       _ ->
-        "0,0,0,0,0,false,absent\n"
+        :absent
     end
   end
 

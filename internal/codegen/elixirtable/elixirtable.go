@@ -12,8 +12,8 @@
 // enum elements and arrays of pointers, the remaining scalars, and nested
 // tables by value. A unit that is only a map or a union is refused by name
 // (§11). A unit that also carries unbounded arrays still generates: the roots
-// that reach a map or a union are uncarried and answer an error, and the
-// driver writes <case>.absent rather than a wrong byte.
+// that reach a map, a union, or an enum-keyed array are uncarried and answer
+// an error, and the driver writes <case>.absent rather than a wrong byte.
 package elixirtable
 
 import (
@@ -84,8 +84,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// the variable form (form byte 1) is emitted beside them for every
 	// variable table. Refusing that mixed unit here would take the accelerators
 	// down with the wire (docs/SPEC-TABLES.md §2.7, §3.4). A root in it that
-	// reaches a map or a union is named uncarried and answers an error
-	// (§2.6, §2.8); the driver writes <case>.absent.
+	// reaches a map, a union, or an enum-keyed array is named uncarried and
+	// answers an error (§2.4, §2.6, §2.8); the driver writes <case>.absent.
 	if !closureHoldsFixedTable(u, closure) {
 		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
 			return nil, err

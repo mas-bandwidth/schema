@@ -55,7 +55,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	closure := ir.TableClosure(u)
 	names := make([]string, 0, len(closure))
 	for name := range closure {
-		if u.Tables[name] != nil {
+		if closureStruct(u, name) != nil {
 			names = append(names, name)
 		}
 	}
@@ -88,7 +88,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  ])\n\n")
 	b.WriteString("  @tables %{\n")
 	for _, name := range names {
-		st := u.Tables[name]
+		st := closureStruct(u, name)
 		if st == nil {
 			continue
 		}
@@ -102,7 +102,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "    0x%016X => :bytes,\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "    0x%016X => :string,\n", ir.StringWireTypeId)
 	for _, name := range names {
-		st := u.Tables[name]
+		st := closureStruct(u, name)
 		if st == nil {
 			continue
 		}
@@ -119,8 +119,9 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
 }
 
-// uncarriedRootNames names every table in the closure that reaches a map or a
-// union (docs/SPEC-TABLES.md §2.6, §2.8, §11). A map's generated entry is
+// uncarriedRootNames names every table in the closure that reaches a map, a
+// union, or an enum-keyed array (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §11).
+// A map's generated entry is
 // uncarried on its own. The value type a map points at stays carried when no
 // field of that type is itself a map or a union: Item is a map's value and a
 // fixed table, and marking it uncarried would drop a root the wire still
@@ -156,14 +157,17 @@ func uncarriedRootNames(u *ir.Unit) []string {
 }
 
 // reachesUncarried reports a table the variable form must not walk
-// (docs/SPEC-TABLES.md §2.6, §2.8). A union arm's payload is not a field of
-// the arm's table, so Point stays carried when Hit's arm names it.
+// (docs/SPEC-TABLES.md §2.4, §2.6, §2.8). A union arm's payload is not a
+// field of the arm's table, so Point stays carried when Hit's arm names it.
+// An enum-keyed array is kind 16 (§3.2); this walker encodes an array as
+// kind 14, so a root that reaches one answers an error instead of a wrong
+// body (§11).
 func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
 	if st.IsMapEntry() {
 		return true
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() {
+		if f.IsMap() || f.KeyEnum != "" {
 			return true
 		}
 		if f.Type.Kind != ir.TNamed {
@@ -973,17 +977,30 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {_len, arr} ->
         case arr do
           <<elem_kind, count_rest::binary>> ->
-            if elem_kind == f.elem_kind do
-              case leb(count_rest) do
-                {n, elems} ->
-                  {value, report} = read_list_elements(f, elems, n, nodes, ids, [], report)
-                  {:cont, value, report}
+            # a narrower scalar element kind widens and counts once
+            # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
+            # the field and counts a kind mismatch.
+            cond do
+              elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) ->
+                case leb(count_rest) do
+                  {n, elems} ->
+                    report =
+                      if elem_kind == f.elem_kind do
+                        report
+                      else
+                        %{report | widened: report.widened + 1}
+                      end
 
-                :error ->
-                  {:cont, [], %{report | malformed: true}}
-              end
-            else
-              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+                    reader = %{f | elem_kind: elem_kind}
+                    {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+                    {:cont, value, report}
+
+                  :error ->
+                    {:cont, [], %{report | malformed: true}}
+                end
+
+              true ->
+                {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
           _ ->
@@ -1022,6 +1039,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp kind_width(10), do: 4
   defp kind_width(11), do: 8
   defp kind_width(_), do: 0
+
+  # kind_widens? is the scalar ladder a list's element kind may climb
+  # (docs/SPEC-TABLES.md §4): a smaller signed integer into a wider one of
+  # the same signedness, and float32 into float64. One widened counts for
+  # the array, and the elements are then read at the wire kind's width.
+  defp kind_widens?(from, to) do
+    (from >= 2 and from <= 5 and ((to > from and to <= 5) or to == 18)) or
+      (from >= 6 and from <= 9 and ((to > from and to <= 9) or to == 19)) or
+      (from == 10 and to == 11)
+  end
 
   # read_list_elements decodes one unbounded array's elements by the list's
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
@@ -2616,6 +2643,17 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// closureStruct is a closure member whether it was declared `table` or
+// `type` (docs/SPEC-TABLES.md §3.1). A by-value `type` is a nested body the
+// same way a nested table is, so its descriptor has to be in @tables or a
+// load of the owner raises on the missing name.
+func closureStruct(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
 // tableDescriptor spells one table's fields as data the engine walks
 // (docs/SPEC-TABLES.md §3): each field's effective id, its wire kind, and the
 // facts a codec needs — a string's bound, an int's clamp range, an enum's
@@ -2689,8 +2727,11 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 			fmt.Fprintf(&b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
 		}
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		// A float's payload width is its kind (docs/SPEC-TABLES.md §3).
+		// FieldType.Width stays 0 for TFloat32 and TFloat64, so Width/8
+		// would hand float_bytes/2 a 0 and the clause would not match.
 		b.WriteString(", t: :float")
-		fmt.Fprintf(&b, ", width: %d", f.Type.Width/8)
+		fmt.Fprintf(&b, ", width: %d", ir.TableKindWidth(kind))
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
 	}
