@@ -292,7 +292,7 @@ func t18R27(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&body, " { Object values=load(%q,%q,%s);\n", u.Package+"."+fixedClass(row["root"]), path, row["records"])
+		fmt.Fprintf(&body, " try { Object values=load(%q,%q,%s);\n", u.Package+"."+fixedClass(row["root"]), path, row["records"])
 		keys := make([]string, 0, len(values))
 		for key := range values {
 			keys = append(keys, key)
@@ -309,7 +309,7 @@ func t18R27(t *testing.T) {
 			}
 			fmt.Fprintf(&body, " check(values,%q,%q,%q);\n", strings.Join(parts, "."), values[key], row["file"]+":"+key)
 		}
-		body.WriteString(" }\n")
+		fmt.Fprintf(&body, " } catch (Exception | AssertionError bad) { failures++; System.err.println(%q + bad); }\n", row["file"]+": ")
 		compared++
 	}
 	if compared == 0 {
@@ -328,6 +328,7 @@ func t18R27(t *testing.T) {
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("R27 javac: %v\n%s", err, out)
 	}
+	t.Logf("R27 selected=%d refused=%d; actual value comparisons follow", compared, refused)
 	t.Log(strings.TrimSpace(t07RunClass(t, classes, "Probe_p2")))
 	t.Logf("R27 compared=%d refused=%d", compared, refused)
 }
@@ -336,7 +337,7 @@ const t18ManifestProbe = `import java.lang.reflect.*;
 import java.nio.file.*;
 import java.math.*;
 public final class Probe_p2 {
- static int checked;
+ static int checked,failures;
  static Object load(String name,String path,int count)throws Exception {
   Class<?> codec=Class.forName(name),value=Class.forName(name+"$Value");String pkg=name.substring(0,name.lastIndexOf('.'));
   Class<?> runtime=Class.forName(pkg+".TableFixed"),reportClass=Class.forName(pkg+".TableFixed$Report");
@@ -368,10 +369,11 @@ public final class Probe_p2 {
    else {long hi=got.getClass().getField("hi").getLong(got),lo=got.getClass().getField("lo").getLong(got);have=BigInteger.valueOf(hi).shiftLeft(64).add(new BigInteger(Long.toUnsignedString(lo)));if(got.getClass().getSimpleName().equals("UInt128")&&hi<0)have=have.add(BigInteger.ONE.shiftLeft(128));}
    ok=have.equals(want);
   }
-  if(!ok)throw new AssertionError("R27 "+label+" expected="+expected+" got="+got);checked++;
+  if(!ok){failures++;System.err.println("R27 "+label+" expected="+expected+" got="+got);}checked++;
  }
  public static void main(String[] args)throws Exception {
 @@CHECKS@@
-  System.out.println("R27 manifest values compared="+checked);
+  System.out.println("R27 manifest values compared="+checked+" failures="+failures);
+  if(failures!=0)throw new AssertionError("R27 manifest mismatches="+failures);
  }
 }`
