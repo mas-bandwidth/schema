@@ -56,8 +56,8 @@ func runRecipes(name, text string) []runRecipe {
 			segLine = append(segLine, i+1)
 			line := physical[i]
 			trimmed := strings.TrimRight(line, " \t")
-			if strings.HasSuffix(trimmed, "\\") {
-				sb.WriteString(strings.TrimSuffix(trimmed, "\\"))
+			if before, ok := strings.CutSuffix(trimmed, "\\"); ok {
+				sb.WriteString(before)
 				sb.WriteString(" ")
 				i++
 				continue
@@ -215,7 +215,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:234", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
 	{"make/go.mk:509", "same separate test/go-tables module, -run '^TestSoak$$'"},
 	{"make/go.mk:524", "same separate test/go-tables module, -run '^TestUsage$$'"},
-	{"Makefile:5319", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"Makefile:5366", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every
