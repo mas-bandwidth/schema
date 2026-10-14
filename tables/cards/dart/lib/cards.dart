@@ -18,6 +18,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'sha256.dart';
+
 import '../../../../build/tables-generated-dart/cards/Card.dart';
 import '../../../../build/tables-generated-dart/cards/CardsWire.dart';
 
@@ -50,11 +52,19 @@ class CardException implements Exception {
 // shallow copy of the caller's bytes escapes: the wire field is the caller's
 // bytes copied, and wire() returns a fresh copy (docs/SPEC-TABLES.md §6.2).
 class Record {
-  final Uint8List _wire;
-  final Card _card;
-  final TableWireReport _report;
+  Uint8List _wire;
+  Card _card;
+  TableWireReport _report;
 
   Record._(this._wire, this._card, this._report);
+
+  // _publish swaps the owned wire, card and report on complete success only;
+  // a refused edit leaves every field untouched (docs/SPEC-TABLES.md §6.2).
+  void _publish(Uint8List wire, Card card, TableWireReport report) {
+    _wire = wire;
+    _card = card;
+    _report = report;
+  }
 
   // wire returns a defensive copy of the record's wire bytes.
   Uint8List wire() => Uint8List.fromList(_wire);
@@ -814,4 +824,314 @@ void emitList(StringBuffer out, String key, List<String> elems) {
     out.write(elems[i]);
   }
   out.write('\n');
+}
+
+// ---- L3: the retained upgrade and the strict read (tables/cards/upgrade.go) ----
+
+// maxRetainBytes is the customer ceiling on the retained-record byte store:
+// fixed retention storage of 1 << 20 bytes per call, never grown
+// (docs/SPEC-TABLES.md §6.6).
+const int maxRetainBytes = 1 << 20;
+
+// maxRetainIds is the customer ceiling on the retained-id entry store: 4096
+// ids per call, never grown (docs/SPEC-TABLES.md §6.6).
+const int maxRetainIds = 4096;
+
+// UpgradeResult is a successful upgrade: the new wire and the accumulated
+// report (tables/cards/conformance/FORMAT.md).
+class UpgradeResult {
+  final Uint8List wire;
+  final TableWireReport report;
+  UpgradeResult(this.wire, this.report);
+}
+
+// upgrade rewrites wire through the generated retaining path so every field
+// the current declaration cannot name is preserved at the end of its own body
+// (§6.6; tla/CardVersioning.tla: NoFieldLost, BodyUnchanged,
+// RefusalKeepsOriginal). Unknown, Retained and Widened alone are not loss.
+UpgradeResult upgrade(Uint8List wire) =>
+    upgradeWithStorage(wire, maxRetainBytes, maxRetainIds);
+
+// upgradeWithStorage is upgrade with caller-owned retention storage, so a
+// capacity one id short can be shown to refuse with retain-lost
+// (tla/CardVersioning.tla: RefusalKeepsOriginal).
+UpgradeResult upgradeWithStorage(
+  Uint8List wire,
+  int retainBytes,
+  int retainIds,
+) {
+  if (retainBytes < 0 || retainIds < 0) {
+    throw CardException('cards: upgrade: negative retention capacity');
+  }
+  final input = Uint8List.fromList(wire);
+  final report = TableWireReport();
+  if (cardWireMeasure(input) < 0) {
+    cardWireLoad(input, report);
+    throw CardException('cards: upgrade: wire is not a card');
+  }
+  final retain = TableRetain(retainBytes, List<int>.filled(retainIds, 0));
+  final card = cardWireLoadRetain(input, retain, report);
+  if (report.refused) {
+    throw CardException('cards: upgrade: wire is not a card');
+  }
+  if (report.malformed) {
+    throw CardException('cards: upgrade: wire is malformed');
+  }
+  checkCard(card);
+  final out = cardWireSaveRetain(card, retain, report);
+  _lossErr(report);
+  return UpgradeResult(out, report);
+}
+
+// _lossErr names the report events that make a rewrite unsafe (§6.6):
+// RetainLost, KindMismatch, Clamped or Malformed refuse with no output.
+void _lossErr(TableWireReport report) {
+  if (report.retainLost > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.retainLost} retained field(s) lost, refusing to replace',
+    );
+  }
+  if (report.kindMismatch > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.kindMismatch} kind mismatch(es), refusing to replace',
+    );
+  }
+  if (report.clamped > 0) {
+    throw CardException(
+      'cards: upgrade: ${report.clamped} clamped value(s), refusing to replace',
+    );
+  }
+  if (report.malformed) {
+    throw CardException('cards: upgrade: malformed wire, refusing to replace');
+  }
+}
+
+// readStrict reads wire and refuses any data the current declaration cannot
+// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
+// (docs/SPEC-TABLES.md §4).
+Record readStrict(Uint8List wire) {
+  final rec = load(wire);
+  final r = rec.report;
+  if (r.unknown > 0) {
+    throw CardException(
+      'cards: strict: ${r.unknown} unknown field(s), unsupported data',
+    );
+  }
+  if (r.kindMismatch > 0) {
+    throw CardException(
+      'cards: strict: ${r.kindMismatch} kind mismatch(es), unsupported data',
+    );
+  }
+  if (r.clamped > 0) {
+    throw CardException(
+      'cards: strict: ${r.clamped} clamped value(s), unsupported data',
+    );
+  }
+  if (r.malformed) {
+    throw CardException('cards: strict: malformed wire, unsupported data');
+  }
+  return rec;
+}
+
+// ---- L4: the task hash and atomic field edits (tables/cards/edit.go) ----
+
+// _refuseLossy names the read events that make a record unsafe to hash or
+// rewrite (§4, §6.6; tla/CardHops.tla: EditDropsUnknown reversed witness).
+void _refuseLossy(TableWireReport rep) {
+  if (rep.unknown > 0 ||
+      rep.kindMismatch > 0 ||
+      rep.clamped > 0 ||
+      rep.retainLost > 0 ||
+      rep.malformed) {
+    throw CardException(
+      'cards: record has loss events (unknown=${rep.unknown} kindMismatch=${rep.kindMismatch} clamped=${rep.clamped} retainLost=${rep.retainLost} malformed=${rep.malformed}): refused, never hashed or rewritten',
+    );
+  }
+}
+
+void _hashU64(List<int> out, int v) {
+  for (var i = 0; i < 8; i++) {
+    out.add((v >> (8 * i)) & 0xff);
+  }
+}
+
+void _hashText(List<int> out, String text) {
+  final b = utf8.encode(text);
+  _hashU64(out, b.length);
+  out.addAll(b);
+}
+
+void _hashList(List<int> out, List<String> items) {
+  _hashU64(out, items.length);
+  for (final e in items) {
+    _hashText(out, e);
+  }
+}
+
+// taskHash returns the SHA-256 digest of a record's task: body, paths, new,
+// shared, test and done in that order, each text as an unsigned 64-bit
+// little-endian byte length then its bytes, each list as a count then each
+// length-prefixed text; needs, tier, priority and machine fields excluded
+// (docs/SPEC-TABLES.md §5; tla/CardHops.tla: TaskHashStable). A nil or lossy
+// record is refused with no hash.
+Uint8List taskHash(Record record) {
+  _refuseLossy(record.report);
+  final c = record.card;
+  final framed = <int>[];
+  _hashText(framed, c.body ?? '');
+  _hashList(framed, c.paths.map((e) => e.s).toList());
+  _hashList(framed, c.new_.map((e) => e.s).toList());
+  _hashList(framed, c.shared.map((e) => e.s).toList());
+  _hashText(framed, c.test);
+  _hashText(framed, c.done ?? '');
+  return sha256Bytes(framed);
+}
+
+// taskHashHex is taskHash as 64 lowercase hex digits.
+String taskHashHex(Record record) =>
+    taskHash(record).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+
+void _validateStrings(String name, List<String> values, int bound) {
+  for (final v in values) {
+    if (utf8.encode(v).length > bound) {
+      throw CardException(
+        'cards: $name element is ${utf8.encode(v).length} bytes, past its $bound-byte bound',
+      );
+    }
+    if (v.contains('\u0000')) {
+      throw CardException(
+        'cards: $name has an element that is not well-formed UTF-8 without NUL',
+      );
+    }
+  }
+}
+
+// _edit is the shared atomic rewrite: refuse a lossy record, reload it fresh,
+// mutate, validate the whole rebuilt card, save, and publish only on complete
+// success (§6.2; tla/CardHops.tla: TaskHashStable, EditDropsUnknown).
+void _edit(Record r, void Function(Card) mutate) {
+  _refuseLossy(r.report);
+  final fresh = load(r.wire());
+  _refuseLossy(fresh.report);
+  mutate(fresh.card);
+  checkCard(fresh.card);
+  final wire = cardWireSave(fresh.card);
+  r._publish(wire, fresh.card, TableWireReport());
+}
+
+// setNeeds replaces the needs list atomically (§2.9, §6.2).
+void setNeeds(Record r, List<String> needs) {
+  _validateStrings('needs', needs, 64);
+  if (needs.length > maxListEntries) {
+    throw CardException(
+      'cards: needs has ${needs.length} entries, past the $maxListEntries-entry ceiling',
+    );
+  }
+  _edit(r, (c) => c.needs = needs.map((e) => CardID()..s = e).toList());
+}
+
+// setPaths replaces the paths list atomically (§2.9, §6.2).
+void setPaths(Record r, List<String> paths) {
+  _validateStrings('paths', paths, 192);
+  if (paths.length > maxListEntries) {
+    throw CardException(
+      'cards: paths has ${paths.length} entries, past the $maxListEntries-entry ceiling',
+    );
+  }
+  _edit(r, (c) => c.paths = paths.map((e) => PathText()..s = e).toList());
+}
+
+// setTier changes the tier atomically; only a declared variant is accepted (§8).
+void setTier(Record r, int tier) {
+  if (tier < 0 || tier > Tier.max) {
+    throw CardException('cards: tier $tier is not a declared variant');
+  }
+  _edit(r, (c) => c.tier = tier);
+}
+
+// setPriority changes the priority atomically (§8).
+void setPriority(Record r, int priority) {
+  if (priority < 0 || priority > Priority.max) {
+    throw CardException('cards: priority $priority is not a declared variant');
+  }
+  _edit(r, (c) => c.priority = priority);
+}
+
+// setColumn changes the column atomically (§8).
+void setColumn(Record r, int column) {
+  if (column < 0 || column > Column.max) {
+    throw CardException('cards: column $column is not a declared variant');
+  }
+  _edit(r, (c) => c.column = column);
+}
+
+// setHolder changes the holder atomically (§6.1).
+void setHolder(Record r, String holder) {
+  _validateStrings('holder', [holder], 32);
+  _edit(r, (c) => c.holder = holder);
+}
+
+// ---- the view (docs/SPEC-TABLES.md §8.1) ----
+
+// _viewKinds pins the schema element type of every descriptor field, keyed by
+// table and field; viewWalksEveryField pins the same vocabulary independently
+// in the test, so a declaration change without a vocabulary update fails.
+const Map<String, String> _viewKinds = {
+  'Card.id': 'string',
+  'Card.sha': 'string',
+  'Card.tier': 'Tier',
+  'Card.repo': 'string',
+  'Card._base': 'string',
+  'Card.kind': 'string',
+  'Card.priority': 'Priority',
+  'Card.stream': 'string',
+  'Card.paths': 'PathText',
+  'Card._new': 'PathText',
+  'Card.shared': 'PathText',
+  'Card.needs': 'CardID',
+  'Card.test': 'string',
+  'Card.done': 'string',
+  'Card.deadline_minutes': 'int32',
+  'Card.source': 'string',
+  'Card.epoch': 'int32',
+  'Card.column': 'Column',
+  'Card.holder': 'string',
+  'Card.attempt': 'int32',
+  'Card.head': 'string',
+  'Card.branch': 'string',
+  'Card.body': 'string',
+  'Card.extra': 'KeyValue',
+  'Card.consumers': 'Consumer',
+  'CardID.s': 'string',
+  'Consumer.kind': 'string',
+  'Consumer.who': 'string',
+  'Consumer.route': 'string',
+  'Consumer.model': 'string',
+  'Consumer.started': 'int64',
+  'Consumer.ended': 'int64',
+  'Consumer.outcome': 'string',
+  'Consumer.line': 'string',
+  'Consumer.cost_micro_usd': 'int64',
+  'KeyValue.key': 'string',
+  'KeyValue.value': 'string',
+  'PathText.s': 'string',
+};
+
+// viewText writes the generated view: one line per field of every table,
+// tables sorted by name, fields in declaration order, from cardDescriptors()
+// (docs/SPEC-TABLES.md §8.1; tables/cards/conformance/FORMAT.md).
+String viewText() {
+  final desc = cardDescriptors();
+  final tables = desc.keys.toList()..sort();
+  final out = StringBuffer();
+  for (final t in tables) {
+    for (final f in desc[t]!.fields) {
+      final kind = _viewKinds['$t.${f.name}'];
+      if (kind == null) {
+        throw CardException('cards: view has no kind for $t.${f.name}');
+      }
+      out.writeln('$t ${f.name} $kind ${f.shape} ${f.bound ?? '-'}');
+    }
+  }
+  return out.toString();
 }
