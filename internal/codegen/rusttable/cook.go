@@ -1299,7 +1299,7 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 		return "TableCookStorage::Float", 4
 	case ir.TFloat64:
 		return "TableCookStorage::Float", 8
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return "TableCookStorage::Signed", int64(f.Type.Width) / 8
 		}
