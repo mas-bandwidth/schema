@@ -1,4 +1,5 @@
-// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart READ half.
+// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the
+// fixed-root writer (§7.6). Variable graph writes are carried separately.
 //
 // A cook is a region another build wrote, opened by a header match and then
 // POINTED AT — nothing per node, ever, which is what makes Open O(1) in the
@@ -65,6 +66,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
+		if st.IsMapEntry() {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -130,6 +134,9 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			return ""
 		}
 		for _, f := range member.Fields {
+			if f.IsMap() {
+				return name + "." + f.Name + " map cook reader is not carried in this slice"
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
@@ -155,17 +162,19 @@ func cookMember(u *ir.Unit, name string) *ir.Struct {
 }
 
 type cookGen struct {
-	unit      *ir.Unit
-	file      *ir.File
-	cook      *cookUnit
-	blocks    *ir.BlockUnit
-	home      bool
-	homeBase  string
-	body      strings.Builder
-	imports   map[string]map[string]bool
-	needData  bool
-	needHome  bool
-	needBlock bool
+	unit        *ir.Unit
+	file        *ir.File
+	cook        *cookUnit
+	blocks      *ir.BlockUnit
+	home        bool
+	homeBase    string
+	body        strings.Builder
+	imports     map[string]map[string]bool
+	needData    bool
+	needHome    bool
+	needBlock   bool
+	needWire    bool
+	needConvert bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -239,16 +248,22 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): read and carried write surfaces.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// Open checks the header and POINTS — nothing per node, ever, which is what\n")
-	h.WriteString("// makes it O(1) in the file's size. Import this library only if you read a\n")
+	h.WriteString("// makes it O(1) in the file's size. Import this library if you read or write a\n")
 	h.WriteString("// cook; the unit's <Base>Table.dart carries not one symbol of it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// A reference resolves to an OFFSET in the region and the deref is BOUNDED:\n")
 	h.WriteString("// in Dart the read after an escaping delta would be a RangeError, and a\n")
 	h.WriteString("// reader that throws on hostile bytes is not one that refuses them.\n")
 	h.WriteString("\n")
+	if g.needConvert {
+		h.WriteString("import 'dart:convert';\n")
+	}
+	if g.needWire {
+		fmt.Fprintf(&h, "import '%sWire.dart' as TableCookWire;\n", g.homeBase)
+	}
 	if g.needData || g.home {
 		h.WriteString("import 'dart:typed_data';\n\n")
 	}
@@ -355,6 +370,11 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 	g.emitCookOpen(st, ml)
 	g.emitCookAt(st)
 	g.emitCookDescriptors(st)
+	if ir.VariableTables(g.unit)[st.Name] {
+		g.emitCookWriteGraph(st)
+	} else {
+		g.emitCookWriteFixed(st)
+	}
 	g.pf("}\n\n")
 }
 
