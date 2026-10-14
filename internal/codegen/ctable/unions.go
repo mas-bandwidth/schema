@@ -20,6 +20,15 @@ func armValue(base string, v ir.UnionVariant) string {
 	}
 	return base
 }
+func armCount(base string, v ir.UnionVariant) string {
+	base += ".as." + v.Name
+	if v.F.Array == ir.ArrayCounted {
+		base += ".value_count"
+	} else {
+		base += ".value_length"
+	}
+	return base
+}
 func armWireKind(v ir.UnionVariant) int {
 	if v.Void() {
 		return ir.TableKindNoPayload
