@@ -89,6 +89,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		{"optional", &ir.Field{Name: "maybe", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Optional: true}}, []string{"optional"}},
 		{"enum_keyed_array", &ir.Field{Name: "per_tier", KeyEnum: "Tier", KeyEnumRef: enum, Array: ir.ArrayFixed, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TNamed, Ref: enum}}, []string{"enum-keyed"}},
 		{"wide_int", &ir.Field{Name: "wide", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}, []string{"128-bit"}},
+		{"bits", &ir.Field{Name: "flags", Type: ir.FieldType{Kind: ir.TBits, Width: 12}}, []string{"bits("}},
 		{"fixed", &ir.Field{Name: "ratio", Type: ir.FieldType{Kind: ir.TFixed, Width: 16}}, []string{"fixed-point"}},
 		{"union_arm", &ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TNamed, Ref: union}}, []string{"union arms"}},
 	}

@@ -10,10 +10,11 @@
 // (a plain `table` root, tables as list elements, bool/int32/int64/enum,
 // string(N), *string and []T lists of tables) and, beyond it, pointers to
 // tables (§2.1, §3.1), *bytes (§2.5), the unsigned integer widths, and
-// unbounded arrays of scalars (§2.9). A unit that declares a variable table
-// gets the codec even when a fixed table shares the closure (§2.7): form byte
-// 1 and form byte 3 do not write each other's bytes. The refusal by name (§11)
-// still binds only a unit the variable form owns.
+// unbounded arrays of scalars (§2.9). bits(N) stays refused by name until it
+// is carried: fieldDescriptor gives a bits field no t:. A unit that declares
+// a variable table gets the codec even when a fixed table shares the closure
+// (§2.7): form byte 1 and form byte 3 do not write each other's bytes. The
+// refusal by name (§11) still binds only a unit the variable form owns.
 package elixirtable
 
 import (

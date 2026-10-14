@@ -8,14 +8,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestVariableClassBeyondCardConstructsElixir pins docs/SPEC-TABLES.md §2.1,
-// §2.5, §2.9, §3: the variable form carries the constructs beyond the card
-// record — pointers to tables and the flat node table, blobs (*bytes),
-// unbounded arrays (scalar, string, enum), arrays of pointers, the 64-bit
-// id-table wire and the variable-class text form. Each unit round-trips
-// through the generated Elixir against the Go oracle: the committed wire loads,
-// re-saves byte for byte, and its committed JSON text round-trips identically.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// TestVariableClassBeyondCardConstructsElixir pins the rows this card carries:
+// pointers to tables and the flat node table (graphdemo, tblp2; docs/SPEC-TABLES.md
+// §2.1, §3) and blobs, *bytes and *string (blobdemo; §2.5). Each of those units
+// round-trips through the generated Elixir against the Go oracle: the committed
+// wire loads, re-saves byte for byte, and its committed JSON text round-trips
+// identically. listdemo still round-trips here. Unbounded arrays, arrays of
+// pointers, the id-table wire and the variable-class text form are not this
+// card's rows and stay todo. Functional (elixirBinary): run with
+// SCHEMA_REQUIRE_CORPUS=1.
 func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

@@ -70,8 +70,10 @@ func refuseCardUnsupportedFields(st *ir.Struct) error {
 }
 
 // cardUnsupportedVariableConstruct returns the construct's name on a field the
-// card slice does not carry, and "" on every field it does: a scalar, a
-// string(N), a *string blob, an enum, or an unbounded list of tables.
+// card slice does not carry, and "" on every field it does. *bytes and a
+// pointer to a table are carried. bits(N) stays refused until it is carried:
+// fieldDescriptor gives a bits field no t:, and save then raises key :t not found
+// (channel bits(6)).
 func cardUnsupportedVariableConstruct(f *ir.Field) string {
 	switch {
 	case f.IsMap():
@@ -82,6 +84,8 @@ func cardUnsupportedVariableConstruct(f *ir.Field) string {
 		return "enum-keyed array [E]T is outside the card constructs (§2.4)"
 	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
 		return "the 128-bit integer is outside the card constructs (§15)"
+	case f.Type.Kind == ir.TBits:
+		return "the bits(N) kind is outside the card constructs (§15)"
 	case f.Type.Kind == ir.TFixed:
 		return "the fixed-point kind is outside the card constructs (§15)"
 	}
