@@ -1536,7 +1536,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end > r.limit) { r.report.malformed = true; return; }\n", ind)
 		et := dartListElemType(f)
-		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
 		g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
@@ -1553,6 +1552,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t}\n", ind)
 		}
+		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tfinal keep=count>%d?%d:count;if(keep!=count)r.report.clamped++;\n", ind, f.ArrayBound, f.ArrayBound)
 			g.pf("%s\t\tfor (var i=0;i<keep;i++){\n", ind)

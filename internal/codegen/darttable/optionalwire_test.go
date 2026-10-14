@@ -125,6 +125,12 @@ Uint8List nestedMismatch(){
  out.putLeb(ref);out.putByte(13);out.putLeb(body.buf.length);out.putBytes(body.buf);out.putByte(0);
  for(final id in s.ids){out.putU64(id);}out.putU64(s.ids.length);return Uint8List.fromList(out.buf);
 }
+Uint8List repeatArray(List<int> body){
+ final s=w.WireState();final out=w.TableWireWriter(s)..putByte(1);final ref=out.refFor(itemsId);
+ out.putLeb(ref);out.putByte(14);out.putLeb(6);out.putBytes([4,1,99,0,0,0]);
+ out.putLeb(ref);out.putByte(14);out.putLeb(body.length);out.putBytes(body);out.putByte(0);
+ for(final id in s.ids){out.putU64(id);}out.putU64(s.ids.length);return Uint8List.fromList(out.buf);
+}
 Uint8List mismatch(){
  final s=w.WireState();final out=w.TableWireWriter(s)..putByte(1);
  out.putLeb(out.refFor(itemsId));out.putByte(14);out.putLeb(2);out.putByte(12);out.putLeb(0);out.putByte(0);
@@ -154,6 +160,12 @@ void main(){
  check(capped.itemsPresent&&capped.items.join(',')=='1,2,3'&&cr.clamped==1&&!cr.malformed,'bounded optional prefix');
  final mr=w.TableWireReport();final damaged=w.rootWireLoad(field(itemsId,14,[4,4,2,1,0]),mr);
  check(damaged.itemsPresent&&mr.malformed,'accepted array framing retains presence after damaged elements');
+ final kr=w.TableWireReport();final repeatKind=w.rootWireLoad(repeatArray([12,0]),kr);
+ check(repeatKind.itemsPresent&&repeatKind.items.single==99&&kr.kindMismatch==1&&!kr.malformed,'incompatible repeated array preserves accepted value');
+ final qr=w.TableWireReport();final repeatCount=w.rootWireLoad(repeatArray([4,128]),qr);
+ check(repeatCount.itemsPresent&&repeatCount.items.single==99&&qr.malformed,'damaged repeated count preserves accepted value');
+ final dr=w.TableWireReport();final brokenCount=w.rootWireLoad(field(itemsId,14,[2,4,128]),dr);
+ check(brokenCount.itemsPresent&&dr.malformed,'damaged count still present inside field framing');
  final tr=w.TableTextReport();final clipped=w.rootFromJson('{"items":[1,2,3,4]}',tr);
  check(clipped.itemsPresent&&clipped.items.length==3&&tr.clamped==1,'JSON bounded optional prefix');
  root.items=[1,2,3,4];var refused=false;try{w.rootWireSave(root);}on StateError{refused=true;}check(refused,'writer must reject oversized bounded array');

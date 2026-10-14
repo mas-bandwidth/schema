@@ -54,7 +54,7 @@ func (g *wireGen) emitOptionalReadPresence(f *ir.Field, ind string) {
 	g.pf("%s{final frame=TableWireReader.sub(r,r.pos,r.limit);\n", ind)
 	if f.CountedOnWire() {
 		elem := listElementKind(f)
-		g.pf("%s if(kind==14){final length=frame.readLeb();if(length!=null&&frame.has(length)&&length>=2){final end=frame.pos+length;final body=TableWireReader.sub(frame,frame.pos,end);final elem=body.readByte();final count=body.readLeb();if(count!=null&&(elem==%d||_kindWidens(elem,%d)))v.%sPresent=true;}}\n", ind, elem, elem, fieldMember(f))
+		g.pf("%s if(kind==14){final length=frame.readLeb();if(length!=null&&frame.has(length)&&length>=2){final end=frame.pos+length;final body=TableWireReader.sub(frame,frame.pos,end);final elem=body.readByte();final count=body.readLeb();if(count==null||elem==%d||_kindWidens(elem,%d))v.%sPresent=true;}}\n", ind, elem, elem, fieldMember(f))
 	} else if isByValueTable(f) {
 		g.pf("%s if(kind==13){final length=frame.readLeb();if(length!=null&&frame.has(length))v.%sPresent=true;}\n", ind, fieldMember(f))
 	} else {
