@@ -20,6 +20,7 @@ package darttable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -49,7 +50,7 @@ func (g *fixedModule) messageNameSlot(id uint64) int {
 // emitMessageBatchRuntime writes the shared bit codec and the batch's framing,
 // once, in the unit's runtime home.
 func (g *fixedModule) emitMessageBatchRuntime() {
-	g.pf("%s", dartMessageBatchRuntime)
+	runtime := dartMessageBatchRuntime
 	for _, entry := range ir.TableVocabulary(g.unit) {
 		shape := &entry.Shape
 		usesFloat32 := entry.Kind == ir.TableKindF32
@@ -58,10 +59,11 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 			shape = shape.Inner
 		}
 		if usesFloat32 {
-			g.pf("%s", dartMessageFloat32Runtime)
+			runtime = strings.Replace(runtime, "class TableBitWriter {\n", "class TableBitWriter {\n"+strings.TrimLeft(dartMessageFloat32Runtime, "\n"), 1)
 			break
 		}
 	}
+	g.pf("%s", runtime)
 	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
 }
@@ -183,7 +185,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 func (g *fixedModule) messageRides(f *ir.Field, expr string) string {
 	if f.Type.Kind == ir.TFloat32 && f.Array == ir.ArrayNone {
 		// Numeric equality elides -0.0; the wire preserves its sign (§3).
-		return "(" + expr + " != " + g.gen.fixedZeroFor(f) + " || _float32BitsFromDouble(" + expr + ") != _float32BitsFromDouble(" + g.gen.fixedZeroFor(f) + "))"
+		return "(" + expr + " != " + g.gen.fixedZeroFor(f) + " || TableBitWriter._float32BitsFromDouble(" + expr + ") != TableBitWriter._float32BitsFromDouble(" + g.gen.fixedZeroFor(f) + "))"
 	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
@@ -288,7 +290,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	// Float32 NaNs narrow in software so the signalling bit survives; the
 	// bit width remains kind 10's own. Float64 keeps its original bit view.
 	if kind == ir.TableKindF32 {
-		g.pf("%sw.put(_float32BitsFromDouble(%s), 32);\n", ind, expr)
+		g.pf("%sw.put(TableBitWriter._float32BitsFromDouble(%s), 32);\n", ind, expr)
 		return
 	}
 	if kind == ir.TableKindF64 {
@@ -420,7 +422,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// from its 64. Float32 NaNs widen in software; a hardware conversion would
 	// quiet a signalling NaN before a consumer could send it again.
 	if kind == ir.TableKindF32 {
-		g.pf("%s%s = _doubleFromFloat32Bits(r.bits.get(32));\n", ind, expr)
+		g.pf("%s%s = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));\n", ind, expr)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		return
 	}
@@ -607,31 +609,31 @@ bool tableMessageBatchClose(TableMessageReader r) {
 // The packet emitter's software conversion rule, repeated here because these
 // libraries cannot access another Dart library's private helpers (SPEC-TABLES §3).
 const dartMessageFloat32Runtime = `
-final Float32List _float32Cell = Float32List(2);
-final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
-final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
-final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+  static final Float32List _float32Cell = Float32List(2);
+  static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
+  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
+  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
 
-int _float32BitsFromDouble(double value) {
-  if (!value.isNaN) {
-    _float32Cell[0] = value;
-    return _float32Words[0];
+  static int _float32BitsFromDouble(double value) {
+    if (!value.isNaN) {
+      _float32Cell[0] = value;
+      return _float32Words[0];
+    }
+    _float64Cell[0] = value;
+    final bits = _float64Words[0];
+    var mantissa = (bits >>> 29) & 0x7fffff;
+    if (mantissa == 0) mantissa = 0x400000;
+    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
   }
-  _float64Cell[0] = value;
-  final bits = _float64Words[0];
-  var mantissa = (bits >>> 29) & 0x7fffff;
-  if (mantissa == 0) mantissa = 0x400000;
-  return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
-}
 
-double _doubleFromFloat32Bits(int bits) {
-  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-    _float64Words[0] = ((bits >>> 31) << 63) |
-        0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-    return _float64Cell[0];
+  static double _doubleFromFloat32Bits(int bits) {
+    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+      _float64Words[0] = ((bits >>> 31) << 63) |
+          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
+      return _float64Cell[0];
+    }
+    _float32Words[0] = bits;
+    return _float32Cell[0];
   }
-  _float32Words[0] = bits;
-  return _float32Cell[0];
-}
 
 `
