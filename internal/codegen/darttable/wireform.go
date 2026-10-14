@@ -104,7 +104,10 @@ func cardWireField(f *ir.Field) bool {
 }
 
 func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
-	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() || f.Type.Kind == ir.TMap {
+	if f.IsMap() {
+		return cardWireTableSeen(f.MapEntry, seen)
+	}
+	if f.Type.Optional || f.KeyEnum != "" {
 		return false
 	}
 	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
@@ -192,7 +195,7 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 	var roots []*ir.Struct
 	for _, name := range sortedTableNames(u) {
 		st := u.Tables[name]
-		if !variable[st.Name] || !cardWireTable(st) || named[st.Name] {
+		if st.IsMapEntry() || !variable[st.Name] || !cardWireTable(st) || named[st.Name] {
 			continue
 		}
 		roots = append(roots, st)
@@ -224,6 +227,9 @@ func wireClosure(u *ir.Unit) []*ir.Struct {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
+			if f.IsMap() {
+				visit(f.MapEntry)
+			}
 			if ref := tableRef(f); ref != nil && (f.CountedOnWire() || f.Array == ir.ArrayNone) {
 				visit(ref)
 			}
@@ -406,6 +412,7 @@ func (g *wireGen) emitRuntime() {
 // verdict (§3). The four the card's closure can move are widened, clamped,
 // unknown and kindMismatch; malformed and refused are the verdict flags.
 final class TableWireReport {
+  int duplicate = 0;
   int unknown = 0;
   int kindMismatch = 0;
   int widened = 0;
@@ -1077,6 +1084,8 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 	for _, f := range st.Fields {
 		name := fieldMember(f)
 		switch {
+		case f.IsMap():
+			g.pf("  List<%s> %s = <%s>[];\n", f.MapEntry.Name, name, f.MapEntry.Name)
 		case f.Type.Blob():
 			if f.Type.Kind == ir.TString {
 				g.pf("  String? %s;\n", name)
@@ -1103,6 +1112,9 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 		default:
 			g.pf("  int %s = 0;\n", name)
 		}
+	}
+	if st.IsMapEntry() {
+		g.emitMapEntryHelpers(st)
 	}
 	g.pf("}\n\n")
 }
@@ -1165,6 +1177,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
+	case f.IsMap():
+		g.emitSaveMap(f, expr, ind, id, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -1421,7 +1435,11 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t}\n")
 	g.pf("\t\tswitch (id) {\n")
 	for i, f := range st.Fields {
-		g.emitLoadField(f, "\t\t\t", i)
+		if st.IsMapEntry() && f.Name == ir.MapKeyFieldName {
+			g.pf("\t\t\tcase %s: if (!r.skipKind(kind)) { r.report.malformed = true; return; } break;\n", dartU64Literal(fieldId(f)))
+		} else {
+			g.emitLoadField(f, "\t\t\t", i)
+		}
 	}
 	g.pf("\t\t\tdefault:\n")
 	g.pf("\t\t\t\tr.report.unknown++;\n")
@@ -1458,6 +1476,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
 	switch {
+	case f.IsMap():
+		g.emitLoadMap(f, ind, ordinal)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
@@ -1844,6 +1864,8 @@ func (g *wireGen) emitNumber(st *ir.Struct) {
 func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	expr := "v." + fieldMember(f)
 	switch {
+	case f.IsMap():
+		g.pf("%sfor (final entry in %s.ordered(%s)) { %sNumber(s, entry, open); }\n", ind, f.MapEntry.Name, expr, dartName(f.MapEntry.Name))
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		if f.Type.Kind == ir.TString {
@@ -1990,10 +2012,16 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\tvar at = 0;\n")
 	g.pf("\tfinal listFields = <int, List<int>>{\n")
 	for _, f := range st.Fields {
-		if !f.IsList() {
+		if !f.IsList() && !f.IsMap() {
 			continue
 		}
-		size, align := ir.ListElementLayout(g.unit, f)
+		var size, align int64
+		if f.IsMap() {
+			layout := ir.RecordLayout(g.unit, f.MapEntry)
+			size, align = layout.Size, layout.Align
+		} else {
+			size, align = ir.ListElementLayout(g.unit, f)
+		}
 		g.pf("\t\t%s: [%d, %d],\n", dartU64Literal(fieldId(f)), align, size)
 	}
 	g.pf("\t};\n")

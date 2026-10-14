@@ -16,7 +16,7 @@ func cookRuntimeSource(buildVersion uint64, withBuildVersion bool) string {
 	if withBuildVersion {
 		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion)
 	}
-	return s + cookRuntimeCore
+	return s + cookRuntimeCore + dartCookWriteReport
 }
 
 const cookBuildVersionTemplate = `
