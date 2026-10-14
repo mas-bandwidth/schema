@@ -435,14 +435,12 @@ jobs:
       # whether a red one is this tree's fault — held to its fixtures by
       # `make test`, in tools/vuln/testdata/cases.txt.
       #
-      # --strict IS THE ONE LINE OF DIFFERENCE from ci.yml's `make vuln`, and
-      # it is the whole point of running the gate in both files. The
-      # pull-request gate forgives a database that never answers, because a
-      # contributor's diff cannot be judged by vuln.go.dev's uptime. A
-      # CERTIFICATE CANNOT: it is a full run at an exact SHA, and an
-      # unreachable database certifies nothing. If both forgave, an outage
-      # would leave no red anywhere and this estate would believe it had been
-      # scanned.
+      # The pull-request gate in ci.yml runs `make vuln`: the same pin, DIRECT
+      # with no retry and no classifier, so an unreachable database is RED
+      # there too. A CERTIFICATE CANNOT forgive: it is a full run at an exact
+      # SHA, and an unreachable database certifies nothing, so this gate goes
+      # RED after three attempts where the direct PR scan cannot even retry a
+      # transient blip.
       #
       # INSIDE THE 10-MINUTE CAP with room to spare: 3 x 35 s of scan plus the
       # 15 s and 45 s sleeps is 2:45 worst case; the cap remains for a scan that
