@@ -84,12 +84,16 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
-	# the POINTERED unit: its cook readers are the reason it is here — the two
-	# ACCELERATORS need no codec (§7, §19), so a pointered unit's cooks open.
+	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
+	# variable-class codecs ride this stamp. tables/lists is NOT generated here:
+	# the compiler refuses the unit whole for java because Mixed holds an array
+	# of unions and Holders declares a map, so its rows answer absent and the
+	# lists corpus rides TestVariableClassBeyondCardConstructsJava instead.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
+	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
 	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
@@ -318,6 +322,20 @@ tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2, §3, §16), the Java twin of
+# `tables-go-variable-class`: the variable form's codecs for the pointered,
+# blob and list corpora round-trip against the committed reference bytes. It is
+# the variable class beyond the card constructs — *bytes blobs, unbounded
+# arrays of scalars/strings/enums, arrays of pointers and pointers outside a
+# list element, the 64-bit id-table escape kind and the §16.7 sharing text.
+# `SCHEMA_REQUIRE_CORPUS=1` turns a missing-oracle skip into a FAILURE, so under
+# this name a missing oracle can never pass silently.
+.PHONY: tables-java-variable-class
+tables-java-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestEscapeKind31SkippedAndCountedJava'
+	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
 # `make tables-java-versioning` could have been asserting nothing and reporting
@@ -590,6 +608,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
+		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java \
@@ -618,6 +637,7 @@ conformance-negative-control-java-block: build/conformance-harness
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema ./cmd/schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/blobs tables/blobs
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/block tables/block
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v1 test/tables/V1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v2 test/tables/V2.schema
@@ -663,6 +683,8 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
 	$(MAKE) tables-java-fixedform
 	$(MAKE) tables-java-fixedform-bench
+	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
+	$(MAKE) tables-java-variable-class
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main

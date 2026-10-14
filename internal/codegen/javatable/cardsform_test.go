@@ -31,14 +31,6 @@ table BadMap { m map[int32]Child }
 			wantRefuses: []string{"BadMap", "m", "map"},
 		},
 		{
-			name: "pointer to table outside list",
-			definition: `package probe
-table Child {}
-table BadPointer { c *Child }
-`,
-			wantRefuses: []string{"BadPointer", "c", "pointer"},
-		},
-		{
 			name: "optional ?T",
 			definition: `package probe
 table Child {}
@@ -53,13 +45,6 @@ enum Col { red, blue }
 table BadKeyed { k [Col]int32 }
 `,
 			wantRefuses: []string{"BadKeyed", "k", "enum-keyed"},
-		},
-		{
-			name: "*bytes",
-			definition: `package probe
-table BadBytes { b *bytes }
-`,
-			wantRefuses: []string{"BadBytes", "b", "*bytes"},
 		},
 		{
 			name: "union in a table closure",
