@@ -29,7 +29,7 @@ func cookGraphHasUncarriedFields(st *ir.Struct) bool {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if unionRef(f) != nil || f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayFixed {
+			if wireWide(f) || unionRef(f) != nil || f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayFixed {
 				return true
 			}
 			if f.IsMap() && walk(f.MapEntry) {
@@ -62,7 +62,7 @@ func (g *wireGen) emitOptionalReadPresence(f *ir.Field, ind string) {
 		if kind == wireKindEnum {
 			g.pf("%s if(kind==30&&frame.readLeb()!=null)v.%sPresent=true;\n", ind, fieldMember(f))
 		} else {
-			g.pf("%s if((kind==%d||_kindWidens(kind,%d))&&frame.has(kind==%d?%d:(kind==2||kind==6?1:(kind==3||kind==7?2:4))))v.%sPresent=true;\n", ind, kind, kind, kind, width, fieldMember(f))
+			g.pf("%s if((kind==%d||_kindWidens(kind,%d))&&frame.has(kind==%d?%d:(kind==2||kind==6?1:(kind==3||kind==7?2:(kind==4||kind==8||kind==10?4:8)))))v.%sPresent=true;\n", ind, kind, kind, kind, width, fieldMember(f))
 		}
 	}
 	g.pf("%s}\n", ind)

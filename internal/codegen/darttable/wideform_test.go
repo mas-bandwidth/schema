@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -49,6 +50,11 @@ func TestDartWideKindsThroughGeneratedWire(t *testing.T) {
 		files, err := Generate(u)
 		if err != nil {
 			t.Fatal(err)
+		}
+		for name := range files {
+			if strings.HasSuffix(name, "Cook.dart") {
+				t.Fatal("wide graph cook remains outside this slice", name)
+			}
 		}
 		if _, ok := files["ProbeWire.dart"]; !ok {
 			t.Fatalf("%s must emit form1", spelling)
@@ -101,6 +107,24 @@ func TestDartWideKindsThroughGeneratedWire(t *testing.T) {
 			fmt.Fprintf(&checks, "{final raw=BigInt.parse('%s');final value=%s;final v=p%d.Root()..value=value..vals=[value]..optPresent=true..opt=value;v.slots[1]=value;v.points[0]=value;%sfinal wire=p%d.rootWireSave(v);check(hex(wire)==%q,'Go wire %s raw%s got${hex(wire)}');final r=p%d.TableWireReport();final back=p%d.rootWireLoad(wire,r);check(!r.malformed&&r.kindMismatch==0&&r.clamped==0&&r.widened==0,'clean load');check(hex(p%d.rootWireSave(back))==hex(wire),'wire resave');final text=p%d.rootToJson(v);check(text==%q,'Go text %s');final tr=p%d.TableTextReport();final parsed=p%d.rootFromJson(text,tr);check(!tr.malformed&&tr.kindMismatch==0&&tr.clamped==0,'clean JSON');check(hex(p%d.rootWireSave(parsed))==hex(wire),'JSON wire identity');}\n", raw, stored, index, mapSetup, index, hex.EncodeToString(wire), spelling, raw, index, index, index, index, string(text)+"\n", spelling, index, index, index)
 		}
 		if index < 2 {
+			kind := byte(5)
+			if index == 1 {
+				kind = 9
+			}
+			body := []byte{1, kind, 0, 0, 0, 0, 0}
+			file := append([]byte{1}, body...)
+			file = binary.LittleEndian.AppendUint64(file, fieldId(u.Tables["Root"].Fields[3]))
+			file = binary.LittleEndian.AppendUint64(file, 1)
+			truncated := m.New(u.Tables["Root"])
+			tr := tabletext.Report{}
+			if _, err := tablewire.Decode(m, truncated, file, &tr); err != nil {
+				t.Fatal(err)
+			}
+			if !tr.Malformed || truncated.Fields[3].Present {
+				t.Fatal("Go optional widened framing oracle", tr)
+			}
+			fmt.Fprintf(&checks, "{final data=base64Decode(%q);final r=p%d.TableWireReader(data,data.length);r.refToId[1]=%s;final v=p%d.Root();p%d.rootWireLoadBody(r,v,false);check(!v.optPresent&&r.report.malformed,'incomplete widened optional framing stays absent');}\n", base64.StdEncoding.EncodeToString(body), index, dartU64Literal(fieldId(u.Tables["Root"].Fields[3])), index, index)
+
 			oldType := "int64"
 			raw := big.NewInt(-42)
 			if index == 1 {
@@ -143,7 +167,7 @@ func TestDartWideKindsThroughGeneratedWire(t *testing.T) {
 		}
 
 		highJSON := "{\"value\":" + tabletext.FormatWide(new(big.Int).Add(hi, big.NewInt(1)), ir.TableWireScalarKind(f), f.Type.FracBits) + "}"
-		for _, input := range []string{highJSON, `{"value":0.1}`} {
+		for _, input := range []string{highJSON, `{"value":0.1}`, `{"value":1,"value":0.1}`, `{"opt":1,"opt":null,"opt":0.1}`} {
 			v := m.New(u.Tables["Root"])
 			r := tabletext.Report{}
 			if !m.Read(v, []byte(input), &r) {
@@ -153,7 +177,7 @@ func TestDartWideKindsThroughGeneratedWire(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Fprintf(&checks, "{final r=p%d.TableTextReport();final v=p%d.rootFromJson(%q,r);check(r.clamped==%d&&r.kindMismatch==%d&&!r.malformed,'wide JSON tolerant events');check(hex(p%d.rootWireSave(v))==%q,'Go wide tolerant JSON');}\n", index, index, input, r.Clamped, r.KindMismatch, index, hex.EncodeToString(wire))
+			fmt.Fprintf(&checks, "{final r=p%d.TableTextReport();final v=p%d.rootFromJson(%q,r);check(r.clamped==%d&&r.kindMismatch==%d&&r.duplicate==%d&&!r.malformed,'wide JSON tolerant events');check(hex(p%d.rootWireSave(v))==%q,'Go wide tolerant JSON');}\n", index, index, input, r.Clamped, r.KindMismatch, r.Duplicate, index, hex.EncodeToString(wire))
 		}
 
 	}

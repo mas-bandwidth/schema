@@ -169,6 +169,11 @@ func TestDartWideVariableSourcesAreCarried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for name := range files {
+		if strings.HasSuffix(name, "Cook.dart") {
+			t.Fatal("wide graph cook remains outside this slice", name)
+		}
+	}
 	if len(files["ProbeWire.dart"]) == 0 {
 		t.Fatal("wide variable root must have its public form1 source")
 	}

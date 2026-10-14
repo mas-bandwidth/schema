@@ -599,6 +599,14 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	if wireWide(f) && f.Array == ir.ArrayNone {
+		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
+		if f.Type.Optional {
+			g.pf("if(item==null){v.%sPresent=false;v.%s=%s;continue;}v.%sPresent=true;\n", name, name, wideWireDefault(f), name)
+		}
+		g.pf("v.%s=%s;}}break;\n", name, g.wideJSONRead(f, "item", "v."+name))
+		return
+	}
 	if f.Type.Optional {
 		g.pf("if(val==null){v.%sPresent=false;break;}v.%sPresent=true;\n", name, name)
 	}
