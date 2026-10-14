@@ -80,6 +80,7 @@ var catalog = []Entry{
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
+	e("internal/mapwalk", "map walk", "go test ./internal/mapwalk", "go test ./internal/mapwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
