@@ -185,6 +185,22 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
 	}
 	out := generate(t, blockBuildCookSchema)
+	// Fixed-point accelerators remain publicly refused by WideTableKinds.
+	// Exercise the internal emitter's storage descriptors without widening that
+	// production boundary; the Go oracle pins raw scalar and array slots (§4.3).
+	u := unitFrom(t, blockBuildCookSchema)
+	out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
+	for _, f := range u.Files {
+		g := &gen{unit: u, file: f, closure: ir.TableClosure(u)}
+		out[strings.ToLower(f.Base)+"_cook.rs"] = g.cookModule()
+	}
+	blockOut, err := generateBlocks(u, ir.Blocks(u), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range blockOut {
+		out[name] = data
+	}
 	root := t.TempDir()
 	for name, data := range out {
 		if strings.Contains(name, "/") {
