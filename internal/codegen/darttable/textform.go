@@ -20,6 +20,7 @@
 package darttable
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -178,6 +179,28 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi) {
   r.kindMismatch++;
   return 0;
 }
+
+// _jsonFloat spells a float at the shortest precision that reads back the same
+// value (§16.2); a non-finite float has no JSON spelling and the writer refuses
+// it rather than losing it silently (docs/SPEC-TABLES.md §16.2).
+String _jsonFloat(double v) {
+  if (v.isNaN || v.isInfinite) {
+    throw StateError('float $v has no JSON spelling (docs/SPEC-TABLES.md §16.2)');
+  }
+  return v.toString();
+}
+
+// _jsonFloatField reads one float field (§16.2): a number, placed; anything
+// else is a kind mismatch.
+double _jsonFloatField(dynamic val, TableTextReport r) {
+  if (val is num) return val.toDouble();
+  if (val is String) {
+    final d = double.tryParse(val);
+    if (d != null) return d;
+  }
+  r.kindMismatch++;
+  return 0.0;
+}
 `)
 }
 
@@ -258,10 +281,14 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		g.pf("\t}\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
-	case f.Type.Kind == ir.TInt:
+	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
 		g.pf("\tout.raw(v.%s.toString());\n", name)
 	case f.Type.Kind == ir.TString:
 		g.pf("\tout.raw(_jsonString(v.%s));\n", name)
+	case f.Type.Kind == ir.TBytes: // bytes(N) rides as base64 in the text (§16.7)
+		g.pf("\tout.raw(_jsonString(base64Encode(utf8.encode(v.%s))));\n", name)
+	case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
+		g.pf("\tout.raw(_jsonFloat(v.%s));\n", name)
 	case enumRef(f) != nil:
 		g.pf("\tout.raw(_jsonEnum(v.%s, %sName, '%s.%s'));\n", name, dartName(enumRef(f).Name), st.Name, f.Name)
 	default:
@@ -331,6 +358,19 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r);\n", name, f.Type.Size)
+		g.pf("\t\t\t\tbreak;\n")
+	case f.Type.Kind == ir.TBits:
+		hi := "null"
+		if f.Type.Width < 64 {
+			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
+		}
+		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s);\n", name, hi)
+		g.pf("\t\t\t\tbreak;\n")
+	case f.Type.Kind == ir.TBytes:
+		g.pf("\t\t\t\tif (val is String) { v.%s = utf8.decode(base64Decode(val)); } else { r.kindMismatch++; }\n", name)
+		g.pf("\t\t\t\tbreak;\n")
+	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r);\n", name)
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r);\n", name, dartName(enumRef(f).Name))
