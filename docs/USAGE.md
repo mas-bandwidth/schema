@@ -3946,8 +3946,10 @@ A cook reads the same way, with one addition: a reference is an eight-byte
 SIGNED SELF-RELATIVE delta, so `At` takes the SLOT's own offset and answers the
 target's — `null` for a null reference. A delta that leaves the region throws a
 `RangeError` naming the cook as corrupt, because a cook is trusted input and
-that is a file `schema cook-check` refuses:
+that is a file `schema cook-check` refuses. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-js-usage`:
 
+<!-- js-table-usage -->
 ```js
 import { SceneCook, SceneRow, ListNodeRow } from "./GraphCook.js";
 
@@ -3962,6 +3964,7 @@ if (cook !== null) {
   }
 }
 ```
+<!-- /js-table-usage -->
 
 The casing you meet is one rule, the packet emitter's, because a table's
 closure decodes into the classes that emitter wrote: types, functions,
