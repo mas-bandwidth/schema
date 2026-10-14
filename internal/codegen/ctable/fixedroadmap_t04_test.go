@@ -201,7 +201,7 @@ func cT04R32(t *testing.T) {
 	if at < 0 || known < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d)", at, known, records)
 	}
-	if !(at < known && known < records) {
+	if at >= known || known >= records {
 		t.Errorf("R32: the floor check is not before the byte comparison and the record loop (%d, %d, %d)", at, known, records)
 	}
 	// ONCE AND IDEMPOTENT: the guarded body reads `pick` and returns the named

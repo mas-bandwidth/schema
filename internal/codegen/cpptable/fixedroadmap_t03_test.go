@@ -317,7 +317,7 @@ fixed table T
 	// file is named before any byte of it is read or written.
 	known := strings.Index(load, "FixedKnown[lineage_at]")
 	records := strings.Index(load, "for ( int64_t k = 0; k < n; ++k )")
-	if at < 0 || known < 0 || records < 0 || !(at < known && known < records) {
+	if at < 0 || known < 0 || records < 0 || at >= known || known >= records {
 		t.Errorf("R32: the floor refusal is not before the layout comparison and the record loop (%d, %d, %d)", at, known, records)
 	}
 	// IDEMPOTENT: the guarded body is a PURE named refusal — it reads

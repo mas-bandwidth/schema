@@ -219,8 +219,7 @@ fixed table Lineage
 	plan := t02Const(text, "LINEAGE_FIXED_PLAN")
 	t07Has(t, plan, "LINEAGE_FIXED_PLAN: [TableFixedEntry; 1]", "W9 the identity plan is one entry")
 	t07Has(t, plan, "size: LINEAGE_FIXED_BODY_BYTES as u32,", "W9 the one entry covers the whole body, so no hole")
-	loop := load[strings.Index(load, "for k in 0..n"):]
-	if i := strings.Index(load, "for k in 0..n"); i < 0 || strings.Contains(loop, "identity") {
+	if i := strings.Index(load, "for k in 0..n"); i < 0 || strings.Contains(load[i:], "identity") {
 		t.Error("W9: the record loop still branches on identity; an empty hole list is what skips the work")
 	}
 }

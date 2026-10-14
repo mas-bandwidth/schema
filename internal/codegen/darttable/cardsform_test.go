@@ -162,10 +162,8 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 						t.Errorf("refusal message %q does not name %q (docs/SPEC-TABLES.md §11: the table, the field and the construct)", msg, want)
 					}
 				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected refusal: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("unexpected refusal: %v", err)
 			}
 		})
 	}

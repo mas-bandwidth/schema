@@ -44,19 +44,6 @@ func offOf(owner, member string) string {
 	return fmt.Sprintf("(uint32_t) __builtin_offsetof( %s, %s )", owner, member)
 }
 
-// dstTerms renders a destination — a sum of offsetofs, and nothing at all is
-// the record's own base.
-func dstTerms(terms []ir.TableFixedTerm) string {
-	if len(terms) == 0 {
-		return "0"
-	}
-	parts := make([]string, 0, len(terms))
-	for _, t := range terms {
-		parts = append(parts, offOf(t.Type, t.Member))
-	}
-	return strings.Join(parts, " + ")
-}
-
 // dstRow is one TableFixedDst: MY side of a layout entry, in C++.
 func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 	d := e.Dst
@@ -287,37 +274,6 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		}
 	}
 	*order = append(*order, st)
-}
-
-// fixedElemStorage is the C++ storage type of ONE element, which is what the
-// loop above strides by.
-func (g *tableGen) fixedElemStorage(f *ir.Field) string {
-	if f.Type.Kind == ir.TNamed {
-		return f.Type.Name
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TFloat32:
-		return "float"
-	case ir.TFloat64:
-		return "double"
-	case ir.TBits:
-		if f.Type.Width <= 32 {
-			return "uint32_t"
-		}
-		return "uint64_t"
-	}
-	if f.Type.Width == 128 {
-		if f.Type.Signed {
-			return "serialize::int128_t"
-		}
-		return "serialize::uint128_t"
-	}
-	if f.Type.Signed {
-		return fmt.Sprintf("int%d_t", f.Type.Width)
-	}
-	return fmt.Sprintf("uint%d_t", f.Type.Width)
 }
 
 // ---- the writer ------------------------------------------------------------
