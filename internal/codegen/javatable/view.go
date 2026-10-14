@@ -43,7 +43,6 @@ func generateViewFiles(u *ir.Unit) (map[string][]byte, error) {
 // declaration order, deduplicated.
 func cardDescriptorTables(u *ir.Unit) []*ir.Struct {
 	seen := map[string]bool{}
-	var order []string
 	var tables []*ir.Struct
 	var add func(*ir.Struct)
 	add = func(st *ir.Struct) {
@@ -52,19 +51,16 @@ func cardDescriptorTables(u *ir.Unit) []*ir.Struct {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayList {
+			if f.Type.Kind == ir.TNamed {
 				if elem, ok := f.Type.Ref.(*ir.Struct); ok {
 					add(elem)
 				}
 			}
 		}
-		order = append(order, st.Name)
+		tables = append(tables, st)
 	}
 	for _, st := range cardVariableTables(u) {
 		add(st)
-	}
-	for _, n := range order {
-		tables = append(tables, u.Tables[n])
 	}
 	return tables
 }
@@ -74,7 +70,9 @@ func fieldShape(f *ir.Field) string {
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		return "blob"
-	case f.Array == ir.ArrayList:
+	case f.Type.Kind == ir.TBytes && f.Type.Blob():
+		return "blob"
+	case f.Array != ir.ArrayNone:
 		return "list"
 	}
 	return "value"

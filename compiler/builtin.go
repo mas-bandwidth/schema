@@ -158,7 +158,13 @@ func refuseBlobs(u *ir.Unit, target string) error {
 	if len(names) == 0 {
 		return nil
 	}
-	carry, flags := carriers(blobTargets)
+	legacy := make([]string, 0, len(blobTargets))
+	for _, t := range blobTargets {
+		if t != "java" {
+			legacy = append(legacy, t)
+		}
+	}
+	carry, flags := carriers(legacy)
 	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes and *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }

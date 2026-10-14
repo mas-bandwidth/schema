@@ -116,17 +116,16 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) — FORM 1, the one this refusal was written for —
-	// is NOT emitted for this backend at all, so its elision rule is not this
-	// port's to carry today; the day that codec lands here it has to keep this
-	// claim true. Registered the way go and rust register (target_go.go,
-	// target_rust.go): the append IS the registration.
+	// The id-table wire (§3) — FORM 1 — is now emitted as the VARIABLE FORM
+	// (internal/codegen/javatable/variableform.go), and its elision rule keeps
+	// this claim true: an absent field answers the declared value. Registered
+	// the way go and rust register (target_go.go, target_rust.go): the append
+	// IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
 	registerWideTextCarrier("java")
 	registerListCarrier("java")
-	// The variable wire carries the STRING blob (§2.5) but not the BYTES blob:
-	// *bytes stays a named refusal (§11), so java registers as a string carrier
-	// alone and not as a byte-buffer carrier.
-	registerStringCarrier("java")
-	registerBuiltin(javaTarget{}, true, false, false, false)
+	// The variable wire carries BOTH byte buffers (§2.5): java is a carrier of
+	// *bytes and *string together, so it registers through registerBuiltin's
+	// blobs flag and not as a string carrier alone.
+	registerBuiltin(javaTarget{}, true, false, false, true)
 }

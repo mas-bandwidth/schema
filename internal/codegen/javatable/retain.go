@@ -269,6 +269,8 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
 	switch {
+	case isScalarArray(f):
+		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.ref(v.%s)); }\n", m, fieldRef, m)
 	case f.Type.Kind == ir.TString:
