@@ -18,7 +18,7 @@ import (
 // and signed zero, through a consumer that receives and sends the same cell.
 func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, "package probe\nfixed table Cell { value float32 }\nfixed table Root { cells [..2]Cell }\n")
+	u := unitFrom(t, "package probe\nfixed table Cell { value float32 }\nfixed table Root { cells [..2]Cell }\nfixed table _float32Cell { n uint8 }\n")
 	files, err := dart.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -32,15 +32,17 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	message := string(files["ProbeFixed.dart"])
 	for _, check := range []struct{ source, fragment, what string }{
 		{block, "_doubleFromFloat32Bits(view.getUint32(", "block read must widen raw float32 bits in software"},
-		{message, "w.put(_float32BitsFromDouble(value.value), 32)", "message write must narrow NaN bits in software"},
-		{message, "_doubleFromFloat32Bits(r.bits.get(32))", "message read must widen raw float32 bits in software"},
+		{message, "w.put(TableBitWriter._float32BitsFromDouble(value.value), 32)", "message write must narrow NaN bits in software"},
+		{message, "TableBitWriter._doubleFromFloat32Bits(r.bits.get(32))", "message read must widen raw float32 bits in software"},
 	} {
 		if !strings.Contains(check.source, check.fragment) {
 			t.Errorf("%s", check.what)
 		}
 	}
-	if t.Failed() {
-		return
+	// A schema may declare a leading-underscore type (SPEC §4.6). Helpers
+	// belong to an already-claimed runtime class, not that library namespace.
+	if strings.Contains(message, "\nfinal Float32List _float32Cell") || !strings.Contains(message, "static final Float32List _float32Cell") {
+		t.Error("message float helpers must be members of TableBitWriter")
 	}
 	t.Run("dart-roundtrip", func(t *testing.T) {
 		t.Parallel()
