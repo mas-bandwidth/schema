@@ -450,6 +450,11 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 				return err
 			}
 		}
+		if un := variableUnion(f); un != nil {
+			if err := refuseVariableFormClosure(variableUnionStruct(un), seen); err != nil {
+				return err
+			}
+		}
 		if f.Type.Kind == ir.TNamed {
 			if target, ok := f.Type.Ref.(*ir.Struct); ok {
 				if err := refuseVariableFormClosure(target, seen); err != nil {
@@ -470,9 +475,6 @@ func refuseVariableFormClosure(st *ir.Struct, seen map[string]bool) error {
 // without being refused. The by-name refusal is [refuseVariableForm]'s own job,
 // on the card's path.
 func cardVariableTables(u *ir.Unit) []*ir.Struct {
-	if len(ir.VariableTables(u)) == 0 {
-		return nil
-	}
 	var out []*ir.Struct
 	seen := map[string]bool{}
 	for _, st := range u.Tables {
@@ -504,12 +506,6 @@ func cardVariableTables(u *ir.Unit) []*ir.Struct {
 // (docs/SPEC-TABLES.md §2, §11). The *string and *bytes byte buffers (§2.5) are
 // carried; a pointer to a table by value is not.
 func variableFormRefusal(f *ir.Field) string {
-	if f.Type.Optional {
-		return "an optional ?T (docs/SPEC-TABLES.md §2.3)"
-	}
-	if f.KeyEnum != "" {
-		return "an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
-	}
 	if f.Type.Pointer {
 		switch {
 		case f.Type.Kind == ir.TString && f.Type.Blob():
@@ -523,11 +519,6 @@ func variableFormRefusal(f *ir.Field) string {
 			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
 		default:
 			return "a pointer to a non-table type (docs/SPEC-TABLES.md §2.1)"
-		}
-	}
-	if f.Type.Kind == ir.TNamed {
-		if _, ok := f.Type.Ref.(*ir.Union); ok {
-			return "a union (docs/SPEC-TABLES.md §2.6)"
 		}
 	}
 	// An UNBOUNDED ARRAY (§2.9) is carried for scalar, string, enum and flags

@@ -125,6 +125,7 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 		name := "MapsDriver_" + row.root
 		path := filepath.Join(dir, name+".java")
 		source := strings.ReplaceAll(variableRoundTripDriver(pkg, row.root), "Driver", name)
+		source = strings.Replace(source, "if (report.malformed || report.refused)", "if (report.malformed || report.refused || report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0 || report.widened != 0 || report.duplicate != 0)", 1)
 		source = strings.Replace(source, `fail("load reported malformed/refused");`, `fail("load reported malformed="+report.malformed+" refused="+report.refused+" unknown="+report.unknown+" kindMismatch="+report.kindMismatch+" clamped="+report.clamped+" value="+new String(`+pkg+`.`+row.root+`Variable.toJson(v),StandardCharsets.UTF_8));`, 1)
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)
@@ -197,7 +198,7 @@ func TestJavaVariableMapCorpus(t *testing.T) {
 	var rows []javaVariableFixture
 	for _, line := range strings.Split(string(data), "\n") {
 		f := strings.Fields(line)
-		if len(f) == 5 && f[0] == "instance" && f[2] == "mapdemo" && f[3] != "Depth" && f[3] != "Slots" {
+		if len(f) == 5 && f[0] == "instance" && f[2] == "mapdemo" && f[3] != "Depth" {
 			rows = append(rows, javaVariableFixture{f[1], f[3], filepath.Join(repo, f[4]), filepath.Join(repo, "testdata", "conformance", "tables", "json", f[1]+".json")})
 		}
 	}
@@ -205,5 +206,5 @@ func TestJavaVariableMapCorpus(t *testing.T) {
 		t.Fatal("no map fixtures")
 	}
 	javaVariableFixtures(t, filepath.Join(repo, "tables", "maps"), rows)
-	t.Log("Depth (keyed and union) and Slots (keyed) remain outside this incremental map probe; the full native matrix still requires them")
+	t.Log("Depth remains outside this incremental map probe; the full native matrix still requires them")
 }

@@ -183,20 +183,15 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
-	b.WriteString("        TableVariable.NodeList nodes = new TableVariable.NodeList();\n")
+	b.WriteString("        TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();\n")
+	fmt.Fprintf(&b, "        nodes.indices.put(v,1L);nodes.open.add(v);if(!%sVariable.buildGraph(nodes,v))return -1;nodes.open.remove(v);\n", st.Name)
 	b.WriteString("        w.put8(1);\n")
 	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, 0);\n")
 	b.WriteString("        emitTail(w, retain, report, path, 0);\n")
-	b.WriteString("        if (nodes.size() > 0) {\n")
-	b.WriteString("            long nodeRef = w.ref(TableVariable.NODE_ID);\n")
-	b.WriteString("            TableVariable.Writer nw = w.sub(new byte[1 << 20]);\n")
-	b.WriteString("            nw.putLeb(nodes.size());\n")
-	b.WriteString("            for (int i = 0; i < nodes.size(); i++) {\n")
-	b.WriteString("                byte[] body = nodes.body(i);\n")
-	b.WriteString("                nw.putLeb(nw.ref(TableVariable.STRING_ID));\n")
-	b.WriteString("                nw.putLeb(body.length);\n")
-	b.WriteString("                nw.putBytes(body, 0, body.length);\n")
-	b.WriteString("            }\n")
+	b.WriteString("        if (nodes.nodes.size() > 0) {\n")
+	b.WriteString("            long nodeRef=w.ref(TableVariable.NODE_ID);TableVariable.Writer nw=w.sub(new byte[1<<20]);nw.putLeb(nodes.nodes.size());\n")
+	b.WriteString("            for(TableVariable.NodeEntry node:nodes.nodes){nw.putLeb(nw.ref(node.typeId));if(node.isBlob){nw.putLeb(node.blobBytes.length);nw.putBytes(node.blobBytes,0,node.blobBytes.length);}else{TableVariable.Writer body=nw.sub(new byte[1<<20]);\n")
+	fmt.Fprintf(&b, "                %sVariable.writeNodeBody(body,nodes,node.value,node.typeId);body.put8(0);nw.putLeb(body.off);nw.putBytes(body.buf,0,body.off);}}\n", st.Name)
 	b.WriteString("            w.putLeb(nodeRef);\n")
 	b.WriteString("            w.put8(12);\n")
 	b.WriteString("            w.putLeb(nw.off);\n")
@@ -209,7 +204,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// writeFieldsRetain: the canonical write, threading the path into list
 	// elements so each element's body carries its own retained tail (§6.6).
-	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeList nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	b.WriteString("        TableVariable.NodeGraph graph=nodes;\n")
 	for i, f := range st.Fields {
 		writeFieldSaveRetain(&b, u, st, f, i)
 	}
@@ -217,7 +213,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// writeBodyRetain: a body is its declared fields, then the retained tail for
 	// THIS body, then the terminator (§6.6: the tail at the END of its own body).
-	fmt.Fprintf(&b, "    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeList nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	fmt.Fprintf(&b, "    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        writeFieldsRetain(w, nodes, v, retain, report, path, depth);\n")
 	b.WriteString("        emitTail(w, retain, report, path, depth);\n")
 	b.WriteString("        w.put8(0);\n")
@@ -285,8 +281,26 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 // list field, the element bodies threaded with the retain path so each carries
 // its own retained tail (docs/SPEC-TABLES.md §6.6).
 func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, ordinal int) {
+	if f.Type.Optional {
+		fmt.Fprintf(b, "        if(v.%sPresent){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);\n", varMember(f), st.Name, varMember(f), variableWireKind(f))
+		one := *f
+		one.Type.Optional = false
+		writeVariablePayload(b, u, st.Name, &one, "v."+varMember(f), "w", 0)
+		b.WriteString("        }\n")
+		return
+	}
+	if f.KeyEnum != "" {
+		fmt.Fprintf(b, "        {int mark=w.ids.count;long ref=w.ref(%sVariable.F_%s);TableVariable.Writer body=w.sub(new byte[1<<20]);int count=%sVariable.writeKeyedPayload_%s(body,nodes,v.%s);if(count>0){w.putLeb(ref);w.put8(16);w.putBytes(body.buf,0,body.off);}else w.ids.count=mark;}\n", st.Name, varMember(f), st.Name, varMember(f), varMember(f))
+		return
+	}
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
+	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
+		var body strings.Builder
+		writeFieldSave(&body, u, st, f)
+		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
+		return
+	}
 	switch {
 	case isStruct(f) && f.Array == ir.ArrayNone && !f.Type.Pointer:
 		fmt.Fprintf(b, "        if(v.%s!=null){int mark=w.ids.count;long ref=w.ref(%s);TableVariable.Writer sw=w.sub(new byte[1<<20]);path[2*depth]=%d;path[2*depth+1]=0;%sRetain.writeBodyRetain(sw,nodes,v.%s,retain,report,path,depth+1);if(sw.off>1){w.putLeb(ref);w.put8(13);w.putLeb(sw.off);w.putBytes(sw.buf,0,sw.off);}else w.ids.count=mark;}\n", m, fieldRef, ordinal, f.Type.Name, m)
@@ -295,7 +309,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	case isScalarArray(f):
 		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.ref(v.%s)); }\n", m, fieldRef, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.index(v.%s)); }\n", m, fieldRef, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, fieldRef)
 	case f.Type.Kind == ir.TBool:
