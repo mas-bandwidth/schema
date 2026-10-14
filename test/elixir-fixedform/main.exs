@@ -1323,27 +1323,55 @@ Leg.section("the negative controls: every refusal BY NAME, and no damage")
     Tblfx2.FixedRuntime.report()
   )
 
-{wrong, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
+# FX2's identity plan copies FX1's body into FX2's image. Decode then holds
+# string(8)'s content rule (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11):
+# ill-formed used units THROW `{:refuse, :text_ill_formed}` and no struct is
+# built. That named refusal is the plan going red, and it does not reproduce
+# the source record. A decode that returns a struct still has to miss the
+# source on `narrow`, `renamed_to`, and `nested`.
+wrong =
+  try do
+    {w, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
+    {:decoded, w}
+  catch
+    :throw, {:refuse, why} -> {:refused, why}
+  end
 
-Leg.check(
-  "the WRONG plan does NOT reproduce the record",
-  {wrong.narrow, wrong.renamed_to} != {40000, 321}
-)
+case wrong do
+  {:refused, why} ->
+    Leg.eq(
+      "the WRONG plan refuses by name and does not reproduce the record",
+      why,
+      :text_ill_formed
+    )
 
-# P4 IN THE DOC'S OWN WORDS (docs/FIXED-FORM-ALGORITHM.md §7 item 4): "the
-# wrong plan must go red". The check above proves the two fields the widen and
-# the rename move do not land; this one names the rule and holds the NESTED
-# offsets to it ON THEIR OWN. A wrong plan's symptom is a wrong value that
-# looks right — the offsets are all arithmetic, so every field comes back a
-# number, and a reader that watched only `narrow` and `renamed_to` would miss a
-# plan that slid `nested` and nothing else. The tuple is `nested` alone on
-# purpose: folded into one tuple with `narrow` and `renamed_to`, the check
-# above would already decide it and a `nested` that reproduced {111, 222}
-# would still pass.
-Leg.check(
-  "the wrong plan must go red: this build's identity plan over another schema's record does NOT reproduce `nested`",
-  {wrong.nested.a, wrong.nested.b} != {111, 222}
-)
+    Leg.eq(
+      "the wrong plan must go red: a named refusal is not the source record's `nested`",
+      why,
+      :text_ill_formed
+    )
+
+  {:decoded, wrong} ->
+    Leg.check(
+      "the WRONG plan does NOT reproduce the record",
+      {wrong.narrow, wrong.renamed_to} != {40000, 321}
+    )
+
+    # P4 IN THE DOC'S OWN WORDS (docs/FIXED-FORM-ALGORITHM.md §7 item 4): "the
+    # wrong plan must go red". The check above proves the two fields the widen and
+    # the rename move do not land; this one names the rule and holds the NESTED
+    # offsets to it ON THEIR OWN. A wrong plan's symptom is a wrong value that
+    # looks right — the offsets are all arithmetic, so every field comes back a
+    # number, and a reader that watched only `narrow` and `renamed_to` would miss a
+    # plan that slid `nested` and nothing else. The tuple is `nested` alone on
+    # purpose: folded into one tuple with `narrow` and `renamed_to`, the check
+    # above would already decide it and a `nested` that reproduced {111, 222}
+    # would still pass.
+    Leg.check(
+      "the wrong plan must go red: this build's identity plan over another schema's record does NOT reproduce `nested`",
+      {wrong.nested.a, wrong.nested.b} != {111, 222}
+    )
+end
 
 # A FORM BYTE THIS BUILD DOES NOT CARRY, AND THE DIRECTION IT SITS IN. The
 # registry is ORDERED (§3), so one word for both directions was one word too
@@ -1698,7 +1726,8 @@ Leg.eq("`no_layout` moves no counter", no_layout_report.malformed, false)
 
 # A COUNT AND A LENGTH ARE CLAMPED TO THIS READER'S OWN BOUND, counting one
 # `clamped` each — the `count` and `text` ops, on the identity path as well as
-# the compiled one.
+# the compiled one. Ill-formed text after that clamp refuses the WHOLE read
+# (§4.5 fix 11), so the count is observed on the well-formed case below.
 hostile =
   (fn ->
      [body | _] = bodies_of.(read.("p1.bin"), Tblp1.P1Fixed.chain_fixed_body_bytes())
@@ -1710,17 +1739,21 @@ hostile =
          rest::binary>>
    end).()
 
-{:ok, [clamped], clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
-Leg.check("the clamp is COUNTED", clamp_report.clamped >= 1)
+# THE LENGTH IS HELD TO THE DECLARED BOUND FIRST, and the used units are
+# checked SECOND. `chain-one` padded out to sixteen bytes carries NULs, and a
+# `string(N)`'s bytes have no zero among them (§3). That is `text_ill_formed`
+# for the whole read (§4.5 fix 11): the report that comes back is the one from
+# before the record, so no counter has moved.
+{:error, clamp_why, clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
 
-# AND THEN THE CONTENT RULE FIRES ON WHAT THE CLAMP LEFT, which is the
-# reference's own order: the length is held to the declared bound FIRST, and the
-# used units are checked SECOND. `chain-one` padded out to sixteen bytes carries
-# NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the field is
-# damage, it reads its DECLARED DEFAULT, and the rest of the record stands.
-Leg.eq("the clamped span is then held to the CONTENT rule", clamped.name, "")
-Leg.eq("ill-formed text fires the one damage flag", clamp_report.malformed, true)
-Leg.eq("and the rest of the record stands", clamped.link.value, 77)
+Leg.eq(
+  "ill-formed text after a clamp refuses the whole read by name",
+  clamp_why,
+  :text_ill_formed
+)
+
+Leg.eq("a content refusal lands no counter", clamp_report.clamped, 0)
+Leg.eq("and does not set malformed", clamp_report.malformed, false)
 
 # A CLAMP ON ITS OWN IS NOT DAMAGE. The same hostile length over a field whose
 # whole declared bound IS well-formed text: the clamp counts and nothing else
@@ -1748,15 +1781,14 @@ Leg.eq("a clamp is not `malformed`", full_report.malformed, false)
 # ---------------------------------------------------------------------------
 #
 # A `string(N)`'s used bytes are well-formed UTF-8 with no zero among them. A
-# payload that is not the text its kind says it is is DAMAGE and not data, and
-# the verdict here is not the packet wire's: SPEC.md §4.7 refuses the WHOLE
-# read, because a packet has no position after a field that did not decode; a
-# FIXED RECORD IS POSITIONAL, so the damage is ONE FIELD's — it reads its
-# declared default, one `malformed` fires, and the rest of the record stands.
+# payload that is not the text its kind says it is refuses the WHOLE read by
+# name (`text_ill_formed`, docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11). The
+# report is the one from before the record: `malformed` stays false and no
+# counter moves.
 #
 # THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
 # bounds are the used length and the live count, and neither is a content rule.
-Leg.section("ill-formed text: the field reads its default, the record stands")
+Leg.section("ill-formed text: the whole read refuses by name")
 
 poison = fn bytes ->
   Tblfx1.FX1Fixed.fx_root_fixed_save([
@@ -1771,10 +1803,10 @@ for {bytes, what} <- [
       {<<0xC0, 0x80>>, "an overlong NUL is not text"},
       {<<?a, 0, ?b>>, "an interior null is not text"}
     ] do
-  {:ok, [back], r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
-  Leg.eq(what, r.malformed, true)
-  Leg.eq("#{what}: the field reads its DECLARED DEFAULT", back.label, "fx")
-  Leg.eq("#{what}: and the rest of the record stands", {back.keep, back.nested.a}, {1234, 7})
+  {:error, why, r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
+  Leg.eq(what, why, :text_ill_formed)
+  Leg.eq("#{what}: a content refusal sets no malformed flag", r.malformed, false)
+  Leg.eq("#{what}: and lands no counter", r.clamped, 0)
 end
 
 # AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the five above
@@ -1856,16 +1888,20 @@ overloaded =
 Leg.check(
   "an overloaded flavour lane does NOT reproduce the arm's text",
   (fn ->
-     {image, _} =
-       Tblfu1.FixedRuntime.run(
-         overloaded,
-         fu_body,
-         Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
-         Tblfu1.FixedRuntime.report()
-       )
+     try do
+       {image, _} =
+         Tblfu1.FixedRuntime.run(
+           overloaded,
+           fu_body,
+           Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
+           Tblfu1.FixedRuntime.report()
+         )
 
-     elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label
-   end).() != "hello"
+       elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label != "hello"
+     catch
+       :throw, {:refuse, _} -> true
+     end
+   end).()
 )
 
 # AND THE UNCHECKED ORDINAL, planted the same way: an ordinal that rides as a
@@ -2039,10 +2075,9 @@ IO.puts(
 #
 # "`unit := (meta == wide) ? 2 : 1`; `cap := size / unit`" and "The CONTENT
 # RULES apply to the USED UNITS and nothing else ... wide code units over `v`,
-# never `2N`, an astral pair counting two (fix 7)". This leg's verdict for a
-# violation is the one every fixed-form case above reaches: the field reads
-# its declared default, one `malformed` fires, and the rest of the record
-# stands.
+# never `2N`, an astral pair counting two (fix 7)". A violation refuses the
+# read by name (`text_ill_formed`, §4.5 fix 11) on both lanes that carry the
+# rule.
 #
 # No unit in this gate declares a `wstring` — FXW.schema ("the FIXED FORM's
 # WIDE TEXT ... wired into the fixed-form corpus and the Dart fixed-form gate
@@ -2072,19 +2107,31 @@ for {bytes, what} <- [
       {<<0x41, 0, 0, 0>>, "a zero unit is not a character"},
       {<<0x41, 0, 0x42>>, "an odd byte is not a unit"}
     ] do
-  Leg.eq(
-    "C5: #{what}, so the field reads its default",
-    Tblfx1.FixedRuntime.wtext(bytes, "dflt", false),
-    {"dflt", true}
-  )
+  refused =
+    try do
+      Tblfx1.FixedRuntime.wtext(bytes, "dflt", false)
+      :returned
+    catch
+      :throw, {:refuse, why} -> why
+    end
+
+  Leg.eq("C5: #{what}, so the read refuses by name", refused, :text_ill_formed)
 end
 
 # AND THE UNIT IS THE FLAVOUR'S, NOT THE BYTES': the same two bytes that ride
 # whole above are an interior NUL under the narrow flavour's no-zero rule.
+narrow_refused =
+  try do
+    Tblfx1.FixedRuntime.text(<<0x41, 0>>, "dflt", false)
+    :returned
+  catch
+    :throw, {:refuse, why} -> why
+  end
+
 Leg.eq(
   "C5: the same bytes are NOT text in the narrow flavour",
-  Tblfx1.FixedRuntime.text(<<0x41, 0>>, "dflt", false),
-  {"dflt", true}
+  narrow_refused,
+  :text_ill_formed
 )
 
 # THE PLAN LANE: `{:text, src, dst, aux, size, 2}` over a span of 8 bytes, so
@@ -2139,15 +2186,15 @@ Leg.eq(
   false
 )
 
-{lone_image, lone_report} = wide_run.(1, <<0x00, 0xD8, 0, 0, 0, 0, 0, 0>>)
+lone =
+  try do
+    wide_run.(1, <<0x00, 0xD8, 0, 0, 0, 0, 0, 0>>)
+    :returned
+  catch
+    :throw, {:refuse, why} -> {:refused, why}
+  end
 
-Leg.eq("C5: half a character under the op fires the damage flag", lone_report.malformed, true)
-
-Leg.eq(
-  "C5: and the field is a GAP, so the prefill answers",
-  wide_len.(lone_image),
-  <<0::little-signed-32>>
-)
+Leg.eq("C5: half a character under the op refuses by name", lone, {:refused, :text_ill_formed})
 
 # ---------------------------------------------------------------------------
 # W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
