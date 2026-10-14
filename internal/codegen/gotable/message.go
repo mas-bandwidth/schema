@@ -122,9 +122,24 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionPeer=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
- for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i:=int64(0);i<count;i++ {if v.Entries[i]==e{report.Malformed=true;return false}};v.Entries[count]=e;count++}
+ for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i:=int64(0);i<count;i++ {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
+ src.Offset=0;for i:=int64(0);i<count;i++ {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
 }
+// THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
+// the resolved entry: a resolved quantized entry keeps §4.3's derivation and
+// not the max and res it consumed, so two declared shapes that derive one delta
+// and count would read as one entry there, and a legitimate announcement, the
+// unit's own included, would be refused as malformed (#722). Go's == on float32
+// also equates +0 and -0, whose declared bytes differ. The entry's encoding is
+// canonical, a minimal LEB128 and fixed four-byte floats, so byte equality is
+// declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
+// its byte extent in Shape.Min and Shape.Max until the scan is over, and the
+// second pass in tableAnnounceRead resolves every entry in place, so no offset
+// into the announcement outlives the call. The scan is quadratic in the entry
+// count, and the entry count is bounded above at 4096, so it is at most eight
+// million compares on a path that runs ONCE a connection and never again. The
+// compare is spelled inline so the emitter claims no new runtime name.
 func tableMessageKnownKind(k uint8)bool {return k<=33}
 func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
