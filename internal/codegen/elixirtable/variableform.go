@@ -49,9 +49,24 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	if len(variable) == 0 {
 		return nil
 	}
+	// Variable tables, plus every fixed table in the closure. A pointer or a
+	// by-value nest names the fixed table's descriptor (docs/SPEC-TABLES.md
+	// §2.1, §2.2, §3.1). A unit with no variable table never reaches here.
 	names := make([]string, 0, len(variable))
+	seen := map[string]bool{}
 	for name := range variable {
-		names = append(names, name)
+		if u.Tables[name] != nil {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+	for name := range ir.TableClosure(u) {
+		if seen[name] {
+			continue
+		}
+		if u.Tables[name] != nil {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 
@@ -176,6 +191,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 child = Map.fetch!(@tables, f.table)
                 collect_nodes(child, v, [tagged | acc])
               end
+          end
+
+        # a by-value table is not a node. The pointer edges inside it are
+        # (docs/SPEC-TABLES.md §2.1, §3).
+        :nest ->
+          case Map.get(value, f.name) do
+            v when is_map(v) ->
+              collect_nodes(Map.fetch!(@tables, f.table), v, acc)
+
+            _ ->
+              acc
           end
 
         :list ->
@@ -347,14 +373,36 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # an int elides at its declared default, which is 0 when none is declared
+  # (docs/SPEC-TABLES.md §3, §4). A stored 0 still rides when the default is
+  # not 0.
   defp emit_field(%{t: :int} = f, value, idx_map, ids, order, acc) do
-    case Map.get(value, f.name, 0) do
-      0 ->
+    default = Map.get(f, :default, 0)
+
+    case Map.get(value, f.name, default) do
+      v when v == default ->
         {idx_map, ids, order, acc}
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
         {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, int_bytes(v, f.width, f.signed)]}
+    end
+  end
+
+  # a by-value table is kind 13: the field id, then a framed body. A body that
+  # is only the terminator elides, and the field id interned to find that out
+  # is rolled back (docs/SPEC-TABLES.md §3).
+  defp emit_field(%{t: :nest} = f, value, idx_map, ids, order, acc) do
+    child = Map.fetch!(@tables, f.table)
+    merged = Map.merge(defaults(child), Map.get(value, f.name) || %{})
+    {ref, ids1, order1} = intern(ids, order, f.id)
+    {idx_map, ids2, order2, body} = save_fields(child, merged, idx_map, ids1, order1, [])
+
+    if IO.iodata_length(body) == 0 do
+      {idx_map, ids, order, acc}
+    else
+      framed = [body, <<0>>]
+      {idx_map, ids2, order2, [acc, leb_encode(ref), <<f.kind>>, leb_encode(IO.iodata_length(framed)), framed]}
     end
   end
 
@@ -943,6 +991,31 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     read_placed(f, payload, nodes, ids, report, :ptr)
   end
 
+  # a by-value table's payload is a framed body (docs/SPEC-TABLES.md §3). An
+  # absent field never reaches here: the caller fills the declared defaults.
+  defp read_payload(%{t: :nest} = f, payload, nodes, ids, report) do
+    child = Map.fetch!(@tables, f.table)
+
+    case leb(payload) do
+      {_len, body} ->
+        case entries(body, ids, false, false) do
+          {:ok, fields, []} ->
+            {value, elem_report} = decode(child, fields, nodes, ids)
+            {:cont, Map.merge(defaults(child), value), merge_report(report, elem_report)}
+
+          {:stop, fields, [], 0} ->
+            {value, elem_report} = decode(child, fields, nodes, ids)
+            {:cont, Map.merge(defaults(child), value), merge_report(%{report | malformed: true}, elem_report)}
+
+          _ ->
+            {:cont, defaults(child), %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, defaults(child), %{report | malformed: true}}
+    end
+  end
+
   defp read_placed(f, payload, nodes, _ids, report, which) do
     case leb(payload) do
       {0, _} ->
@@ -1224,7 +1297,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       d =
         case f.t do
           :string -> ""
-          :int -> 0
+          :int -> Map.get(f, :default, 0)
+          :nest -> defaults(Map.fetch!(@tables, f.table))
           :list -> []
           :enum -> nil
           :blob -> nil
@@ -1457,6 +1531,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, f.table)
     json_object(desc, Map.merge(defaults(desc), v), depth)
   end
+
+  # a by-value table inlines, defaults included (docs/SPEC-TABLES.md §16.1, §16.7).
+  defp json_field(%{t: :nest} = f, v, depth) when is_map(v) do
+    desc = Map.fetch!(@tables, f.table)
+    json_object(desc, Map.merge(defaults(desc), v), depth)
+  end
+
+  defp json_field(%{t: :nest} = f, _v, depth) do
+    desc = Map.fetch!(@tables, f.table)
+    json_object(desc, defaults(desc), depth)
+  end
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
@@ -1587,6 +1672,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_field(%{t: :ptr}, nil, report), do: {nil, report}
+
+  defp json_read_field(%{t: :nest} = f, raw, report) when is_map(raw) do
+    desc = Map.fetch!(@tables, f.table)
+    {v, report} = json_fields(desc, raw)
+    {Map.merge(defaults(desc), v), report}
+  end
+
+  defp json_read_field(%{t: :nest} = f, _raw, report) do
+    {defaults(Map.fetch!(@tables, f.table)), %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   defp json_read_field(%{t: :ptr}, _raw, report),
     do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
@@ -2637,9 +2732,10 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	kind := ir.TableWireFieldKind(f)
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
-	case f.IsList():
+	case f.CountedOnWire() && f.KeyEnum == "" && !f.IsMap():
 		// A list is classified before a single pointer: []*T is an array of
-		// node indexes, not one pointer (docs/SPEC-TABLES.md §2.1, §2.9).
+		// node indexes, not one pointer. [..N]T is the same counted body as
+		// []T (docs/SPEC-TABLES.md §2.1, §2.9, §3).
 		writeListDescriptor(&b, u, f)
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TBytes:
 		// *bytes is a blob node under the reserved bytes id (docs/SPEC-TABLES.md §2.5).
@@ -2656,6 +2752,10 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 			b.WriteString(", t: :ptr")
 			fmt.Fprintf(&b, ", table: %q", name)
 		}
+	case nestName(f) != "":
+		// a table nested by value is kind 13, not a node (docs/SPEC-TABLES.md §3).
+		b.WriteString(", t: :nest")
+		fmt.Fprintf(&b, ", table: %q", nestName(f))
 	case enumRef(f) != nil:
 		b.WriteString(", t: :enum, by_name: %{")
 		e := enumRef(f)
@@ -2673,6 +2773,9 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	case f.Type.Kind == ir.TInt:
 		b.WriteString(", t: :int")
 		fmt.Fprintf(&b, ", width: %d, signed: %v", f.Type.Width/8, f.Type.Signed)
+		if f.HasDefault && f.DefInt != nil {
+			fmt.Fprintf(&b, ", default: %s", f.DefInt.String())
+		}
 		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
 			fmt.Fprintf(&b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
 		}
@@ -2727,6 +2830,25 @@ func writeListDescriptor(b *strings.Builder, u *ir.Unit, f *ir.Field) {
 			fmt.Fprintf(b, ", elem: %q", f.Type.Name)
 		}
 	}
+}
+
+// nestName is the table a by-value field nests, or "" when the field is not
+// one (docs/SPEC-TABLES.md §3). A pointer, a list and a keyed array are not.
+func nestName(f *ir.Field) string {
+	if f == nil || f.Type.Pointer || f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
+		return ""
+	}
+	if f.Type.Kind != ir.TNamed {
+		return ""
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok || st == nil {
+		return ""
+	}
+	if st.Name != "" {
+		return st.Name
+	}
+	return f.Type.Name
 }
 
 func listStructName(f *ir.Field) (string, bool) {
