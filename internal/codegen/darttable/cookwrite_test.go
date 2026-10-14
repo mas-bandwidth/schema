@@ -125,3 +125,52 @@ void main(){
  }
 }
 `
+
+// Legal table names cannot collide with the cook writer's float scratch.
+func TestCookWriteDartFloatHelpersDoNotClaimTableNames(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "dart")
+	u := unitFrom(t, `package probe
+fixed table Float32 { value float32 }
+fixed table Float32Bits { value float32 }
+`)
+	files, err := dart.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	for name, data := range files {
+		if !strings.Contains(name, "/") {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	const probe = `import 'dart:typed_data';
+import 'ProbeFixed.dart' as f;
+import 'ProbeCook.dart' as c;
+void main(){
+ final value=f.Float32()..value=1.5;
+ final bytes=Uint8List(c.Float32Cook.cookMeasure(value));
+ if(!c.Float32Cook.cook(value,bytes,Endian.big))throw StateError('float cook refused');
+ if(ByteData.sublistView(bytes).getUint32(64,Endian.big)!=0x3fc00000)throw StateError('float payload changed');
+ final other=f.Float32Bits()..value=-0.0;
+ final out=Uint8List(c.Float32BitsCook.cookMeasure(other));
+ if(!c.Float32BitsCook.cook(other,out,Endian.little))throw StateError('float bits cook refused');
+ if(ByteData.sublistView(out).getUint32(64,Endian.little)!=0x80000000)throw StateError('signed zero changed');
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "cook_float_names_probe.dart"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_float_names_probe.dart")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cook float names: %v\n%s", err, out)
+	}
+}

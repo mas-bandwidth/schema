@@ -54,20 +54,15 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    view.setUint64(%d, %s, order);\n", word.at, word.value)
 	}
 	g.pf("    return _cook%s(value, view, 64, order);\n  }\n\n", st.Name)
-	needFloat32 := false
 	cookWalk(g.unit, st.Name, func(name string, record *ir.MemberLayout) {
 		g.needCookStorage(name)
 		g.pf("  // The shared ABI's field pieces, not the fixed wire's packed widths (§7.2).\n")
 		g.pf("  static bool _cook%s(%s value, ByteData? out, int at, Endian order) {\n", name, name)
 		for _, fl := range record.Fields {
 			g.emitCookFixedField(fl.Field, fl.Offset, "value."+dartName(fl.Field.Name), "    ")
-			needFloat32 = needFloat32 || (fl.Field.Type.Kind == ir.TFloat32 && fl.Field.Array == ir.ArrayNone && fl.Field.KeyEnum == "")
 		}
 		g.pf("    return true;\n  }\n\n")
 	})
-	if needFloat32 {
-		g.pf("%s", dartCookFloat32Writer)
-	}
 }
 
 // needCookStorage names the existing caller-owned value class (§6.1).
@@ -141,7 +136,7 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s  out.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
 	case f.Type.Kind == ir.TFloat32:
-		g.pf("%s  out.setUint32(%s, _cookFloat32Bits(%s), order);\n", ind, at, expr)
+		g.pf("%s  out.setUint32(%s, TableCookWriteReport.float32Bits(%s), order);\n", ind, at, expr)
 	case f.Type.Kind == ir.TFloat64:
 		g.pf("%s  out.setFloat64(%s, %s, order);\n", ind, at, expr)
 	case width == 16:
@@ -165,8 +160,7 @@ const dartCookWriteReport = `
 // §7.6's write refusals use the reference leg's words, never a new vocabulary.
 final class TableCookWriteReport {
   String reason = 'ok';
-}
-`
+` + dartCookFloat32Writer + "}\n"
 
 const dartCookFloat32Writer = `
   static final Float32List _cookFloat32 = Float32List(2);
@@ -174,7 +168,7 @@ const dartCookFloat32Writer = `
   static final Float64List _cookFloat64 = _cookFloat32.buffer.asFloat64List();
   static final Uint64List _cook64Words = _cookFloat32.buffer.asUint64List();
 
-  static int _cookFloat32Bits(double value) {
+  static int float32Bits(double value) {
     if (!value.isNaN) {
       _cookFloat32[0] = value;
       return _cook32Words[0];
