@@ -643,6 +643,19 @@ public static ulong TableDoubleToBits(double value)
     return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
 }
 
+// docs/SPEC.md "Floating-point discipline" and docs/FIXED-FORM-ALGORITHM.md
+// §5.1 (Glenn, 2026-10-12): a compressed float's quantization rounds the
+// product to float32 before the add. C# contracts no multiply-add, so the
+// bytes below are the unfused result and never MathF.FusedMultiplyAdd's.
+public static uint TableDequantizeBits(int index, float qmin, float delta, int count)
+{
+    if (index < 0) { index = 0; }
+    if (index > count) { index = count; }
+    float normalized = (float)index / (float)count;
+    float scaled = normalized * delta;
+    return TableFloatToBits(scaled + qmin);
+}
+
 `
 }
 
