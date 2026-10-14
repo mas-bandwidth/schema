@@ -81,6 +81,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Union:
 			widest := int64(0)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if n := fixedFieldBytes(v.F); n > widest {
 					widest = n
 				}
@@ -178,6 +181,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -384,6 +390,9 @@ func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
 		case *ir.Union:
 			n := 1
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				n += b.countFieldSlots(v.F)
 			}
 			return n
@@ -585,7 +594,14 @@ func (b *fixedRootBuild) pushElementBlockOnly(f *ir.Field, id uint64, note strin
 			})
 			b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 			for _, v := range r.Variants {
-				b.pushElementBlockOnly(v.F, ir.TableWireId(v.WireName()), v.Name)
+				if v.F == nil {
+					b.pushNoPayloadArm(v)
+					continue
+				}
+				// AN ARM IS A FIELD LINE (§2.6): an array, string or bytes arm
+				// is laid out the way the same line in a struct is, under the
+				// arm's id (ir.tableFixedWalkArm, the reference's layout).
+				b.pushPayloadBlockOnly(v.F, r.Name, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F))
 			}
 			return
 		case *ir.Enum:
@@ -599,6 +615,22 @@ func (b *fixedRootBuild) pushElementBlockOnly(f *ir.Field, id uint64, note strin
 		size:     elemSize,
 		children: 0,
 		note:     note,
+	})
+	b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
+}
+
+// pushNoPayloadArm is a payload-free arm's layout entry: an entry and no bytes
+// (kind 32), the tag alone is its whole storage (§2.6). It is an entry rather
+// than nothing because the layout is what the arm list is compared by, so an
+// arm appended after a payload-free one must move the hash
+// (ir.tableFixedWalkArm).
+func (b *fixedRootBuild) pushNoPayloadArm(v ir.UnionVariant) {
+	b.entries = append(b.entries, fixedBlockEntry{
+		id:       ir.TableWireId(v.WireName()),
+		kind:     ir.TableKindNoPayload,
+		size:     0,
+		children: 0,
+		note:     v.Name,
 	})
 	b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 }
@@ -983,13 +1015,18 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			savedArgw := b.argw
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
+			owner := unionOwner(r)
 			for j, v := range r.Variants {
-				armID := ir.TableWireId(v.WireName())
-				armProp := ir.GoExportName(v.Name)
-				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
+				if v.F == nil {
+					b.pushNoPayloadArm(v)
+					continue
+				}
 				at := len(b.plan)
-				b.buildElement(v.F, armExpr, armBase, armID, v.Name, kFixedNoGuard, 0, wireOff)
+				// AN ARM IS A FIELD LINE (§2.6): its value and companion
+				// (Length, Count) are members of the union object, so the arm
+				// walks as a payload, never as a bare element.
+				b.buildPayload(owner, v.F, expr, armBase, wireOff, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), kFixedNoGuard, 0)
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1119,12 +1156,14 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			savedArgw := b.argw
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
+			owner := unionOwner(r)
 			for j, v := range r.Variants {
-				armProp := ir.GoExportName(v.Name)
-				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
+				if v.F == nil {
+					continue // a payload-free arm: no slot, no plan entry (§2.6)
+				}
 				*wireOff = armWireOffset
 				at := len(b.plan)
-				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+				b.buildPayloadSlotsAndPlan(owner, v.F, expr, baseSlot, wireOff, fixedFieldBytes(v.F), kFixedNoGuard, 0)
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1442,6 +1481,15 @@ func (g *tableGen) emitFixedWriteField(owner *ir.Struct, f *ir.Field, off int64,
 }
 
 func (g *tableGen) emitFixedWritePayload(owner *ir.Struct, f *ir.Field, base int64, buf, val string, indent int) {
+	g.emitFixedWritePayloadAs(owner, f, base, buf, val, f.Name, indent)
+}
+
+// emitFixedWritePayloadAs is [emitFixedWritePayload] with the stem its locals
+// (count_<stem>, len_<stem>) take. A struct's own fields use the field name; a
+// union arm, written inline inside an enclosing body, uses <Union>_<arm>, so an
+// arm's local never collides with a field of the same name in the body it rides
+// in (C# refuses a local that shadows one in an enclosing scope, CS0136).
+func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base int64, buf, val, stem string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	prop := member(f)
 	switch {
@@ -1453,29 +1501,49 @@ func (g *tableGen) emitFixedWritePayload(owner *ir.Struct, f *ir.Field, base int
 		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
 		// slots' STORAGE on the wire.
-		g.pf("%sint count_%s = %s.%sCount;\n", ind, f.Name, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, f.Name, f.Name, f.ArrayBound)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, f.Name)
-		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+f.Name, buf, val+"."+prop, indent)
+		g.pf("%sint count_%s = %s.%sCount;\n", ind, stem, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, stem, stem, f.ArrayBound)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, stem)
+		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+stem, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	default:
 		g.emitFixedWriteElement(f, base, buf, val+"."+prop, indent)
 	}
 }
+
+// fixedLoopVar names a fixed-form element loop's counter at the current
+// nesting, and enterLoop/leaveLoop bracket the loop's body. A loop nests when an
+// array arm rides inside an array of unions, and reusing `i` would shadow the
+// outer counter, which C# refuses (CS0136). The outermost loop keeps `i`, so a
+// body with no nesting is spelled as it always was.
+func (g *tableGen) fixedLoopVar() string {
+	if g.loopDepth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.loopDepth)
+}
+
+func (g *tableGen) enterLoop() string {
+	v := g.fixedLoopVar()
+	g.loopDepth++
+	return v
+}
+
+func (g *tableGen) leaveLoop() { g.loopDepth-- }
 
 func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, count int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
@@ -1497,10 +1565,12 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 		}
 		return
 	}
+	i := g.enterLoop()
 	g.pf("%sif (%s != null)\n%s{\n", ind, slotsExpr, ind)
-	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, slotsExpr, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", slotsExpr), indent+8)
+	g.pf("%s    for (int %s = 0; %s < %d && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, count, i, slotsExpr, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + %s * %d)", buf, base, i, elem), fmt.Sprintf("%s[%s]", slotsExpr, i), indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.leaveLoop()
 }
 
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf, expr string, indent int) {
@@ -1523,10 +1593,12 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 		}
 		return
 	}
+	i := g.enterLoop()
 	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-	g.pf("%s    for (int i = 0; i < %s && i < %s.Length; ++i)\n%s    {\n", ind, nExpr, expr, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", expr), indent+8)
+	g.pf("%s    for (int %s = 0; %s < %s && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, nExpr, i, expr, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + %s * %d)", buf, base, i, elem), fmt.Sprintf("%s[%s]", expr, i), indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.leaveLoop()
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, indent int) {
@@ -1553,11 +1625,18 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 				g.pf("%s    BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s.Type);\n", ind, slice, expr)
 			}
 			g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
+			owner := unionOwner(r)
 			for _, v := range r.Variants {
 				armProp := ir.GoExportName(v.Name)
 				g.pf("%s        case %s.%s:\n", ind, tagType, armProp)
-				armSlice := fmt.Sprintf("%s.Slice(%d)", slice, tagBytes)
-				g.emitFixedWriteElement(v.F, 0, armSlice, fmt.Sprintf("%s.%s", expr, armProp), indent+12)
+				if v.F != nil {
+					// AN ARM IS A FIELD LINE (§2.6): an array arm writes its
+					// count and its elements, a text or bytes arm its used
+					// length and its units, from the union object's members.
+					// A payload-free arm's tag is its whole storage: the case
+					// carries no store, only the break.
+					g.emitFixedWritePayloadAs(owner, v.F, tagBytes, slice, expr, f.Type.Name+"_"+v.F.Name, indent+12)
+				}
 				g.pf("%s            break;\n", ind)
 			}
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
