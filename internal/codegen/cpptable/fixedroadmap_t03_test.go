@@ -17,6 +17,7 @@ package cpptable
 // so it proves the write/read round trip without the corpus.
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,9 +92,7 @@ func t03RunCapability(t *testing.T, u *ir.Unit, probe string) string {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {

@@ -20,6 +20,7 @@ package darttable
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,9 +116,7 @@ func t15RunDart(t *testing.T, chain bool) {
 	if err != nil {
 		t.Fatalf("generate packet: %v", err)
 	}
-	for name, data := range pkt {
-		files[name] = data
-	}
+	maps.Copy(files, pkt)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {

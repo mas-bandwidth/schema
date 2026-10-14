@@ -229,8 +229,8 @@ func driverMessageRoots(t *testing.T) []string {
 // next column-zero `}` line, so an assertion about the handler is not satisfied
 // by a byte-writing call living in a different surface.
 func surfaceBlock(from string) string {
-	if end := strings.Index(from, "\n}\n"); end >= 0 {
-		return from[:end]
+	if before, _, ok := strings.Cut(from, "\n}\n"); ok {
+		return before
 	}
 	return from
 }

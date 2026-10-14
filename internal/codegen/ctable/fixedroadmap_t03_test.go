@@ -91,13 +91,13 @@ func t03Hash(t *testing.T, text, snake string) uint64 {
 		t.Fatalf("the generated source publishes no %s_fixed_hash", snake)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "ull")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "ull")
+	if !ok {
 		t.Fatalf("the published %s_fixed_hash has no end", snake)
 	}
-	v, err := strconv.ParseUint(strings.TrimSpace(rest[:end]), 16, 64)
+	v, err := strconv.ParseUint(strings.TrimSpace(before), 16, 64)
 	if err != nil {
-		t.Fatalf("the published hash %q is not a number: %v", rest[:end], err)
+		t.Fatalf("the published hash %q is not a number: %v", before, err)
 	}
 	return v
 }
@@ -111,12 +111,12 @@ func t03Layout(t *testing.T, text, snake string) []byte {
 		t.Fatalf("the generated source publishes no %s_fixed_layout", snake)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "};")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "};")
+	if !ok {
 		t.Fatalf("the published %s_fixed_layout does not close", snake)
 	}
 	var out []byte
-	for _, f := range strings.Split(rest[:end], ",") {
+	for f := range strings.SplitSeq(before, ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue

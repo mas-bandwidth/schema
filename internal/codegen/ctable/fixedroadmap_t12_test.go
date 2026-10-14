@@ -98,8 +98,8 @@ func cT12Def(text, name string) string {
 			continue
 		}
 		body := rest[open:]
-		if end := strings.Index(body, "\n}\n"); end >= 0 {
-			return body[:end]
+		if before, _, ok := strings.Cut(body, "\n}\n"); ok {
+			return before
 		}
 		return body
 	}

@@ -185,7 +185,6 @@ func TestCardDeclarationsPinTheVariableFormGap(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{"base.schema", "new.schema"} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			src, err := os.ReadFile(filepath.Join("testdata", "cards", name))

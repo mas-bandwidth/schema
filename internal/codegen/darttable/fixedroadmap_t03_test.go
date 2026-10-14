@@ -57,11 +57,11 @@ func t03Emitted(t *testing.T, src string) (hash uint64, layout []byte, text stri
 	}
 	text = t02Source(t, files)
 	const marker = "const int tFixedHash = "
-	at := strings.Index(text, marker)
-	if at < 0 {
+	_, after, ok := strings.Cut(text, marker)
+	if !ok {
 		t.Fatalf("the generated source publishes no tFixedHash")
 	}
-	rest := text[at+len(marker):]
+	rest := after
 	end := strings.IndexByte(rest, ';')
 	if end < 0 {
 		t.Fatalf("the published tFixedHash has no end")
@@ -151,7 +151,7 @@ fixed table T
 	if n := strings.Count(text, "hashOf("); n != 1 {
 		t.Errorf("R4: the generated library carries %d mentions of hashOf, want exactly its one definition — a runtime never derives a hash from layout bytes it holds", n)
 	}
-	if i := strings.Index(text, "hashOf("); i >= 0 && !strings.HasSuffix(text[:i], "static int ") {
+	if before, _, ok := strings.Cut(text, "hashOf("); ok && !strings.HasSuffix(before, "static int ") {
 		t.Errorf("R4: hashOf is called somewhere in the generated library — a runtime never derives a hash from layout bytes it holds")
 	}
 }

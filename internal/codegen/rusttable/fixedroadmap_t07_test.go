@@ -63,8 +63,8 @@ func t07Fn(text, name string) string {
 		return ""
 	}
 	rest := text[at:]
-	if end := strings.Index(rest, "\n}\n"); end >= 0 {
-		return rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n}\n"); ok {
+		return before
 	}
 	return rest
 }
@@ -94,7 +94,7 @@ func t07Block(t *testing.T, text, name string) []t07BlockEntry {
 	}
 	count := int(binary.LittleEndian.Uint32(raw[0:4]))
 	var out []t07BlockEntry
-	for i := 0; i < count; i++ {
+	for i := range count {
 		at := 4 + i*17
 		if at+17 > len(raw) {
 			t.Fatalf("%s: entry %d runs past the block", name, i)

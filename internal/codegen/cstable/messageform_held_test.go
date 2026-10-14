@@ -77,7 +77,6 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		})
 	}
 	for _, row := range csHeldNotRun {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			t.Skip("not run: " + row.why)

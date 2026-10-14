@@ -61,13 +61,13 @@ func t03GoLoad(t *testing.T, src, name string) string {
 // t03GoBetween is the text between two markers, so an assertion can be scoped
 // to ONE arm of the runtime instead of matching anywhere in it.
 func t03GoBetween(src, start, end string) string {
-	i := strings.Index(src, start)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, start)
+	if !ok {
 		return ""
 	}
-	rest := src[i+len(start):]
-	if j := strings.Index(rest, end); j >= 0 {
-		return rest[:j]
+	rest := after
+	if before, _, ok := strings.Cut(rest, end); ok {
+		return before
 	}
 	return rest
 }

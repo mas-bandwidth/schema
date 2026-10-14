@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"os/exec"
@@ -36,7 +37,6 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 		t.Parallel()
 		node := jsNode(t)
 		for _, row := range rows {
-			row := row
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				conn, ok := connections[row.connection]
@@ -175,7 +175,7 @@ func parseMessageManifest(t *testing.T) (map[string][]string, map[string]message
 	units := map[string][]string{}
 	connections := map[string]messageConn{}
 	var rows []messageRow
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
@@ -572,9 +572,7 @@ func generatedTree(u *ir.Unit) map[string][]byte {
 	if err != nil {
 		panic(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	return files
 }
 

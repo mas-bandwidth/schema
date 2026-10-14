@@ -109,12 +109,12 @@ func t02KnownRows(t *testing.T, text, snake string) []t02Known {
 		t.Fatalf("the generated source publishes no %s_fixed_known", snake)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "\n};")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "\n};")
+	if !ok {
 		t.Fatalf("the emitted %s_fixed_known does not close", snake)
 	}
 	var out []t02Known
-	for _, m := range t02KnownRow.FindAllStringSubmatch(rest[:end], -1) {
+	for _, m := range t02KnownRow.FindAllStringSubmatch(before, -1) {
 		h, err := strconv.ParseUint(m[1], 16, 64)
 		if err != nil {
 			t.Fatalf("known hash %q: %v", m[1], err)
@@ -157,12 +157,12 @@ func t02Array(t *testing.T, text, name string) []byte {
 		t.Fatalf("the generated source publishes no %s", name)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "};")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "};")
+	if !ok {
 		t.Fatalf("the emitted %s does not close", name)
 	}
 	var out []byte
-	for _, f := range strings.Split(rest[:end], ",") {
+	for f := range strings.SplitSeq(before, ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
@@ -423,11 +423,11 @@ func t02W14(t *testing.T) {
 		t.Fatalf("W14: the emitted unit carries no %s_fixed_plan", snake)
 	}
 	body := text[at:]
-	end := strings.Index(body, "\n};")
-	if end < 0 {
+	before, _, ok := strings.Cut(body, "\n};")
+	if !ok {
 		t.Fatalf("W14: %s_fixed_plan does not close", snake)
 	}
-	dsts := planRe.FindAllStringSubmatch(body[:end], -1)
+	dsts := planRe.FindAllStringSubmatch(before, -1)
 	if len(dsts) == 0 {
 		t.Fatalf("W14: %s_fixed_plan carries no entries", snake)
 	}

@@ -163,7 +163,7 @@ func cT08PlanRows(t *testing.T, header, snake string) (rows [][]string, guarded 
 		t.Fatalf("the header's %s_fixed_plan has no closing brace", snake)
 	}
 	body = body[:end]
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -421,7 +421,7 @@ func cT08DeepUnionSchema(n int) string {
 	b.WriteString("package probe\n")
 	b.WriteString("type S0 { x int32 = 0 }\n")
 	b.WriteString("type Sb { y int32 = 0 }\n")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(&b, "union U%d {\n    a S%d\n    b Sb\n}\n", i, i)
 		fmt.Fprintf(&b, "type S%d { u U%d }\n", i+1, i)
 	}
@@ -619,7 +619,7 @@ func cT08GuardChain(t *testing.T) {
 	deepLinks := deepPool[chain.GuardIndex : chain.GuardIndex+chain.GuardCount]
 	var set strings.Builder
 	path := "value.u"
-	for i := 0; i < deepest; i++ {
+	for i := range deepest {
 		fmt.Fprintf(&set, "    %s.type = 1;\n", path)
 		path += ".as.a"
 		if i < deepest-1 {
@@ -816,7 +816,7 @@ func cT08Bytes(t *testing.T, text, marker string) []byte {
 	}
 	rest = rest[:end]
 	var out []byte
-	for _, f := range strings.Split(rest, ",") {
+	for f := range strings.SplitSeq(rest, ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
@@ -838,11 +838,11 @@ func cT08Hex(t *testing.T, text, marker string) uint64 {
 		t.Fatalf("no %q in the generated source", marker)
 	}
 	rest := text[at+len(marker):]
-	end := strings.Index(rest, "ull")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "ull")
+	if !ok {
 		t.Fatalf("the constant after %q has no ull suffix", marker)
 	}
-	v, err := strconv.ParseUint(rest[:end], 16, 64)
+	v, err := strconv.ParseUint(before, 16, 64)
 	if err != nil {
 		t.Fatal(err)
 	}

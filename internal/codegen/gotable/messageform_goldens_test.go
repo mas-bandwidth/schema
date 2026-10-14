@@ -53,7 +53,6 @@ func TestGoMessageFormGoldens(t *testing.T) {
 		loaded[conn.unit] = loadUnitPaths(t, root, paths)
 	}
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			conn, ok := connections[row.connection]

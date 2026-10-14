@@ -69,7 +69,7 @@ func t15DeepUnionSchema(n int) string {
 	b.WriteString("package probe\n")
 	b.WriteString("type S0 { x int32 = 0 }\n")
 	b.WriteString("type Sb { y int32 = 0 }\n")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(&b, "union U%d {\n    a S%d\n    b Sb\n}\n", i, i)
 		fmt.Fprintf(&b, "type S%d { u U%d }\n", i+1, i)
 	}

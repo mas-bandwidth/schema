@@ -65,8 +65,8 @@ func t03LoadBody(t *testing.T, src, name string) string {
 		t.Fatalf("the generated source has no %s", sig)
 	}
 	rest := src[i+len(sig):]
-	if j := strings.Index(rest, sig); j >= 0 {
-		return rest[:j]
+	if before, _, ok := strings.Cut(rest, sig); ok {
+		return before
 	}
 	return rest
 }

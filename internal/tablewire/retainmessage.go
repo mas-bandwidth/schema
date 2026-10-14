@@ -95,10 +95,7 @@ func (rt *retainState) captureMessage(d *bitDecoder, inst *tabletext.Instance, e
 	// charges, and it is the same ceiling `keep` would apply: a record that
 	// cannot fit is dropped, one `retain_lost` counts, and `malformed` does
 	// not move. A record that fits is transcoded byte for byte as before.
-	budget := rt.store.Capacity - rt.store.used - 9
-	if budget < 0 {
-		budget = 0
-	}
+	budget := max(rt.store.Capacity-rt.store.used-9, 0)
 	rs := &resolver{outCap: budget}
 	was := d.r.off
 	d.r.off = at

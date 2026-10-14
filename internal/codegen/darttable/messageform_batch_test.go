@@ -269,7 +269,6 @@ func TestMessageFormBatchDart(t *testing.T) {
 	t.Run("batch_round_trip", func(t *testing.T) {
 		t.Parallel()
 		for _, row := range batchManifest(t) {
-			row := row
 			t.Run(row.unit+"/"+row.name, func(t *testing.T) {
 				t.Parallel()
 				u := batchUnit(t, row.path)
