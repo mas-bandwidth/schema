@@ -649,9 +649,10 @@ int surfaceCook(String outDir) {
 }
 
 const String surfaces =
-    // the five WIRE-CARRYING surfaces are ABSENT: Dart emits no table wire
-    // (the port that wrote the wire's previous form was removed; schema#514
-    // brings the id-table form to Dart). The accelerators are current.
+    // the wire-carrying surfaces are ABSENT from this list because the Dart
+    // variable wire is carried by the cards unit's codec and the wire fuzzer
+    // (the wire-fuzz mode below), not by the table conformance driver; the
+    // accelerators and the forgery surfaces are current.
     ''
     'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\n';
