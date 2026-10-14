@@ -449,11 +449,12 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a FAILURE,
 # never a skip. The shrunken refusal gate — TestOtherVariableConstructsAreRefusedByName,
 # now only map, optional, enum-keyed array, int128, fixed-point and union arms —
-# rides the same -run. The conformance run answers the wire, json-read,
+# and TestListdemoNamesUncarriedRoots (the roots a mixed unit leaves uncarried)
+# ride the same -run. The conformance run answers the wire, json-read,
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestOtherVariableConstructsAreRefusedByName'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestOtherVariableConstructsAreRefusedByName|TestListdemoNamesUncarriedRoots'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-class
