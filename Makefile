@@ -3244,6 +3244,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-maps
 	$(MAKE) tables-maps-measure-refusals
 	$(MAKE) tables-json-map-walk
+	$(MAKE) tables-json-map-walk-negative-controls
 	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-lists
 	# the tool's own cook half for a list, held to the reference byte for byte
@@ -3283,6 +3284,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# every other leg's ride in that leg's test-<lang> (make/<lang>.mk).
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
+	$(MAKE) conformance-negative-control-cpp
 	$(MAKE) conformance-negative-control-absent
 	$(MAKE) conformance-negative-control-reference-surface
 	$(MAKE) conformance-negative-control-block-dump
@@ -3395,29 +3397,85 @@ tables-maps-measure-refusals: build/schema_test_maps
 	./build/schema_test_maps measure-refusals
 
 # THE MAP-WALK GATE (docs/SPEC-TABLES.md §2.8, §16): the map's half of the text
-# form is emitted only in a unit that declares one, and it is ONE half too —
-# the same bytes in every map-bearing .cpp of the corpus, on the walk's own
-# terms — and none of it reaches a map-free unit, which is the zero-cost
-# property (§2.2) holding for the text form.
+# form is emitted only in a unit that declares one, it is ONE half, the same
+# bytes in every map-bearing .cpp, and none of it reaches a map-free unit,
+# which is the zero-cost property (§2.2) holding for the text form.
+#
+# THE MAP-FREE SET IS DERIVED, NOT NAMED. It was two directory names in this
+# recipe, and the byte compare covered one directory's .cpp while every
+# map-bearing unit of the corpus carries the half. The premise was right and
+# the instrument was narrow. `internal/mapwalk` asks the COMPILER'S OWN IR
+# instead: a unit is map-free when no table in its closure carries a map
+# (§2.8), and a generated entry is a table of that closure, so a nested map
+# reaches the answer with no clause of its own. The corpus is the units
+# `tables_generate` emits, read from that define, so the scan is every
+# generated .cpp of the tree rather than one directory's ten.
 .PHONY: tables-json-map-walk
 tables-json-map-walk: build/tables-generated/.stamp
-	@rm -rf build/json-map-walk && mkdir -p build/json-map-walk
-	@for f in build/tables-generated/maps/*Table.cpp; do \
-		out=build/json-map-walk/$$(echo $$f | tr / _); \
-		awk '/---- json map walk: begin ----/,/---- json map walk: end ----/' $$f > $$out; \
-		if [ ! -s $$out ]; then echo "MAP-WALK GATE FAILED: no map half in $$f"; exit 1; fi; \
-	done
-	@first=""; for f in build/json-map-walk/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "MAP-WALK GATE FAILED: the map half in $$f is not the map half in $$first"; exit 1; }; \
-		fi; \
-	done
-	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp; do \
-		if grep -q "json map walk: begin" $$f; then \
-			echo "MAP-WALK GATE FAILED: the map half reached the map-free unit $$f"; exit 1; \
-		fi; \
-	done
-	@echo "tables map-walk gate: one map half, byte-identical in $$(ls build/json-map-walk | wc -l | tr -d ' ') map-bearing .cpp files, and none in a map-free one"
+	@mkdir -p build
+	SCHEMA_MAP_WALK_DIR=$$PWD/build/tables-generated \
+		SCHEMA_MAP_WALK_SUMMARY=$$PWD/build/map-walk.summary \
+		go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits
+	@cat build/map-walk.summary
+
+# THE NEGATIVE CONTROLS for the map-walk gate (docs/SPEC-TABLES.md §2.8, §16).
+# A gate that cannot go red proves nothing, and the three ways this one can
+# fail to hold are the three ways the half can land wrong:
+#
+#   1. PLANTED. The half is put into a map-free unit's emitted .cpp in a
+#      throwaway copy. Nothing generates it and no emitter is patched, so
+#      this control holds the SCAN alone: it must name the file.
+#   2. UNGATED. The emitter's own `if anyMap` is removed, so every unit's
+#      .cpp carries the real half. This is the control the gate exists for,
+#      because it is what §16's zero-cost promise costs a map-free consumer
+#      the day the gating goes, and the derived set has to say which units
+#      are free.
+#   3. DROPPED. The other half of the same switch: the map half is never
+#      emitted, so a map-bearing unit's .cpp carries the stub. A gate that
+#      only refused leaks would stay green here.
+#
+# Each control narrows the run with SCHEMA_MAP_WALK_UNITS, so its red is its
+# own and not thirty-five absent trees.
+#
+# The two gating controls share a recipe. $(1) the control's short name, $(2)
+# the sed script over the JSON emitter, $(3) the corpus directory the control
+# regenerates and scans, $(4) the sentence a reader gets when the gate stayed
+# green, $(5) the clause the red has to be on.
+define map_walk_gating_control
+	@sed -e $(2) internal/codegen/cpptable/json.go > build/map-walk-$(1).gotext
+	@cmp -s build/map-walk-$(1).gotext internal/codegen/cpptable/json.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/build/map-walk-$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-walk-$(1)-overlay.json
+	@go build -overlay=build/map-walk-$(1)-overlay.json -o build/schema-map-walk-$(1) ./cmd/schema
+	@rm -rf build/map-walk-$(1)-tree && mkdir -p build/map-walk-$(1)-tree
+	@./build/schema-map-walk-$(1) generate --lang cpp --out build/map-walk-$(1)-tree/$(3) tables/$(3)
+	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-$(1)-tree SCHEMA_MAP_WALK_UNITS=$(3) \
+			go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			> build/map-walk-$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
+	fi
+	@grep -q "$(5)" build/map-walk-$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $(1) clause"; cat build/map-walk-$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the MAP-WALK GATE red on $$(grep -c 'MAP-WALK GATE FAILED' build/map-walk-$(1).log) named file(s)"
+endef
+
+.PHONY: tables-json-map-walk-negative-controls
+tables-json-map-walk-negative-controls: bin/schema build/tables-generated/.stamp
+	@rm -rf build/map-walk-planted && mkdir -p build/map-walk-planted/examples
+	@cp build/tables-generated/examples/TablesTable.cpp build/map-walk-planted/examples/TablesTable.cpp
+	@printf '// ---- json map walk: begin ----\n// PLANTED\n// ---- json map walk: end ----\n' \
+		>> build/map-walk-planted/examples/TablesTable.cpp
+	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-planted SCHEMA_MAP_WALK_UNITS=examples \
+			go test -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			> build/map-walk-planted.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the map half planted in a map-free unit left the gate GREEN"; exit 1; \
+	fi
+	@grep -q "the map half reached the map-free unit.*examples/TablesTable.cpp" build/map-walk-planted.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not by naming the planted file"; cat build/map-walk-planted.log; exit 1; }
+	@echo "negative control: a planted map half turns the MAP-WALK GATE red on $$(grep -c 'MAP-WALK GATE FAILED' build/map-walk-planted.log) named file(s)"
+	$(call map_walk_gating_control,ungated,'s@mapAdapters := tableJsonNoMapAdapters@mapAdapters := tableJsonMapAdapters // SABOTAGED@',examples,the map half emitted into every unit left the gate GREEN,the map half reached the map-free unit)
+	$(call map_walk_gating_control,dropped,'s@mapAdapters = tableJsonMapAdapters@mapAdapters = tableJsonNoMapAdapters // SABOTAGED@',maps,the map half emitted into no unit at all left the gate GREEN,no map half in)
 
 # ---- the NEGATIVE CONTROLS §2.8 names ------------------------------------
 #
@@ -4493,6 +4551,45 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
+# THE PYTHON LEG'S ROW GATE (mas-bandwidth/schema#1400). The python port is one
+# matrix row at a time, each row a self-checking script under
+# test/py-packet/<row>/test_<row>.py that exits non-zero on the first failed
+# assertion. The target runs EVERY such script, so the next row is gated the
+# day it lands without a line here, and it goes red if it ran none: a glob that
+# matches nothing is a gate that ran nothing (#1315). PYTHONDONTWRITEBYTECODE
+# keeps a run from leaving __pycache__ in the tree. The go-test job in
+# ci-full.yml runs it (the stream's go-test job; ci.yml is gone), and `make test`
+# carries it.
+PY_PACKET_ROWS = $(sort $(wildcard test/py-packet/*/test_*.py))
+
+.PHONY: tables-py-packet
+tables-py-packet:
+	@n=0; for f in $(PY_PACKET_ROWS); do \
+		echo "== $$f"; PYTHONDONTWRITEBYTECODE=1 python3 "$$f" || exit 1; n=$$((n+1)); \
+	done; \
+	if [ $$n -eq 0 ]; then echo "tables-py-packet: no test/py-packet/*/test_*.py ran" >&2; exit 1; fi; \
+	echo "tables-py-packet: $$n row(s) passed"
+
+test: tables-py-packet
+
+# Its control: a copy of the leg with F11's plan-capacity check removed
+# (python/packet.py's `if entry_count > len(plan):` becomes `if False:`) must
+# turn the F11 row red, or the gate above is not watching the rule it names.
+.PHONY: tables-py-packet-negative-control
+tables-py-packet-negative-control:
+	@rm -rf build/py-packet-negative && mkdir -p build/py-packet-negative/python build/py-packet-negative/test/py-packet
+	@cp python/packet.py build/py-packet-negative/python/
+	@cp -R test/py-packet/f11 build/py-packet-negative/test/py-packet/
+	@sed -i.orig 's/if entry_count > len(plan):/if False:/' build/py-packet-negative/python/packet.py
+	@if cmp -s python/packet.py build/py-packet-negative/python/packet.py; then \
+		echo "tables-py-packet-negative-control: the sabotage patched nothing" >&2; exit 1; fi
+	@if PYTHONDONTWRITEBYTECODE=1 python3 build/py-packet-negative/test/py-packet/f11/test_f11.py >build/py-packet-negative/out.txt 2>&1; then \
+		cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 stayed green without the plan-capacity check" >&2; exit 1; fi
+	@grep -q 'Expected count=-1' build/py-packet-negative/out.txt || { cat build/py-packet-negative/out.txt; \
+		echo "tables-py-packet-negative-control: F11 went red for the wrong reason" >&2; exit 1; }
+	@echo "tables-py-packet-negative-control: F11 went red without the plan-capacity check (ok)"
+
 # THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
 # paired headers, normalise the fixed runtimes through the documented token
 # map, and diff the rest. Any leftover line that is not one of the three
@@ -5566,6 +5663,54 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
 
+# THE C++ EMITTER-SIDE CONFORMANCE CONTROL (docs/PORTING.md I11). The control
+# above flips a byte in a COPY OF THE DRIVER, so it localizes the text form and
+# cannot show the harness finding a defect in GENERATED code. This one breaks
+# the emitter itself: the walker's read-path storage offset in
+# internal/codegen/cpptable/json.go is XORed by four, the whole tree is
+# regenerated through a Go build overlay, and the C++ driver is rebuilt against
+# what that emitter emitted. The harness must go RED on `json-read` alone —
+# `json-write` and `wire` stay green, which is what says the break is the
+# READER's. Nothing tracked is written to: the emitter source is patched into a
+# COPY under build/ and reached through the overlay, so an interrupt cannot
+# leave a sabotaged working tree.
+CONFORMANCE_NEGATIVE_CPP := build/conformance-negative-cpp
+.PHONY: conformance-negative-control-cpp
+conformance-negative-control-cpp: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_CPP) && mkdir -p $(CONFORMANCE_NEGATIVE_CPP)
+	go run ./tools/sabotage -name table-cpp-json-read -out $(CONFORMANCE_NEGATIVE_CPP)/json.go.txt internal/codegen/cpptable/json.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/$(CONFORMANCE_NEGATIVE_CPP)/json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_CPP)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_CPP)/overlay.json -o $(CONFORMANCE_NEGATIVE_CPP)/schema ./cmd/schema
+	$(call tables_generate,$(CONFORMANCE_NEGATIVE_CPP)/schema,$(CONFORMANCE_NEGATIVE_CPP)/generated)
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_CPP)/generated/*/*Table.cpp || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(CXX) $(TABLES_CXXFLAGS) \
+		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))) \
+		test/conformance/cpp/main.cpp \
+		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(CONFORMANCE_NEGATIVE_CPP)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_CPP)/driver
+	@printf 'cpp %s/driver\n' "$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_CPP)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_CPP)/work > $(CONFORMANCE_NEGATIVE_CPP)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged C++ walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; \
+	fi
+	@grep -Eq '^json-read +FAIL ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on json-read"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -Eq '^json-write +pass ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_CPP)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP)/log; exit 1; }
+	@grep -m1 "cpp / json-read" $(CONFORMANCE_NEGATIVE_CPP)/log
+	@echo "negative control: one storage offset off in the C++ emitter turns the harness RED on json-read alone"
+
 # THE NEGATIVE CONTROL FOR THE BLOCK ROW DUMP (docs/SPEC-TABLES.md §19.2), and it
 # sabotages neither driver: it flips one byte INSIDE A ROW of the block image
 # itself. That is the whole reason the surface exists. `Open` reads the prologue
@@ -6035,7 +6180,7 @@ build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-gen
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 	@rm -rf build/fixedform-corpus
@@ -6054,14 +6199,100 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
 
-# THE SIBLING RUNTIME IS A STATED BENCH PREREQUISITE. The oracle dump links the
-# C++ reference, which includes serialize.h from the guard checkout $(SERIALIZE)
-# (a sibling of this repo, the same checkout the C++ targets are built against).
-# Refuse by name when it is absent instead of failing mid-generate with a
-# cryptic include error.
+# THE CORPUS FINDS ITS OWN RUNTIME (the "Fix, this attempt" rule). The oracle
+# dump links the C++ reference, which includes serialize.h from the checkout
+# $(SERIALIZE) (normally a sibling of this repo, the same checkout the C++
+# targets are built against). A clean bench workspace has no sibling repo, so
+# when no explicit SERIALIZE was named the corpus fetches the pinned runtime
+# (serialize @ $(SERIALIZE_PIN), the checkout docs/TUTORIAL.md names) INSIDE the
+# workspace and compiles against that. A SERIALIZE named on the command line
+# (or in the environment) that is absent still refuses by name, and so does a
+# fetch that fails or produces no header: a gate with no blade is the exact
+# silence this refusal exists to forbid.
+SERIALIZE_PIN     ?= v1.16.2
+SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
+SERIALIZE_FETCHED := build/serialize
+SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
+
+# THE GO PROBES FIND THEIR OWN RUNTIME THE SAME WAY. The versioning probes'
+# go.mod replaces github.com/mas-bandwidth/serialize.go with the sibling
+# checkout $(SERIALIZE_GO) (make/go.mk's default, ../serialize.go), and
+# fixedversioning_test.go:1126 used to hard-code that sibling four levels up
+# with nothing staging it. A clean bench has no sibling, so when no explicit
+# SERIALIZE_GO was named this fetches the pinned Go runtime (serialize.go @
+# $(SERIALIZE_GO_PIN), the tag .github/workflows/certify.yml names) into
+# build/serialize.go. A SERIALIZE_GO named on the command line (or in the
+# environment) that is absent still refuses by name, and so does a fetch that
+# fails or produces no go.mod: a gate with no blade is the exact silence this
+# refusal exists to forbid. The check target repeats that refusal in its own
+# recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
+# still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
+# is up to date, and a phony target with only that prerequisite would report
+# nothing to be done.
+SERIALIZE_GO_PIN     ?= v1.15.1
+SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
+SERIALIZE_GO_FETCHED := build/serialize.go
+SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
+
+# THE FLEET'S BENCHES MIRROR THE REPOSITORIES THEY WORK ON, and a local clone is
+# offline, unthrottled and byte-for-byte the pinned tag. $NOVA_MIRRORS names a
+# directory of bare mirrors laid out as <owner>/<repo>.git (for example
+# $NOVA_MIRRORS/mas-bandwidth/serialize.git), which is why the runtime fetches
+# below try that layout FIRST and fall back to the network repository
+# ($(SERIALIZE_REPO)/$(SERIALIZE_GO_REPO)) only when NOVA_MIRRORS is unset, when
+# the mirror is absent, or when the mirror clone fails (for example the mirror
+# lacks the pin tag). file:// makes git honour --depth against a local path. A
+# failure from BOTH still refuses by name, as before; the pins are unchanged.
+#
+# fetch-runtime PIN MIRROR-REL REPO DEST WHAT — clone DEST at tag PIN from
+# $NOVA_MIRRORS/MIRROR-REL first, else from REPO, saying which source it used.
+# WHAT names the runtime ("C" or "Go") in the echo. Returns non-zero when both
+# clones fail, so the caller refuses by name.
+define fetch-runtime
+if test -n "$(NOVA_MIRRORS)" && test -d "$(NOVA_MIRRORS)/$(2)" && \
+   git clone --depth 1 --branch "$(1)" "file://$(NOVA_MIRRORS)/$(2)" "$(4)"; then \
+	echo "tables $(5) versioning: fetched $(1) from the mirror $(NOVA_MIRRORS)/$(2) into $(4)"; \
+else \
+	rm -rf "$(4)"; \
+	echo "tables $(5) versioning: fetching $(3) @ $(1) into $(4)"; \
+	git clone --depth 1 --branch "$(1)" "$(3)" "$(4)"; \
+fi
+endef
+
+$(SERIALIZE_GO_RUNTIME)/go.mod:
+	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
+	elif test "$(origin SERIALIZE_GO)" != "file"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
+		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO_RUNTIME),Go) \
+			|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch produced no $(SERIALIZE_GO_RUNTIME)/go.mod; name it as a bench prerequisite" >&2; exit 1; }
+
+$(SERIALIZE_RUNTIME)/serialize.h:
+	@if test -f "$(SERIALIZE)/serialize.h"; then :; \
+	elif test "$(origin SERIALIZE)" != "file"; then \
+		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	else \
+		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+		rm -rf "$(SERIALIZE_RUNTIME)"; \
+		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
+		$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$(SERIALIZE_RUNTIME),C) \
+			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+	fi
+	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
+
 .PHONY: tables-fixedform-corpus-check
-tables-fixedform-corpus-check:
-	@test -f $(SERIALIZE)/serialize.h || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; exit 1; }
+tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h $(SERIALIZE_GO_RUNTIME)/go.mod
+	@if test "$(origin SERIALIZE_GO)" != "file" && ! test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
+		exit 1; \
+	fi
 
 .PHONY: tables-fixedform-corpus
 

@@ -186,12 +186,12 @@ func t09Run(t *testing.T, schema, probe string) {
 	}
 	mod := "module probe\n\ngo 1.26\n"
 	if needSerialize {
-		runtime, err := filepath.Abs("../../../../serialize.go")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(runtime); err != nil {
-			t.Skipf("the 128-bit store reads through the sibling serialize.go runtime (SPEC-TABLES §3.4), not staged at %s: %v", runtime, err)
+		runtime, ok := goSerializeDir(t)
+		if !ok {
+			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+				t.Fatalf("the sibling runtime serialize.go is absent at %s (SPEC-TABLES §3.4: the 128-bit store is serialize.go's)", runtime)
+			}
+			t.Skipf("the 128-bit store reads through the sibling serialize.go runtime (SPEC-TABLES §3.4), not staged at %s", runtime)
 		}
 		mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
 	}
@@ -207,6 +207,64 @@ func t09Run(t *testing.T, schema, probe string) {
 	cmd.Dir = dir
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated fixed-table runtime: %v\n%s", err, b)
+	}
+}
+
+// goSerializeDir resolves the sibling serialize.go checkout whose 128-bit
+// storage type the wide rows' generated module imports (SPEC-TABLES §3.4: the
+// 128-bit store is serialize.go's). It takes the directory the Makefile names by
+// the SERIALIZE_GO variable (make/go.mk:7) when the environment sets it, so the
+// bench can stage the sibling anywhere; otherwise it is the
+// `../../../../serialize.go` checkout beside this one. ok is false when the
+// checkout is not staged at the resolved path.
+func goSerializeDir(t *testing.T) (string, bool) {
+	t.Helper()
+	dir := os.Getenv("SERIALIZE_GO")
+	if dir == "" {
+		var err error
+		dir, err = filepath.Abs("../../../../serialize.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return dir, false
+	}
+	return dir, true
+}
+
+// t09CaseByID returns the t09 case with the given roadmap id.
+func t09CaseByID(id string) (t09Case, bool) {
+	for _, tc := range t09Cases {
+		if tc.id == id {
+			return tc, true
+		}
+	}
+	return t09Case{}, false
+}
+
+// TestFixed128BitRowsRunWithTheSerializeSibling resolves the sibling
+// serialize.go runtime as t09Run does and runs the signed-128 and unsigned-128
+// valid-data rows. Those rows compile generated code against the sibling, so
+// this is a functional test behind slowtest.Gate, never a unit test. With
+// SCHEMA_REQUIRE_CORPUS set and the sibling absent the row fails by name;
+// unset, it skips by name.
+func TestFixed128BitRowsRunWithTheSerializeSibling(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain and the serialize.go sibling")
+	for _, id := range []string{"signed-128/go/valid-data", "unsigned-128/go/valid-data"} {
+		tc, ok := t09CaseByID(id)
+		if !ok {
+			t.Fatalf("the t09 table names no case %q", id)
+		}
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			schema := tc.rt
+			if schema == "" {
+				schema = tc.schema
+			}
+			t09Run(t, schema, tc.probe)
+		})
 	}
 }
 

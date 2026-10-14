@@ -64,6 +64,17 @@ func DecodeRetainMessages(m *tabletext.Model, insts []*tabletext.Instance, data 
 	return decodeMessagesWith(m, insts, data, v, report, states)
 }
 
+// msgWalkProbe is a TEST INSTRUMENT and nil on every real read: it counts the
+// elements `msgElements` walks so a test can pin the work by a count, never a
+// clock, and it stops a walk that has not been bounded at [msgWalkProbeLimit].
+// It is read and written only from the goroutine driving the read.
+var msgWalkProbe *uint64
+
+// msgWalkProbeLimit is where the instrument stops an unbounded walk: about
+// 2^20 elements, far past any record a caller's store could hold and far
+// short of the 2^32 a zero-width run would otherwise buy.
+const msgWalkProbeLimit = 1 << 20
+
 // captureMessage is the whole of the load side for one unknown entry: the
 // outer-kind exclusion, the transcoding walk, the capacity, and the counter
 // each answers. `at` is where the payload began and `end` where the skip left
@@ -75,7 +86,20 @@ func (rt *retainState) captureMessage(d *bitDecoder, inst *tabletext.Instance, e
 		rt.lost(d.report)
 		return
 	}
-	rs := &resolver{}
+	// THE TRANSCODING WALK IS BOUNDED BY WHAT THE STORE COULD STILL KEEP, NOT
+	// BY THE ANNOUNCED COUNT (docs/SPEC-TABLES.md §3.3, §6.6). An announced
+	// array may carry a count in zero bits, so `min = max = 0xFFFFFFFF` over
+	// an element that rides no bits costs a few bytes of wire and used to buy
+	// about 4 GiB of `rs.out` before `keep` was ever reached. The budget is
+	// the Retain store's remaining capacity less the nine bytes `keep`
+	// charges, and it is the same ceiling `keep` would apply: a record that
+	// cannot fit is dropped, one `retain_lost` counts, and `malformed` does
+	// not move. A record that fits is transcoded byte for byte as before.
+	budget := rt.store.Capacity - rt.store.used - 9
+	if budget < 0 {
+		budget = 0
+	}
+	rs := &resolver{outCap: budget}
 	was := d.r.off
 	d.r.off = at
 	rs.msgPayload(d, entry, 0)
@@ -129,6 +153,13 @@ func (rs *resolver) msgId(d *bitDecoder, ref uint64) uint64 {
 // retained record from ever carrying a node index.
 func (rs *resolver) msgPayload(d *bitDecoder, entry ir.TableVocabularyEntry, depth int) {
 	if rs.bad {
+		return
+	}
+	if rs.outCap >= 0 && len(rs.out) > rs.outCap {
+		// A SINGLE APPEND (a blob, a nested content) can carry the record past
+		// the budget between two elements: the record is dropped on the same
+		// rule (docs/SPEC-TABLES.md §3.3, §6.6).
+		rs.bad = true
 		return
 	}
 	switch int(entry.Kind) {
@@ -323,16 +354,39 @@ func (rs *resolver) msgElements(d *bitDecoder, entry ir.TableVocabularyEntry, de
 	element := ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}
 	rs.u8(shape.Elem)
 	rs.u64(n)
+	// EVERY ELEMENT COSTS AT LEAST ONE OUTPUT BYTE, so a count above the
+	// budget is dropped before the loop spends a single step on it
+	// (docs/SPEC-TABLES.md §3.3): nothing in this form is superlinear in a
+	// batch's length, including a count. The bytes already written above are
+	// counted against the budget too.
+	if rs.outCap >= 0 && uint64(len(rs.out))+n > uint64(rs.outCap) {
+		rs.bad = true
+		return
+	}
 	for range n {
 		if rs.bad {
 			return
 		}
+		if msgWalkProbe != nil {
+			*msgWalkProbe++
+			if *msgWalkProbe >= msgWalkProbeLimit {
+				rs.bad = true
+				return
+			}
+		}
 		if entry.Kind == ir.TableKindKeyed {
 			rs.u64(rs.msgRef(d))
 			rs.msgFramed(d, element, depth)
-			continue
+		} else {
+			rs.msgPayload(d, element, depth)
 		}
-		rs.msgPayload(d, element, depth)
+		// ANY APPEND THAT TAKES rs.out PAST THE BUDGET DROPS THE RECORD, the
+		// same verdict `keep` would reach from the cost (docs/SPEC-TABLES.md
+		// §6.6). The walk never allocates past what the store could hold.
+		if rs.outCap >= 0 && len(rs.out) > rs.outCap {
+			rs.bad = true
+			return
+		}
 	}
 }
 
