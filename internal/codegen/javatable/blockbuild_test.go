@@ -445,7 +445,7 @@ public final class Driver {
 }`
 	for _, f := range u.Tables["Root"].Fields {
 		if f.Name == "metas" || f.Name == "children" {
-			driver = strings.ReplaceAll(driver, "@@"+strings.ToUpper(f.Name)+"@@", fmt.Sprintf("0x%016xL", ir.TableFieldId(f)))
+			driver = strings.ReplaceAll(driver, "@@"+strings.ToUpper(f.Name)+"@@", fmt.Sprintf("0x%016xL", ir.TableFieldWireId(f)))
 		}
 	}
 	dp := filepath.Join(dir, "Driver.java")
