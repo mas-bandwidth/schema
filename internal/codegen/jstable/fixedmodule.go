@@ -161,6 +161,10 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 				g.emitMessageBody(st)
 			}
 		}
+		// Cook write lives in the home beside the classes it names
+		// (docs/SPEC-TABLES.md §7.6). A file that only declares a root imports
+		// TableCookWrite and emits that root's three functions.
+		g.emitFixedCookWrite()
 	}
 	for _, st := range tables {
 		if reason := fixedRefusal(st); reason != "" {
@@ -446,6 +450,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.kindMismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
+	g.emitFixedCookExports(st)
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

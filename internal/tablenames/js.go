@@ -1,8 +1,9 @@
 package tablenames
 
-// Js is the JavaScript table backend (internal/codegen/jstable). It is the
-// READING TIER: no struct layout, so it reads both accelerators and
-// produces neither.
+// Js is the JavaScript table backend (internal/codegen/jstable). It reads
+// and writes the block form (§19, §19.1) and the cook form (§7, §7.6), and
+// carries the fixed-form and variable-form wire codecs. Field offsets are
+// the compiler's, applied through a DataView.
 const Js Backend = 1 << 7
 
 func init() {
@@ -15,6 +16,42 @@ func init() {
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, Go at package scope and JavaScript at module scope, so the claim is the UNION and the name is claimed", RustConst: true},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
+		Name{Name: "TableCookWrite", What: "the cook writer: measure, then write, one closure for the unit's cookable roots (§7.6)"},
+
+		// The message form's module-scope bindings (docs/SPEC-TABLES.md §3.3).
+		// They are spelled at column zero of the home module, so a schema
+		// declaration of the same name is a second binding.
+		Name{Name: "TableAnnounceRead", What: "read one announcement into a direction's vocabulary (§3.3)"},
+		Name{Name: "TableFixedTextOk", What: "whether the used text is well-formed: UTF-8, or paired UTF-16 with no zero unit"},
+		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement bytes, a compile-time constant (§3.3)"},
+		Name{Name: "TableMessageBatchReader", What: "a reader over one message-form batch"},
+		Name{Name: "TableMessageDoubleWords", What: "the uint64 view of TableMessageFloat64's buffer"},
+		Name{Name: "TableMessageEntryEqual", What: "whether two announced entries are the same bytes"},
+		Name{Name: "TableMessageEntryRead", What: "read one announced entry: id, kind and shape"},
+		Name{Name: "TableMessageFloat", What: "the float32 buffer the bit converters share"},
+		Name{Name: "TableMessageFloat32Bits", What: "a float32's bits as an unsigned integer"},
+		Name{Name: "TableMessageFloat32FromBits", What: "the float32 a bit pattern names"},
+		Name{Name: "TableMessageFloat64", What: "the float64 buffer the bit converters share"},
+		Name{Name: "TableMessageFloat64Bits", What: "a float64's bits as an unsigned integer"},
+		Name{Name: "TableMessageFloat64FromBits", What: "the float64 a bit pattern names"},
+		Name{Name: "TableMessageKindBits", What: "a message kind's width in bits"},
+		Name{Name: "TableMessageKindBytes", What: "a message kind's width in bytes"},
+		Name{Name: "TableMessageNodeId", What: "the reserved id of the node table (§3.1)"},
+		Name{Name: "TableMessageOpen", What: "open a message buffer into a reader and a verdict"},
+		Name{Name: "TableMessageOpenDamaged", What: "the open verdict for a buffer the framing cannot read"},
+		Name{Name: "TableMessageOpenFramed", What: "open a message buffer and refuse one whose framing ends early"},
+		Name{Name: "TableMessageOpenOk", What: "the open verdict for a buffer the reader accepted"},
+		Name{Name: "TableMessageOpenRefused", What: "the open verdict for a buffer that is not this form"},
+		Name{Name: "TableMessageRead64", What: "the little-endian uint64 at an offset"},
+		Name{Name: "TableMessageRefuse", What: "keep the first message-refusal reason and stop"},
+		Name{Name: "TableMessageResetReport", What: "clear a message report before a read"},
+		Name{Name: "TableMessageShapeEqual", What: "whether two announced shapes are the same bytes"},
+		Name{Name: "TableMessageShapeRead", What: "read one announced shape's width facts"},
+		Name{Name: "TableMessageVersionId", What: "the reserved id of the build version in an announcement"},
+		Name{Name: "TableMessageVocabularyId", What: "the reserved id of the vocabulary length in an announcement"},
+		Name{Name: "TableMessageWords", What: "the uint32 view of TableMessageFloat's buffer"},
+		Name{Name: "tableMessageCountBits", What: "how many bits a vocabulary's entry count takes"},
+		Name{Name: "tableMessageEntry", What: "the vocabulary entry a reference names"},
 		// ---- THE FIXED FORM (docs/SPEC-TABLES.md §3.4), which JavaScript carries
 		// whole. Every one of these is a MODULE-SCOPE BINDING of the unit's
 		// <Package>Table.js, so every one of them can collide with a declaration

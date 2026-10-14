@@ -270,6 +270,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.emitBlockRecordDescriptor("", &bl.Projection, bl)
 	g.emitStrideChecks(bl)
 	g.emitBlockOpen(bl)
+	g.emitBlockBuild(bl)
 	g.emitBlockAccessors(bl)
 	g.pf("  return Object.freeze({\n")
 	g.pf("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
@@ -285,7 +286,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.pf("    %sStride: %d, %sMax: %d, %sProjectionOffset: %d,\n",
 			field, a.Stride, field, a.Max, field, a.TripleOffset)
 	}
-	members := []string{"Open", "Layout", "Type: projection"}
+	members := []string{"Open", "Begin", "Layout", "Type: projection"}
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		members = append(members, field+"Count", field+"Pitch", field+"At")
@@ -401,6 +402,65 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    if (padding > extent - used) { return null; }\n")
 	g.pf("    used += padding;\n")
 	g.pf("    return { Bytes: bytes, View: view, Used: Number(used) };\n")
+	g.pf("  }\n\n")
+}
+
+// emitBlockBuild emits §19.1's BUILD side: the prologue and the triples, and
+// NOT ONE OTHER BYTE. That is the whole of the rule that makes this side's
+// bytes the Go builder's bytes (internal/codegen/gotable/blockbuild.go,
+// emitBlockBuild) for the same counts: Go's Begin writes `p.Magic`,
+// `p.BuildVersion`, `p.ByteOrder` and one triple per array, and then advances
+// an offset the same way — the data region of each array starts at the running
+// offset rounded UP to max(§19.1's sixty-four, the row's own alignment), and
+// the used extent is that offset rounded up to sixty-four again. A builder that
+// also cleared the rows would differ from Go's, whose test pins that Begin
+// leaves a caller's bytes untouched; the rows and the padding belong to the
+// caller on both sides.
+//
+// The counts are checked against their declared maxima BEFORE any byte of the
+// extent changes, so a refusal leaves the caller's bytes exactly as they were —
+// §19.1's rule, and the one gotable's own test perturbs a count to prove. The
+// answer is the used extent, or -1 on a refusal; what the CALLER got wrong is a
+// throw, exactly as Open answers it.
+func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("  // ---- the block fill path (docs/SPEC-TABLES.md §19.1): begin ----\n")
+	g.pf("  // Begin writes ONLY the prologue and the triples — never a row and never\n")
+	g.pf("  // the padding — so its bytes are the Go builder's for the same counts.\n")
+	g.pf("  // Every count is checked BEFORE any byte of the extent changes, and the\n")
+	g.pf("  // answer is the used extent, (offset+63)&^63, or -1 on a refusal.\n")
+	g.pf("  function Begin(bytes, counts) {\n")
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sBlock.Begin takes the block's extent as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", name)
+	g.pf("    }\n")
+	g.pf("    if ((bytes.byteOffset %% %d) !== 0) {\n", ir.BlockAlign)
+	g.pf("      throw new RangeError(\"%sBlock.Begin: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", name)
+	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — copy the bytes into a fresh Uint8Array first\");\n", ir.BlockAlign)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    if (bytes.length < %d) { return -1; } // the storage owns a maximum-sized extent\n", bl.MaxBytes)
+	for _, a := range bl.Arrays {
+		field := ir.GoExportName(a.Field.Name)
+		g.pf("    const n%s = counts && counts.%s !== undefined ? counts.%s : 0;\n", field, field, field)
+		g.pf("    if (!Number.isInteger(n%s) || n%s < 0 || n%s > %d) { return -1; } // past the declared maximum\n", field, field, field, a.Max)
+	}
+	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("    view.setBigUint64(0, TableBlockMagic, true); // §19.1's prologue\n")
+	g.pf("    view.setBigUint64(8, BuildVersion, true); // §20\n")
+	g.pf("    view.setBigUint64(16, TableBlockByteOrder, true); // §20.3\n")
+	g.pf("    let offset = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		alignment := int64(ir.BlockAlign)
+		if a.ElemAlign() > alignment {
+			alignment = a.ElemAlign()
+		}
+		g.pf("    offset = Math.floor((offset + %d) / %d) * %d; // the array's own start alignment\n", alignment-1, alignment, alignment)
+		g.pf("    view.setBigUint64(%d, BigInt(offset), true); // offset_of\n", a.OffsetOfOffset)
+		g.pf("    view.setUint32(%d, n%s, true); // count\n", a.CountOffset, ir.GoExportName(a.Field.Name))
+		g.pf("    view.setUint32(%d, %d, true); // stride: this build's constant\n", a.StrideOffset, a.Stride)
+		g.pf("    offset += n%s * %d;\n", ir.GoExportName(a.Field.Name), a.Stride)
+	}
+	g.pf("    return Math.floor((offset + %d) / %d) * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
 	g.pf("  }\n\n")
 }
 

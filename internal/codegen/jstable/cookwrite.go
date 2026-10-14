@@ -1,0 +1,727 @@
+package jstable
+
+// Cook write (docs/SPEC-TABLES.md §7.6). The header words are the block
+// prologue's (§19.1): magic, build version, byte order, data length,
+// attribution length, alignment, and the two reserved words left zero.
+// Measure before write. A buffer shorter than the measure is not touched,
+// and CookFrom answers false. CookMeasureReason's refusal is the reference
+// spelling invalid_value, and a variable cycle is data_cycle.
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+func (g *fixedModule) emitFixedCookWrite() {
+	if !g.home {
+		return
+	}
+	layouts := cookLayouts(g.unit, false)
+	if len(layouts) == 0 {
+		return
+	}
+	g.pf("%s", cookWriteOpen(g.unit, layouts, false))
+}
+
+func (g *fixedModule) emitFixedCookExports(st *ir.Struct) {
+	if cookFixedBlocked(g.unit, st) {
+		return
+	}
+	if !g.home {
+		g.needHome("TableCookWrite")
+	}
+	g.pf("export function %sCookMeasure(value) {\n", st.Name)
+	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+	g.pf("  return TableCookWrite.fixedMeasure(%q);\n}\n", st.Name)
+	g.pf("export function %sCookMeasureReason(value) {\n", st.Name)
+	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+	g.pf("  return [TableCookWrite.fixedMeasure(%q), null];\n}\n", st.Name)
+	g.pf("export function %sCookFrom(value, buffer, order) {\n", st.Name)
+	g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+	g.pf("  return TableCookWrite.fixedFrom(%q, value, buffer, order);\n}\n\n", st.Name)
+}
+
+func (g *variableGen) emitVariableCookWrite(roots []*ir.Struct) {
+	layouts := cookLayouts(g.unit, true)
+	if len(layouts) == 0 {
+		return
+	}
+	g.pf("%s", cookWriteOpen(g.unit, layouts, true))
+	for _, st := range roots {
+		if cookVariableBlocked(g.unit, st) {
+			continue
+		}
+		g.pf("export function %sCookMeasure(value) {\n", st.Name)
+		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+		g.pf("  return TableCookWrite.variableMeasure(%q, value);\n}\n", st.Name)
+		g.pf("export function %sCookMeasureReason(value) {\n", st.Name)
+		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+		g.pf("  return TableCookWrite.variableReason(%q, value);\n}\n", st.Name)
+		g.pf("export function %sCookFrom(value, buffer, order) {\n", st.Name)
+		g.pf("  // Measure before write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+		g.pf("  return TableCookWrite.variableFrom(%q, value, buffer, order);\n}\n\n", st.Name)
+	}
+}
+
+func cookWriteOpen(u *ir.Unit, layouts []*ir.Struct, variable bool) string {
+	var b strings.Builder
+	b.WriteString("// Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
+	b.WriteString("export const TableCookWrite = (() => {\n")
+	fmt.Fprintf(&b, "  const build = %s;\n", jsId(ir.BuildVersion(u)))
+	b.WriteString("  const layouts = {\n")
+	for _, st := range layouts {
+		b.WriteString(cookStructLiteral(u, st, variable))
+		b.WriteString(",\n")
+	}
+	b.WriteString("  };\n")
+	b.WriteString(cookEngineJS(variable))
+	b.WriteString("})();\n\n")
+	return b.String()
+}
+
+func cookLayouts(u *ir.Unit, variable bool) []*ir.Struct {
+	seen := map[string]bool{}
+	var out []*ir.Struct
+	for _, f := range u.Files {
+		var roots []*ir.Struct
+		if variable {
+			roots = variableRoots(u, f.Tables)
+		} else {
+			roots = fixedRoots(u, f.Tables)
+		}
+		for _, st := range roots {
+			if variable {
+				if !variableCarried(u, st.Name) || cookVariableBlocked(u, st) {
+					continue
+				}
+			} else if cookFixedBlocked(u, st) {
+				continue
+			}
+			cookCollect(st, seen, &out)
+		}
+	}
+	return out
+}
+
+// variableCarried reports whether the variable wire emits a codec for the
+// table. A root with no codec has nothing for CookFrom to read.
+func variableCarried(u *ir.Unit, name string) bool {
+	return newVariableClass(u).carried(name)
+}
+
+func cookCollect(st *ir.Struct, seen map[string]bool, out *[]*ir.Struct) {
+	if st == nil || seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		cookCollectField(f, seen, out)
+	}
+	*out = append(*out, st)
+}
+
+func cookCollectField(f *ir.Field, seen map[string]bool, out *[]*ir.Struct) {
+	if f == nil || f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		cookCollect(r, seen, out)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.Ref != nil {
+				cookCollect(v.Ref, seen, out)
+			}
+			if v.F != nil {
+				cookCollectField(v.F, seen, out)
+			}
+		}
+	}
+}
+
+func cookFixedBlocked(u *ir.Unit, st *ir.Struct) bool {
+	_ = u
+	return cookWriteWalk(st, map[string]bool{}, false)
+}
+
+func cookVariableBlocked(u *ir.Unit, st *ir.Struct) bool {
+	_ = u
+	return cookWriteWalk(st, map[string]bool{}, true)
+}
+
+func cookWriteWalk(st *ir.Struct, seen map[string]bool, variable bool) bool {
+	if st == nil || seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if cookFieldBlocked(f, variable) {
+			return true
+		}
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if cookWriteWalk(r, seen, variable) {
+				return true
+			}
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && cookFieldBlocked(v.F, variable) {
+					return true
+				}
+				if v.Ref != nil && cookWriteWalk(v.Ref, seen, variable) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// cookFieldBlocked is the construct this cook writer does not place. Maps,
+// lists, optionals, keyed arrays, guards, wide integers, fixed-point and
+// wstring wait for a later card. A fixed root with a pointer waits too; a
+// variable root keeps its pointers and its blobs. Unions are written on the
+// fixed form and refused on the variable form.
+func cookFieldBlocked(f *ir.Field, variable bool) bool {
+	if f == nil {
+		return true
+	}
+	switch {
+	case f.Type.Optional, f.IsMap(), f.IsList(), f.KeyEnum != "", f.Guard != "":
+		return true
+	case f.Type.Kind == ir.TFixed, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TMap:
+		return true
+	case f.Type.Kind == ir.TInt && f.Type.Width >= 128:
+		return true
+	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		return true
+	case variable && f.Array == ir.ArrayFixed:
+		return true
+	case !variable && f.Type.Pointer:
+		return true
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Enum:
+			return false
+		case *ir.Flags, *ir.Union:
+			return variable
+		case *ir.Struct:
+			if variable && !r.IsTable && !f.Type.Pointer {
+				return true
+			}
+			return false
+		default:
+			return true
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TBool, ir.TInt, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TBits:
+		return false
+	}
+	return true
+}
+
+func cookAlignUp(n, a int64) int64 {
+	if a <= 1 {
+		return n
+	}
+	return (n + a - 1) / a * a
+}
+
+func cookStructLiteral(u *ir.Unit, st *ir.Struct, variable bool) string {
+	ml := ir.RecordLayout(u, st)
+	alignCook := max(int64(8), ml.Align)
+	data := cookAlignUp(ml.Size, alignCook)
+	var b strings.Builder
+	fmt.Fprintf(&b, "    %s: {\n", strconv.Quote(st.Name))
+	fmt.Fprintf(&b, "      size: %d, align: %d, data: %d, measure: %d, alignCook: %d, typeId: %s",
+		ml.Size, ml.Align, data, 64+data+16, alignCook, jsId(ir.TableTypeId(st.WireName())))
+	if variable && st.IsTable {
+		fmt.Fprintf(&b, ", make: () => new %s()", st.Name)
+	}
+	b.WriteString(",\n      fields: [\n")
+	for i := range ml.Fields {
+		fl := &ml.Fields[i]
+		fmt.Fprintf(&b, "        %s,\n", cookFieldLiteral(u, fl.Field, fl.Offset, variable))
+	}
+	b.WriteString("      ],\n    }")
+	return b.String()
+}
+
+func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) string {
+	name := f.Name
+	if !variable {
+		name = ir.GoExportName(f.Name)
+	}
+	qn := strconv.Quote(name)
+	if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+		if un, ok := f.Type.Ref.(*ir.Union); ok {
+			return cookUnionLiteral(u, un, qn, offset)
+		}
+	}
+	pieces := ir.FieldPieces(u, f, offset)
+	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
+		stride := cookElemStride(u, f)
+		countAt := int64(-1)
+		countFrom := "bound"
+		if f.Array == ir.ArrayCounted {
+			countAt = pieces[1].Offset
+			if variable {
+				countFrom = "len"
+			} else {
+				countFrom = "count"
+			}
+		}
+		elem := cookElemLiteral(u, f, variable)
+		return fmt.Sprintf("{k:\"arr\",n:%s,at:%d,countAt:%d,countFrom:%q,bound:%d,stride:%d,elem:%s}",
+			qn, pieces[0].Offset, countAt, countFrom, f.ArrayBound, stride, elem)
+	}
+	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+		k := "str"
+		if f.Type.Kind == ir.TBytes {
+			k = "bytes"
+		}
+		if variable {
+			if f.Type.Kind == ir.TString {
+				k = "vstr"
+			} else {
+				k = "vbytes"
+			}
+		}
+		return fmt.Sprintf("{k:%q,n:%s,at:%d,lenAt:%d,cap:%d}", k, qn, pieces[0].Offset, pieces[1].Offset, f.Type.Size)
+	}
+	if variable && f.Type.Pointer && f.Array == ir.ArrayNone && f.Type.Blob() {
+		k := "bblob"
+		if f.Type.Kind == ir.TString {
+			k = "sblob"
+		}
+		return fmt.Sprintf("{k:%q,n:%s,at:%d}", k, qn, pieces[0].Offset)
+	}
+	if variable && f.Type.Pointer && f.Array == ir.ArrayNone {
+		return fmt.Sprintf("{k:\"ptr\",n:%s,at:%d}", qn, pieces[0].Offset)
+	}
+	at := offset
+	if len(pieces) > 0 {
+		at = pieces[0].Offset
+	}
+	return cookScalarLiteral(u, f, qn, at, variable)
+}
+
+func cookElemStride(u *ir.Unit, f *ir.Field) int64 {
+	single := *f
+	single.Array = ir.ArrayNone
+	single.ArrayBound = 0
+	single.KeyEnum = ""
+	single.Type.Optional = false
+	pieces := ir.FieldPieces(u, &single, 0)
+	var end int64
+	for _, p := range pieces {
+		if p.Offset+p.Size > end {
+			end = p.Offset + p.Size
+		}
+	}
+	return end
+}
+
+func cookElemLiteral(u *ir.Unit, f *ir.Field, variable bool) string {
+	single := *f
+	single.Array = ir.ArrayNone
+	single.ArrayBound = 0
+	single.KeyEnum = ""
+	single.Type.Optional = false
+	return cookFieldLiteral(u, &single, 0, variable)
+}
+
+func cookUnionLiteral(u *ir.Unit, un *ir.Union, qn string, offset int64) string {
+	_, _, tag, armAt := ir.UnionLayout(u, un)
+	arms := make([]string, len(un.Variants))
+	for i, v := range un.Variants {
+		if v.F == nil {
+			arms[i] = "{v:1}"
+			continue
+		}
+		f := *v.F
+		f.Name = v.Name
+		arms[i] = cookFieldLiteral(u, &f, 0, false)
+	}
+	return fmt.Sprintf("{k:\"union\",n:%s,at:%d,tagW:%d,armAt:%d,arms:%d,arm:[%s]}",
+		qn, offset, tag, armAt, len(un.Variants), strings.Join(arms, ","))
+}
+
+func cookScalarLiteral(u *ir.Unit, f *ir.Field, qn string, at int64, variable bool) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return fmt.Sprintf("{k:\"bool\",n:%s,at:%d}", qn, at)
+	case ir.TFloat32:
+		return fmt.Sprintf("{k:\"f32\",n:%s,at:%d}", qn, at)
+	case ir.TFloat64:
+		return fmt.Sprintf("{k:\"f64\",n:%s,at:%d}", qn, at)
+	case ir.TInt, ir.TBits:
+		w := int64(f.Type.Width) / 8
+		sg := 0
+		if f.Type.Kind == ir.TBits {
+			if f.Type.Width <= 32 {
+				w = 4
+			} else {
+				w = 8
+			}
+		} else if f.Type.Signed {
+			sg = 1
+		}
+		return fmt.Sprintf("{k:\"int\",n:%s,at:%d,w:%d,sg:%d}", qn, at, w, sg)
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Enum:
+			w := int64(ir.StorageBitsFor(r.Max)) / 8
+			if variable {
+				vs := make([]string, len(r.Variants))
+				for i, name := range r.Variants {
+					vs[i] = strconv.Quote(name)
+				}
+				return fmt.Sprintf("{k:\"venum\",n:%s,at:%d,w:%d,max:%d,vs:[%s]}", qn, at, w, r.Max, strings.Join(vs, ","))
+			}
+			return fmt.Sprintf("{k:\"enum\",n:%s,at:%d,w:%d,max:%d}", qn, at, w, r.Max)
+		case *ir.Flags:
+			return fmt.Sprintf("{k:\"int\",n:%s,at:%d,w:8,sg:0}", qn, at)
+		case *ir.Struct:
+			return fmt.Sprintf("{k:\"rec\",n:%s,at:%d,t:%s}", qn, at, strconv.Quote(r.Name))
+		}
+	}
+	_ = u
+	return fmt.Sprintf("{k:\"int\",n:%s,at:%d,w:1,sg:0}", qn, at)
+}
+
+func cookEngineJS(variable bool) string {
+	var b strings.Builder
+	b.WriteString(cookEngineShared)
+	b.WriteString(cookWriteTextJS(variable))
+	b.WriteString(cookEngineTail)
+	if variable {
+		b.WriteString(cookEngineVariable)
+		b.WriteString("  return { variableMeasure, variableReason, variableFrom };\n")
+	} else {
+		b.WriteString(cookEngineFixed)
+		b.WriteString("  return { fixedMeasure, fixedFrom };\n")
+	}
+	return b.String()
+}
+
+func cookWriteTextJS(variable bool) string {
+	var b strings.Builder
+	b.WriteString("  function writeText(view, base, fd, parent, le) {\n")
+	b.WriteString("    let bytes, n;\n")
+	if variable {
+		b.WriteString("    if (fd.k === \"vstr\") {\n")
+		b.WriteString("      if (typeof parent[fd.n] !== \"string\") { return false; }\n")
+		b.WriteString("      bytes = TableVariableUtf8Encode(parent[fd.n]);\n")
+		b.WriteString("      n = bytes.length;\n")
+		b.WriteString("    } else if (fd.k === \"vbytes\") {\n")
+		b.WriteString("      bytes = parent[fd.n];\n")
+		b.WriteString("      if (!(bytes instanceof Uint8Array)) { return false; }\n")
+		b.WriteString("      n = bytes.length;\n")
+		b.WriteString("    } else {\n")
+	}
+	b.WriteString("    bytes = parent[fd.n];\n")
+	b.WriteString("    n = parent[fd.n + \"Length\"];\n")
+	b.WriteString("    if (!(bytes instanceof Uint8Array)) { return false; }\n")
+	if variable {
+		b.WriteString("    }\n")
+	}
+	b.WriteString("    if (!Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }\n")
+	b.WriteString("    if (view !== null && n > 0) {\n")
+	b.WriteString("      const src = bytes instanceof Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);\n")
+	b.WriteString("      new Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);\n")
+	b.WriteString("    }\n")
+	b.WriteString("    return putWidth(view, base + fd.lenAt, 4, n, true, le);\n")
+	b.WriteString("  }\n")
+	return b.String()
+}
+
+const cookEngineShared = `  function alignUp(n, a) {
+    if (a <= 1) { return n; }
+    return Math.floor((n + a - 1) / a) * a;
+  }
+  function fit(v, width, signed) {
+    let b;
+    if (typeof v === "bigint") { b = v; }
+    else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
+    else { return null; }
+    if (width === 8) {
+      if (signed) {
+        if (b < -0x8000000000000000n || b > 0x7fffffffffffffffn) { return null; }
+      } else if (b < 0n || b > 0xffffffffffffffffn) { return null; }
+      return b;
+    }
+    const n = Number(b);
+    let lo = 0, hi = 255;
+    if (width === 2) { hi = 65535; }
+    else if (width === 4) { hi = 4294967295; }
+    if (signed) {
+      hi = width === 1 ? 127 : width === 2 ? 32767 : 2147483647;
+      lo = width === 1 ? -128 : width === 2 ? -32768 : -2147483648;
+    }
+    if (n < lo || n > hi) { return null; }
+    return b;
+  }
+  function put64(view, at, v, le) {
+    if (view !== null) { view.setBigUint64(at, v, le); }
+  }
+  function putWidth(view, at, width, v, signed, le) {
+    const bits = fit(v, width, signed);
+    if (bits === null) { return false; }
+    if (view === null) { return true; }
+    if (width === 8) {
+      if (signed) { view.setBigInt64(at, bits, le); }
+      else { view.setBigUint64(at, bits, le); }
+      return true;
+    }
+    const n = Number(bits);
+    if (width === 1) { if (signed) { view.setInt8(at, n); } else { view.setUint8(at, n); } }
+    else if (width === 2) { if (signed) { view.setInt16(at, n, le); } else { view.setUint16(at, n, le); } }
+    else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
+    return true;
+  }
+  function writeStruct(view, base, layout, value, le, ctx) {
+    if (layout === undefined || value === null || typeof value !== "object") { return false; }
+    for (let i = 0; i < layout.fields.length; i++) {
+      if (!writeField(view, base, layout.fields[i], value, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeField(view, base, fd, parent, le, ctx) {
+    if (parent === null || typeof parent !== "object") { return false; }
+    if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
+    if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
+    if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
+    if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
+    if (fd.k === "sblob" || fd.k === "bblob") { return writeRef(view, base + fd.at, blobIndex(ctx, parent, fd, parent[fd.n]), le, ctx); }
+    return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
+  }
+  function writeValue(view, at, fd, value, le, ctx) {
+    switch (fd.k) {
+      case "bool":
+        if (typeof value !== "boolean") { return false; }
+        if (view !== null) { view.setUint8(at, value ? 1 : 0); }
+        return true;
+      case "f32":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setFloat32(at, value, le); }
+        return true;
+      case "f64":
+        if (typeof value !== "number") { return false; }
+        if (view !== null) { view.setFloat64(at, value, le); }
+        return true;
+      case "int":
+        return putWidth(view, at, fd.w, value, fd.sg === 1, le);
+      case "enum":
+        if (!Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        return putWidth(view, at, fd.w, value, false, le);
+      case "venum": {
+        let ord = 0;
+        if (value !== null && value !== undefined) {
+          const i = fd.vs.indexOf(value);
+          if (i < 0) { return false; }
+          ord = i + 1;
+        }
+        if (ord > fd.max) { return false; }
+        return putWidth(view, at, fd.w, ord, false, le);
+      }
+      case "rec":
+        return writeStruct(view, at, layouts[fd.t], value, le, ctx);
+      case "ptr":
+        return writeRef(view, at, ptrIndex(ctx, value), le, ctx);
+      case "union":
+        return writeUnion(view, at, fd, value, le, ctx);
+      default:
+        return false;
+    }
+  }
+  function holeValue(fd) {
+    switch (fd.k) {
+      case "bool": return false;
+      case "int": return fd.w === 8 ? 0n : 0;
+      case "f32": case "f64": case "enum": return 0;
+      case "venum": case "ptr": case "sblob": case "bblob": return null;
+      case "rec": return layouts[fd.t].make();
+      default: return undefined;
+    }
+  }
+  function writeArray(view, base, fd, parent, le, ctx) {
+    const arr = parent[fd.n];
+    let count;
+    if (fd.countFrom === "bound") { count = fd.bound; }
+    else if (fd.countFrom === "len") {
+      if (!Array.isArray(arr)) { return false; }
+      count = arr.length;
+    } else { count = parent[fd.n + "Count"]; }
+    if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
+    for (let i = 0; i < fd.bound; i++) {
+      let el;
+      if (i < count || fd.countFrom !== "len") {
+        if (arr == null || arr[i] === undefined) { return false; }
+        el = arr[i];
+      } else { el = holeValue(fd.elem); }
+      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, el, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function writeUnion(view, at, fd, value, le, ctx) {
+    if (value === null || typeof value !== "object") { return false; }
+    const tag = value.Type;
+    if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
+    if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
+    if (tag === 0) { return true; }
+    const arm = fd.arm[tag - 1];
+    if (arm.v) { return true; }
+    return writeField(view, at + fd.armAt, arm, value, le, ctx);
+  }
+  function writeRef(view, at, idx, le, ctx) {
+    if (idx < 0) { return false; }
+    if (idx === 0) {
+      if (view !== null) { view.setBigInt64(at, 0n, le); }
+      return true;
+    }
+    if (ctx === null || ctx.entries[idx - 1] === undefined) { return false; }
+    if (view !== null) {
+      const delta = 64n + BigInt(ctx.entries[idx - 1].offset) - BigInt(at);
+      view.setBigInt64(at, delta, le);
+    }
+    return true;
+  }
+  function ptrIndex(ctx, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+  function blobIndex(ctx, holder, fd, val) {
+    if (val === null || val === undefined) { return 0; }
+    if (ctx === null) { return -1; }
+    if (fd.k === "sblob" && typeof val === "string") {
+      const m = ctx.nodes.slots.get(holder);
+      if (m === undefined || !m.has(fd.n)) { return -1; }
+      return m.get(fd.n);
+    }
+    const i = ctx.nodes.index.get(val);
+    return i === undefined ? -1 : i;
+  }
+`
+
+const cookEngineTail = ``
+
+const cookEngineFixed = `  function fixedMeasure(name) {
+    const layout = layouts[name];
+    return layout === undefined ? -1 : layout.measure;
+  }
+  function fixedFrom(name, value, buffer, order) {
+    const layout = layouts[name];
+    if (layout === undefined || value === null || typeof value !== "object") { return false; }
+    if (order !== 1 && order !== 2) { return false; }
+    if (!(buffer instanceof Uint8Array) || buffer.byteLength < layout.measure) { return false; }
+    const le = order === 1;
+    if (!writeStruct(null, 64, layout, value, le, null)) { return false; }
+    buffer.fill(0, 0, layout.measure);
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    put64(view, 0, 0x4b4f4f434d484353n, le);
+    put64(view, 8, build, le);
+    put64(view, 16, BigInt(order), le);
+    put64(view, 24, BigInt(layout.data), le);
+    put64(view, 32, 16n, le);
+    put64(view, 40, BigInt(layout.alignCook), le);
+    if (!writeStruct(view, 64, layout, value, le, null)) { return false; }
+    put64(view, 64 + layout.data, 0n, le);
+    put64(view, 64 + layout.data + 8, layout.typeId, le);
+    return true;
+  }
+`
+
+const cookEngineVariable = `  function blobSize(entry) {
+    return 8 + entry.len + (entry.string ? 1 : 0);
+  }
+  function region(name, value) {
+    if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
+    const codec = TableVariableCodecs[name];
+    const layout = layouts[name];
+    if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
+    const nodes = TableVariableNumber(codec, value);
+    if (nodes === null) { return { reason: "data_cycle" }; }
+    const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
+    for (const n of nodes.list) {
+      if (n.codec === undefined) {
+        if (n.body == null) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: n.typeId, blob: true, body: n.body, string: n.typeId === TableStringBlobId, len: n.body.length, offset: 0 });
+      } else {
+        const child = layouts[n.codec.name];
+        if (child === undefined) { return { reason: "invalid_value" }; }
+        entries.push({ typeId: child.typeId, v: n.v, blob: false, layout: child, offset: 0 });
+      }
+    }
+    let data = 0, align = 8;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const alignment = e.blob ? 8 : e.layout.align;
+      const size = e.blob ? blobSize(e) : e.layout.size;
+      if (alignment > align) { align = alignment; }
+      data = alignUp(data, alignment);
+      e.offset = data;
+      data += size;
+    }
+    data = alignUp(data, align);
+    const ctx = { entries, nodes };
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+    }
+    return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
+  }
+  function variableMeasure(name, value) {
+    const reg = region(name, value);
+    return reg.reason === null ? reg.total : -1;
+  }
+  function variableReason(name, value) {
+    const reg = region(name, value);
+    if (reg.reason !== null) { return [-1, reg.reason]; }
+    return [reg.total, null];
+  }
+  function variableFrom(name, value, buffer, order) {
+    if (order !== 1 && order !== 2) { return false; }
+    const reg = region(name, value);
+    if (reg.reason !== null) { return false; }
+    if (!(buffer instanceof Uint8Array) || buffer.byteLength < reg.total) { return false; }
+    buffer.fill(0, 0, reg.total);
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const le = order === 1;
+    put64(view, 0, 0x4b4f4f434d484353n, le);
+    put64(view, 8, build, le);
+    put64(view, 16, BigInt(order), le);
+    put64(view, 24, BigInt(reg.data), le);
+    put64(view, 32, BigInt(reg.entries.length * 16), le);
+    put64(view, 40, BigInt(reg.align), le);
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      const at = 64 + e.offset;
+      if (e.blob) {
+        view.setUint32(at, e.len, le);
+        if (e.len > 0) {
+          const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
+          new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
+        }
+      } else if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+    }
+    const dir = 64 + reg.data;
+    for (let i = 0; i < reg.entries.length; i++) {
+      const e = reg.entries[i];
+      put64(view, dir + i * 16, BigInt(e.offset), le);
+      put64(view, dir + i * 16 + 8, e.typeId, le);
+    }
+    return true;
+  }
+`
