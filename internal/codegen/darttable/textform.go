@@ -607,6 +607,16 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	// Plain type bodies are newly admitted here. Replay their raw occurrences:
+	// accepted objects replace the whole value, but wrong shapes retain it (§16.3).
+	if ref := tableRef(f); ref != nil && !ref.IsTable && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(r.malformed)break;if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
+		if f.Type.Optional {
+			g.pf("if(item==null){v.%sPresent=false;v.%s=%s();continue;}v.%sPresent=true;\n", name, name, ref.Name, name)
+		}
+		g.pf("if(item is Map<String,dynamic>){v.%s=%s();%sFromJsonFields(v.%s,item,r,sh);}else{r.kindMismatch++;}}}break;\n", name, ref.Name, dartName(ref.Name), name)
+		return
+	}
 	if (wireWide(f) || f.Type.Kind == ir.TWString || flagsRef(f) != nil) && f.Array == ir.ArrayNone {
 		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(r.malformed)break;if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
 		if f.Type.Optional {

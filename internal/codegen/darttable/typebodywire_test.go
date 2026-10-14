@@ -40,7 +40,7 @@ func TestDartPlainTypeBodiesThroughGeneratedWire(t *testing.T) {
 		t.Fatal("plain type root must carry form1")
 	}
 	m := tabletext.NewModel(u)
-	inputs := []string{`{}`, `{"value":{"n":9,"mask":["High"]},"opt":{},"values":[{}, {"n":10}],"positions":[{"n":11},{}],"slots":{"B":{"n":12}},"entries":{"1":{"n":13}},"choice":{"value":{}},"after":77}`, `{"choice":{"ping":null},"after":77}`, `{"value":7,"opt":null,"values":[{}],"after":77}`, `{"slots":{"B":{"n":9},"B":{}},"entries":{"1":{"n":9},"1":{}},"after":77}`}
+	inputs := []string{`{"value":{"n":9},"value":7,"after":77}`, `{"value":{"n":9},"value":{},"after":77}`, `{"opt":{"n":9},"opt":7,"after":77}`, `{"opt":{"n":9},"opt":null,"after":77}`, `{}`, `{"value":{"n":9,"mask":["High"]},"opt":{},"values":[{}, {"n":10}],"positions":[{"n":11},{}],"slots":{"B":{"n":12}},"entries":{"1":{"n":13}},"choice":{"value":{}},"after":77}`, `{"choice":{"ping":null},"after":77}`, `{"value":7,"opt":null,"values":[{}],"after":77}`, `{"slots":{"B":{"n":9},"B":{}},"entries":{"1":{"n":9},"1":{}},"after":77}`}
 	var checks strings.Builder
 	for _, input := range inputs {
 		v := m.New(u.Tables["Root"])
