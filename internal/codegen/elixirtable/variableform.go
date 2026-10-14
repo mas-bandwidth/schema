@@ -271,7 +271,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if Enum.any?(acc, fn n -> node_content(n) == c end), do: acc, else: [node | acc]
   end
 
-  defp node_content({_type_id, _kind, _ref, c}), do: c
+  # identity is the type and the content (docs/SPEC-TABLES.md §3.1). An empty
+  # *bytes and an empty *string are two nodes; the same bytes named twice are one.
+  defp node_content({type_id, _kind, _ref, c}), do: {type_id, c}
 
   # an unbounded array's elements are inline (kind 13) when they are tables and
   # nodes when they are pointers; scalar and string elements reach no node.
@@ -307,7 +309,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, v)
+        idx = Map.fetch!(idx_map, {f.type_id, v})
         {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
     end
   end
@@ -332,7 +334,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, v)
+        idx = Map.fetch!(idx_map, {f.type_id, v})
         {idx_map, ids, order, [acc, leb_encode(ref), <<17>>, leb_encode(idx)]}
     end
   end
@@ -452,8 +454,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {leb_encode(0), ids, order}
   end
 
-  defp emit_element(%{elem_kind: 17} = _f, e, idx_map, ids, order) do
-    idx = Map.fetch!(idx_map, e)
+  defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
+    idx = Map.fetch!(idx_map, {f.elem_type_id, e})
     {leb_encode(idx), ids, order}
   end
 
@@ -1393,7 +1395,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     shared_blob =
       Enum.any?(counts, fn
-        {{:blob, _}, n} -> n > 1
+        {{:blob, _, _}, n} -> n > 1
         _ -> false
       end)
 
@@ -1471,8 +1473,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp tally_field(%{t: :pointer, elem: name}, v, acc) when is_map(v), do: tally_node(name, v, acc)
 
-  defp tally_field(%{t: :blob}, v, acc) when is_binary(v),
-    do: Map.update(acc, {:blob, v}, 1, &(&1 + 1))
+  defp tally_field(%{t: :blob, type_id: id}, v, acc) when is_binary(v),
+    do: Map.update(acc, {:blob, id, v}, 1, &(&1 + 1))
 
   defp tally_field(%{t: :table, elem: name}, v, acc) when is_map(v) do
     child = Map.fetch!(@tables, name)
