@@ -423,6 +423,24 @@ tables-java-variable-class:
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestEscapeKind31SkippedAndCountedJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
+# THE BLOCK-BUILD GATE (docs/SPEC-TABLES.md §19.1): the Java block builder,
+# emitted beside the read half into <Table>Block.java, writes the two committed
+# `block` rows of testdata/conformance/tables/MANIFEST.txt byte-equal to the
+# images the C++ producer (test/tables/block_main.cpp) committed — block_padded
+# whole, block_render over the projection Begin writes. The JAVAC/JAVA pair is
+# passed through because make/java.mk's defaults are a macOS dist path. The
+# cook-write subtests of the same test are the §7.6 half this gate does not run
+# yet: they stay red until <T>CookMeasure, <T>CookMeasureReason and <T>CookFrom
+# land on this leg, so the -run names the blockBuild subtest, not the whole
+# test.
+.PHONY: tables-java-block-build
+tables-java-block-build:
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestBlockBuildAndCookWriteJava/blockBuild'
+	@echo 'tables Java block build: §19.1 writes the two committed block images byte-equal'
+
+test-java: tables-java-block-build
+
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
 # `make tables-java-versioning` could have been asserting nothing and reporting
 # green, which is the failure the Go and Rust legs' own controls are for.
