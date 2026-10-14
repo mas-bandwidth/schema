@@ -60,6 +60,17 @@ public sealed class TableVocabulary
     internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
     public int RefBits { get { return Math.Max(1, System.Numerics.BitOperations.Log2((uint)Math.Max(1, Count)) + 1); } }
+    // docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
+    // The product rounds to float32 before the add. C# compiles no fused
+    // multiply-add for this expression, so these bits are the unfused result.
+    public static uint DequantizeBits(int index, float qmin, float delta, int count)
+    {
+        if (index < 0) { index = 0; }
+        if (index > count) { index = count; }
+        float normalized = (float)index / (float)count;
+        float scaled = normalized * delta;
+        return unchecked((uint)System.BitConverter.SingleToInt32Bits(scaled + qmin));
+    }
 }
 internal sealed class TableMessageShape
 {
