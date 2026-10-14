@@ -18,7 +18,7 @@ import (
 // and signed zero, through a consumer that receives and sends the same cell.
 func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, "package probe\nfixed table Cell { value float32 }\nfixed table Root { cells [..2]Cell }\nfixed table _float32Cell { n uint8 }\n")
+	u := unitFrom(t, "package probe\nfixed table Cell { value float32 = 2 }\nfixed table Root { cells [..2]Cell }\nfixed table _float32Cell { n uint8 }\nfixed table ZeroCell { value float32 }\n")
 	files, err := dart.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -94,6 +94,7 @@ void main() {
   final data=ByteData(b.CellRow.rowSize)..setUint32(%d,bits,Endian.little);
   final row=b.CellRow(data,0);
   check(raw(row.value)==bits,'block changed $bits');
+  // A nonzero default keeps -0 on the wire under C numeric elision (§3).
   // Build the reference body directly from raw bits: the input does not use
   // either conversion under test, including for the negative-zero payload.
   final wire=Uint8List(32);
@@ -112,5 +113,11 @@ void main() {
   check(parsed.get(32)==bits,'message save changed $bits');
   check(parsed.get(m.tableMessageRefBits)==0,'message terminator changed');
  }
+ final zero=m.ZeroCell()..value=-0.0;
+ final bytes=Uint8List(32);
+ final writer=m.TableBitWriter(bytes);
+ check(m.zeroCellSaveMessageBody(writer,zero),'default-zero save refused');
+ final reader=m.TableBitReader(bytes);
+ check(reader.get(m.tableMessageRefBits)==0,'negative zero must elide against numeric zero default');
 }
 `
