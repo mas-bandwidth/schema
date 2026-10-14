@@ -12100,13 +12100,15 @@ in build version (§20.5).
     text form (schema#515), so there is no wire runtime module for a
     declaration to collide with.
 
-    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
+    **DART ADDS EIGHT, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
     NAMES.** A Dart library is a file and its privacy is per library, so a
     runtime shared across a unit's files is PUBLIC, and every spelling of it
     is claimed: `TableEnumVocab` (the per-enum vocabularies are its static
     members, so one claim covers every enum), `TableScratch` (the float
     conversion scratch), `TableNarrowFloat`, `TableUnsignedLess`,
-    `TableCookRef` (the bounded deref's answers, §7) and `TableBuildVersion`
+    `TableCookRef` (the bounded deref's answers, §7), `TableCookWriteReport`
+    (the cook writer's named refusal, §7.6), `TableCookWire` (its imported
+    authoring namespace) and `TableBuildVersion`
     — the last is the page's `BuildVersion` in Dart's spelling, since a
     library-scope constant carries the runtime's prefix. Seven are widened to
     Dart: `TableJson`, the four bits/float pairs (`TableBitsToFloat`,

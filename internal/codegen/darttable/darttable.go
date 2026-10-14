@@ -291,7 +291,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 		st := u.Tables[name]
 		for _, f := range st.Fields {
 			// maps (docs/SPEC-TABLES.md §2.8)
-			if f.Type.Kind == ir.TMap || f.MapEntry != nil {
+			if (f.Type.Kind == ir.TMap || f.MapEntry != nil) && !cardWireTable(f.MapEntry) {
 				return fmt.Errorf("table %s field %s: map[K]V is refused in the Dart table backend (docs/SPEC-TABLES.md §2.8, §11)",
 					name, f.Name)
 			}
@@ -309,7 +309,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// carries a generated presence bool beside its value; the card's
 			// form-1 wire has no cell for it, so it must be refused, never
 			// mis-encoded as its bare value.
-			if f.Type.Optional {
+			if f.Type.Optional && !cardWireField(f) {
 				return fmt.Errorf("table %s field %s: optional ?T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.3, §11)",
 					name, f.Name)
 			}
@@ -317,7 +317,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			// ArrayFixed of one slot per named variant, keyed by variant id on
 			// the wire; the card's form-1 writer has no keyed body, so it must
 			// be refused, never mis-encoded as a plain scalar enum.
-			if f.KeyEnum != "" {
+			if f.KeyEnum != "" && !cardWireField(f) {
 				return fmt.Errorf("table %s field %s: enum-keyed array [E]T is refused in the Dart table backend (docs/SPEC-TABLES.md §2.4, §11)",
 					name, f.Name)
 			}
