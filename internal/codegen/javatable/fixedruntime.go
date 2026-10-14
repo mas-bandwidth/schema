@@ -514,9 +514,15 @@ public final class TableFixed {
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
                            byte[] image, Report report) {
+        // THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4):
+        // the first split entries are UNGUARDED and run without a guard test;
+        // the guarded half from split on tests one. compile lays unguarded
+        // entries first, so the split is the first guarded index.
+        int split = 0;
+        while (split < count && plan[split].guard == noGuard) { split++; }
         for (int i = 0; i < count; i++) {
             final Entry p = plan[i];
-            if (p.guard != noGuard) {
+            if (i >= split && p.guard != noGuard) {
                 // THE TAG IS COMPARED AT ITS OWN WIDTH, and its own reach is
                 // bounded by the writer's record like every other offset (5.2).
                 final int gw = guardWidth(p.argw);
@@ -1356,7 +1362,21 @@ public final class TableFixed {
         // COPY entries whose source and destination both advance together are
         // one entry. It is the only optimization a plan compiler performs and
         // it is performed identically on both sides.
-        return coalesce(plan, c.count);
+        final int count = coalesce(plan, c.count);
+        // PARTITION UNGUARDED-FIRST (docs/FIXED-FORM-ALGORITHM.md §4.1): every
+        // unguarded entry before every guarded one, stable within each half, so
+        // the plan states where the second half starts and no coalesced run
+        // crosses the split (coalescing finished above, before the partition).
+        int split = 0;
+        for (int i = 0; i < count; i++) {
+            if (plan[i].guard == noGuard) {
+                final Entry e = plan[i];
+                System.arraycopy(plan, split, plan, split + 1, i - split);
+                plan[split] = e;
+                split++;
+            }
+        }
+        return count;
     }
 
     /** the coalescing pass, over a plan already written. */
