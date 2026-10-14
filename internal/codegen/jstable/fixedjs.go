@@ -740,7 +740,7 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 		// union too, declared by internal/codegen/js beside the file's decls
 		// (docs/FIXED-FORM-ALGORITHM.md §4.1).
 		for _, un := range f.TableUnions {
-			if un.Name == name {
+			if un.Name == name && fixedUnionHasUnionArm(un) {
 				return true
 			}
 		}
@@ -767,7 +767,7 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 		// A TABLE UNION's class is internal/codegen/js's too, emitted after the
 		// file's decls, so it is imported from the same module.
 		for _, un := range f.TableUnions {
-			if un.Name == name {
+			if un.Name == name && fixedUnionHasUnionArm(un) {
 				return f.Base
 			}
 		}
@@ -1048,4 +1048,19 @@ func jsFloatLit(v float64) string {
 		return "-Infinity"
 	}
 	return strconv.FormatFloat(v, 'g', -1, 64)
+}
+
+// fixedUnionHasUnionArm is whether one of a union's arms is itself a union: the
+// table union internal/codegen/js declares beside the file's decls, and so the
+// one this module imports (docs/FIXED-FORM-ALGORITHM.md §4.1).
+func fixedUnionHasUnionArm(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+			return true
+		}
+	}
+	return false
 }

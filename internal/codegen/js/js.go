@@ -245,7 +245,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 	// (docs/FIXED-FORM-ALGORITHM.md §4.1). It has no packet wire, so it takes the
 	// class and the tag object and none of the packet functions.
 	for _, un := range g.file.TableUnions {
-		g.emitUnion(un)
+		if unionHasUnionArm(un) {
+			g.emitUnion(un)
+		}
 	}
 }
 
@@ -747,4 +749,18 @@ func formatFloat32(v float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+// unionHasUnionArm is whether one of a union's arms is itself a union: the
+// table union whose class this module emits beside the decls (§2.6, §4.1).
+func unionHasUnionArm(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+			return true
+		}
+	}
+	return false
 }

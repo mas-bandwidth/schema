@@ -81,7 +81,7 @@
 (:id "go/R24" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t05_test.go: TestFixedRoadmapGoT05Evolution/go/R24") :tested-revision "84aa31c0c750ab2796dac1b6f7c9b86561e02f48")
 (:id "go/W7" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t08_test.go: TestFixedRoadmapGoT08WritesConformance/go/W7") :tested-revision "6a9da680e118ccf50cd68a7a2b02556a355e8193")
 (:id "go/W16" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t08_test.go: TestFixedRoadmapGoT08WritesConformance/go/W16") :tested-revision "8ce8937324a9417cec1893cd4aa77d6ecdd1ddcd")
-(:id "go/R28" :state :unknown :note "the offset+count into a pool of (guard, arg, argw) links, outermost first, and the only bound the layout's 64 are not asserted; only the two-lane outer-tag conjunction is. The wall ended first.")
+(:id "go/R28" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t15_test.go: TestFixedRoadmapGoT15GuardChain/go/R28") :tested-revision "cfbe0b012c7bbf709f5c099be5f825ad5b0d15d2")
 (:id "go/W6" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t17_test.go: TestFixedRoadmapGoT17PlanPartition/go/W6") :tested-revision "184842a779f096aafeefdf62f30e57e79c05600c")
 (:id "go/P1" :state :done :evidence ("internal/codegen/gotable/fixedroadmap_t17_test.go: TestFixedRoadmapGoT17PlanPartition/go/P1") :tested-revision "184842a779f096aafeefdf62f30e57e79c05600c")
 (:id "go/W13" :state :unknown :note "layout+hash == the C++ reference is asserted by no named go subtest: the corpus build (make tables-fixedform-corpus) now succeeds and writes the 76-line manifest, but no gotable subtest reads it to assert the go layout+hash, so the clause stays unproved")
