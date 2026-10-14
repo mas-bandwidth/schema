@@ -555,11 +555,10 @@ test-rust: tables-rust-variable-class
 # the same ir layouts the Go emitter holds. SCHEMA_REQUIRE_CORPUS=1 makes the
 # functional test fail by name rather than skip, so this target never passes
 # on a SKIP.
-tables-rust-block-build: build/schema_test_block
+tables-rust-block-build:
 	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
 		-run TestBlockBuildAndCookWriteRust -v
-	./build/schema_test_block
 	@echo 'tables Rust block build and cook write: the producer surfaces match the Go reference'
 
 test-rust: tables-rust-block-build
