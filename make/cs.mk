@@ -424,6 +424,21 @@ tables-cs-leg-debug: build/tables-generated-cs/.stamp
 tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
+# "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
+# and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
+# counter, GC.GetAllocatedBytesForCurrentThread. Setup (the golden, the value,
+# the save buffer and the caller-supplied TableReport) is separated from steady
+# work (the replay loop over that storage); the read with a supplied report,
+# the read with NO report, Measure, Save and the round trip must each measure
+# exactly zero, and the leg's own sensitivity check plants escapes on the read
+# row and on the save row and requires each installed row to move while the
+# row beside it stays green. The generator's null-report read caches one
+# ignored TableReport rather than constructing one per call.
+.PHONY: tables-cs-alloc
+tables-cs-alloc: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- alloc
+
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
 # docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
 # against THE C++ REFERENCE'S OWN BYTES.
@@ -486,6 +501,46 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-message-blob-endian-negative-control: bin/schema
 	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
 
+# THE C# PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
+# target by name, so the expensive half lands by adding it here and nothing
+# else: the four wire-fuzz bindings at five times the shared N under a second
+# seed, and the planted controls that make the leg's green mean something.
+.PHONY: tables-cs-release
+tables-cs-release:
+	$(MAKE) tables-cs-wire-fuzz N=500000
+	$(MAKE) tables-cs-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-cs-region-fuzz N=500000
+	$(MAKE) tables-cs-builder-fuzz N=500000
+	$(MAKE) tables-cs-retain-fuzz N=500000
+	$(MAKE) tables-cs-retain-negative-control
+	$(MAKE) tables-cs-pack-negative-control
+	$(MAKE) tables-cs-message-blob-endian-negative-control
+	$(MAKE) conformance-negative-control-cs
+
+# J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
+# The C# table leg's `--gate` verb round-trips all 64 corpus variants and
+# byte-compares variant 0 against testdata/wire/bench_table.bin, refusing to
+# time a codec that does not reproduce the corpus (bench/tables/README.md).
+.PHONY: tables-cs-bench-gate
+tables-cs-bench-gate: generated/bench/tables/cs/.stamp
+	bench/tables/cs/leg build
+	bench/tables/cs/leg run --gate
+test-cs: tables-cs-bench-gate
+
+# THE C# TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `dotnet format` is the
+# language's formatting authority over the generated table units the conformance
+# project compiles, so an emitter that drifts from what it writes goes red here
+# rather than on a reviewer. It SKIPS cleanly where the pinned SDK is not on PATH.
+.PHONY: tables-cs-clean
+tables-cs-clean: build/tables-generated-cs/.stamp
+	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
+		echo "SKIP tables-cs-clean: $(DOTNET) is not installed"; exit 0; \
+	fi
+	$(DOTNET) format test/conformance/cs/schemaconformance.csproj \
+		--verify-no-changes --include $(CURDIR)/build/tables-generated-cs
+	@echo "tables C#: dotnet format clean over the generated table units"
+test-cs: tables-cs-clean
+
 .PHONY: tables-cs-fixedform-arm-negative-control
 tables-cs-fixedform-arm-negative-control: bin/schema
 	sh test/cs-tables/armtext-negative-control "$(DOTNET)"
@@ -501,6 +556,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-alloc
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz

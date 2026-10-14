@@ -1771,9 +1771,25 @@ static partial class Program
         }
     }
 
-    static int Main()
+    static int Main(string[] args)
     {
         goldenDir = FindGoldenDir();
+
+        // `alloc` runs the per-path allocation gate alone (its own sensitivity
+        // check included), so make/cs.mk's tables-cs-alloc target is a focused
+        // gate and not a second name for the whole leg.
+        if (args.Length > 0 && args[0] == "alloc")
+        {
+            TestAllocationGate();
+            TestAllocationGateCanGoRed();
+            if (failed)
+            {
+                Console.WriteLine("cs alloc gate: FAILED");
+                return 1;
+            }
+            Console.WriteLine("cs alloc gate passed: read, null-report, measure, save and round trip allocate zero");
+            return 0;
+        }
 
         TestWireContracts();
         TestVocabularyDistinctness();
@@ -1787,6 +1803,8 @@ static partial class Program
         TestAllocators();
         TestBuilders();
         TestBlobJsonAllocation();
+        TestAllocationGate();
+        TestAllocationGateCanGoRed();
         TestNativeMessages();
         TestRetention();
         TestRetentionContracts();
