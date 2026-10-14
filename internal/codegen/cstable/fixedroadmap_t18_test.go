@@ -13,6 +13,9 @@ package cstable
 // emitted text alone: no dotnet, no clock, no socket, no network.
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -331,16 +334,59 @@ if (n != 1) { t0 += Fail("n " + n); }
 if (t0 == 0) { Console.WriteLine("T18 tag-past-the-arm-set ok"); }
 `
 
+// t18Discover performs the skip-by-name / fail-by-name-under-require logic that
+// t13Discover does, but without mutating any package-level state. t13Discover
+// wrote the shared t13* globals; TestFixedRoadmapCSharpT13* tests are also
+// t.Parallel and call it, so a second caller from this file raced on the writes
+// (repro: go test -race -run 'T13|T18'). t08RunCS does its own local discovery
+// and never skips (a driven clause that cannot run is red, not skipped), so this
+// local discover only decides early skip/fatal then hands off to t08RunCS.
+func t18Discover(t *testing.T) {
+	t.Helper()
+	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
+	dotnet := os.Getenv("DOTNET")
+	if dotnet == "" {
+		dotnet = "dotnet"
+	}
+	resolved, err := exec.LookPath(dotnet)
+	if err != nil {
+		if require {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no dotnet on PATH: %v", err)
+		}
+		t.Skipf("no dotnet on PATH (set DOTNET): %v", err)
+	}
+	real, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		real = resolved
+	}
+	root := filepath.Dir(real)
+	cscs, _ := filepath.Glob(filepath.Join(root, "sdk", "*", "Roslyn", "bincore", "csc.dll"))
+	if len(cscs) == 0 {
+		if require {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Roslyn csc.dll under %s", root)
+		}
+		t.Skipf("no Roslyn csc.dll under %s", root)
+	}
+	refs, _ := filepath.Glob(filepath.Join(root, "packs", "Microsoft.NETCore.App.Ref", "*", "ref", "net10.0"))
+	if len(refs) == 0 {
+		if require {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no .NET ref pack under %s", root)
+		}
+		t.Skipf("no .NET ref pack under %s", root)
+	}
+}
+
 // TestFixedRoadmapCSharpT18UnionArms drives the generated C# for the two union
 // fixtures. It skips by name without dotnet unless SCHEMA_REQUIRE_CORPUS=1 is
-// set, and fails by name when it is, as t13Discover does (fixedroadmap_t13_test.go
-// line 127). The driver prints one line per arm, "T18 <leaf>/<arm> ok" or "T18
-// <leaf>/<arm> BAD <why>"; the Go side logs every line and fails on any BAD or a
-// missing arm, because t08CSOK alone sees only PROBE OK (fixedroadmap_t08_test.go
-// line 506).
+// set, and fails by name when it is (t18Discover does the skip/fail logic locally
+// to avoid racing t13Discover's package globals with other t.Parallel t13 tests;
+// see t13Discover at fixedroadmap_t13_test.go:127). The driver prints one line per
+// arm, "T18 <leaf>/<arm> ok" or "T18 <leaf>/<arm> BAD <why>"; the Go side logs
+// every line and fails on any BAD or a missing arm, because t08CSOK alone sees
+// only PROBE OK (fixedroadmap_t08_test.go line 506).
 func TestFixedRoadmapCSharpT18UnionArms(t *testing.T) {
 	t.Parallel()
-	t13Discover(t)
+	t18Discover(t)
 
 	cases := []struct {
 		name   string
