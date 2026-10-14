@@ -73,14 +73,16 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
-# generated (packet .dart + <Base>Block.dart + <Base>Cook.dart); Dart emits no
-# table wire (the previous-form port was removed; schema#514 brings the
-# id-table form), so only the two accelerators ride here.
-build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+# generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
+# forms where the unit owns them). Fixed-class units own form 3. tables/pointers,
+# tables/blobs and tables/lists own form 1 beside it (the variable class).
+build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
-	# the POINTERED unit: its cook readers are the reason it is here.
+	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
+	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
+	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
@@ -392,6 +394,17 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/dart-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
+
+# THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
+# by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded
+# scalar/enum arrays, byte for byte against the oracle. A bare go test skips
+# when the SDK is absent; SCHEMA_REQUIRE_CORPUS=1 makes that skip a failure.
+.PHONY: tables-dart-variable-class
+tables-dart-variable-class:
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsDart|TestOtherVariableConstructsAreRefusedByName'
+	@echo 'tables Dart variable class: pointers, blobs, lists and the scalar kinds against the oracle bytes'
+
+test-dart: tables-dart-variable-class
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart

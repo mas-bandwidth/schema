@@ -57,22 +57,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					flag bool
 					paths []PathText
 					body *string
-				}
-			`,
-			refuse: false,
-		},
-		{
-			name: "*bytes is refused by table and field name",
-			def: `package test
-				table Blobbed {
-					id string(64)
 					data *bytes
 				}
 			`,
-			refuse:    true,
-			table:     "Blobbed",
-			field:     "data",
-			construct: "*bytes",
+			refuse: false,
 		},
 		{
 			name: "map is refused by table and field name",
@@ -88,7 +76,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			construct: "map[K]V",
 		},
 		{
-			name: "pointer to a table outside a list element is refused by table and field name",
+			name: "pointer to a table is carried",
 			def: `package test
 				table Child { s string(32) }
 				table Pointed {
@@ -96,10 +84,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 					kid *Child
 				}
 			`,
-			refuse:    true,
-			table:     "Pointed",
-			field:     "kid",
-			construct: "a pointer to a table outside an unbounded list element",
+			refuse: false,
 		},
 		{
 			name: "optional ?T is refused by table and field name",
