@@ -1,0 +1,135 @@
+name: schema leg
+
+# REUSABLE WORKFLOW (issue #nx-g30). The nine schema legs — C, C++, C#,
+# Dart, Elixir, Go, Java, JavaScript and Rust — run from one workflow with a
+# matrix input. A tenth leg is one matrix entry, because the matrix is the
+# registry under test/conformance/<lang>/: a <lang> directory with a
+# `driver` and a `ci.json` is exactly what the matrix sees, and nothing else
+# names a leg, so adding the two files grows the fan-out by one.
+#
+# The matrix is discovered from the tree rather than typed here for the same
+# reason it isn't typed in ci.yml's conformance pair (`harness matrix README
+# §"Registering a language"`): a port touches nothing else, and a leg whose
+# make targets move do not touch this file. Repeating the discovery here is
+# deliberate — the caller `uses:` this workflow with no inputs and gets the
+# same set of legs, whatever the caller's own matrix looks like.
+#
+# THIS FILE CARRIES THE TIMEOUTS, NOT THE CALLER. The pull-request gate
+# makes each fan-out row fit its own two-minute rule; certification lets each
+# row run to thirty, because a leg that cannot fit certification's whole-
+# toolchain budget has no business running here at all. The caller names
+# nothing except `uses:` and gets that budget for free.
+
+on:
+  workflow_call:
+
+# The runtimes the generated code targets, pinned to each sibling's latest
+# RELEASED tag — never main, for the same reason ci.yml and certify.yml pin
+# them: a sibling merging mid-day must not change what a certify run proves.
+# The three files move together; bumping a pin here is the same edit as there.
+env:
+  SERIALIZE_TAG: v1.16.2
+  SERIALIZE_C_TAG: v1.10.0
+  SERIALIZE_GO_TAG: v1.15.1
+  SERIALIZE_RS_TAG: v2.4.0
+  SERIALIZE_CS_TAG: v1.9.1
+  SERIALIZE_JS_TAG: v1.4.2
+
+jobs:
+  # THE SAME TWO-JOB SHAPE ci.yml's conformance pair carries. The first job
+  # emits the matrix from the registry; the second fans out one run per row.
+  # No inputs come from the caller: the matrix is the registry, full stop.
+  leg-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - id: discover
+        name: the registry, as a matrix
+        run: |
+          matrix=$(go run ./test/conformance/harness matrix)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  legs:
+    needs: leg-matrix
+    if: needs.leg-matrix.outputs.matrix != '[]'
+    name: leg (${{ matrix.lang }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.leg-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Sibling cloned exactly where ci.yml's conformance job clones it,
+      # with the same conditional: a leg whose generated code names no
+      # runtime leaves both fields empty and clones nothing. The tag comes
+      # from the workflow pin the row names, never main.
+      - name: Check out the sibling runtime this leg needs (pinned release)
+        if: matrix.runtime != ''
+        run: |
+          tag=$(printenv "${{ matrix.runtime_tag }}")
+          git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The .NET SDK pin, read from the file every csproj's TargetFramework
+      # also names — ci.yml and certify.yml's matrices name the FILE rather
+      # than restating the version, and issue #470's gate is what keeps them
+      # the same number.
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # The two halves split so a failing build fails the run before the
+      # harness's overhead shows in the log; both run with the row's env so
+      # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the
+      # CI-installed binary, not the repo-local dist/ one.
+      - name: build the harness and the ${{ matrix.lang }} driver
+        run: make ${{ matrix.targets }} ${{ matrix.env }}
+
+      - name: the ${{ matrix.lang }} leg over every surface
+        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
