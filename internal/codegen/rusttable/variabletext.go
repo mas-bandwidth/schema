@@ -637,6 +637,10 @@ func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 			} else {
 				fmt.Fprintf(b, "    %s(&%s, w);\n", fn(f.Type.Name, "json_count"), x)
 			}
+		case vMap:
+			fmt.Fprintf(b, "    for e in %s.iter() { %s(e, w); }\n", x, fn(f.MapEntry.Name, "json_count"))
+		case vUnion:
+			fmt.Fprintf(b, "    let _ = &%s;\n", x)
 		}
 	}
 	fmt.Fprintf(b, "}\n\n")
@@ -742,6 +746,10 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vTable:
 		fmt.Fprintf(b, "%s%s(&%s, w, %s, 0);\n", ind, fn(f.Type.Name, "json_write"), x, d)
+	case vMap:
+		g.emitMapTextWrite(b, f, x, d, ind)
+	case vUnion:
+		fmt.Fprintf(b, "%sw.out.push_str(\"null\"); let _ = &%s;\n", ind, x)
 	case vString:
 		fmt.Fprintf(b, "%sjson_escape(&%s, &mut w.out);\n", ind, x)
 	case vBytes:
@@ -924,6 +932,11 @@ func (g *gen) emitTextReadField(b *strings.Builder, f *ir.Field, field, ind stri
 	case vTable:
 		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s = %s::default(); %s(jr, &mut %s); }\n", in, field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+	case vMap:
+		g.emitMapTextRead(b, f, field, in)
+	case vUnion:
+		fmt.Fprintf(b, "%sjr.skip_value();\n", in)
+		fmt.Fprintf(b, "%s%s = %s::None;\n", in, field, f.Type.Name)
 	default:
 		g.emitTextReadScalar(b, f, field, in)
 	}
@@ -940,6 +953,9 @@ func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind strin
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
 		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s(jr, &mut e); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, fn(f.Type.Name, "json_read"))
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
+	case vUnion:
+		fmt.Fprintf(b, "%sjr.skip_value();\n", ind)
+		fmt.Fprintf(b, "%s%s.push(%s::None);\n", ind, field, f.Type.Name)
 	default:
 		fmt.Fprintf(b, "%slet mut e = %s;\n", ind, fieldDefault(scalarOnly(f)))
 		g.emitTextReadScalar(b, f, "e", ind)

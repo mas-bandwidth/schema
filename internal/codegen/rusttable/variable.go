@@ -1207,7 +1207,7 @@ func cardVariableTableNames(g *gen) []string {
 // variable class reaches takes only its body codec (a fixed root's own form-1
 // file is vt/fixed-class's row, not this one's).
 func (g *gen) isVariableRoot(st *ir.Struct) bool {
-	return ir.VariableTables(g.unit)[st.Name]
+	return ir.VariableTables(g.unit)[st.Name] && !st.IsMapEntry()
 }
 
 // variableModule emits one source file's variable-table constant block. Nil

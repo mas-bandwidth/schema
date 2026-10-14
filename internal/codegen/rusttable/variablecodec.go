@@ -35,7 +35,19 @@ func (g *gen) variableCodecModule() []byte {
 	b.WriteString("#[allow(unused_imports)]\nuse std::collections::HashMap;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::rc::Rc;\n\n")
 	g.emitVariableEnums(&b, names)
+	var plain, holding []string
 	for _, n := range names {
+		if structHoldsUnion(g.unit.Tables[n]) {
+			holding = append(holding, n)
+		} else {
+			plain = append(plain, n)
+		}
+	}
+	for _, n := range plain {
+		g.emitVariableStruct(&b, g.unit.Tables[n])
+	}
+	g.emitUnionTypes(&b, names)
+	for _, n := range holding {
 		g.emitVariableStruct(&b, g.unit.Tables[n])
 	}
 	for _, n := range names {
@@ -90,10 +102,14 @@ const (
 	vBlob                  // *string / *bytes: kind 17, an index to a blob node (§2.5)
 	vPointer               // *T: kind 17, an index to a table node (§3.1)
 	vTable                 // T by value: kind 13, L, a body
+	vMap                   // map[K]V: kind 14 over element kind 13, entries in key order (§2.8)
+	vUnion                 // kind 15: an arm header (§2.6)
 )
 
 func classOf(f *ir.Field) vClass {
 	switch {
+	case f.IsMap():
+		return vMap
 	case f.Type.Blob():
 		return vBlob
 	case f.Type.Pointer:
@@ -103,8 +119,11 @@ func classOf(f *ir.Field) vClass {
 	case f.Type.Kind == ir.TBytes:
 		return vBytes
 	case f.Type.Kind == ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Enum); ok {
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
 			return vEnum
+		case *ir.Union:
+			return vUnion
 		}
 		return vTable
 	}
@@ -176,6 +195,10 @@ func elemRust(f *ir.Field) string {
 		return "Vec<u8>"
 	case vEnum, vTable:
 		return f.Type.Name
+	case vMap:
+		return f.MapEntry.Name
+	case vUnion:
+		return f.Type.Ref.(*ir.Union).Name
 	}
 	return scalarRust(f)
 }
@@ -183,6 +206,9 @@ func elemRust(f *ir.Field) string {
 // variableFieldType is a field's Rust storage type: an array of any length is
 // a Vec of its element (a bounded [..N]T holds at most N, §2.9).
 func variableFieldType(f *ir.Field) string {
+	if f.IsMap() {
+		return "Vec<" + f.MapEntry.Name + ">"
+	}
 	if f.Array != ir.ArrayNone {
 		return "Vec<" + elemRust(f) + ">"
 	}
@@ -276,6 +302,10 @@ func fieldDefault(f *ir.Field) string {
 		return enumDefault(f)
 	case vTable:
 		return f.Type.Name + "::default()"
+	case vMap:
+		return "Vec::new()"
+	case vUnion:
+		return f.Type.Ref.(*ir.Union).Name + "::None"
 	}
 	return scalarDefault(f)
 }
@@ -353,6 +383,16 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 				fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
 			} else {
 				fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
+			}
+		case vMap:
+			g.emitMapNumber(b, f, x)
+		case vUnion:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
+				g.emitUnionNumber(b, f, "e")
+				fmt.Fprintf(b, "    }\n")
+			} else {
+				g.emitUnionNumber(b, f, x)
 			}
 		}
 	}
@@ -461,6 +501,8 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
 			fmt.Fprintf(b, "%slet vref = %s;\n", ein, enumRef(f, "*e"))
 			fmt.Fprintf(b, "%sleb_write(&mut body, vref);\n", ein)
+		case vUnion:
+			g.emitUnionElement(b, f, "e", "body", ordinal, ein)
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
 			fmt.Fprintf(b, "%s%s\n", ein, scalarWrite(f, "(*e)", "body"))
@@ -543,6 +585,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%slet vref = %s;\n", inner, enumRef(f, x))
 		fmt.Fprintf(b, "%sleb_write(out, vref);\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
+	case vMap:
+		g.emitMapSave(b, f, ordinal, x, ind)
+	case vUnion:
+		g.emitUnionSave(b, f, ordinal, x, ind)
 	default:
 		// a field holding its declared default is not written at all (§3)
 		guard := x + " != " + scalarDefault(f)
@@ -722,7 +768,11 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 	fmt.Fprintf(b, "%s0x%016x => {\n", ind, id)
 	in := ind + "    "
 	if f.Array != ir.ArrayNone {
-		g.emitArrayLoad(b, f, ordinal, field, in)
+		if classOf(f) == vUnion {
+			g.emitArrayLoad(b, f, ordinal, field, in)
+		} else {
+			g.emitArrayLoad(b, f, ordinal, field, in)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -779,6 +829,10 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%selse {\n", in)
 		emitEnumDecode(b, f, field, "end", "return false;", in+"    ")
 		fmt.Fprintf(b, "%s}\n", in)
+	case vMap:
+		g.emitMapLoad(b, f, ordinal, field, in)
+	case vUnion:
+		g.emitUnionLoad(b, f, ordinal, field, in)
 	default:
 		// the declared kind, or a narrower one that WIDENS into it (§4):
 		// decoded exactly at its own width and counted widened once
@@ -839,6 +893,8 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet keep = if count > 0x7fffffff { report.malformed = true; 0 } else { count };\n", i4)
 	case f.Array == ir.ArrayCounted:
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
+	case f.Array == ir.ArrayFixed:
+		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
 	}
@@ -872,6 +928,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
 		emitEnumDecode(b, f, "e", "sub", "break;", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
+	case cls == vUnion:
+		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
+		g.emitUnionDecode(b, f, "e", "sub", ordinal, i5, true)
+		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	default:
 		fmt.Fprintf(b, "%slet Some(raw) = table_scalar_read(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5)
 		fmt.Fprintf(b, "%slet mut e = %s;\n", i5, scalarDefault(f))
@@ -896,14 +956,32 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 	}
 	seen := map[string]bool{}
 	var out []*ir.Struct
+	var consider func(f *ir.Field)
+	consider = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.IsMap() && f.MapEntry != nil {
+			for _, ef := range f.MapEntry.Fields {
+				consider(ef)
+			}
+			return
+		}
+		if un := unionOf(f); un != nil {
+			for _, v := range un.Variants {
+				consider(v.F)
+			}
+		}
+		if f.Type.Pointer && !f.Type.Blob() {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && in[ref.Name] && !seen[ref.Name] {
+				seen[ref.Name] = true
+				out = append(out, ref)
+			}
+		}
+	}
 	for _, n := range names {
 		for _, f := range g.unit.Tables[n].Fields {
-			if f.Type.Pointer && !f.Type.Blob() {
-				if ref, ok := f.Type.Ref.(*ir.Struct); ok && in[ref.Name] && !seen[ref.Name] {
-					seen[ref.Name] = true
-					out = append(out, ref)
-				}
-			}
+			consider(f)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

@@ -563,6 +563,18 @@ tables-rust-block-build:
 
 test-rust: tables-rust-block-build
 
+# Maps and union arms on the variable wire (docs/SPEC-TABLES.md §2.6, §2.8, §3).
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-variable-arms
+tables-rust-variable-arms:
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName' -v
+	@echo 'tables Rust variable arms: maps and union arms round-trip and the rest is refused by name'
+
+test-rust: tables-rust-variable-arms
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
