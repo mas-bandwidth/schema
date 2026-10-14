@@ -111,9 +111,14 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES
 	# Elixir 1.20.4 is the formatting authority (issue #424). The table emitters
 	# do not yet wrap every construct it wraps — the fixed, cook, block and
 	# message emitters are unchanged from sprint/schema-elixir and already fail
-	# this check — so the stamp canonicalizes. tables-elixir-clean refuses a
-	# unit this step did not accept.
-	$(MIX) format build/tables-generated-elixir/*/*.ex
+	# this check — so the stamp canonicalizes the units it owns.
+	# cards-elixir-generate writes a sibling directory and formats it itself.
+	@set -e; files=""; \
+	for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; \
+		files="$$files build/tables-generated-elixir/$$name/"*.ex; \
+	done; \
+	$(MIX) format $$files
 	@touch $@
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
@@ -146,7 +151,12 @@ test-elixir: tables-elixir-standalone
 # build/tables-generated-elixir to the same formatter.
 .PHONY: tables-elixir-clean
 tables-elixir-clean: build/tables-generated-elixir/.stamp
-	$(MIX) format --check-formatted build/tables-generated-elixir/*/*.ex
+	@set -e; files=""; \
+	for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; \
+		files="$$files build/tables-generated-elixir/$$name/"*.ex; \
+	done; \
+	$(MIX) format --check-formatted $$files
 	@echo "tables Elixir: mix format clean over the generated table units"
 test-elixir: tables-elixir-clean
 
@@ -769,6 +779,7 @@ cards-elixir-generate:
 	@rm -rf build/tables-generated-elixir/cards
 	@mkdir -p build/tables-generated-elixir/cards
 	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
+	$(MIX) format build/tables-generated-elixir/cards/*.ex
 
 # the cards corpus and the driver compiled into one ebin, so the wire-fuzz
 # driver's one BEAM can name the Cards.Table codec it drives.
