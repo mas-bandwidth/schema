@@ -1,17 +1,17 @@
 // Package jstable emits a unit's JavaScript table accelerators
-// (docs/SPEC-TABLES.md): the two ACCELERATORS in <Base>Block.js (§19) and
-// <Base>Cook.js (§7). One file per unit file, emitted only when the unit
-// declares tables — plus the unit's ONE RUNTIME HOME per surface,
-// <Package>Block.js / <Package>Cook.js, where everything shared lands
-// (runtimeHome, below). Table wire codecs are deferred to #516.
+// (docs/SPEC-TABLES.md): the block form (§19, built and read) and the cook
+// form (§7, written and read), plus the fixed-form wire (form 3 only,
+// schema#516) and the variable-form wire. One file per unit file, emitted
+// only when the unit declares tables — plus the unit's ONE RUNTIME HOME per
+// surface, where everything shared lands (runtimeHome, below).
 //
-// THE READING TIER, WITH ONE BUILDER. JavaScript has no struct layout of its
-// own — no offsetof, no sizeof, no way to place a field — so this backend
-// reads both accelerators and writes only a block's §19.1 prologue and
-// triples (block.go emitBlockBuild, the build side): a block and a cook are
-// opened over bytes another language wrote, every field is read at the offset
-// the compiler settled, through a DataView with an explicit little-endian
-// flag at every call.
+// JavaScript has no struct layout of its own — no offsetof, no sizeof — so
+// every field is placed at the offset the compiler settled, through a
+// DataView with an explicit endian flag at every call. The block builder
+// writes §19.1's prologue and triples, and a block is read over bytes with a
+// DataView at explicit little-endian offsets. The cook writer measures before
+// it writes (§7.6), the cook is read over bytes another language wrote, and
+// the header words are §19.1's.
 package jstable
 
 import (

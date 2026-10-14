@@ -142,6 +142,9 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 		g.emitTableClass(st)
 	}
 	g.emitCodecs(closure)
+	// Cook write runs after the codecs: variableMeasure calls
+	// TableVariableNumber and TableVariableCodecs (docs/SPEC-TABLES.md §7.6).
+	g.emitVariableCookWrite(roots)
 	for _, st := range closure {
 		g.emitExtentWalk(st)
 	}

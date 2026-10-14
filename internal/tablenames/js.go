@@ -1,9 +1,9 @@
 package tablenames
 
-// Js is the JavaScript table backend (internal/codegen/jstable). No struct
-// layout, so it reads both accelerators and the cook, and produces the BLOCK
-// BUILD side only: §19.1's Begin writes a block's prologue and triples and
-// never a row, while a cook and a block are still read, not written.
+// Js is the JavaScript table backend (internal/codegen/jstable). It reads
+// and writes the block form (§19, §19.1) and the cook form (§7, §7.6), and
+// carries the fixed-form and variable-form wire codecs. Field offsets are
+// the compiler's, applied through a DataView.
 const Js Backend = 1 << 7
 
 func init() {
@@ -16,6 +16,7 @@ func init() {
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, Go at package scope and JavaScript at module scope, so the claim is the UNION and the name is claimed", RustConst: true},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
+		Name{Name: "TableCookWrite", What: "the cook writer: measure, then write, one closure for the unit's cookable roots (§7.6)"},
 		// ---- THE FIXED FORM (docs/SPEC-TABLES.md §3.4), which JavaScript carries
 		// whole. Every one of these is a MODULE-SCOPE BINDING of the unit's
 		// <Package>Table.js, so every one of them can collide with a declaration
