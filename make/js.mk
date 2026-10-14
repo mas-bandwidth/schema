@@ -568,6 +568,21 @@ tables-js-variable-arms:
 
 test-js: tables-js-variable-arms
 
+# THE FIXED CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2.2, §3, §3.1, §4.2):
+# a `fixed table` rides the VARIABLE FORM as well as the fixed one, so a closure
+# holding a fixed table gets the form-1 codec — Load, Save, Measure and the text
+# verbs — byte for byte against the Go oracle (internal/tablewire, the bytes
+# internal/codegen/gotable/wire.go writes), and the storage class carries every
+# declared default (§4.2). A fixed table this leg's variable wire does not carry
+# is refused BY NAME (§11), never mis-encoded. SCHEMA_REQUIRE_CORPUS=1 makes a
+# missing node a FAILURE rather than a skip.
+.PHONY: tables-js-variable-fixed-class
+tables-js-variable-fixed-class:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
+	@echo 'tables JS variable fixed class: a fixed table carries the form-1 codec and its declared defaults, byte for byte against the oracle'
+
+test-js: tables-js-variable-fixed-class
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test
