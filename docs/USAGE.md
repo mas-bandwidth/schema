@@ -1476,8 +1476,8 @@ marks the cells.
 **What Elixir does with the two forms it has, and it is the language rather
 than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
 a producer could write. It OPENS one another build wrote and reads every slot
-at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
-`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+at its offset — `Blockdemo.RenderBlock.block_open_render_frame(bytes)` and
+`Graphdemo.GraphCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
 the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
 the packet emitter's own reader verdict, and refuse a forged image rather than
 raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
@@ -3807,6 +3807,35 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
   :error -> :drop # malformed or hostile
 end
 ```
+
+The same two accelerator readers as above, reached through the names the
+emitter writes — the package namespace, the file base and the form: a block is
+`Blockdemo.RenderBlock.block_open_render_frame(bytes)`, a cook is
+`Graphdemo.GraphCook.cook_open_scene(bytes)`. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-elixir-usage`:
+
+<!-- elixir-table-usage -->
+```elixir
+# open the cook another build wrote; :error is a foreign build, a corrupt
+# file or the other byte order — fall back to the tolerant wire
+case Graphdemo.GraphCook.cook_open_scene(bytes) do
+  {:ok, cook} ->
+    walk = fn walk, at ->
+      case at do
+        :null -> :ok
+        :error -> raise "the cook's head reference leaves the region"
+        {:ok, node} ->
+          IO.puts(Graphdemo.GraphCook.list_node_node_value(cook.region, node))
+          walk.(walk, Graphdemo.GraphCook.list_node_node_next(cook.region, node))
+      end
+    end
+
+    walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
+  :error ->
+    raise "the Scene cook did not open — fall back to the tolerant wire"
+end
+```
+<!-- /elixir-table-usage -->
 
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
