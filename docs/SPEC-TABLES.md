@@ -4058,6 +4058,25 @@ puts framing damage:
   because no wire this schema writes carries a repeat, and it would leave one
   more shape of table for a hostile writer to aim at.
 
+**THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format fact.** A
+table read is untrusted input (§4.2): a save game uploaded to a server is a
+variable-form file, and its trailing id table's count is bounded by the buffer
+alone, so a reader that proved distinctness by a pairwise scan would spend
+`n(n-1)/2` comparisons before it read a single body — a one-megabyte file of
+distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: a reader
+refuses as MALFORMED, on the first rule's terms, any table whose entry count
+exceeds **4096** (`kTableProbeBound` in the generated C++), whatever the buffer
+would hold. At or below it the reader proves the entries distinct with an
+open-addressing probe over a fixed stack table of **8192** slots — twice the
+bound, so it is never more than half full — and the walk is allocation-free
+(every read path allocates nothing), makes at most `n(n-1)/2` slot-id
+comparisons (a fixed `8,386,560` at the bound), and never falls back to a
+pairwise scan. Duplicate ids stay refused, and ids this reader cannot name stay
+legal: they are counted `unknown` exactly where a body names them, never at
+resolve time. Every table this schema's own writer emits is far under the
+bound, so the refusal is a reader's defense against a hostile file and no
+writer this schema can drive ever meets it.
+
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
 projections of a declaration, so none of them moves with it: the COOK (§7)

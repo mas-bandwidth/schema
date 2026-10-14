@@ -258,10 +258,10 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 	}
 }
 
-// TestCTableOpenDistinctnessIsBounded pins the read-side identity check:
-// a bounded stack open-addressed table for count<=256, id compare rather than
-// hash-only, and the pairwise walk kept as the fallback. Count is attacker-
-// controlled up to bytes/8; the bound is what keeps the stack finite.
+// TestCTableOpenDistinctnessIsBounded pins the read-side identity check: the
+// 4096-entry count cap that keeps the walk finite, the fixed 8192-slot stack
+// probe it guarantees, and id compare rather than hash-only. There is no
+// pairwise arm left to fall back to.
 func TestCTableOpenDistinctnessIsBounded(t *testing.T) {
 	files, err := New().Generate(unitFromSource(t, runtimeSrc), "c", Options{})
 	if err != nil {
@@ -278,16 +278,17 @@ func TestCTableOpenDistinctnessIsBounded(t *testing.T) {
 		t.Fatal("no Table.h")
 	}
 	for _, want := range []string{
-		"count > 256",
-		"uint64_t seen[512]",
-		"uint8_t used[512]",
-		"probes < 512",
+		"count > 4096",
+		"uint64_t seen[8192]",
+		"uint8_t used[8192]",
 		"seen[slot] == id",
-		"for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {",
 	} {
 		if !strings.Contains(header, want) {
 			t.Errorf("table_wire_open is missing %q", want)
 		}
+	}
+	if strings.Contains(header, "for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {") {
+		t.Error("table_wire_open still carries the unbounded pairwise fallback")
 	}
 }
 
