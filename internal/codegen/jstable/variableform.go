@@ -579,8 +579,8 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	case unionOf(f) != nil && f.Array == ir.ArrayNone:
 		// None is null; an arm is { arm: "<name>", value } (§2.6)
 		return "null"
-	case f.KeyEnum != "":
-		// one slot per keyed variant, each at the element's default (§2.4)
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
 		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
@@ -607,10 +607,10 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	return intDefault(f)
 }
 
-// elemDefaultExpr is one keyed slot's declared default: the field's own
-// default, which every slot holds until a value is placed (§2.4).
+// elemDefaultExpr is one keyed or fixed-array slot's declared default: the
+// field's own default, which every slot holds until a value is placed (§2.4).
 func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
-	if tableOf(f) != nil {
+	if !f.Type.Pointer && tableOf(f) != nil {
 		return "new " + tableOf(f).Name + "()"
 	}
 	plain := *f
@@ -629,6 +629,70 @@ func unionOf(f *ir.Field) *ir.Union {
 		return un
 	}
 	return nil
+}
+
+// flagsOf returns the flags declaration a field names, or nil.
+func flagsOf(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok {
+		return fl
+	}
+	return nil
+}
+
+func flagsVariants(fl *ir.Flags) string {
+	parts := make([]string, len(fl.Variants))
+	for i, v := range fl.Variants {
+		parts[i] = jsStr(v)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+type guardStep struct {
+	Name string
+	Want bool
+}
+
+func structGuards(st *ir.Struct) map[string][]guardStep {
+	out := map[string][]guardStep{}
+	for _, f := range st.Fields {
+		if f.Guard == "" {
+			continue
+		}
+		var chain []guardStep
+		cur := f.Guard
+		for cur != "" {
+			want := true
+			if strings.HasPrefix(cur, "!") {
+				want = false
+				cur = cur[1:]
+			}
+			chain = append([]guardStep{{Name: cur, Want: want}}, chain...)
+			var gf *ir.Field
+			for _, cand := range st.Fields {
+				if cand.Name == cur {
+					gf = cand
+					break
+				}
+			}
+			if gf == nil {
+				break
+			}
+			cur = gf.Guard
+		}
+		out[f.Name] = chain
+	}
+	return out
+}
+
+func jsGuards(steps []guardStep) string {
+	parts := make([]string, len(steps))
+	for i, s := range steps {
+		parts[i] = fmt.Sprintf("[%s, %v]", jsStr(s.Name), s.Want)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 // jsStr renders a JavaScript string literal: JSON's spelling, which is a
@@ -661,6 +725,14 @@ func floatDefault(f *ir.Field) string {
 		return "0"
 	}
 	return jsFloat(f.DefFloat)
+}
+
+func floatProps(f *ir.Field) string {
+	lo, hi := "null", "null"
+	if f.HasFloatRange {
+		lo, hi = jsFloat(f.FMin), jsFloat(f.FMax)
+	}
+	return fmt.Sprintf("f32: %v, lo: %s, hi: %s", f.Type.Kind == ir.TFloat32, lo, hi)
 }
 
 func jsFloat(v float64) string {
@@ -710,6 +782,7 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 	g.emitUnionDescriptors(closure)
 	g.pf("const TableVariableCodecs = {\n")
 	for _, st := range closure {
+		guards := structGuards(st)
 		g.pf("  %s: {\n", st.Name)
 		g.pf("    name: %s,\n", jsStr(st.Name))
 		g.pf("    make: () => new %s(),\n", st.Name)
@@ -720,7 +793,7 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    entry: %v,\n", st.IsMapEntry())
 		g.pf("    fields: [\n")
 		for i, f := range st.Fields {
-			g.pf("      %s,\n", g.fieldDesc(f, i))
+			g.pf("      %s,\n", g.fieldDesc(f, i, guards[f.Name]))
 		}
 		g.pf("    ],\n")
 		var placeable []string
@@ -740,19 +813,22 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 // its wire id, its ordinal (the retain path's step, §6.6), the kind its header
 // carries, its shape and the JSON shape its text takes (§16.2), and what the
 // shape needs. An OPTIONAL ?T (§2.3) is its value's descriptor with `opt`.
-func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
-	return g.fieldDescNamed(f, f.Name, ordinal)
+func (g *variableGen) fieldDesc(f *ir.Field, ordinal int, guards []guardStep) string {
+	return g.fieldDescNamed(f, f.Name, ordinal, guards)
 }
 
 // fieldDescNamed is fieldDesc under the property name the storage holds the
 // value at: the field's own, or "value" for a union arm's field line, whose
 // holder is the arm object { arm, value } (§2.6).
-func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int) string {
+func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guards []guardStep) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, k: %d, ",
 		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
 	if f.Type.Optional {
 		b.WriteString("opt: true, ")
+	}
+	if len(guards) > 0 {
+		fmt.Fprintf(&b, "g: %s, ", jsGuards(guards))
 	}
 	switch {
 	case f.IsMap():
@@ -767,8 +843,8 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int) stri
 	case unionOf(f) != nil && f.Array == ir.ArrayNone:
 		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, bound: %d, ek: %d, e: %s }",
-			f.Array == ir.ArrayList, f.ArrayBound, ir.TableWireElemKind(f), g.elemDesc(f))
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():
@@ -777,6 +853,9 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int) stri
 		fmt.Fprintf(&b, "s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
+	case flagsOf(f) != nil:
+		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
+			flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
@@ -791,7 +870,7 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int) stri
 		}
 		fmt.Fprintf(&b, "s: \"bool\", js: \"b\", def: %s }", def)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(&b, "s: \"float\", js: \"n\", f32: %v, def: %s }", f.Type.Kind == ir.TFloat32, floatDefault(f))
+		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", floatProps(f), floatDefault(f))
 	default:
 		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
 	}
@@ -809,12 +888,15 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
 		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
+	case flagsOf(f) != nil:
+		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
+			flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
 		return fmt.Sprintf("{ s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:
 		return "{ s: \"bool\", js: \"b\" }"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("{ s: \"float\", js: \"n\", f32: %v }", f.Type.Kind == ir.TFloat32)
+		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", floatProps(f))
 	}
 	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
 }
@@ -839,9 +921,9 @@ func intProps(f *ir.Field) string {
 	kind := ir.TableWireScalarKind(f)
 	lo, hi := "null", "null"
 	tlo, thi := "null", "null"
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		lo, hi = intLit(f.IntMin, isBig), intLit(f.IntMax, isBig)
-		tlo, thi = f.IntMin.String()+"n", f.IntMax.String()+"n"
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi = intLit(rlo, isBig), intLit(rhi, isBig)
+		tlo, thi = rlo.String()+"n", rhi.String()+"n"
 	}
 	bits, bmax := 0, "0"
 	if f.Type.Kind == ir.TBits {
@@ -871,8 +953,8 @@ func intProps(f *ir.Field) string {
 		dlo = big.NewInt(0)
 		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8)), big.NewInt(1))
 	}
-	return fmt.Sprintf("big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
-		isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, tlo, thi, dlo.String(), dhi.String())
+	return fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
+		kind, isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, f.Type.FracBits, tlo, thi, dlo.String(), dhi.String())
 }
 
 // ---------------------------------------------------------------------------

@@ -148,4 +148,5 @@ func init() {
 	// per unit.
 	registerMapCarrier("js")
 	registerOptionalArrayCarrier("js")
+	wasRowTargets = append(wasRowTargets, "js")
 }

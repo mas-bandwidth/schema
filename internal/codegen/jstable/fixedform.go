@@ -24,6 +24,7 @@ package jstable
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -613,11 +614,7 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		}
 	case f.Type.Optional && f.Type.Pointer:
 		return name + ": an optional pointer (docs/SPEC-TABLES.md §2.3)"
-	case f.Guard != "":
-		return name + ": a guarded field, an if group (docs/SPEC-TABLES.md §16.2)"
-	case f.HasFloatRange:
-		return name + ": a compressed float (docs/SPEC-TABLES.md §3)"
-	case f.Array == ir.ArrayFixed:
+	case f.Array == ir.ArrayFixed && strings.HasSuffix(name, " (map value)"):
 		return name + ": a fixed-length array [N]T (docs/SPEC-TABLES.md §3)"
 	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 		return name + ": an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)"
@@ -628,7 +625,7 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	case ir.TInt:
 		return ""
 	case ir.TFixed:
-		return name + ": a fixed/ufixed (docs/SPEC-TABLES.md §15)"
+		return ""
 	case ir.TWString:
 		return name + ": a wstring(N) (docs/SPEC-TABLES.md §16)"
 	case ir.TNamed:
@@ -636,9 +633,6 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		case *ir.Enum:
 			return ""
 		case *ir.Struct:
-			if !ref.IsTable {
-				return name + ": a nested type (docs/SPEC-TABLES.md §2)"
-			}
 			return ""
 		case *ir.Union:
 			if f.Type.Pointer {
@@ -649,9 +643,6 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 				switch {
 				case arm.Void():
 				case arm.Body():
-					if !arm.Ref.IsTable {
-						return armName + ": a nested type (docs/SPEC-TABLES.md §2)"
-					}
 				default:
 					if arm.F.Type.Optional {
 						return armName + ": an optional arm (docs/SPEC-TABLES.md §2.6)"
@@ -663,7 +654,7 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 			}
 			return ""
 		case *ir.Flags:
-			return name + ": a flags (docs/SPEC-TABLES.md §16)"
+			return ""
 		}
 	}
 	return name + ": a construct this backend cannot name (§11)"
