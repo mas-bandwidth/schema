@@ -944,7 +944,10 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
             ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        // A count op reads four bytes at src whatever e.size says. Text still
+        // reaches the length word plus its payload.
+        const uint64_t span = ( e.op == kTableFixedCount ) ? 4ull : (uint64_t) e.size;
+        const uint64_t reach = (uint64_t) e.src + span + ( e.op == kTableFixedText ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -1114,6 +1117,10 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         {
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
+            // A counted reader reads four bytes at their_at. A peer array
+            // shorter than that word underflows (te.size - 4) and the count
+            // op would read past the record. Refuse the plan whole.
+            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
             const uint32_t head = d.counted ? 4u : 0u;
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
