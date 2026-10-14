@@ -12,8 +12,9 @@
 // bound is clamped at a code-point boundary and counted — never cut through a
 // multi-byte character. Every function below cites the section it reads.
 //
-// Maps, optional ?T, enum-keyed arrays and union arms stay refused by name
-// in checkUnsupportedConstructs (§11). A shared node is "&node" (§16.7).
+// Maps, optional values, fixed/keyed arrays and table-body/payload-free
+// union arms share this runtime. Other arm payloads and wide kinds remain
+// refused (§11). A shared node is "&node" (§16.7).
 package darttable
 
 import (
@@ -462,6 +463,8 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 		g.pf("if(v.%s.length!=%d)throw StateError('invalid_value');\n", name, f.ArrayBound)
 	}
 	switch {
+	case unionRef(f) != nil:
+		g.emitTextUnionValue(f)
 	case f.KeyEnum != "":
 		g.emitTextKeyedValue(st, f)
 	case f.IsMap():
@@ -595,6 +598,8 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("if(val==null){v.%sPresent=false;break;}v.%sPresent=true;\n", name, name)
 	}
 	switch {
+	case unionRef(f) != nil:
+		g.emitTextReadUnion(f)
 	case f.KeyEnum != "":
 		g.emitTextReadKeyed(f)
 	case f.IsMap():
@@ -711,6 +716,8 @@ func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case unionRef(f) != nil:
+		g.emitUnionWalk(f, ind, true)
 	case f.KeyEnum != "":
 		if ref := tableRef(f); ref != nil {
 			g.pf("%sfor(final slot in %s.entries){%sCount(sh,slot.$2); }\n", ind, expr, dartName(ref.Name))

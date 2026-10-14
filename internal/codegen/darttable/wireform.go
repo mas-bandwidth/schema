@@ -6,8 +6,8 @@
 // `bits(N)`, `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`,
 // unbounded arrays of scalars, strings and enums, carried-value maps and
 // optional carried values, fixed positional arrays and enum-keyed arrays.
-// A union and the wide kinds and
-// wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
+// Table-body and payload-free union arms also ride; other arm payloads,
+// the wide kinds and wstring stay refused by name in checkUnsupportedConstructs (§11) on a unit
 // the variable form owns, and nothing here encodes one.
 //
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
@@ -97,8 +97,9 @@ func isByValueTable(f *ir.Field) bool {
 // 128, bits, the two floats, enum, string(N), bytes(N), *string/*bytes, a
 // pointer or by-value table whose target is itself carried, and a counted or
 // unbounded array of a carried element, carried-value maps, and optional
-// carried values, fixed positional arrays and enum-keyed arrays. A union,
-// the wide kinds and wstring are not: the
+// carried values, fixed positional arrays, enum-keyed arrays, and unions
+// of table-body/payload-free arms. Other arm payloads, the wide kinds and
+// wstring are not: the
 // wire form is not claimed for them (§11). seen breaks a pointer cycle — a
 // table already on the stack is carried if the rest of its fields are.
 func cardWireField(f *ir.Field) bool {
@@ -115,8 +116,8 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 		bare.Array = ir.ArrayNone
 		return cardWireFieldSeen(&bare, seen)
 	}
-	if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-		return false
+	if u := unionRef(f); u != nil {
+		return f.Array == ir.ArrayNone && cardWireUnion(u, seen)
 	}
 	if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TWString {
 		return false
@@ -192,6 +193,13 @@ func variableRoots(u *ir.Unit) []*ir.Struct {
 			continue
 		}
 		for _, f := range st.Fields {
+			if u := unionRef(f); u != nil {
+				for _, a := range u.Variants {
+					if a.Body() {
+						named[a.Ref.Name] = true
+					}
+				}
+			}
 			if ref := tableRef(f); ref != nil && (wirePositionalArray(f) || isByValueTable(f)) {
 				named[ref.Name] = true
 			}
@@ -234,6 +242,13 @@ func wireClosure(u *ir.Unit) []*ir.Struct {
 		for _, f := range st.Fields {
 			if f.IsMap() {
 				visit(f.MapEntry)
+			}
+			if u := unionRef(f); u != nil {
+				for _, a := range u.Variants {
+					if a.Body() {
+						visit(a.Ref)
+					}
+				}
 			}
 			if ref := tableRef(f); ref != nil && (wirePositionalArray(f) || f.KeyEnum != "" || f.Array == ir.ArrayNone) {
 				visit(ref)
@@ -380,6 +395,9 @@ func (g *wireGen) emit() {
 	g.emitRuntime()
 	g.emitRetainRuntime()
 	g.emitNodeDispatch()
+	for _, u := range g.wireUnions() {
+		g.emitUnionStorage(u)
+	}
 	for _, st := range g.closure {
 		g.emitStorage(st)
 	}
@@ -1099,6 +1117,8 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  bool %sPresent = false;\n", name)
 		}
 		switch {
+		case unionRef(f) != nil:
+			g.pf("  %s %s=%s();\n", f.Type.Name, name, f.Type.Name)
 		case f.KeyEnum != "":
 			g.pf("  TableKeyed<%s> %s=%s;\n", dartListElemType(f), name, g.keyedConstruct(f))
 		case f.IsMap():
@@ -1200,6 +1220,8 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	switch {
+	case unionRef(f) != nil:
+		g.emitSaveUnion(f, ind)
 	case f.KeyEnum != "":
 		g.emitSaveKeyed(f, ind, ordinal)
 	case f.IsMap():
@@ -1508,6 +1530,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
 	g.emitOptionalReadPresence(f, ind)
 	switch {
+	case unionRef(f) != nil:
+		g.emitLoadUnion(f, ind)
 	case f.KeyEnum != "":
 		g.emitLoadKeyed(f, ind, ordinal)
 	case f.IsMap():
@@ -1909,6 +1933,8 @@ func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	defer g.optionalWalk(f, ind)()
 	expr := "v." + fieldMember(f)
 	switch {
+	case unionRef(f) != nil:
+		g.emitUnionWalk(f, ind, false)
 	case f.KeyEnum != "":
 		if ref := tableRef(f); ref != nil {
 			g.pf("%sfor(final slot in %s.entries){%sNumber(s,slot.$2,open); }\n", ind, expr, dartName(ref.Name))

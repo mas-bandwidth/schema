@@ -80,7 +80,7 @@ func TestDartEmitsTableSources(t *testing.T) {
 // instead is stronger and checkable: it spells NO private library-scope name at
 // all, and the second half of this test is what holds it to that.
 func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
-	source := runtimeSrc + "\ntable DartCookGraph { next *DartCookGraph }\nenum DartKeyFixture { first, second }\ntable DartKeyedFixture { scores [DartKeyFixture]int32\n body *string }\n"
+	source := runtimeSrc + "\ntable DartCookGraph { next *DartCookGraph }\nenum DartKeyFixture { first, second }\ntable DartKeyedFixture { scores [DartKeyFixture]int32\n body *string }\ntable DartArmPayload { value int32 }\nunion DartArmFixture { item DartArmPayload\n ping }\ntable DartUnionFixture { arm DartArmFixture\n body *string }\n"
 	files, err := New().Generate(unitFromSource(t, source), "dart", Options{})
 	if err != nil {
 		t.Fatal(err)

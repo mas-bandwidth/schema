@@ -323,9 +323,9 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 			}
 			// union arms (docs/SPEC-TABLES.md §2.6): a field whose type names a
 			// union carries an arm id and a per-arm body; the card's form-1
-			// writer has no union tag, so it must be refused, never silently
-			// dropped from the variable form.
-			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+			// writer carries table-body and payload-free selections; an arm
+			// outside that slice is refused rather than silently dropped.
+			if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && !cardWireField(f) {
 				return fmt.Errorf("table %s field %s: a union arm is refused in the Dart table backend (docs/SPEC-TABLES.md §2.6, §11)",
 					name, f.Name)
 			}

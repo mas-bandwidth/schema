@@ -70,7 +70,7 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 			if !ok || len(wire) == 0 {
 				t.Fatalf("Generate emitted no %s for %s — the variable class is not carried yet", c.wire, c.unit)
 			}
-			roundTripOracle(t, c.root, c.wire, wire, c.oracle)
+			roundTripOracle(t, c.root, c.wire, files, c.oracle)
 		})
 	}
 
@@ -120,11 +120,15 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 // roundTripOracle loads a committed oracle .bin through the generated library's
 // <root>WireLoad, re-saves it, and requires the bytes to be identical — the
 // same contract the Go leg's committed byte oracle holds for the card record.
-func roundTripOracle(t *testing.T, root, wireName string, wire []byte, oracle string) {
+func roundTripOracle(t *testing.T, root, wireName string, files map[string][]byte, oracle string) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
-		t.Fatal(err)
+	for name, data := range files {
+		if !strings.Contains(name, "/") {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	fn := strings.ToLower(root[:1]) + root[1:]
 	probe := `import 'dart:io';

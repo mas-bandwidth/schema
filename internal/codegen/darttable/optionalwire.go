@@ -29,7 +29,7 @@ func cookGraphHasUncarriedFields(st *ir.Struct) bool {
 		}
 		seen[st.Name] = true
 		for _, f := range st.Fields {
-			if f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayFixed {
+			if unionRef(f) != nil || f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayFixed {
 				return true
 			}
 			if f.IsMap() && walk(f.MapEntry) {
