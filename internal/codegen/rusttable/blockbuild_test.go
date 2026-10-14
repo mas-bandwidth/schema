@@ -202,8 +202,12 @@ func blockProbeRunSchema(t *testing.T, spillTo, schema string, internalFixed boo
 			out[strings.ToLower(f.Base)+"_cook.rs"] = g.cookModule()
 		}
 		blocks, err := generateBlocks(u, ir.Blocks(u), "")
-		if err != nil { t.Fatal(err) }
-		for name, data := range blocks { out[name] = data }
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range blocks {
+			out[name] = data
+		}
 		probe = strings.Replace(probe, "value.samples = [11, 22, 33];", "value.samples = [11, 22, 33]; value.fixed_scalar = -4660; value.fixed_array_count = 1; value.fixed_array = [-12345678, 12345678, -1]; value.unsigned_fixed = 48879;", 1)
 	}
 	root := t.TempDir()
