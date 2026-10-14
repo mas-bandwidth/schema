@@ -1554,7 +1554,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%s\t\tfinal keep=count>%d?%d:count;if(keep!=count)r.report.clamped++;\n", ind, f.ArrayBound, f.ArrayBound)
+			g.pf("%s\t\tfinal keep=count<0||count>%d?%d:count;if(keep!=count)r.report.clamped++;\n", ind, f.ArrayBound, f.ArrayBound)
 			g.pf("%s\t\tfor (var i=0;i<keep;i++){\n", ind)
 		} else {
 			g.pf("%s\t\tfor (var i = 0; i < count; i++) {\n", ind)
