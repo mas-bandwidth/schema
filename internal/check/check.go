@@ -3397,6 +3397,8 @@ func tableRuntimeClaim(gen string) string {
 		// spelling.
 		by := tablenames.By(gen)
 		switch {
+		case by&tablenames.Js != 0 && by&(tablenames.Go|tablenames.C) == 0:
+			return "the generated TABLE-wire runtime's JavaScript half, which binds its private helpers at module scope, and an ES module's scope is the file the unit's own declarations are emitted into (docs/SPEC-TABLES.md §11)"
 		case by&tablenames.Go != 0 && by&tablenames.C == 0:
 			return "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
 		case by&tablenames.C != 0 && by&tablenames.Go == 0:
