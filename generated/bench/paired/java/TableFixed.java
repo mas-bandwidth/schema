@@ -501,7 +501,6 @@ public final class TableFixed {
         return true;
     }
 
-    /** run one plan over one record body, landing it in this reader's image. */
     /** EVERY LINK OF A GUARD CHAIN PAST TWO HOLDS (docs/FIXED-FORM-ALGORITHM.md
      *  §4.1): an arm inside an arm inside an arm answers to every enclosing
      *  tag, outermost first, each at its own width and inside the writer's
@@ -517,6 +516,7 @@ public final class TableFixed {
         return true;
     }
 
+    /** run one plan over one record body, landing it in this reader's image. */
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
                            byte[] image, Report report) {
