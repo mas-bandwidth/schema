@@ -142,7 +142,7 @@ func cardScalarOrTable(f *ir.Field, seen map[string]bool) bool {
 	case ir.TInt:
 		return true
 	case ir.TNamed:
-		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum || flagsRef(f) != nil {
 			return !f.Type.Pointer
 		}
 		if ref := tableRef(f); ref != nil {
@@ -348,7 +348,7 @@ func dartListElemType(f *ir.Field) string {
 		return wideWireStorageType(f)
 	case f.Type.Kind == ir.TBool:
 		return "bool"
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || flagsRef(f) != nil:
 		return "int"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return "double"
@@ -1152,7 +1152,7 @@ func (g *wireGen) emitStorage(st *ir.Struct) {
 			g.pf("  %s %s=%s;\n", wideWireStorageType(f), name, wideWireDefault(f))
 		case f.Type.Kind == ir.TBool:
 			g.pf("  bool %s = %v;\n", name, f.HasDefault && f.DefBool)
-		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || flagsRef(f) != nil:
 			g.pf("  int %s = %s;\n", name, g.intDefault(f))
 		case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 			g.pf("  double %s = %s;\n", name, g.floatDefault(f))
@@ -1301,7 +1301,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || flagsRef(f) != nil:
 		// An integer or bits field rides under its own kind (§3): int8/16/32/64
 		// at 2/3/4/5, uint8/16/32/64 at 6/7/8/9, bits(N) at the unsigned kind of
 		// its storage width. The payload is the value at the kind's width.
@@ -1672,7 +1672,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tbreak;\n", ind)
 	case wireWide(f):
 		g.emitLoadWide(f, ind)
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || flagsRef(f) != nil:
 		// An int/bits field's declared kind is §3's integer kind for its width
 		// and signedness: int8/16/32/64 at 2/3/4/5, uint8/16/32/64 at 6/7/8/9,
 		// bits(N) at the unsigned kind of its storage width. A payload under a

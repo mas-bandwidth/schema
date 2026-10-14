@@ -162,6 +162,8 @@ func (g *wireGen) emitTextReadKeyed(f *ir.Field) {
 	case tableRef(f) != nil:
 		ref := tableRef(f)
 		g.pf("if(item is Map<String,dynamic>){v.%s[key]=%s();%sFromJsonFields(v.%s[key],item,r,sh);}else{r.kindMismatch++;}\n", n, ref.Name, dartName(ref.Name), n)
+	case flagsRef(f) != nil:
+		g.pf("v.%s[key]=TableTextReport.flagsField(item,r,%s,v.%s[key]);\n", n, flagsNames(f), n)
 	case wireWide(f):
 		g.pf("v.%s[key]=%s;\n", n, g.wideJSONRead(f, "item", "v."+n+"[key]"))
 	case enumRef(f) != nil:

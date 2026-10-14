@@ -123,7 +123,7 @@ func (g *wireGen) emitTextRuntime() {
 // the card's constructs can move — an unknown property, a kind mismatch, a
 // clamp.
 final class TableTextReport {
-` + textNumberMembers + textBigIntegerMembers + textFixedMembers + textWideMembers + `
+` + textFlagsMembers + textNumberMembers + textBigIntegerMembers + textFixedMembers + textWideMembers + `
   bool malformed = false;
   final Expando<List<MapEntry<String,dynamic>>> _entries = Expando();
   Iterable<MapEntry<dynamic,dynamic>> entries(Map obj) => _entries[obj] ?? obj.entries;
@@ -543,13 +543,19 @@ func (g *wireGen) emitTextToJsonValue(st *ir.Struct, f *ir.Field) {
 			case wireKindEnum:
 				g.pf("\t\t\tout.raw(_jsonEnum(e, %sName, '%s.%s'));\n", dartName(enumRef(f).Name), st.Name, f.Name)
 			default:
-				g.pf("\t\t\tout.raw(%s);\n", jsonIntText(f, "e"))
+				if flagsRef(f) != nil {
+					g.pf("TableTextReport.flagsText(out,e,%s,depth+2);\n", flagsNames(f))
+				} else {
+					g.pf("\t\t\tout.raw(%s);\n", jsonIntText(f, "e"))
+				}
 			}
 			g.pf("\t\t}\n")
 			g.pf("\t\tout.line(depth + 1);\n")
 			g.pf("\t\tout.raw(']');\n")
 			g.pf("\t}\n")
 		}
+	case flagsRef(f) != nil:
+		g.pf("TableTextReport.flagsText(out,v.%s,%s,depth+1);\n", name, flagsNames(f))
 	case wireWide(f):
 		g.pf("out.raw(%s);\n", wideJSONText(f, "v."+name))
 	case f.Type.Kind == ir.TBool:
@@ -601,12 +607,18 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
-	if (wireWide(f) || f.Type.Kind == ir.TWString) && f.Array == ir.ArrayNone {
+	if (wireWide(f) || f.Type.Kind == ir.TWString || flagsRef(f) != nil) && f.Array == ir.ArrayNone {
 		g.pf("{var seen=false;for(final occurrence in r.entries(obj)){if(r.malformed)break;if(occurrence.key!=key)continue;if(seen)r.duplicate++;seen=true;final item=occurrence.value;\n")
 		if f.Type.Optional {
-			g.pf("if(item==null){v.%sPresent=false;v.%s=%s;continue;}v.%sPresent=true;\n", name, name, wideWireDefault(f), name)
+			def := wideWireDefault(f)
+			if flagsRef(f) != nil {
+				def = g.intDefault(f)
+			}
+			g.pf("if(item==null){v.%sPresent=false;v.%s=%s;continue;}v.%sPresent=true;\n", name, name, def, name)
 		}
-		if f.Type.Kind == ir.TWString {
+		if flagsRef(f) != nil {
+			g.pf("v.%s=TableTextReport.flagsField(item,r,%s,v.%s);}}break;\n", name, flagsNames(f), name)
+		} else if f.Type.Kind == ir.TWString {
 			g.pf("v.%s=TableTextReport.wideField(item,r,%d,v.%s);}}break;\n", name, f.Type.Size, name)
 		} else {
 			g.pf("v.%s=%s;}}break;\n", name, g.wideJSONRead(f, "item", "v."+name))
@@ -684,6 +696,10 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindString:
 				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
 			default:
+				if flagsRef(f) != nil {
+					g.pf("v.%s.add(TableTextReport.flagsField(item,r,%s,%s));\n", name, flagsNames(f), g.wireElementDefault(f))
+					break
+				}
 				lo, hi := jsonIntBounds(f)
 				g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item,r,%s,%s,%s,%s));\n", name, lo, hi, jsonUnsigned(f), g.wireElementDefault(f))
 			}
