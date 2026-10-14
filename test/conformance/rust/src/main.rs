@@ -888,6 +888,21 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today,
+// and the reason is a gap upstream of this driver rather than in it: the emitted
+// cook runtime has <T>_cook_measure / <T>_cook_measure_reason / <T>_cook_from
+// (internal/codegen/rusttable/cook.go), but this leg emits NO id-table (form 1)
+// WIRE reader for a FIXED table — `scopedVariableModules` (variablecodec.go)
+// emits `<name>_load`/`<name>_save` only for the variable roots, and the fixed
+// tables' `_records.rs` modules hold the row structs and nothing that turns the
+// manifest's `testdata/wire/tables/<case>.bin` into a row. The reference leg's
+// driver loads that wire (`c.load`) and then measures and writes; without the
+// same read here there is no value to cook, so writing bytes to compare against
+// `cook-write/<case>.cook` is impossible for any row. The rows the leg does
+// carry cook writers for (WideBlob, KeyedConfig) stay named as not done for
+// exactly this reason. Implement the fixed-table form-1 wire reader in the
+// emitted runtime first, then drive <T>_cook_from from here for those rows and
+// keep maps, optional arrays, pointers, lists and wide text `.absent`.
 fn surface_cook_write(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook-write") {
         spill_absent(out, &f[1]);
