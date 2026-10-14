@@ -23,7 +23,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -77,6 +79,14 @@
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface"
+      ]
+    },
+    {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
       ]
     },
     {
