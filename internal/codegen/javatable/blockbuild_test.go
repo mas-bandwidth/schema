@@ -364,11 +364,29 @@ public final class Driver {
 func TestCookWriteJavaSharedGraph(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
-fixed table Meta { build int32 tag string(8) }
-table Node { value int32 next *Node text *string }
-table Root { first *Node second *Node meta Meta values []int32 tags []string(8) children []*Node metas []Meta }
+fixed table Meta {
+ build int32 = 1
+ tag string(8)
+}
+table Node {
+ value int32
+ next *Node
+ text *string
+}
+table Root {
+ first *Node
+ second *Node
+ meta Meta
+ values []int32
+ children []*Node
+ metas []Meta
+ rows [..2]Meta
+ padding []uint8
+ empty []int64
+ tail []uint8
+}
 `)
-	text := []byte(`{"first":{"&node":1,"value":7,"next":null,"text":"shared"},"second":{"&node":1},"meta":{"build":9,"tag":"meta"},"values":[1,-2,3],"tags":["one😀","two"],"children":[{"&node":1}],"metas":[{"build":11,"tag":"nested"}]}`)
+	text := []byte(`{"first":{"&node":1,"value":7,"next":null,"text":"shared"},"second":{"&node":1},"meta":{"build":9,"tag":"meta"},"values":[1,-2,3],"children":[{"&node":1}],"metas":[{"build":11,"tag":"row😀"}],"rows":[],"padding":[1],"empty":[],"tail":[2]}`)
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Root"])
 	rep := new(tabletext.Report)

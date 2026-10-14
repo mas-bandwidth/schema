@@ -118,6 +118,12 @@ func cookWriterFile(u *ir.Unit, c *cookUnit) []byte {
 				g.emitValueClass(st)
 				value := strings.ReplaceAll(g.b.String(), "class Value {", "class "+name+"Value {")
 				value = strings.ReplaceAll(value, "public Value()", "public "+name+"Value()")
+				for _, memberName := range c.order {
+					memberType, _ := cookValueType(u, cookMember(u, memberName))
+					if strings.HasPrefix(memberType, "TableCookWriter.") {
+						value = strings.ReplaceAll(value, fixedValue(memberName), memberType)
+					}
+				}
 				b.WriteString(value)
 			}
 			fmt.Fprintf(&b, "    static boolean write%s(TableCookWriter w, Object object, int at, boolean live) {\n        if (!(object instanceof %s)) return false;\n        %s v = (%s) object;\n", method, typ, typ, typ)
@@ -169,18 +175,34 @@ func cookWriterFile(u *ir.Unit, c *cookUnit) []byte {
 						}
 						fmt.Fprintf(&b, "        if (%s < 0 || %s > %d) return false; w.put(at+%d,%s,4);\n", used, used, f.ArrayBound, pieces[ci].Offset, used)
 					}
-					fmt.Fprintf(&b, "        if (%s > %d) return false;\n        for (int i=0;i<%s;i++) {\n", count, f.ArrayBound, count)
+					fmt.Fprintf(&b, "        if (%s > %d) return false;\n        {\n", count, f.ArrayBound)
+					one := *f
+					one.Array = ir.ArrayNone
+					one.ArrayBound = 0
+					one.KeyEnum = ""
+					if !fixed {
+						def := variableDefault(&one)
+						if one.Type.Kind == ir.TBytes && !one.Type.Pointer {
+							def = "new byte[0]"
+						}
+						fmt.Fprintf(&b, "        %s defaultValue=%s;\n", variableValueType(&one), def)
+					}
+					fmt.Fprintf(&b, "        for(int i=0;i<%d;i++){\n", f.ArrayBound)
 					el := expr + "[i]"
 					if !fixed {
-						el = expr + ".get(i)"
+						fmt.Fprintf(&b, "        %s element=i<%s.size()?%s.get(i):defaultValue;\n", variableValueType(&one), expr, expr)
+						el = "element"
 					}
-					cookWriteElement(&b, u, c, f, el, fmt.Sprintf("at+%d+i*%d", fl.Offset, pieces[0].Size/f.ArrayBound), pieces[0].Size/f.ArrayBound, fixed, live+func() string {
-						if f.Array == ir.ArrayCounted && fixed {
-							return " && i<v." + m + "Count"
+					cookWriteElement(&b, u, c, &one, el, fmt.Sprintf("at+%d+i*%d", fl.Offset, pieces[0].Size/f.ArrayBound), pieces[0].Size/f.ArrayBound, fixed, live+func() string {
+						if f.Array == ir.ArrayCounted {
+							if fixed {
+								return " && i<v." + m + "Count"
+							}
+							return " && i<" + expr + ".size()"
 						}
 						return ""
 					}())
-					b.WriteString("        }\n")
+					b.WriteString("        }}\n")
 				} else {
 					cookWriteElement(&b, u, c, f, expr, fmt.Sprintf("at+%d", fl.Offset), pieces[0].Size, fixed, live)
 					if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
@@ -348,7 +370,6 @@ const javaCookWriter = `public final class TableCookWriter {
     }
     static void putTextCount(TableCookWriter w,int at,String value) {w.put(at,textLength(value),4);}
     int carve(int count,int width,int alignment) {
-        if(count==0)return tail;
         long start=align(tail,alignment),end=start+(long)count*width;
         if(count<0||end>Integer.MAX_VALUE)return -1;
         tail=(int)end;return (int)start;
