@@ -9,11 +9,11 @@
 # whichever module under it exports block_open_<root> or cook_open_<root>. That
 # keeps the leg free of a generated name nothing else in the language needs.
 #
-# The backend emits the VARIABLE FORM for the card constructs (the id-table
-# wire's codec, descriptors and text form of docs/SPEC-TABLES.md §3, §16), but
-# that codec is not yet wired to the driver's wire, json-read, json-write and
-# report surfaces. What this leg drives is the two ACCELERATORS the backend
-# emits beside it — the block (§19) and the cook (§7), both read halves.
+# The backend emits the VARIABLE FORM for the whole variable class (the
+# id-table wire's codec, descriptors and text form of docs/SPEC-TABLES.md §3,
+# §16) beside the two ACCELERATORS it emits — the block (§19) and the cook
+# (§7), both read halves. The variable class's codec answers the driver's wire,
+# json-read, json-write and report surfaces; the block and cook answer the rest.
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -316,10 +316,10 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces only: the card-slice variable codec exists
-  # but is not yet wired, so wire, report and the three text surfaces are not
-  # on this list
-  @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # the accelerators' surfaces beside the variable form's: wire, json-read,
+  # json-write and report ride the <Unit>.Table codec, the rest the block and
+  # cook readers
+  @surfaces ~w(wire json-read json-write report cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -508,6 +508,131 @@ defmodule Driver do
 
       write(outdir, name, verdict)
     end
+  end
+
+  # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
+
+  # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
+  # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
+  defp table_module(unit) do
+    mod = Module.concat([Macro.camelize(unit), "Table"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
+         function_exported?(mod, :save, 2),
+       do: mod,
+       else: nil
+  end
+
+  defp run("wire", rows, outdir) do
+    for [name, unit, root, wire | _] <- rows(rows, "instance") do
+      answer_load_save(table_module(unit), root, wire, outdir, name)
+    end
+  end
+
+  defp run("json-read", rows, outdir) do
+    for [name, unit, root, _wire | rest] <- rows(rows, "instance"), rest == [] do
+      json = Path.join("testdata/conformance/tables/json", name <> ".json")
+      mod = table_module(unit)
+
+      case mod do
+        nil ->
+          write_absent(outdir, name)
+
+        _ ->
+          case mod.from_json(root, File.read!(json)) do
+            {:ok, value, _report} ->
+              case mod.save(root, value) do
+                {:ok, bytes} -> write(outdir, name, bytes)
+                _ -> write_absent(outdir, name)
+              end
+
+            _ ->
+              write_absent(outdir, name)
+          end
+      end
+    end
+  end
+
+  defp run("json-write", rows, outdir) do
+    for [name, unit, root, wire | rest] <- rows(rows, "instance"), rest == [] do
+      mod = table_module(unit)
+
+      case mod do
+        nil ->
+          write_absent(outdir, name <> ".json")
+
+        _ ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, _report} ->
+              case mod.to_json(root, value) do
+                {:ok, text} -> write(outdir, name <> ".json", text)
+                _ -> write_absent(outdir, name <> ".json")
+              end
+
+            _ ->
+              write_absent(outdir, name <> ".json")
+          end
+      end
+    end
+  end
+
+  defp run("report", rows, outdir) do
+    for [name, unit, root, wire] <- rows(rows, "report") do
+      write(outdir, name, report_line(table_module(unit), root, wire))
+    end
+  end
+
+  defp answer_load_save(mod, root, wire, outdir, name) do
+    case mod do
+      nil ->
+        write_absent(outdir, name)
+
+      _ ->
+        case mod.load(root, File.read!(wire)) do
+          {:ok, value, _report} ->
+            case mod.save(root, value) do
+              {:ok, bytes} -> write(outdir, name, bytes)
+              _ -> write_absent(outdir, name)
+            end
+
+          _ ->
+            write_absent(outdir, name)
+        end
+    end
+  end
+
+  defp report_line(nil, _root, _wire), do: "0,0,0,0,0,false,absent\n"
+
+  defp report_line(mod, root, wire) do
+    case mod.load(root, File.read!(wire)) do
+      {:ok, _value, report} ->
+        report_counters(report) <> ",read\n"
+
+      {:error, :newer_form, _report} ->
+        "0,0,0,0,0,false,refused\n"
+
+      {:error, :malformed, _report} ->
+        "0,0,0,0,0,true,read\n"
+
+      _ ->
+        "0,0,0,0,0,false,absent\n"
+    end
+  end
+
+  defp report_counters(report) do
+    [
+      Map.get(report, :unknown, 0),
+      Map.get(report, :kind_mismatch, 0),
+      Map.get(report, :widened, 0),
+      Map.get(report, :clamped, 0),
+      0,
+      if(Map.get(report, :malformed, false), do: "true", else: "false")
+    ]
+    |> Enum.join(",")
+  end
+
+  defp write_absent(outdir, name) do
+    File.write!(Path.join(outdir, name <> ".absent"), "")
   end
 
   defp run(surface, _rows, _outdir) do
