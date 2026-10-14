@@ -115,10 +115,12 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_arm decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_default_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_default_arm_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_default_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -140,12 +142,19 @@ defmodule Example.ArmDefaults do
       v = rv
       bits_read = bits_read + 3
       v_marker = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.DefaultArm{entries: v_entries, marker: v_marker}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_default_arm is read_default_arm_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_default_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_default_arm_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -271,10 +280,12 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_choice decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_default_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_default_choice_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_default_choice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -337,11 +348,18 @@ defmodule Example.ArmDefaults do
             {bits_read, %Example.DefaultChoice{}}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      {:ok, v}
+      {:ok, v, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_default_choice is read_default_choice_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_default_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_default_choice_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -482,10 +500,13 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_choice_packet decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_default_choice_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_default_choice_packet_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_default_choice_packet_bits(data, num_bits)
+      when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -561,12 +582,19 @@ defmodule Example.ArmDefaults do
             {bits_read, %Example.DefaultChoice{}}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.DefaultChoicePacket{choice: v_choice}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_default_choice_packet is read_default_choice_packet_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_default_choice_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_default_choice_packet_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -655,10 +683,12 @@ defmodule Example.ArmDefaults do
     data
   end
 
-  # read_default_bulk_arm decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_default_bulk_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_default_bulk_arm_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_default_bulk_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -705,12 +735,19 @@ defmodule Example.ArmDefaults do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_data = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
       value = %Example.DefaultBulkArm{payload: v_payload, data: v_data}
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_default_bulk_arm is read_default_bulk_arm_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_default_bulk_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_default_bulk_arm_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -879,10 +916,13 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_bulk_choice decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_default_bulk_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_default_bulk_choice_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_default_bulk_choice_bits(data, num_bits)
+      when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -1008,11 +1048,18 @@ defmodule Example.ArmDefaults do
             {bits_read, %Example.DefaultBulkChoice{}}
         end
 
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
-      {:ok, v}
+      {:ok, v, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_default_bulk_choice is read_default_bulk_choice_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_default_bulk_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_default_bulk_choice_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
