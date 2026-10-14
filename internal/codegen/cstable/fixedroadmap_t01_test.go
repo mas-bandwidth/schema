@@ -454,17 +454,16 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		{id: "cs/F4", probes: []string{"cs/F4"}},
 		{id: "cs/F9", probes: []string{"cs/F9", "cs/F9_census"}},
 		{id: "cs/R7", probes: []string{"cs/R7"}, check: func(t *testing.T) {
-			// §5.3: "a runtime NEVER computes a hash from layout bytes it holds". The
-			// emitted runtime defines TableFixedWire.HashOf (one definition) and nothing
-			// calls it: any second occurrence is a call, a hash derived from layout bytes.
-			// The load takes the identity lane by comparing the header's hash with the
-			// compiler-handed constant.
-			if n := strings.Count(t01Src["cs/R7"], "HashOf("); n != 1 {
-				t.Errorf("HashOf( occurs %d times in the emitted unit, want its one definition and no call: a runtime derives no hash from layout bytes", n)
+			// §5.3: the identity lane is an INDEX COMPARISON — the resolved lineage
+			// index against the reader's own index (the last entry) — never a
+			// recomputed hash. TableFixedWire.HashOf is gone: a runtime never
+			// computes a hash from layout bytes it holds.
+			if n := strings.Count(t01Src["cs/R7"], "HashOf("); n != 0 {
+				t.Errorf("HashOf( occurs %d times in the emitted unit, want none: R7 retired TableFixedWire.HashOf", n)
 			}
-			lane := "if (hash != " + t01Table["cs/R7"] + "FixedHash)"
+			lane := "if (pick != 1)"
 			if !strings.Contains(t01Src["cs/R7"], lane) {
-				t.Errorf("the load does not select its lane by %q", lane)
+				t.Errorf("the load does not select its identity lane by %q (the resolved index against the reader's own)", lane)
 			}
 		}},
 		{id: "cs/R9", probes: []string{"cs/R9"}},

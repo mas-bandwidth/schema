@@ -692,6 +692,8 @@ namespace Bench
             new TableFixedFill(0u, 309u),
         };
 
+        public const int FixedTableFixedPlanSplit = 299;
+
         public static readonly TableFixedPlan FixedTableFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -977,14 +979,6 @@ namespace Bench
             new TableFixedEntry(1100u, 281u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1104u, 282u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1108u, 283u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1109u, 284u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1113u, 285u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1117u, 286u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1121u, 287u, 1u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1109u, 288u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
-            new TableFixedEntry(1113u, 289u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
-            new TableFixedEntry(1109u, 290u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
-            new TableFixedEntry(1113u, 291u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
             new TableFixedEntry(1122u, 292u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(1126u, 293u, 15u, 294u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(1145u, 295u, 16u, 296u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 3, 1),
@@ -1000,6 +994,14 @@ namespace Bench
             new TableFixedEntry(1227u, 306u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1228u, 307u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1232u, 308u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(1109u, 284u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1113u, 285u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1117u, 286u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1121u, 287u, 1u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1109u, 288u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1113u, 289u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1109u, 290u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
+            new TableFixedEntry(1113u, 291u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0, 1),
         });
 
         private static readonly byte[] FixedTableFixedLayout0 = new byte[] {
@@ -1208,13 +1210,13 @@ namespace Bench
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = FixedTableFixedPlan;
-            long record_bytes = known.Record;
+            long record_bytes = known.RecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != FixedTableFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = FixedTableFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -1268,7 +1270,12 @@ namespace Bench
                 }
                 if (values[k] == null) { values[k] = new FixedTable(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
-                TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                string run_why = TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (run_why != null)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
                 FixedTableFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -1300,7 +1307,8 @@ namespace Bench
             ReadOnlySpan<byte> planBytes = default)
         {
             byte[] widenScratch = Array.Empty<byte>();
-            TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            string run_why = TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes, ref widenScratch);
+            if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }
 

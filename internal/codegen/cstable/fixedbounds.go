@@ -233,6 +233,134 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 }
 
+// fixedWriterBound is one bounded leaf of a lineage entry's WRITER, resolved
+// onto this reader's value: the reader's field (same storage width and kind —
+// a ranged field narrows its width only by the ladder, and the reference's
+// collectKnownRanges skips a pair whose widths differ) and the writer's raw
+// bounds.
+type fixedWriterBound struct {
+	field  *ir.Field
+	lo, hi *big.Int
+}
+
+// fixedWriterBounds resolves every lineage entry's ranged leaves against this
+// reader's own fields BY NAME — the match the reference's collectKnownRanges
+// makes — so the compiled lane's bounds pass holds a peer to what IT declared
+// and never to this reader's wider own (§4.6, bill §12.5). The identity entry
+// needs none: its writer IS this reader, and the reader's own pass holds it. A
+// field this reader cannot name bounds nothing. The answer is nil when no
+// entry bounds anything, so a table without ranged writers emits no clamp.
+func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
+	var all [][]fixedWriterBound
+	any := false
+	for _, e := range entries {
+		var rows []fixedWriterBound
+		if e.Wire != hash {
+			for _, spec := range e.Ranges {
+				for _, f := range st.Fields {
+					if f.Name != spec.Name {
+						continue
+					}
+					rows = append(rows, fixedWriterBoundsOfField(f, spec.Lo, spec.Hi)...)
+					break
+				}
+			}
+		}
+		all = append(all, rows)
+		if len(rows) > 0 {
+			any = true
+		}
+	}
+	if !any {
+		return nil
+	}
+	return all
+}
+
+// fixedWriterBoundsOfField spells one writer-bound spec at this reader's
+// field: a fixed array is one row per slot; a counted array's live count is a
+// run-time fact a static clamp does not carry, so it bounds nothing (the
+// reader's own §4.6 pass walks a counted array's live elements).
+func fixedWriterBoundsOfField(f *ir.Field, lo, hi int64) []fixedWriterBound {
+	blo, bhi := big.NewInt(lo), big.NewInt(hi)
+	if f.Array == ir.ArrayFixed {
+		out := make([]fixedWriterBound, 0, f.ArrayBound)
+		for i := int64(0); i < f.ArrayBound; i++ {
+			out = append(out, fixedWriterBound{field: f, lo: blo, hi: bhi})
+		}
+		return out
+	}
+	return []fixedWriterBound{{field: f, lo: blo, hi: bhi}}
+}
+
+// emitFixedWriterClamp writes ONE lineage entry's writer-bounds pass: a
+// straight-line clamp over this reader's value, to the peer's raw bounds —
+// the same shape as the reader's own §4.6 pass, but to the WRITER's numbers.
+func (g *tableGen) emitFixedWriterClamp(name string, idx int, rows []fixedWriterBound) {
+	g.pf("// LINEAGE ENTRY %d's writer bounds (§4.6, bill §12.5): the peer's own\n", idx)
+	g.pf("// ranged leaves, raw scale, at this reader's value — what the compiled\n")
+	g.pf("// lane's bounds pass holds this peer to. The reader's range is the wider\n")
+	g.pf("// one, so clamping to it would land a value the old writer could not have\n")
+	g.pf("// written.\n")
+	g.pf("public static void %sFixedClampKnown%d(%s value, TableReport report)\n{\n", name, idx, name)
+	g.pf("    int clamped = 0;\n")
+	for _, r := range rows {
+		g.emitFixedWriterClampField(r, 4)
+	}
+	g.pf("    if (report != null) { report.Clamped += clamped; }\n")
+	g.pf("}\n\n")
+}
+
+// emitFixedWriterClampField clamps one writer-bound leaf: a fixed array's
+// every slot, or the one scalar field.
+func (g *tableGen) emitFixedWriterClampField(b fixedWriterBound, indent int) {
+	f := b.field
+	expr := "value." + member(f)
+	ind := strings.Repeat(" ", indent)
+	if f.Array == ir.ArrayFixed {
+		i := g.enterLoop()
+		g.pf("%sfor (int %s = 0; %s < %d; ++%s)\n%s{\n", ind, i, i, f.ArrayBound, i, ind)
+		g.emitFixedWriterClampScalar(f, expr+"["+i+"]", b.lo, b.hi, indent+4)
+		g.pf("%s}\n", ind)
+		g.leaveLoop()
+		return
+	}
+	g.emitFixedWriterClampScalar(f, expr, b.lo, b.hi, indent)
+}
+
+// emitFixedWriterClampScalar spells the two-ended clamp for one scalar to the
+// writer's raw bounds, dropping an end that sits on its storage's limit the
+// way the reader's own pass does (tableClampEnds).
+func (g *tableGen) emitFixedWriterClampScalar(f *ir.Field, expr string, lo, hi *big.Int, indent int) {
+	ind := strings.Repeat(" ", indent)
+	width := int(fixedStorageBytes(f.Type))
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	lit := func(v *big.Int) string {
+		if width == 16 {
+			return wideLiteral(v, signed)
+		}
+		return csIntLit(v, signed, width)
+	}
+	lowEnd, highEnd := fixedWriterClampEnds(f, width, lo, hi)
+	switch {
+	case lowEnd && highEnd:
+		g.csClampBoth(expr, lit(lo), lit(hi), ind)
+	case lowEnd:
+		g.csClampEnd(expr, "<", lit(lo), ind)
+	case highEnd:
+		g.csClampEnd(expr, ">", lit(hi), ind)
+	}
+}
+
+// fixedWriterClampEnds is tableClampEnds for a writer-carried range: which ends
+// can fire against the storage width, so an end the storage already holds is
+// dropped and never counted.
+func fixedWriterClampEnds(f *ir.Field, widthBytes int, lo, hi *big.Int) (low, high bool) {
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	slo, shi := tableStorageRange(signed, widthBytes*8)
+	return lo.Cmp(slo) > 0, hi.Cmp(shi) < 0
+}
+
 // csClampBoth is a two-ended clamp: the count first, then the clamp, so the
 // count reads the value the wire carried and not the one the clamp just wrote.
 func (g *tableGen) csClampBoth(expr, lo, hi, ind string) {

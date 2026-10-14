@@ -340,8 +340,8 @@ fixed table T
 		"R4 the emitted hash constant is the digest-bound hash")
 	t02Has(t, src, "ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));",
 		"R4 the header's hash is taken as given")
-	if n := strings.Count(src, "HashOf("); n != 1 {
-		t.Errorf("R4: HashOf( occurs %d times, want its one definition and no call: a runtime derives no hash from layout bytes", n)
+	if n := strings.Count(src, "HashOf("); n != 0 {
+		t.Errorf("R4: HashOf( occurs %d times, want none: the runtime defines no layout hasher (R7 retired TableFixedWire.HashOf)", n)
 	}
 }
 

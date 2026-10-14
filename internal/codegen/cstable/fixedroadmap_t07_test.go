@@ -254,7 +254,7 @@ func t07W9(t *testing.T) {
 		"W9 the fill list is the slots the selected plan does not land")
 	t07Has(t, t07Norm(src), "TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TFixedSlots, values[k]);",
 		"W9 the prefill runs the derived list and nothing else")
-	t07Before(t, src, "if (hash != TFixedHash)", "fillCount = TableFixedWire.Fills(",
+	t07Before(t, src, "if (pick != 0)", "fillCount = TableFixedWire.Fills(",
 		"W9 the prefill is computed only for a compiled plan, never for the identity plan")
 }
 
