@@ -190,3 +190,56 @@ func compressedFloatJavaTools(t *testing.T) (javac, javaBin string) {
 	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""
 }
+
+// TestJavaWStringWriteChecksAreDebugOnly generates the writer for
+// `type Wide { text wstring(2) }` and asserts that its text carries
+// no unconditional check (release) while the checks are still present
+// as asserts (debug tier).
+func TestJavaWStringWriteChecksAreDebugOnly(t *testing.T) {
+	t.Parallel()
+
+	const src = `package wtest
+
+type Wide {
+	text wstring(2)
+}
+`
+	f, errs := parser.Parse("W.schema", []byte(src))
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "W.schema", Name: "W.schema", Base: "W", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) != 0 {
+		t.Fatal(cerrs)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["W.java"])
+	if text == "" {
+		t.Fatal("W.java not emitted")
+	}
+	// release: no unconditional checks in the text
+	for _, bad := range []string{
+		`throw new IllegalArgumentException("wstring length")`,
+		`throw new IllegalArgumentException("wstring null unit")`,
+	} {
+		if strings.Contains(text, bad) {
+			t.Logf("GENERATED TEXT:\n%s", text)
+			t.Errorf("release writer's text carries unconditional check %q", bad)
+		}
+	}
+	// debug still has the checks (via assert)
+	if !strings.Contains(text, "assert value.textLength >= 0;") {
+		t.Errorf("debug writer missing length >= check assert")
+	}
+	if !strings.Contains(text, "assert value.textLength <= 2;") {
+		t.Errorf("debug writer missing length <= check assert")
+	}
+	if !strings.Contains(text, "assert v != 0;") {
+		t.Errorf("debug writer missing null-unit check assert")
+	}
+}
