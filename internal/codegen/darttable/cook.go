@@ -156,17 +156,19 @@ func cookMember(u *ir.Unit, name string) *ir.Struct {
 }
 
 type cookGen struct {
-	unit      *ir.Unit
-	file      *ir.File
-	cook      *cookUnit
-	blocks    *ir.BlockUnit
-	home      bool
-	homeBase  string
-	body      strings.Builder
-	imports   map[string]map[string]bool
-	needData  bool
-	needHome  bool
-	needBlock bool
+	unit        *ir.Unit
+	file        *ir.File
+	cook        *cookUnit
+	blocks      *ir.BlockUnit
+	home        bool
+	homeBase    string
+	body        strings.Builder
+	imports     map[string]map[string]bool
+	needData    bool
+	needHome    bool
+	needBlock   bool
+	needWire    bool
+	needConvert bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -250,6 +252,12 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// in Dart the read after an escaping delta would be a RangeError, and a\n")
 	h.WriteString("// reader that throws on hostile bytes is not one that refuses them.\n")
 	h.WriteString("\n")
+	if g.needConvert {
+		h.WriteString("import 'dart:convert';\n")
+	}
+	if g.needWire {
+		fmt.Fprintf(&h, "import '%sWire.dart' as TableCookWire;\n", g.homeBase)
+	}
 	if g.needData || g.home {
 		h.WriteString("import 'dart:typed_data';\n\n")
 	}
@@ -356,7 +364,11 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 	g.emitCookOpen(st, ml)
 	g.emitCookAt(st)
 	g.emitCookDescriptors(st)
-	g.emitCookWriteFixed(st)
+	if ir.VariableTables(g.unit)[st.Name] {
+		g.emitCookWriteGraph(st)
+	} else {
+		g.emitCookWriteFixed(st)
+	}
 	g.pf("}\n\n")
 }
 

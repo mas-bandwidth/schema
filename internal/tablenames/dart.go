@@ -20,6 +20,7 @@ func init() {
 		Name{Name: "TableBlockRead64", What: "the prologue read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
 		Name{Name: "TableBlockRefusal", What: "the block fill path's refusal, by name: the array, the count and the declared maximum it violates (§19.1)"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},
+		Name{Name: "TableCookWire", What: "the imported cook-writer authoring namespace (§7.6)"},
 		Name{Name: "TableCookWriteReport", What: "the cook writer refusal using the reference leg's named reasons (§7.6)"},
 		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
