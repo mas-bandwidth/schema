@@ -166,14 +166,15 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
       if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
-      if (e.Element.Bits >= 0) {
-        let width = e.Element.Bits;
+      if (e.Element.Bits >= 0 || e.Element.Kind === 0 || e.Element.Kind === 32) {
+        let width = Math.max(0, e.Element.Bits);
         if (s.Kind === 16) { width += v.RefBits; }
         return r.Skip(Number(n) * width);
       }
       for (let i = 0n; i < n; i++) {
+        const before = r.Offset;
         if (s.Kind === 16 && !r.Skip(v.RefBits)) { return false; }
-        if (!tableMessageSkip(r, v, indexBits, { Shape: e.Element }, depth + 1)) { return false; }
+        if (!tableMessageSkip(r, v, indexBits, { Shape: e.Element, Element: { Kind: 0, Bits: 0 } }, depth + 1) || r.Offset === before) { return false; }
       }
       return true;
     }
@@ -679,8 +680,14 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 	} else {
 		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
 		g.pf("%s    const p = i < BigInt(keep) ? %s[Number(i)] : null;\n", ind, mem)
-		g.pf("%s    if (p === null) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { %s; } }\n", ind, bad)
-		g.pf("%s    else {\n", ind)
+		g.pf("%s    if (p === null) {\n", ind)
+		g.pf("%s      if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {\n", ind)
+		g.pf("%s        if (!r.Bits.Skip(Number(n - i) * Math.max(0, entry.Element.Bits))) { %s; }\n", ind, bad)
+		g.pf("%s        break;\n", ind)
+		g.pf("%s      }\n", ind)
+		g.pf("%s      const before = r.Bits.Offset;\n", ind)
+		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { %s; }\n", ind, bad)
+		g.pf("%s    } else {\n", ind)
 		g.emitMessageReadElement(e, mem+"[Number(i)]", ind+"      ", "entry.Element")
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
