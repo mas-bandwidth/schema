@@ -1157,7 +1157,7 @@ static void test_nested()
                 {
                     uint8_t * forged = (uint8_t *) cooked;
                     const int64_t delta = cook_bytes; // past every byte the file has
-                    memcpy( forged + 64, &delta, sizeof( delta ) );
+                    memcpy( (void *) ( forged + 64 ), &delta, sizeof( delta ) );
                     save_cook( "sheet-forged", forged, cook_bytes );
                 }
                 free( cooked );

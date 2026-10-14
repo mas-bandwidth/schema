@@ -184,7 +184,7 @@ int main()
     {
         const unit_ns::ViewConstant & c = unit->constants[i];
         uint64_t bits = 0;
-        memcpy( &bits, &c.float_value, sizeof( bits ) );
+        memcpy( (void *) &bits, &c.float_value, sizeof( bits ) );
         printf( "constant %s file=%s type=%s float=%s int=%lld real=%016llx",
                 c.name, c.file, c.type_name, c.is_float ? "true" : "false",
                 (long long) c.int_value, (unsigned long long) ( c.is_float ? bits : 0 ) );

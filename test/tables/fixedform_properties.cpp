@@ -135,7 +135,7 @@ struct Issues
 static uint8_t byte_of( const void * p )
 {
     uint8_t u = 0;
-    std::memcpy( &u, p, 1 );
+    std::memcpy( (void *) &u, p, 1 );
     return u;
 }
 
@@ -293,7 +293,7 @@ template<typename F>
 static int64_t load_identity( typename F::T & v, const uint8_t * file, int64_t bytes, typename F::Report & r )
 {
     std::vector<typename F::Entry> plan( (size_t) kPlanCap );
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     return F::load( &v, 1, file, bytes, plan.data(), kPlanCap, &r );
 }
 
@@ -332,7 +332,7 @@ static int64_t load_compiled( typename F::T & v, const uint8_t * file, int64_t b
         r.reason = F::no_layout;
         return -1;
     }
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     // THE PREFILL IS THE COMPILE'S ANSWER AND THE READER RUNS IT, which is the
     // one path the generated load takes: the ranges the plan does not land, out
     // of a default image reset once per read rather than a whole-value reset per
@@ -362,7 +362,7 @@ static int64_t load_unclamped( typename F::T & v, const uint8_t * file, typename
         r.reason = F::no_layout;
         return -1;
     }
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     F::reset( v );
     F::run( F::plan, F::plan_count, F::plan_guarded, rec + 8, (uint8_t *) &v, &r );
     return 1;
@@ -440,7 +440,7 @@ template<typename F>
 static void run_properties()
 {
     typename F::T v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     F::reset( v );
     F::fill( v );
 
@@ -1229,7 +1229,7 @@ template<typename Older, typename Newer>
 static void run_pair_p1()
 {
     typename Older::T ov;
-    std::memset( &ov, 0, sizeof( ov ) );
+    std::memset( (void *) &ov, 0, sizeof( ov ) );
     Older::reset( ov );
     Older::fill( ov );
     const int64_t oneed = Older::measure( 1 );
@@ -1242,7 +1242,7 @@ static void run_pair_p1()
         typename Newer::T back;
         typename Newer::Report r{};
         std::vector<typename Newer::Entry> plan( (size_t) kPlanCap );
-        std::memset( &back, 0, sizeof( back ) );
+        std::memset( (void *) &back, 0, sizeof( back ) );
         const int64_t n = Newer::load( &back, 1, ofile.data(), oneed, plan.data(), kPlanCap, &r );
         std::snprintf( what, sizeof( what ),
                        "P1 %s reads older %s: compiled path through lineage, one record",
@@ -1251,7 +1251,7 @@ static void run_pair_p1()
     }
 
     typename Newer::T nv;
-    std::memset( &nv, 0, sizeof( nv ) );
+    std::memset( (void *) &nv, 0, sizeof( nv ) );
     Newer::reset( nv );
     Newer::fill( nv );
     const int64_t nneed = Newer::measure( 1 );
@@ -1263,7 +1263,7 @@ static void run_pair_p1()
         typename Older::T back;
         typename Older::Report r{};
         std::vector<typename Older::Entry> plan( (size_t) kPlanCap );
-        std::memset( &back, 0, sizeof( back ) );
+        std::memset( (void *) &back, 0, sizeof( back ) );
         const int64_t n = Older::load( &back, 1, nfile.data(), nneed, plan.data(), kPlanCap, &r );
         std::snprintf( what, sizeof( what ),
                        "P1 %s given newer %s: layout_newer (old contract's reverse read is retired)",
@@ -1275,7 +1275,7 @@ static void run_pair_p1()
 static void probe_clamp_op()
 {
     scalardemo::SimState w;
-    std::memset( &w, 0, sizeof( w ) );
+    std::memset( (void *) &w, 0, sizeof( w ) );
     scalardemo::SimStateReset( w );
     w.position = 2000LL * 65536; // in FX1's range, past Scalars2's 1000
     const int64_t need = scalardemo::SimStateFixedMeasure( 1 );
@@ -1283,7 +1283,7 @@ static void probe_clamp_op()
     check( scalardemo::SimStateFixedSave( &w, 1, file.data(), need ) == need, "probe clamp-op: save" );
 
     scalardemo2::SimState back;
-    std::memset( &back, 0, sizeof( back ) );
+    std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
@@ -1295,7 +1295,7 @@ static void probe_clamp_op()
 static void probe_text_content()
 {
     tblfx1::FxRoot v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     FX1::reset( v );
     FX1::fill( v );
     std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
@@ -1305,7 +1305,7 @@ static void probe_text_content()
     // label is after keep(4)+narrow(2)+renamed(4)+gone(4)+nested(8) = 22; length then 3 used bytes
     rec[8 + 22 + 4] = 0xFF; // first used byte of "fx1"
     tblfx1::FxRoot back;
-    std::memset( &back, 0, sizeof( back ) );
+    std::memset( (void *) &back, 0, sizeof( back ) );
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
@@ -1322,7 +1322,7 @@ static void probe_text_content()
 static void probe_absent_optional()
 {
     tblp3::Chain v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     tblp3::ChainReset( v );
     std::strcpy( v.name, "absent" );
     v.name_length = 6;
@@ -1337,7 +1337,7 @@ static void probe_absent_optional()
     rec[8 + 23] = 0x5A;
     rec[8 + 24] = 0x00;
     tblp3::Chain back;
-    std::memset( &back, 0, sizeof( back ) );
+    std::memset( (void *) &back, 0, sizeof( back ) );
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
@@ -1351,7 +1351,7 @@ static void probe_absent_optional()
 static void probe_bool_domain()
 {
     tblfn1::FnRoot v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     FN1::reset( v );
     FN1::fill( v );
     std::vector<uint8_t> file( (size_t) tblfn1::FnRootFixedMeasure( 1 ) );
@@ -1371,7 +1371,7 @@ static void probe_bool_domain()
 static void probe_ordinal_enum()
 {
     tblfn1::FnRoot v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     FN1::reset( v );
     FN1::fill( v );
     std::vector<uint8_t> file( (size_t) tblfn1::FnRootFixedMeasure( 1 ) );
@@ -1396,7 +1396,7 @@ static void probe_ordinal_enum()
 static void probe_ordinal_tag()
 {
     tblut1::UtRoot v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     UT1::reset( v );
     UT1::fill( v );
     std::vector<uint8_t> file( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
@@ -1421,7 +1421,7 @@ static void probe_ordinal_tag()
 static void probe_kind_mismatch()
 {
     scalardemo::SimState w;
-    std::memset( &w, 0, sizeof( w ) );
+    std::memset( (void *) &w, 0, sizeof( w ) );
     scalardemo::SimStateReset( w );
     w.angle = 42 * 65536; // a scaled fixed(16,16); Scalars2 respells angle as int32
     const int64_t need = scalardemo::SimStateFixedMeasure( 1 );
@@ -1429,7 +1429,7 @@ static void probe_kind_mismatch()
     check( scalardemo::SimStateFixedSave( &w, 1, file.data(), need ) == need, "probe kind-mismatch: save" );
 
     scalardemo2::SimState back;
-    std::memset( &back, 0, sizeof( back ) );
+    std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
@@ -1442,7 +1442,7 @@ static void probe_kind_mismatch()
 static void probe_runcopy_values()
 {
     scalardemo::SimState v;
-    std::memset( &v, 0, sizeof( v ) );
+    std::memset( (void *) &v, 0, sizeof( v ) );
     Scalars::reset( v );
     Scalars::fill( v );
     const int64_t need = scalardemo::SimStateFixedMeasure( 1 );

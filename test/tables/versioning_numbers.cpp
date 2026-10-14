@@ -149,8 +149,8 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 // assertion below is unchanged until §12.4's report field exists.
 #define OLD_REFUSES_NEW( OLDNS, TBL, ROW, newbytes )                                                    \
     do {                                                                                                \
-        OLDNS::TBL back;  std::memset( &back, 0, sizeof( back ) );  OLDNS::TBL##Reset( back );           \
-        OLDNS::TBL fresh; std::memset( &fresh, 0, sizeof( fresh ) ); OLDNS::TBL##Reset( fresh );         \
+        OLDNS::TBL back;  std::memset( (void *) &back, 0, sizeof( back ) );  OLDNS::TBL##Reset( back );           \
+        OLDNS::TBL fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); OLDNS::TBL##Reset( fresh );         \
         OLDNS::TableReport r;                                                                            \
         std::vector<OLDNS::TableFixedEntry> plan( 4096 );                                                 \
         const int64_t n = OLDNS::TBL##FixedLoad( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
@@ -277,7 +277,7 @@ void array_fixed_grow_case()
         // slack; a zero-fill of the reader's struct would still look like
         // the element's defaults. Poison, then load, then the slack must be
         // 7 and 9 from the plan's prefill (bill §12.6).
-        std::memset( &back, 0x5A, sizeof( back ) );
+        std::memset( (void *) &back, 0x5A, sizeof( back ) );
         vnew_array_fixed_grow::TableReport r;
         std::vector<vnew_array_fixed_grow::TableFixedEntry> plan( 4096 );
         check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
@@ -458,7 +458,7 @@ void wstring_grow_case()
     vold_wstring_grow::WstringGrow old;
     vold_wstring_grow::WstringGrowReset( old );
     old.lead = 0xAAAAAAAAu;
-    std::memcpy( old.text, src, sizeof( src ) );
+    std::memcpy( (void *) old.text, src, sizeof( src ) );
     old.text_length = 8; // EIGHT CODE UNITS, a surrogate pair counting two
     old.trail = 0xBBBBBBBBu;
     std::vector<uint8_t> ob = one( old, vold_wstring_grow::WstringGrowFixedMeasure,
@@ -629,8 +629,8 @@ void uint_widen_case()
 // the 22 payload bits BELOW THE QUIET BIT ride exactly — the half no ruling can
 // change — so the day the quiet bit is ruled on, one line moves.
 
-uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
-float f_from( uint32_t b ) { float f; std::memcpy( &f, &b, 4 ); return f; }
+uint64_t bits64( double d ) { uint64_t b; std::memcpy( (void *) &b, &d, 8 ); return b; }
+float f_from( uint32_t b ) { float f; std::memcpy( (void *) &f, &b, 4 ); return f; }
 
 void float_widen_case()
 {
@@ -1017,8 +1017,8 @@ void floor_cases()
     // floor_below — A FILE ONE BELOW THE FLOOR REFUSES layout_unsupported, no
     // counter, nothing decoded. Today it READS, because there is no floor.
     {
-        vnew_floor::Floored back;  std::memset( &back, 0, sizeof( back ) );  vnew_floor::FlooredReset( back );
-        vnew_floor::Floored fresh; std::memset( &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
+        vnew_floor::Floored back;  std::memset( (void *) &back, 0, sizeof( back ) );  vnew_floor::FlooredReset( back );
+        vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
         const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b0.data(), (int64_t) b0.size(),
@@ -1092,8 +1092,8 @@ void hash_cases()
         stranger.anchor = 5;
         std::vector<uint8_t> sb = one( stranger, vnew_lineage_merge::MergedFixedMeasure,
                                        vnew_lineage_merge::MergedFixedSave, "hash_unknown: the stranger saves" );
-        vnew_floor::Floored back;  std::memset( &back, 0, sizeof( back ) );  vnew_floor::FlooredReset( back );
-        vnew_floor::Floored fresh; std::memset( &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
+        vnew_floor::Floored back;  std::memset( (void *) &back, 0, sizeof( back ) );  vnew_floor::FlooredReset( back );
+        vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
         const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, sb.data(), (int64_t) sb.size(),
@@ -1150,9 +1150,9 @@ void hash_cases()
                 else { vnew_floor::TableFixedPut32( e + 13, breaks[k].value ); }
             }
             // Distinct from reset defaults: even an accidental prefill must be visible.
-            vnew_floor::Floored back; std::memset( &back, 0xA5, sizeof( back ) );
+            vnew_floor::Floored back; std::memset( (void *) &back, 0xA5, sizeof( back ) );
             back.a = 101; back.b = 202; back.c = 303;
-            vnew_floor::Floored fresh; std::memcpy( &fresh, &back, sizeof( fresh ) );
+            vnew_floor::Floored fresh; std::memcpy( (void *) &fresh, &back, sizeof( fresh ) );
             vnew_floor::TableReport r;
             std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
             const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, f.data(), (int64_t) f.size(),

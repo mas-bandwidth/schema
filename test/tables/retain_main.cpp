@@ -122,14 +122,14 @@ static int64_t write_rt2( uint8_t * buffer, int64_t capacity )
 {
     tblrt2::NodeBuilder builder;
     tblrt2::Node * root = builder.GetRoot();
-    memcpy( root->name, "world", 6 );
+    memcpy( (void *) root->name, "world", 6 );
     root->name_length = 5;
     root->tier = tblrt2::Slot::Extra; // a variant RT1 cannot name
 
     root->extra = 11;
     root->inner.hits = 3;
     root->inner.future = 21;
-    memcpy( root->inner.tag, "in", 3 );
+    memcpy( (void *) root->inner.tag, "in", 3 );
     root->inner.tag_length = 2;
 
     root->items_count = 2;
@@ -499,7 +499,7 @@ static void unknown_node_record()
     {
         tblrt3::NodeBuilder builder;
         tblrt3::Node * root = builder.GetRoot();
-        memcpy( root->name, "beam", 5 );
+        memcpy( (void *) root->name, "beam", 5 );
         root->name_length = 4;
         tblrt3::TableSlot<tblrt3::Beam> beam = builder.Alloc<tblrt3::Beam>();
         beam->value = 3;
@@ -914,12 +914,12 @@ static void walk_is_linear()
 static void fill_rt2_message( tblrt2::NodeBuilder & builder, bool full )
 {
     tblrt2::Node * root = builder.GetRoot();
-    memcpy( root->name, full ? "world" : "again", 6 );
+    memcpy( (void *) root->name, full ? "world" : "again", 6 );
     root->name_length = 5;
     root->extra = full ? 11 : 12;
     root->inner.hits = 3;
     root->inner.future = 21;
-    memcpy( root->inner.tag, "in", 3 );
+    memcpy( (void *) root->inner.tag, "in", 3 );
     root->inner.tag_length = 2;
     if ( !full ) { return; }
 
