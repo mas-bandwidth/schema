@@ -11,8 +11,14 @@ package cstable
 // flip.
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 )
 
 func TestFixedRoadmapCSharpT12PlansVersions(t *testing.T) {
@@ -200,4 +206,209 @@ func t12R15(t *testing.T) {
 	runtime := t12Norm(text)
 	t12Has(t, runtime, "else if ((uint)v > p.Size)", "R15 the count clamp is the writer's bound")
 	t12Has(t, runtime, "else if ((uint)v > cap)", "R15 the text clamp is the writer's span")
+	// The §4.6 bounds pass (emitFixedClamp) is not a forward-read clamp and stays;
+	// the clamps that REMAIN in the read are the writer's bounds above, never the
+	// reader's own. The behavioural half — each of the four retired forward-read
+	// clamps comes back layout_newer with the destination untouched — runs through
+	// one dotnet build and run, under the make target that sets SCHEMA_REQUIRE_CORPUS.
+	t.Run("forward-reads", func(t *testing.T) {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+			t.Skip("the four forward-read clamps run under make tables-cs-fixed-roadmap")
+		}
+		t12R15Forward(t)
+	})
+}
+
+// t12ForwardClamp is one of the four forward-read clamps §5.6 retires: a count
+// clamp across bounds, a range clamp across versions, a remap of an unknown
+// variant to None, and a drop-and-count of an unknown field. Each is a NEWER
+// writer whose hash is in no lineage entry of the reader, so each is refused
+// layout_newer before any record — the same name the versioning harness's
+// old_refuses_new column asserts, named here per clamp on this leg.
+type t12ForwardClamp struct {
+	id     string
+	reader string // the reader's schema, the older generation
+	writer string // the writer's schema, the newer generation
+}
+
+var t12ForwardClamps = []t12ForwardClamp{
+	{id: "cs/R15/count-clamp-across-bounds",
+		reader: "package r1\n\nfixed table T\n{\n    tail int32 = 7\n    a [..4]int32\n}\n",
+		writer: "package w1\n\nfixed table T\n{\n    tail int32 = 7\n    a [..8]int32\n}\n"},
+	{id: "cs/R15/range-clamp-across-versions",
+		reader: "package r2\n\nfixed table T\n{\n    tail int32 = 7\n    n int32 = 0 | min = 0, max = 100\n}\n",
+		writer: "package w2\n\nfixed table T\n{\n    tail int32 = 7\n    n int32 = 0 | min = 0, max = 200\n}\n"},
+	{id: "cs/R15/remap-unknown-variant-to-none",
+		reader: "package r3\n\nenum E { A, B }\n\nfixed table T\n{\n    tail int32 = 7\n    e E\n}\n",
+		writer: "package w3\n\nenum E { A, B, C }\n\nfixed table T\n{\n    tail int32 = 7\n    e E\n}\n"},
+	{id: "cs/R15/drop-and-count-unknown-field",
+		reader: "package r4\n\nfixed table T\n{\n    tail int32 = 7\n    x int32\n}\n",
+		writer: "package w4\n\nfixed table T\n{\n    tail int32 = 7\n    x int32\n    y int32\n}\n"},
+}
+
+// t12R15ForwardBody writes the newer writer's own record, then reads it with the
+// older reader: layout_newer, the file's hash on the report, nothing marked
+// malformed, no counter moved, and the destination still the sentinel — REFUSE
+// is total.
+const t12R15ForwardBody = `
+            var w = new @W@.T();
+            w.Tail = 5;
+            byte[] buf = new byte[@W@.Schema.TFixedMeasure(1)];
+            if (@W@.Schema.TFixedSave(w, buf) < 0) { bad += ProbeLog.Fail(@NAME@, "the newer writer did not write its own file"); }
+            var back = new T();
+            back.Tail = 99;
+            TableReport r = new TableReport();
+            TableFixedEntry[] plan = new TableFixedEntry[8192];
+            long n = Schema.TFixedLoad(back, buf, plan, r);
+            if (n != -1) { bad += ProbeLog.Fail(@NAME@, "the forward read was not refused: n=" + n); }
+            if (r.Reason != "layout_newer") { bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_newer, not " + r.Reason); }
+            ulong want = BinaryPrimitives.ReadUInt64LittleEndian(buf.AsSpan(8));
+            if (r.LayoutHash != want) { bad += ProbeLog.Fail(@NAME@, "layout_newer reports the file's hash and nothing else"); }
+            if (r.Malformed) { bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too"); }
+            if (r.Clamped != 0 || r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0) { bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves"); }
+            if (back.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "REFUSE wrote the destination: tail=" + back.Tail); }
+`
+
+// t12R15Forward builds the four clamp probes into one assembly and runs it with
+// the SDK's Roslyn compiler and dotnet exec — the t10 harness, no serialize.cs
+// and no corpus — then reads each clamp's verdict out of the one run.
+func t12R15Forward(t *testing.T) {
+	t.Helper()
+	t10Discover(t)
+	dir := t.TempDir()
+	write := func(root string, files map[string][]byte) {
+		for name, data := range files {
+			p := filepath.Join(root, name)
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var calls []string
+	for i, c := range t12ForwardClamps {
+		ru := unitFrom(t, c.reader)
+		wu := unitFrom(t, c.writer)
+		rns := capitalize(ru.Package)
+		wns := capitalize(wu.Package)
+		rgen := filepath.Join(dir, "gen", fmt.Sprintf("u%03d", i), "r")
+		wgen := filepath.Join(dir, "gen", fmt.Sprintf("u%03d", i), "w")
+		pk, err := csharp.Generate(ru)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tb, err := Generate(ru)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(rgen, pk)
+		write(rgen, tb)
+		wpk, err := csharp.Generate(wu)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wtb, err := Generate(wu)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(wgen, wpk)
+		write(wgen, wtb)
+		probeClass := fmt.Sprintf("Probe%03d", i)
+		body := strings.NewReplacer("@NAME@", fmt.Sprintf("%q", c.id), "@W@", wns).Replace(t12R15ForwardBody)
+		src := fmt.Sprintf(`// generated by internal/codegen/cstable's t12 harness: the four retired forward-read clamps
+using System;
+using System.Buffers.Binary;
+
+namespace %s
+{
+    static class %s
+    {
+        public static int Run()
+        {
+            int bad = 0;
+%s
+            if (bad == 0) { Console.WriteLine("ROW " + %s + ": ok"); }
+            return bad;
+        }
+    }
+}
+`, rns, probeClass, body, fmt.Sprintf("%q", c.id))
+		if err := os.WriteFile(filepath.Join(dir, probeClass+".cs"), []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		calls = append(calls, fmt.Sprintf("            bad += %s.%s.Run();", rns, probeClass))
+	}
+	main := fmt.Sprintf(`using System;
+
+static class ProbeLog
+{
+    public static int Fail(string row, string what)
+    {
+        Console.WriteLine("ROW " + row + ": FAILED " + what);
+        return 1;
+    }
+}
+
+static class ProbeMain
+{
+    static int Main()
+    {
+        int bad = 0;
+        try
+        {
+%s
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("ROW harness: FAILED " + e.ToString());
+            return 1;
+        }
+        Console.WriteLine(bad == 0 ? "cs t12 forward reads: every row green" : "cs t12 forward reads: " + bad + " FAILED");
+        return bad == 0 ? 0 : 1;
+    }
+}
+`, strings.Join(calls, "\n"))
+	if err := os.WriteFile(filepath.Join(dir, "ProbeMain.cs"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	topFiles, _ := filepath.Glob(filepath.Join(dir, "*.cs"))
+	genFiles, _ := filepath.Glob(filepath.Join(dir, "gen", "*", "*", "*.cs"))
+	refs, _ := filepath.Glob(filepath.Join(t10refDir, "*.dll"))
+	args := []string{t10csc, "-nologo", "-langversion:latest", "-unsafe", "-out:" + filepath.Join(dir, "app.dll")}
+	for _, r := range refs {
+		args = append(args, "-r:"+r)
+	}
+	args = append(args, topFiles...)
+	args = append(args, genFiles...)
+	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		for _, c := range t12ForwardClamps {
+			t10Assert(t, out, err, c.id)
+		}
+		t.Fatalf("the t12 forward-read assembly did not compile: %s", t10Tail(string(out), err))
+	}
+
+	rtc := fmt.Sprintf(`{
+  "runtimeOptions": {
+    "tfm": "net10.0",
+    "framework": { "name": "Microsoft.NETCore.App", "version": %q }
+  }
+}
+`, t10refVersion)
+	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run.Dir = dir
+	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+	runOut, runErr := run.CombinedOutput()
+	for _, c := range t12ForwardClamps {
+		t10Assert(t, runOut, runErr, c.id)
+	}
 }
