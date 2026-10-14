@@ -43,9 +43,10 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 // closureHoldsFixedTable reports whether the unit's table closure holds a
 // `fixed table` (docs/SPEC-TABLES.md §2.2). Such a unit is served by the block,
 // cook and fixed forms, so refuseCardUnsupportedVariableConstructs — the
-// variable form's own boundary — does not bind it (docs/SPEC-TABLES.md §11):
-// this backend emits no form-`1` byte today (schema#515), so a variable table
-// beside a fixed one is not mis-encoded by anything the leg writes.
+// variable form's own boundary — does not bind it (docs/SPEC-TABLES.md §11).
+// The variable form is still emitted beside them (§2.7, §3): form byte 1 is
+// not the fixed form's byte, and a construct this codec does not carry is
+// left out of a save rather than mis-encoded.
 func closureHoldsFixedTable(u *ir.Unit, closure map[string]bool) bool {
 	variable := ir.VariableTables(u)
 	for name := range closure {

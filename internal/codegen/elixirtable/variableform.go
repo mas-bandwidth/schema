@@ -3,9 +3,10 @@
 // tables as list elements; bool, int32, int64 and enum with their defaults and
 // ranges; string(N); *string; and unbounded lists of tables []T (§2.9) — and,
 // beyond that slice, pointers to tables and the flat node table (§2.1, §3.1),
-// *bytes blobs (§2.5) and the unsigned integer widths those values declare.
-// Constructs this backend still does not carry are refused by name at the
-// boundary (§11) and never reach here.
+// *bytes blobs (§2.5), the unsigned integer widths those values declare, and
+// unbounded arrays of scalars (§2.9). A variable table beside a fixed one
+// still gets this codec (§2.7). Constructs this backend still does not carry
+// are refused by name at the boundary (§11) only when this form owns the unit.
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
@@ -14,9 +15,10 @@
 // A *string or a *bytes rides as a pointer index (kind 17) into the flat node
 // table (§2.5), which the root body carries under the reserved node-table id
 // at kind 12; a table pointer is the same index naming a table record (§2.1).
-// A list rides as an array (kind 14) of framed table bodies (element kind 13);
-// an enum rides under its own kind 30 carrying the reference to the variant
-// name's id.
+// A list of tables rides as an array (kind 14) of framed table bodies (element
+// kind 13). A list of scalars is the same kind 14 with the elements packed at
+// the element kind's width and no per-element length (§2.9). An enum rides
+// under its own kind 30 carrying the reference to the variant name's id.
 //
 // Reading is wire tolerance (§4): an unknown id is skipped and counted, an
 // absent field reads its default, a kind mismatch and an out-of-range value are
@@ -177,9 +179,36 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           end
 
         :list ->
-          Enum.reduce(Map.get(value, f.name, []), acc, fn e, acc ->
-            collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
-          end)
+          # a scalar element carries no node. A pointer element is a node of
+          # its own. A table element is by value and the edges are inside it
+          # (docs/SPEC-TABLES.md §2.1, §2.9, §3.1).
+          case f.elem_t do
+            :tab ->
+              Enum.reduce(Map.get(value, f.name, []), acc, fn e, acc ->
+                collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
+              end)
+
+            :ptr ->
+              Enum.reduce(Map.get(value, f.name, []), acc, fn e, acc ->
+                case e do
+                  nil ->
+                    acc
+
+                  v ->
+                    tagged = {:table, f.elem, v}
+
+                    if Enum.any?(acc, fn n -> n == tagged end) do
+                      acc
+                    else
+                      child = Map.fetch!(@tables, f.elem)
+                      collect_nodes(child, v, [tagged | acc])
+                    end
+                end
+              end)
+
+            _ ->
+              acc
+          end
 
         _ ->
           acc
@@ -235,7 +264,50 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp emit_field(%{t: :list} = f, value, idx_map, ids, order, acc) do
+  # a scalar unbounded array is kind 14, the element kind, the count, then
+  # the elements packed at their width — no per-element length
+  # (docs/SPEC-TABLES.md §2.9, §3). An empty array elides. A zero element
+  # still rides, because position is identity inside an array.
+  defp emit_field(%{t: :list, elem_t: :int} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name, []) do
+      [] ->
+        {idx_map, ids, order, acc}
+
+      elements ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        packed = Enum.map(elements, fn v -> int_bytes(v, f.width, f.signed) end)
+        array = [<<f.ek>>, leb_encode(length(elements)), packed]
+        {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  # []*T is kind 14 over element kind 17: each slot is a node index, and null
+  # rides as 0 in its slot (docs/SPEC-TABLES.md §2.1, §2.9, §3.1).
+  defp emit_field(%{t: :list, elem_t: :ptr} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name, []) do
+      [] ->
+        {idx_map, ids, order, acc}
+
+      elements ->
+        {ref, ids, order} = intern(ids, order, f.id)
+
+        packed =
+          Enum.map(elements, fn e ->
+            idx =
+              case e do
+                nil -> 0
+                v -> Map.fetch!(idx_map, {:table, f.elem, v})
+              end
+
+            leb_encode(idx)
+          end)
+
+        array = [<<f.ek>>, leb_encode(length(elements)), packed]
+        {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  defp emit_field(%{t: :list, elem_t: :tab} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name, []) do
       [] ->
         {idx_map, ids, order, acc}
@@ -244,8 +316,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {ref, ids, order} = intern(ids, order, f.id)
         elem_desc = Map.fetch!(@tables, f.elem)
         {body, idx_map, ids, order} = save_elements(elem_desc, elements, idx_map, ids, order, [])
-        array = [<<13>>, leb_encode(length(elements)), body]
+        array = [<<f.ek>>, leb_encode(length(elements)), body]
         {idx_map, ids, order, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+    end
+  end
+
+  # an element class this codec does not carry yet elides only while empty
+  # (docs/SPEC-TABLES.md §2.9). A present one is not encoded: writing nothing
+  # would be a wrong answer (§11).
+  defp emit_field(%{t: :list} = f, value, idx_map, ids, order, acc) do
+    case Map.get(value, f.name, []) do
+      [] ->
+        {idx_map, ids, order, acc}
+
+      _ ->
+        raise "elixir variable form: #{f.name} element class is not carried"
     end
   end
 
@@ -898,13 +983,76 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
+  # a scalar array's body is the element kind, the count, then packed values
+  # (docs/SPEC-TABLES.md §2.9, §3). A narrower kind on the same signedness
+  # ladder widens (§4); any other element kind is a mismatch and the field
+  # keeps its default.
+  defp read_payload(%{t: :list, elem_t: :int} = f, payload, _nodes, _ids, report) do
+    case leb(payload) do
+      {_len, arr} ->
+        case arr do
+          <<ek, count_rest::binary>> ->
+            case leb(count_rest) do
+              {n, elems} ->
+                cond do
+                  ek == f.ek ->
+                    {value, report} = read_packed_ints(elems, n, f.width, f.signed, f, [], report)
+                    {:cont, value, report}
+
+                  int_elem_widens?(ek, f) ->
+                    {value, report} = read_packed_ints(elems, n, kind_width(ek), f.signed, f, [], report)
+                    {:cont, value, %{report | widened: report.widened + 1}}
+
+                  true ->
+                    {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+                end
+
+              :error ->
+                {:cont, [], %{report | malformed: true}}
+            end
+
+          _ ->
+            {:cont, [], %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, [], %{report | malformed: true}}
+    end
+  end
+
+  defp read_payload(%{t: :list, elem_t: :ptr} = f, payload, nodes, _ids, report) do
+    case leb(payload) do
+      {_len, arr} ->
+        case arr do
+          <<ek, count_rest::binary>> when ek == f.ek ->
+            case leb(count_rest) do
+              {n, elems} ->
+                {value, report} = read_ptr_elems(f, elems, n, nodes, [], report)
+                {:cont, value, report}
+
+              :error ->
+                {:cont, [], %{report | malformed: true}}
+            end
+
+          <<_ek, _rest::binary>> ->
+            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          _ ->
+            {:cont, [], %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, [], %{report | malformed: true}}
+    end
+  end
+
+  defp read_payload(%{t: :list, elem_t: :tab} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} ->
         elem_desc = Map.fetch!(@tables, f.elem)
 
         case arr do
-          <<13, count_rest::binary>> ->
+          <<ek, count_rest::binary>> when ek == f.ek ->
             case leb(count_rest) do
               {n, elems} ->
                 {value, report} = read_elements(elem_desc, elems, n, nodes, ids, [], report)
@@ -914,13 +1062,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 {:cont, [], %{report | malformed: true}}
             end
 
-          _ ->
+          <<_ek, _rest::binary>> ->
             {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          _ ->
+            {:cont, [], %{report | malformed: true}}
         end
 
       :error ->
         {:cont, [], %{report | malformed: true}}
     end
+  end
+
+  defp read_payload(%{t: :list}, _payload, _nodes, _ids, report) do
+    {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   # widens? reports whether a wire kind decodes EXACTLY into this int field
@@ -944,6 +1099,65 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp kind_width(4), do: 4
   defp kind_width(5), do: 8
   defp kind_width(_), do: 0
+
+  defp int_elem_widens?(ek, %{signed: true, ek: declared})
+       when is_integer(ek) and ek >= 2 and ek <= 5 and ek < declared,
+       do: true
+
+  defp int_elem_widens?(_ek, _f), do: false
+
+  defp read_packed_ints(_rest, 0, _w, _signed, _f, acc, report), do: {Enum.reverse(acc), report}
+
+  defp read_packed_ints(rest, n, w, signed, f, acc, report) when w > 0 and byte_size(rest) >= w do
+    <<chunk::binary-size(^w), tail::binary>> = rest
+    {v, report} = clamp_int(int_of(chunk, w, signed), f, report)
+    read_packed_ints(tail, n - 1, w, signed, f, [v | acc], report)
+  end
+
+  defp read_packed_ints(_rest, _n, _w, _signed, _f, acc, report),
+    do: {Enum.reverse(acc), %{report | malformed: true}}
+
+  # one slot of []*T is a node index (docs/SPEC-TABLES.md §2.1, §3.1). 0 is
+  # null. 1 names the root and is a kind mismatch. A damaged index stops the
+  # walk and the elements already read stand (§4).
+  defp read_ptr_elems(_f, _rest, 0, _nodes, acc, report), do: {Enum.reverse(acc), report}
+
+  defp read_ptr_elems(f, rest, n, nodes, acc, report) do
+    case leb(rest) do
+      {0, after_idx} ->
+        read_ptr_elems(f, after_idx, n - 1, nodes, [nil | acc], report)
+
+      {1, after_idx} ->
+        read_ptr_elems(f, after_idx, n - 1, nodes, [nil | acc], %{report | kind_mismatch: report.kind_mismatch + 1})
+
+      {idx, after_idx} ->
+        at = idx - 2
+
+        cond do
+          at < 0 or at >= length(nodes) ->
+            {Enum.reverse(acc), %{report | malformed: true}}
+
+          Enum.at(nodes, at) == :malformed or Enum.at(nodes, at) == :unknown ->
+            read_ptr_elems(f, after_idx, n - 1, nodes, [nil | acc], report)
+
+          true ->
+            case Enum.at(nodes, at) do
+              {:table, name, map} ->
+                if name == f.elem do
+                  read_ptr_elems(f, after_idx, n - 1, nodes, [map | acc], report)
+                else
+                  read_ptr_elems(f, after_idx, n - 1, nodes, [nil | acc], %{report | kind_mismatch: report.kind_mismatch + 1})
+                end
+
+              _ ->
+                read_ptr_elems(f, after_idx, n - 1, nodes, [nil | acc], %{report | kind_mismatch: report.kind_mismatch + 1})
+            end
+        end
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
 
   defp read_elements(_desc, _rest, 0, _nodes, _ids, acc, report), do: {Enum.reverse(acc), report}
 
@@ -1193,6 +1407,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     ["{", Enum.intersperse(entries, ","), "\n", indent(depth), "}"]
   end
 
+  # a scalar list is one number per line (docs/SPEC-TABLES.md §16.1, §16.7).
+  defp json_field(%{t: :list, elem_t: :int}, elements, depth) when is_list(elements) do
+    case elements do
+      [] ->
+        "[]"
+
+      _ ->
+        rows =
+          Enum.map(elements, fn e ->
+            ["\n", indent(depth + 1), Integer.to_string(e)]
+          end)
+
+        ["[", Enum.intersperse(rows, ","), "\n", indent(depth), "]"]
+    end
+  end
+
+  defp json_field(%{t: :list, elem_t: :int}, _other, _depth), do: "[]"
+
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
     case elements do
       [] ->
@@ -1359,7 +1591,29 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :ptr}, _raw, report),
     do: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
+  defp json_read_field(%{t: :list, elem_t: :int} = f, raw, report) when is_list(raw) do
+    {elems, report} =
+      Enum.reduce(raw, {[], report}, fn e, {acc, report} ->
+        case e do
+          n when is_integer(n) ->
+            {v, report} = clamp_int(n, f, report)
+            {[v | acc], report}
+
+          _ ->
+            {acc, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        end
+      end)
+
+    {Enum.reverse(elems), report}
+  end
+
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
+    # an empty list names no element table. A fixed table used only as an
+    # element type is not in @tables, and fetching it for [] would be a miss
+    # (docs/SPEC-TABLES.md §16.2, §2.9).
+    if raw == [] do
+      {[], report}
+    else
     elem_desc = Map.fetch!(@tables, f.elem)
 
     {elems, report} =
@@ -1375,6 +1629,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       end)
 
     {Enum.reverse(elems), report}
+    end
   end
 
   defp json_read_field(%{t: :list}, _raw, report),
@@ -1579,7 +1834,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp list_extent(field, arr, ids, at) do
     case arr do
-      <<13, count_rest::binary>> ->
+      <<ek, count_rest::binary>> when ek == field.ek ->
         case leb(count_rest) do
           :error ->
             :error
@@ -1592,8 +1847,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 :error
               else
                 at = align_to(at, field.elem_align) + count * field.elem_size
-                elem_desc = Map.fetch!(@tables, field.elem)
-                elements_extent(elem_desc, elems, count, ids, at)
+
+                if field.elem_t == :tab do
+                  elem_desc = Map.fetch!(@tables, field.elem)
+                  elements_extent(elem_desc, elems, count, ids, at)
+                else
+                  # a scalar or pointer element has no nested list body of its
+                  # own in this measure (docs/SPEC-TABLES.md §2.9, §6.5)
+                  {:ok, at}
+                end
               end
             end
         end
@@ -1777,7 +2039,7 @@ const variableRetainSource = `
     {idx_map, ids, order, retain, report, acc}
   end
 
-  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
+  defp emit_field_retain(%{t: :list, elem_t: :tab} = f, value, idx_map, ids, order, retain, report, path, acc) do
     case Map.get(value, f.name, []) do
       [] ->
         {idx_map, ids, order, retain, report, acc}
@@ -1788,9 +2050,14 @@ const variableRetainSource = `
         {body, idx_map, ids, order, retain, report} =
           save_elements_retain(elem_desc, elements, 0, idx_map, ids, order, retain, report, f.ordinal, path, [])
 
-        array = [<<13>>, leb_encode(length(elements)), body]
+        array = [<<f.ek>>, leb_encode(length(elements)), body]
         {idx_map, ids, order, retain, report, [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
     end
+  end
+
+  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, _path, acc) do
+    {idx_map, ids, order, acc} = emit_field(f, value, idx_map, ids, order, acc)
+    {idx_map, ids, order, retain, report, acc}
   end
 
   defp emit_field_retain(f, value, idx_map, ids, order, retain, report, _path, acc) do
@@ -1883,13 +2150,13 @@ const variableRetainSource = `
     end)
   end
 
-  defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do
+  defp read_payload_retain(%{t: :list, elem_t: :tab} = f, payload, nodes, ids, report, retain, path) do
     case leb(payload) do
       {_len, arr} ->
         elem_desc = Map.fetch!(@tables, f.elem)
 
         case arr do
-          <<13, count_rest::binary>> ->
+          <<ek, count_rest::binary>> when ek == f.ek ->
             case leb(count_rest) do
               {n, elems} ->
                 {value, report, retain} = read_elements_retain(elem_desc, elems, n, nodes, ids, [], report, retain, f.ordinal, path)
@@ -2370,6 +2637,10 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	kind := ir.TableWireFieldKind(f)
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), id, kind, ordinal)
 	switch {
+	case f.IsList():
+		// A list is classified before a single pointer: []*T is an array of
+		// node indexes, not one pointer (docs/SPEC-TABLES.md §2.1, §2.9).
+		writeListDescriptor(&b, u, f)
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TBytes:
 		// *bytes is a blob node under the reserved bytes id (docs/SPEC-TABLES.md §2.5).
 		b.WriteString(", t: :bblob")
@@ -2385,11 +2656,6 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 			b.WriteString(", t: :ptr")
 			fmt.Fprintf(&b, ", table: %q", name)
 		}
-	case f.IsList():
-		b.WriteString(", t: :list")
-		fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
-		elemSize, elemAlign := ir.ListElementLayout(u, f)
-		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
 	case enumRef(f) != nil:
 		b.WriteString(", t: :enum, by_name: %{")
 		e := enumRef(f)
@@ -2423,13 +2689,58 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 // *string. It is the one column a tool keys a walk on without naming a type.
 func cardShape(f *ir.Field) string {
 	switch {
-	case f.Type.Pointer && f.Type.Blob():
-		return ":blob"
 	case f.IsList():
 		return ":list"
+	case f.Type.Pointer && f.Type.Blob():
+		return ":blob"
 	default:
 		return ":value"
 	}
+}
+
+// writeListDescriptor spells one []T or []*T field (docs/SPEC-TABLES.md §2.9,
+// §3). elem_t says how an element rides: :tab is a framed table body, :ptr is
+// a node index, :int is a packed scalar, and :other is a class this codec
+// does not carry yet.
+func writeListDescriptor(b *strings.Builder, u *ir.Unit, f *ir.Field) {
+	b.WriteString(", t: :list")
+	fmt.Fprintf(b, ", ek: %d", ir.TableWireElemKind(f))
+	elemSize, elemAlign := ir.ListElementLayout(u, f)
+	fmt.Fprintf(b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
+	name, isStruct := listStructName(f)
+	switch {
+	case f.Type.Pointer && isStruct:
+		b.WriteString(", elem_t: :ptr")
+		fmt.Fprintf(b, ", elem: %q", name)
+	case isStruct:
+		b.WriteString(", elem_t: :tab")
+		fmt.Fprintf(b, ", elem: %q", name)
+	case f.Type.Kind == ir.TInt:
+		b.WriteString(", elem_t: :int")
+		fmt.Fprintf(b, ", width: %d, signed: %v", f.Type.Width/8, f.Type.Signed)
+		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			fmt.Fprintf(b, ", min: %s, max: %s", f.IntMin.String(), f.IntMax.String())
+		}
+	default:
+		b.WriteString(", elem_t: :other")
+		if f.Type.Name != "" {
+			fmt.Fprintf(b, ", elem: %q", f.Type.Name)
+		}
+	}
+}
+
+func listStructName(f *ir.Field) (string, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return "", false
+	}
+	st, ok := f.Type.Ref.(*ir.Struct)
+	if !ok || st == nil {
+		return "", false
+	}
+	if st.Name != "" {
+		return st.Name, true
+	}
+	return f.Type.Name, f.Type.Name != ""
 }
 
 // cardBound is the descriptor's declared-bound column (docs/SPEC-TABLES.md

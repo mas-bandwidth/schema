@@ -9,10 +9,11 @@
 // and the text form of docs/SPEC-TABLES.md §3, §4, §8 and §16: the card slice
 // (a plain `table` root, tables as list elements, bool/int32/int64/enum,
 // string(N), *string and []T lists of tables) and, beyond it, pointers to
-// tables (§2.1, §3.1), *bytes (§2.5) and the unsigned integer widths. It is
-// emitted for a unit the variable form owns — one whose closure holds no
-// fixed table. Constructs this backend still does not carry are refused by
-// name at the boundary (§11).
+// tables (§2.1, §3.1), *bytes (§2.5), the unsigned integer widths, and
+// unbounded arrays of scalars (§2.9). A unit that declares a variable table
+// gets the codec even when a fixed table shares the closure (§2.7): form byte
+// 1 and form byte 3 do not write each other's bytes. The refusal by name (§11)
+// still binds only a unit the variable form owns.
 package elixirtable
 
 import (
@@ -141,9 +142,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, fixed)
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
-	// wire. Emitted for the unit the variable form owns — one whose closure
-	// holds no fixed table — and not for a unit the fixed form already serves.
-	if !closureHoldsFixedTable(u, closure) {
+	// wire. A unit that declares a variable table gets it beside the fixed
+	// form (§2.7). The refusal above still binds only a unit this form owns.
+	if len(ir.VariableTables(u)) > 0 {
 		maps.Copy(out, generateVariableForm(u, ns))
 	}
 
