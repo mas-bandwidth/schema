@@ -131,7 +131,7 @@ func (g *wireGen) emitTextReadUnion(f *ir.Field) {
 		if a.Void() {
 			g.pf("if(arm.value!=null){r.kindMismatch++;}else{next.type=%d;}break;\n", i+1)
 		} else {
-			g.pf("if(arm.value is! Map<String,dynamic>){r.kindMismatch++;}else{%sFromJsonFields(next.%s,arm.value as Map<String,dynamic>,r,sh);next.type=%d;}break;\n", dartName(a.Ref.Name), fieldMember(a.F), i+1)
+			g.pf("if(arm.value is! Map<String,dynamic>){r.kindMismatch++;}else{%sFromJsonFields(next.%s,arm.value as Map<String,dynamic>,r,sh);if(!r.malformed)next.type=%d;}break;\n", dartName(a.Ref.Name), fieldMember(a.F), i+1)
 		}
 	}
 	g.pf("default:r.unknown++;}%s=next;if(entries.length>1)r.malformed=true;break;\n", expr)
