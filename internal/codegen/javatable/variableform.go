@@ -2174,7 +2174,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
