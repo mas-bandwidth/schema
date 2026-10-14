@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"maps"
- "math"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -233,38 +233,44 @@ func TestOracle(t *testing.T) {
 }
 `, root, root, root) + t12ValueHelper
 	}
- expectedValues,clamps,wireCheck,normalization:=t12ExpectedValues(t,row,u)
- pre+=wireCheck
- pre += fmt.Sprintf(`
+	expectedValues, clamps, wireCheck, normalization := t12ExpectedValues(t, row, u)
+	pre += wireCheck
+	pre += fmt.Sprintf(`
  back:=make([]%s,%d);plan:=make([]TableFixedEntry,4096);var r TableReport
  n:=%sFixedLoad(back,data,plan,&r)
  if n!=%d || r!=(TableReport{Clamped:%d}) {t.Fatalf("reference load n=%%d report=%%+v, expected Clamped=%d only",n,r)}
-`, root,row.records,root,row.records,clamps,clamps)
- if id=="go/R27" || clamps>0 {
-  pre+=fmt.Sprintf(`
+`, root, row.records, root, row.records, clamps, clamps)
+	if id == "go/R27" || clamps > 0 {
+		pre += fmt.Sprintf(`
  expected:=make([]%s,len(back));for i:=range expected {%sReset(&expected[i])}
  manifestValues(t,reflect.ValueOf(expected),%q)
  for i:=range back {compareValue(t,fmt.Sprintf("r%%d",i),reflect.ValueOf(&back[i]).Elem(),reflect.ValueOf(&expected[i]).Elem())}
-`,root,root,expectedValues)
- }
- if id=="go/R27" {return pre+"}\n"+t12ValueHelper}
- pre+=fmt.Sprintf(`
+`, root, root, expectedValues)
+	}
+	if id == "go/R27" {
+		return pre + "}\n" + t12ValueHelper
+	}
+	pre += fmt.Sprintf(`
  rewritten:=make([]byte,%sFixedMeasure(n));if written:=%sFixedSave(back,rewritten);written!=int64(len(rewritten)) {t.Fatalf("resave %%d",written)}
-`,root,root)
- if clamps==0 {pre+=` if !bytes.Equal(data,rewritten) {t.Fatal("clean reference write-read-write changes bytes")}
-`} else {pre+=fmt.Sprintf(`
+`, root, root)
+	if clamps == 0 {
+		pre += ` if !bytes.Equal(data,rewritten) {t.Fatal("clean reference write-read-write changes bytes")}
+`
+	} else {
+		pre += fmt.Sprintf(`
  if bytes.Equal(data,rewritten) {t.Fatal("named out-of-range fixture was not normalized")}
  oracle:=append([]byte(nil),data...)
 %s
  if !bytes.Equal(oracle,rewritten) {t.Fatal("normalized bytes differ from independently patched C++ reference bytes and declared bounds")}
  t.Log("named out-of-range fixture: Clamped=1, declared-bound values, normalized byte oracle")
-`,normalization)}
- return pre+fmt.Sprintf(`
+`, normalization)
+	}
+	return pre + fmt.Sprintf(`
  again:=make([]%s,len(back));var rr TableReport
  if nn:=%sFixedLoad(again,rewritten,plan,&rr);nn!=n || rr!=(TableReport{}) {t.Fatalf("reread n=%%d %%+v",nn,rr)}
  twice:=make([]byte,len(rewritten));if written:=%sFixedSave(again,twice);written!=int64(len(twice)) || !bytes.Equal(rewritten,twice) {t.Fatal("second write-read-write changes bytes")}
 }
-`,root,root,root)+t12ValueHelper
+`, root, root, root) + t12ValueHelper
 }
 
 // §5.9 #32 and §3.4 bounds; Rowan's 2026-10-14 ruling names EXACTLY these
@@ -272,63 +278,138 @@ func TestOracle(t *testing.T) {
 // zero counters. These rows require one clamp and the independently derived
 // declared bound, then byte identity of the normalized value. No new row gets
 // an exemption merely because a loader happened to clamp it.
-func t12ExpectedValues(t *testing.T,row t12Row,u *ir.Unit) (string,int,string,string) {
- t.Helper()
- var fieldName,path string
- switch row.file {
- case "hostile_cfloat_range_widen.bin","past_cfloat_range_widen.bin":fieldName="aim"
- case "new_fixed_I_grow.bin":fieldName="v";path="r0.v"
- case "new_fixed_I_grow_element.bin":fieldName="vals";path="r0.vals[0]"
- default:
-  if row.forged!="" {t.Fatalf("unclassified manifest forge %s: %s",row.file,row.forged)}
-  return row.values,0,"",""
- }
- var field *ir.Field
- var prefix int64
- for _,st:=range ir.TableFixedRoots(u) {if st.Name==row.root {for _,f:=range st.Fields {if f.Name==fieldName {field=f;break};prefix+=ir.TableFixedFieldBytes(f)}}}
- if field==nil {t.Fatalf("named out-of-range file %s has no field %s",row.file,fieldName)}
- var bound,wireCheck string
- entry,ok:=FixedLineageOf(u,row.root);if !ok {t.Fatal("named normalization root missing")}
- offset:=20+len(entry.Layout)+8+int(prefix)
- if field.Array==ir.ArrayCounted {offset+=4}
- var normalizedBits uint64
- if row.forged!="" {
-  pathAt,raw,ok:=strings.Cut(row.forged,"=");p,offsetText,haveOffset:=strings.Cut(pathAt,"@")
-  if !ok || !haveOffset || p!="r0."+fieldName {t.Fatalf("malformed manifest forge %s: %s",row.file,row.forged)}
-  path=p;at,err:=strconv.Atoi(offsetText);if err!=nil || at<20 {t.Fatalf("malformed forge offset: %s",row.forged)}
-  number,bits,ok:=strings.Cut(raw,"|0x");if !ok {t.Fatalf("forge has no independent float bits: %s",row.forged)}
-  rawBits,err:=strconv.ParseUint(bits,16,32);if err!=nil {t.Fatal(err)}
-  value,err:=strconv.ParseFloat(number,32);if err!=nil {t.Fatal(err)}
-  if field.Type.Kind!=ir.TFloat32 || !field.HasFloatRange {t.Fatalf("unsupported named forge %s",row.file)}
-  if value<field.FMin {value=field.FMin} else if value>field.FMax {value=field.FMax} else {t.Fatalf("named out-of-range file %s is no longer out of range",row.file)}
-  bound=strconv.FormatFloat(value,'g',-1,32)
-  normalizedBits=uint64(math.Float32bits(float32(value)))
-  if at!=offset {t.Fatalf("manifest forge offset %d differs from declared field offset %d",at,offset)}
-  wireCheck=fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint32(data[%d:])!=uint32(%d) {t.Fatal(\"named forge bytes disagree with manifest metadata\")}\n",at+4,at,rawBits)
- } else {
-  var raw string
-  for _,assignment:=range strings.Split(row.values,",") {k,v,ok:=strings.Cut(assignment,"=");if ok && k==path {raw=v}}
-  if _,scaled,ok:=strings.Cut(raw,"|raw=");ok {raw=scaled}
-  value,err:=strconv.ParseInt(raw,0,64);if err!=nil {t.Fatalf("named fixed-point manifest value %s: %v",row.file,err)}
-  rawWidth:=int(ir.TableFixedStorageBytes(field.Type))
-  switch rawWidth {
-  case 2:wireCheck=fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint16(data[%d:])!=uint16(%d) {t.Fatal(\"named fixed-point source bytes disagree with manifest raw value\")}\n",offset+2,offset,uint64(value)&0xffff)
-  case 4:wireCheck=fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint32(data[%d:])!=uint32(%d) {t.Fatal(\"named fixed-point source bytes disagree with manifest raw value\")}\n",offset+4,offset,uint64(value)&0xffffffff)
-  default:t.Fatalf("unsupported named fixed-point raw width %d",rawWidth)
-  }
-  lo,hi,ok:=ir.TableRawRange(field);if !ok || !lo.IsInt64() || !hi.IsInt64() {t.Fatalf("named fixed-point field has no bounded raw range: %s",row.file)}
-  if value<lo.Int64() {value=lo.Int64()} else if value>hi.Int64() {value=hi.Int64()} else {t.Fatalf("named out-of-range file %s is no longer out of range",row.file)}
-  bound=strconv.FormatInt(value,10)
-  normalizedBits=uint64(value)
- }
- width:=int(ir.TableFixedStorageBytes(field.Type))
- var normalization string
- switch width {
- case 2:normalization=fmt.Sprintf("binary.LittleEndian.PutUint16(oracle[%d:],uint16(%d))",offset,normalizedBits&0xffff)
- case 4:normalization=fmt.Sprintf("binary.LittleEndian.PutUint32(oracle[%d:],uint32(%d))",offset,normalizedBits&0xffffffff)
- default:t.Fatalf("unsupported named normalization width %d",width)
- }
- return row.values+","+path+"="+bound,1,wireCheck,normalization
+func t12ExpectedValues(t *testing.T, row t12Row, u *ir.Unit) (string, int, string, string) {
+	t.Helper()
+	var fieldName, path string
+	switch row.file {
+	case "hostile_cfloat_range_widen.bin", "past_cfloat_range_widen.bin":
+		fieldName = "aim"
+	case "new_fixed_I_grow.bin":
+		fieldName = "v"
+		path = "r0.v"
+	case "new_fixed_I_grow_element.bin":
+		fieldName = "vals"
+		path = "r0.vals[0]"
+	default:
+		if row.forged != "" {
+			t.Fatalf("unclassified manifest forge %s: %s", row.file, row.forged)
+		}
+		return row.values, 0, "", ""
+	}
+	var field *ir.Field
+	var prefix int64
+	for _, st := range ir.TableFixedRoots(u) {
+		if st.Name == row.root {
+			for _, f := range st.Fields {
+				if f.Name == fieldName {
+					field = f
+					break
+				}
+				prefix += ir.TableFixedFieldBytes(f)
+			}
+		}
+	}
+	if field == nil {
+		t.Fatalf("named out-of-range file %s has no field %s", row.file, fieldName)
+	}
+	var bound, wireCheck string
+	entry, ok := FixedLineageOf(u, row.root)
+	if !ok {
+		t.Fatal("named normalization root missing")
+	}
+	offset := 20 + len(entry.Layout) + 8 + int(prefix)
+	if field.Array == ir.ArrayCounted {
+		offset += 4
+	}
+	var normalizedBits uint64
+	if row.forged != "" {
+		pathAt, raw, ok := strings.Cut(row.forged, "=")
+		p, offsetText, haveOffset := strings.Cut(pathAt, "@")
+		if !ok || !haveOffset || p != "r0."+fieldName {
+			t.Fatalf("malformed manifest forge %s: %s", row.file, row.forged)
+		}
+		path = p
+		at, err := strconv.Atoi(offsetText)
+		if err != nil || at < 20 {
+			t.Fatalf("malformed forge offset: %s", row.forged)
+		}
+		number, bits, ok := strings.Cut(raw, "|0x")
+		if !ok {
+			t.Fatalf("forge has no independent float bits: %s", row.forged)
+		}
+		rawBits, err := strconv.ParseUint(bits, 16, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, err := strconv.ParseFloat(number, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if field.Type.Kind != ir.TFloat32 || !field.HasFloatRange {
+			t.Fatalf("unsupported named forge %s", row.file)
+		}
+		if value < field.FMin {
+			value = field.FMin
+		} else if value > field.FMax {
+			value = field.FMax
+		} else {
+			t.Fatalf("named out-of-range file %s is no longer out of range", row.file)
+		}
+		bound = strconv.FormatFloat(value, 'g', -1, 32)
+		normalizedBits = uint64(math.Float32bits(float32(value)))
+		if at != offset {
+			t.Fatalf("manifest forge offset %d differs from declared field offset %d", at, offset)
+		}
+		wireCheck = fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint32(data[%d:])!=uint32(%d) {t.Fatal(\"named forge bytes disagree with manifest metadata\")}\n", at+4, at, rawBits)
+	} else {
+		var raw string
+		for _, assignment := range strings.Split(row.values, ",") {
+			k, v, ok := strings.Cut(assignment, "=")
+			if ok && k == path {
+				raw = v
+			}
+		}
+		if _, scaled, ok := strings.Cut(raw, "|raw="); ok {
+			raw = scaled
+		}
+		value, err := strconv.ParseInt(raw, 0, 64)
+		if err != nil {
+			t.Fatalf("named fixed-point manifest value %s: %v", row.file, err)
+		}
+		rawWidth := int(ir.TableFixedStorageBytes(field.Type))
+		switch rawWidth {
+		case 2:
+			wireCheck = fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint16(data[%d:])!=uint16(%d) {t.Fatal(\"named fixed-point source bytes disagree with manifest raw value\")}\n", offset+2, offset, uint64(value)&0xffff)
+		case 4:
+			wireCheck = fmt.Sprintf("\n if len(data)<%d || binary.LittleEndian.Uint32(data[%d:])!=uint32(%d) {t.Fatal(\"named fixed-point source bytes disagree with manifest raw value\")}\n", offset+4, offset, uint64(value)&0xffffffff)
+		default:
+			t.Fatalf("unsupported named fixed-point raw width %d", rawWidth)
+		}
+		lo, hi, ok := ir.TableRawRange(field)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			t.Fatalf("named fixed-point field has no bounded raw range: %s", row.file)
+		}
+		if value < lo.Int64() {
+			value = lo.Int64()
+		} else if value > hi.Int64() {
+			value = hi.Int64()
+		} else {
+			t.Fatalf("named out-of-range file %s is no longer out of range", row.file)
+		}
+		bound = strconv.FormatInt(value, 10)
+		normalizedBits = uint64(value)
+	}
+	width := int(ir.TableFixedStorageBytes(field.Type))
+	var normalization string
+	switch width {
+	case 2:
+		normalization = fmt.Sprintf("binary.LittleEndian.PutUint16(oracle[%d:],uint16(%d))", offset, normalizedBits&0xffff)
+	case 4:
+		normalization = fmt.Sprintf("binary.LittleEndian.PutUint32(oracle[%d:],uint32(%d))", offset, normalizedBits&0xffffffff)
+	default:
+		t.Fatalf("unsupported named normalization width %d", width)
+	}
+	return row.values + "," + path + "=" + bound, 1, wireCheck, normalization
 }
 
 // §5.9 #32: quoted commas/spaces, raw fixed integers and float payload bits
