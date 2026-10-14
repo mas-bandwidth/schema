@@ -20,6 +20,18 @@ func armValue(base string, v ir.UnionVariant) string {
 	}
 	return base
 }
+
+// armCount is the arm's companion lvalue beside armValue: a counted array's
+// count, a string's or bytes' used length. It is the C twin of the reference's
+// cpptable armCount (cpptable/arms.go), spelled through the arm's own unnamed
+// struct (§2.6, §3).
+func armCount(base string, v ir.UnionVariant) string {
+	base += ".as." + v.Name
+	if v.F.Array == ir.ArrayCounted {
+		return base + ".value_count"
+	}
+	return base + ".value_length"
+}
 func armWireKind(v ir.UnionVariant) int {
 	if v.Void() {
 		return ir.TableKindNoPayload
