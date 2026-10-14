@@ -64,12 +64,12 @@ func tutorialFences(lines []string) [][2]string {
 	var lang string
 	var body []string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "```") {
+		if after, ok := strings.CutPrefix(line, "```"); ok {
 			if inside {
 				out = append(out, [2]string{lang, strings.Join(body, "\n")})
 				body = nil
 			} else {
-				lang = strings.TrimSpace(strings.TrimPrefix(line, "```"))
+				lang = strings.TrimSpace(after)
 			}
 			inside = !inside
 			continue
