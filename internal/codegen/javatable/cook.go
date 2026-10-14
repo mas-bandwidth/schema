@@ -317,7 +317,7 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
 			continue
 		}
-		g := &cookGen{unit: u, cook: ck, table: u.Tables[name]}
+		g := &cookGen{unit: u, cook: ck, table: u.Tables[name], writer: writer.opens(name)}
 		g.emit()
 		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", g.b.String())
 	}
@@ -325,10 +325,11 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 }
 
 type cookGen struct {
-	unit  *ir.Unit
-	cook  *cookUnit
-	table *ir.Struct
-	b     strings.Builder
+	unit   *ir.Unit
+	cook   *cookUnit
+	table  *ir.Struct
+	writer bool
+	b      strings.Builder
 }
 
 func (g *cookGen) f(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -369,7 +370,9 @@ func (g *cookGen) emit() {
 	g.f("    /** the ROOT's offset in data — the record at the region's base. Read it with\n")
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
-	g.emitWriter(ml)
+	if g.writer {
+		g.emitWriter(ml)
+	}
 	g.emitOpen(ml, align)
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")

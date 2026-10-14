@@ -28,7 +28,14 @@ func cookValueType(u *ir.Unit, st *ir.Struct) (string, bool) {
 // A carried list is writable even while the accelerator reader lacks list accessors.
 func cookWriterUnit(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
+	available := map[string]bool{}
+	for _, st := range cardVariableTables(u) {
+		available[st.Name] = true
+	}
 	for _, st := range u.Tables {
+		if ir.VariableTables(u)[st.Name] && !available[st.Name] {
+			continue
+		}
 		seen := map[string]bool{}
 		var supported func(*ir.Struct) bool
 		supported = func(s *ir.Struct) bool {
