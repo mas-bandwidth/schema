@@ -349,9 +349,11 @@ use crate::*;
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
+		g.emitFixedWireBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
+		g.emitFixedWireRoot(st)
 	}
 	return []byte(g.body.String())
 }

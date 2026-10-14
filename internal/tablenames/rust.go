@@ -5,6 +5,8 @@ const Rust Backend = 1 << 2
 
 func init() {
 	define(Rust,
+		Name{Name: "TableCookList", What: "a cooked list header, signed delta and count (sections 2.9 and 7.2)"},
+		Name{Name: "TableFixedWireReader", What: "the bounded form-1 cursor for fixed cook inputs (sections 3 and 4)"},
 		Name{Name: "TableBlockTriple", What: "one array's (offset_of, count, stride)"},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},

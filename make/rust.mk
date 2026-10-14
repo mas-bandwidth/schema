@@ -556,10 +556,10 @@ test-rust: tables-rust-variable-class
 # functional test fail by name rather than skip, so this target never passes
 # on a SKIP.
 tables-rust-block-build: build/schema_test_block
-	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 SCHEMA_RUST_BLOCK_OUT="$(CURDIR)/build/block-rust.bin" \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
 		-run TestBlockBuildAndCookWriteRust -v
-	./build/schema_test_block
+	./build/schema_test_block --rust-block build/block-rust.bin
 	@echo 'tables Rust block build and cook write: the producer surfaces match the Go reference'
 
 test-rust: tables-rust-block-build

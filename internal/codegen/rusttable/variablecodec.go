@@ -54,6 +54,7 @@ func (g *gen) variableCodecModule() []byte {
 		}
 	}
 	g.emitVariableText(&b)
+	g.emitVariableCook(&b, names)
 	return []byte(b.String())
 }
 

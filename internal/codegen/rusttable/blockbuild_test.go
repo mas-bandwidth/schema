@@ -1,6 +1,7 @@
 package rusttable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -10,7 +11,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+	"sort"
 )
 
 // blockBuilderSchema is gotable/blockbuild_test.go's own shape: a counted
@@ -30,7 +38,8 @@ fixed table Root { stamp uint64
 // blockBuildCookSchema is the block probe plus one FIXED table for the cook
 // write: the block builder and the cook writer are one card and one run.
 const blockBuildCookSchema = blockBuilderSchema + `
-fixed table Config { scale float32 = 1.0 }
+fixed table Config { scale float32 = 1.0
+ samples [..3]uint64 }
 `
 
 // blockProbe is the Rust binary this test BUILDS AND RUNS: it calls the
@@ -46,6 +55,8 @@ mod cook_runtime;
 mod probe_records;
 mod probe_block;
 mod probe_cook;
+mod fixed_runtime;
+mod probe_fixed;
 
 #[allow(unused_imports)]
 pub use build_version::*;
@@ -59,6 +70,8 @@ pub use probe_records::*;
 pub use probe_block::*;
 #[allow(unused_imports)]
 pub use probe_cook::*;
+pub use fixed_runtime::*;
+pub use probe_fixed::*;
 
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 
@@ -113,7 +126,19 @@ fn main() {
 
     // ---- THE COOK WRITE (docs/SPEC-TABLES.md §7.6) ----
     let mut value: ConfigRow = unsafe { core::mem::zeroed() };
+    let wire=std::fs::read("oracle-wire.bin").unwrap();
+    let mut report=TableFixedReport::default();
+    let loaded=config_load(&wire,&mut report).unwrap();
+    assert!(!report.malformed && !report.refused);
+    println!("LOADED {} {} {}",loaded.scale,loaded.samples_count,loaded.samples[0]);
+    for path in ["bad-array-short.bin", "bad-array-tail.bin", "bad-reference.bin"] {
+        let damaged=std::fs::read(path).unwrap();let mut report=TableFixedReport::default();
+        let _=config_load(&damaged,&mut report);assert!(report.malformed,"accepted {path}");
+    }
+    println!("FORGED 3 rejected");
     value.scale = 2.5;
+    value.samples_count = 1;
+    value.samples = [11, 22, 33];
     let (measure, reason) = config_cook_measure_reason(&value);
     println!(
         "MEASURE {measure} {}",
@@ -140,6 +165,10 @@ fn main() {
     );
     println!("LE {}", hex(&le));
     println!("BE {}", hex(&be));
+    let info = config_cook_info();
+    let samples = info.fields.iter().find(|f| f.name == "samples").unwrap();
+    let offset = 64 + samples.offset as usize;
+    println!("TAIL {} {}", u64::from_le_bytes(le[offset + 8..offset + 16].try_into().unwrap()), u64::from_be_bytes(be[offset + 16..offset + 24].try_into().unwrap()));
 
     // WHAT IT WROTE READS BACK: the cook this writer wrote opens through the
     // cook's own reader and the value lands at its own offset (§7.1).
@@ -154,7 +183,7 @@ fn main() {
 // blockProbeRun generates the unit, drops the probe crate beside its modules
 // and runs it once with rustc. It is the same shape as fixedroadmap_t09_test.go's
 // t09Run: a fixed unit grows no packet module, so `rustc` alone builds it.
-func blockProbeRun(t *testing.T, spillTo string) map[string]string {
+func blockProbeRun(t *testing.T, spillTo string, wire []byte) map[string]string {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -174,6 +203,23 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 	}
 	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(blockProbe()), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "oracle-wire.bin"), wire, 0600); err != nil {
+		t.Fatal(err)
+	}
+	at := bytes.Index(wire, []byte{2, 14, 10, 9, 1})
+	if at < 0 {
+		t.Fatal("Go oracle produced no counted uint64 field")
+	}
+	end := at + 3 + 10
+	short := append(append(append([]byte(nil), wire[:at+2]...), 1, 9), wire[end:]...)
+	tail := append(append(append([]byte(nil), wire[:at+2]...), 11), wire[at+3:end]...)
+	tail = append(append(tail, 0xff), wire[end:]...)
+	noncanonical := append([]byte{1, 0x81, 0}, wire[2:]...)
+	for name, data := range map[string][]byte{"bad-array-short.bin": short, "bad-array-tail.bin": tail, "bad-reference.bin": noncanonical} {
+		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	bin := filepath.Join(root, "blockbuildprobe")
 	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
@@ -267,12 +313,33 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	t.Parallel()
 
-	got := blockProbeRun(t, os.Getenv("SCHEMA_RUST_BLOCK_OUT"))
+	variableCookProbeRun(t)
+	goGot := goBuilderCookProbeRun(t)
+	wire, err := hex.DecodeString(goGot["WIRE"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := blockProbeRun(t, "", wire)
+	if got["FORGED"] != "3 rejected" {
+		t.Errorf("fixed wire forgery checks: %q", got["FORGED"])
+	}
+	if got["LOADED"] != "2.5 1 11" {
+		t.Errorf("form-1 Go wire did not decode into fixed cook storage: %q", got["LOADED"])
+	}
+	if path := os.Getenv("SCHEMA_RUST_BLOCK_OUT"); path != "" {
+		renderBlockProbeRun(t, path)
+	}
 
 	// ---- THE BLOCK BUILDER (§19.1, gotable/blockbuild.go's <T>BlockBegin) ----
 	counts := map[string]int32{"rows": 3, "other": 2}
 	u := unitFrom(t, blockBuildCookSchema)
-	want := goBlockBytes(t, u, counts)
+	want, err := hex.DecodeString(goGot["BYTES"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(hex.EncodeToString(want), hex.EncodeToString(goBlockBytes(t, u, counts))) {
+		t.Fatal("Go builder disagrees with independent layout")
+	}
 	if got["USED"] != fmt.Sprintf("%d", len(want)) {
 		t.Errorf("the Rust builder used %s bytes; Go's builder (gotable/blockbuild.go:56) uses %d for counts rows=3 other=2", got["USED"], len(want))
 	}
@@ -352,6 +419,14 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	if err != nil || int64(len(be)) != total {
 		t.Fatalf("the big-endian cook is %d bytes, not the measure %d (%v)", len(be), total, err)
 	}
+	if got["TAIL"] != "22 33" {
+		t.Errorf("counted array storage must preserve every bounded slot in both orders, including unused slots: got %q, want 22 33 (SPEC-TABLES section 7.2, Go cookwrite field)", got["TAIL"])
+	}
+	for _, key := range []string{"LE", "BE"} {
+		if got[key] != goGot[key] {
+			t.Errorf("%s complete cook bytes differ from running Go CookFrom", key)
+		}
+	}
 	// THE ORDER IN THE HEADER IS THE ORDER OF THE WRITE (§7.1), at offset 16.
 	if got := binary.LittleEndian.Uint64(le[16:]); got != 1 {
 		t.Errorf("the little-endian cook's header names byte order %d, not 1 (§7.1)", got)
@@ -372,5 +447,234 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 	// WHAT IT WROTE READS BACK through the cook's own reader (§7.1).
 	if got["ROUND"] != "2.5" {
 		t.Errorf("the cook the writer wrote did not read back the value it was given: %q (§7.1)", got["ROUND"])
+	}
+}
+
+// goBuilderCookProbeRun executes the actual Go builder and cook writer, rather
+// than asking a second layout reconstruction to certify the Rust runtime.
+func goBuilderCookProbeRun(t *testing.T) map[string]string {
+	t.Helper()
+	out, err := gotable.Generate(unitFrom(t, blockBuildCookSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for name, data := range out {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module probe\n\ngo 1.26\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const probe = `package probe
+import("testing";"fmt";"encoding/hex";"unsafe")
+func TestOracle(t *testing.T) {
+ t.Parallel()
+ var storage RootBlockStorage
+ if !storage.Create(TableBlockDefaultAllocator()) { t.Fatal("storage") }
+ defer storage.Destroy()
+ clear(storage.allocation)
+ var block RootBlock
+ if !RootBlockBegin(&block,&storage,RootCounts{Rows:3,Other:2},nil) { t.Fatal("begin") }
+ fmt.Println("BYTES",hex.EncodeToString(unsafe.Slice((*byte)(block.Base),block.Bytes)))
+ var value Config
+ value.Scale=2.5
+ value.SamplesCount=1
+ value.Samples=[3]uint64{11,22,33}
+ n:=ConfigCookMeasure(&value)
+ le,be:=make([]byte,n),make([]byte,n)
+ if !ConfigCookFrom(&value,le,TableByteOrderLittle)||!ConfigCookFrom(&value,be,TableByteOrderBig) { t.Fatal("cook") }
+ fmt.Println("LE",hex.EncodeToString(le))
+ fmt.Println("BE",hex.EncodeToString(be))
+ wire:=make([]byte,ConfigMeasure(&value));if ConfigSave(&value,wire)!=int64(len(wire)){t.Fatal("wire")}
+ fmt.Println("WIRE",hex.EncodeToString(wire))
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "oracle_test.go"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "TestOracle", "-v", ".")
+	cmd.Dir = root
+	o, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("running Go oracle: %v\n%s", err, o)
+	}
+	got := map[string]string{}
+	for _, line := range strings.Split(string(o), "\n") {
+		key, value, _ := strings.Cut(line, " ")
+		if key == "BYTES" || key == "LE" || key == "BE" || key == "WIRE" {
+			got[key] = value
+		}
+	}
+	return got
+}
+
+// renderBlockProbeRun writes the C++ corpus' exact unit, not the small layout
+// probe above. The make gate hands this artifact to the generated C++ reader.
+func renderBlockProbeRun(t *testing.T, spillTo string) {
+	t.Helper()
+	var files []check.SourceFile
+	for _, base := range []string{"Padded", "Render"} {
+		path := filepath.Join("..", "..", "..", "tables", "block", base+".schema")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast, errors := parser.Parse(base+".schema", data)
+		if len(errors) > 0 {
+			t.Fatal(errors)
+		}
+		files = append(files, check.SourceFile{Path: base + ".schema", Name: base + ".schema", Base: base, Bytes: data, AST: ast})
+	}
+	u, errors := check.Unit(files)
+	if len(errors) > 0 {
+		t.Fatal(errors)
+	}
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	var modules []string
+	for name, data := range out {
+		if name == "build_version.rs" || name == "block_runtime.rs" || strings.HasSuffix(name, "_records.rs") || strings.HasSuffix(name, "_block.rs") {
+			if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			modules = append(modules, strings.TrimSuffix(name, ".rs"))
+		}
+	}
+	sort.Strings(modules)
+	var source strings.Builder
+	for _, name := range modules {
+		fmt.Fprintf(&source, "mod %s;\n#[allow(unused_imports)] pub use %s::*;\n", name, name)
+	}
+	source.WriteString(`
+fn main() {
+ use std::alloc::{Layout,alloc_zeroed,dealloc};
+ let layout=Layout::from_size_align(RENDER_FRAME_BLOCK_MAX_BYTES as usize,64).unwrap();
+ let base=unsafe {alloc_zeroed(layout)};
+ assert!(!base.is_null());
+ let mut counts=RenderFrameCounts::default();
+ counts.ships=3;
+ let used=unsafe {render_frame_block_begin(base,RENDER_FRAME_BLOCK_MAX_BYTES,&counts)}.unwrap();
+ unsafe { (*(base as *mut RenderFrameBlockProjection)).version=1234567; }
+ let block=unsafe {RenderFrameBlock::open(base,used)}.unwrap();
+ let ship=block.ships().as_ptr() as *mut RenderShipRow;
+ unsafe { (*ship).object_id=123; (*ship.add(2)).object_id=456; }
+ let bytes=unsafe {std::slice::from_raw_parts(base,used as usize)};
+ std::fs::write(std::env::var("SCHEMA_RUST_BLOCK_OUT").unwrap(),bytes).unwrap();
+ unsafe {dealloc(base,layout)};
+}
+`)
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(source.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(spillTo), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", "probe", "main.rs")
+	cmd.Dir = root
+	if o, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("RenderFrame Rust build: %v\n%s", err, o)
+	}
+	cmd = exec.Command(filepath.Join(root, "probe"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "SCHEMA_RUST_BLOCK_OUT="+spillTo)
+	if o, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("RenderFrame Rust producer: %v\n%s", err, o)
+	}
+	t.Log("Rust RenderFrame block written for the C++ reader")
+}
+
+// variableCookProbeRun pins the owner's card use case: the real card wire's
+// lists and blobs become the oracle's region bytes in both byte orders.
+func variableCookProbeRun(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("rustc"); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("rustc required: %v", err)
+		}
+		t.Skipf("rustc absent: variable cook functional test: %v", err)
+	}
+	u := cardsUnit(t)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Card"))
+	wire, err := os.ReadFile("../../../tables/cards/fuzz/card-populated.wire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(m, inst, wire, &report); !ok || err != nil || report.Malformed {
+		t.Fatalf("card wire oracle: %v %+v", err, report)
+	}
+	modules, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for _, name := range []string{"variable_runtime.rs", "card_table.rs", "card_variable.rs"} {
+		if err := os.WriteFile(filepath.Join(root, name), modules[name], 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "wire.bin"), wire, 0600); err != nil {
+		t.Fatal(err)
+	}
+	const source = `mod variable_runtime;mod card_table;mod card_variable;
+use variable_runtime::*;use card_table::*;
+fn hex(b:&[u8])->String{b.iter().map(|v|format!("{v:02x}")).collect()}
+fn main(){
+ let wire=std::fs::read("wire.bin").unwrap();let mut report=TableReport::default();
+ let mut value=card_load(&wire,&mut report).unwrap();assert!(!report.malformed);
+ let (n,reason)=card_cook_measure_reason(&value);assert_eq!(reason,TableCookRefuse::Ok);assert!(n>0);
+ for order in [1,2] {
+  let mut out=vec![0xa5;n as usize];
+  assert!(!card_cook_from(&value,&mut out[..n as usize-1],order));assert!(out.iter().all(|b|*b==0xa5));
+  assert!(card_cook_from(&value,&mut out,order));println!("{} {}",order,hex(&out));
+ }
+ value.id="x".repeat(65);let (bad,reason)=card_cook_measure_reason(&value);
+ assert_eq!(bad,-1);assert_eq!(reason,TableCookRefuse::InvalidValue);
+ let mut out=vec![0xa5;n as usize];assert!(!card_cook_from(&value,&mut out,1));assert!(out.iter().all(|b|*b==0xa5));
+ println!("REFUSE invalid_value unchanged");
+}`
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", "probe", "main.rs")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("card cook runtime compile: %v\n%s", err, out)
+	}
+	cmd = exec.Command(filepath.Join(root, "probe"))
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("card cook runtime: %v\n%s", err, out)
+	}
+	got := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		k, v, _ := strings.Cut(line, " ")
+		got[k] = v
+	}
+	for _, big := range []bool{false, true} {
+		want, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := "1"
+		if big {
+			key = "2"
+		}
+		if got[key] != hex.EncodeToString(want) {
+			t.Errorf("card cook order%s differs from schema cook oracle", key)
+		}
+	}
+	if got["REFUSE"] != "invalid_value unchanged" {
+		t.Errorf("card cook invalid measure/no-write refused incorrectly: %q", got["REFUSE"])
 	}
 }

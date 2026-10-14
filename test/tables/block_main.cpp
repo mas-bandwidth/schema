@@ -419,6 +419,37 @@ int main( int argc, char ** argv )
         if ( strcmp( argv[i], "--race" ) == 0 ) { race = true; }
     }
 
+    // A Rust producer's exact RenderFrame unit is opened by this generated
+    // C++ reader (SPEC-TABLES section 19.2). Copy file bytes into aligned
+    // consumer-owned storage; no header or triple is rewritten for the hop.
+    if ( argc == 3 && strcmp( argv[1], "--rust-block" ) == 0 )
+    {
+        FILE * file = fopen( argv[2], "rb" );
+        if ( file == NULL ) { printf( "FAILED: cannot open Rust block\n" ); return 1; }
+        if ( fseek( file, 0, SEEK_END ) != 0 ) { fclose( file ); return 1; }
+        const long size = ftell( file );
+        if ( size < 0 || size > RenderFrameBlockMaxBytes || fseek( file, 0, SEEK_SET ) != 0 ) { fclose( file ); return 1; }
+        RenderFrameBlockStorage rust_storage;
+        if ( !rust_storage.Create( counting_allocator() ) ) { fclose( file ); return 1; }
+        const size_t read = fread( rust_storage.base, 1, (size_t) size, file );
+        fclose( file );
+        RenderFrameBlock rust_block;
+        const bool opened = read == (size_t) size && RenderFrameBlockOpen( rust_block, rust_storage.base, size );
+        check( opened, "C++ reader opens the Rust-built RenderFrame block" );
+        if ( opened )
+        {
+            check( RenderFrameBlockBytes( rust_block ) == size, "Rust block extent matches C++ reader" );
+            check( rust_block.projection->version == 1234567 && rust_block.projection->ships.count == 3,
+                   "Rust projection fields survive the C++ hop" );
+            check( RenderFrameShips( rust_block )[0].object_id == 123 && RenderFrameShips( rust_block )[2].object_id == 456,
+                   "Rust array rows survive the C++ hop" );
+        }
+        rust_storage.Destroy();
+        if ( failures ) { return 1; }
+        printf( "C++ reader opens Rust block: OK\n" );
+        return 0;
+    }
+
     // ---- gate: the layout, from the counts, to the digit (§19.1) ----
 
     const RenderFrameCounts counts = worked_counts();
