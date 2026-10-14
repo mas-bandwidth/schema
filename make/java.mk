@@ -68,10 +68,11 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # The JAVA table backend (internal/codegen/javatable, docs/SPEC-TABLES.md). The
 # two ACCELERATORS' read halves — the block form (§19) and the cook (§7), their
 # record accessors and reflection descriptors — and the build-version check.
-# Java emits no table wire: the port that wrote the wire's previous form was
-# removed (schema#517 brings the id-table form). The C++ backend is the
-# reference and the C# one is the worked managed-language port; this leg
-# mirrors both.
+# The TABLE WIRE — the fixed form (§3.4) for every table, the message form
+# (§3.3) for a `fixed table` root, and the variable form (§3, form byte 1) with
+# its retain-unknown surface (§6.6) — rides beside the two accelerators. The
+# C++ backend is the reference and the C# one is the worked managed-language
+# port; this leg mirrors both.
 #
 # Java's unit scope is the PACKAGE and a public type lives in a file of its own
 # name, so the shared runtime is one file per type rather than one home file —
