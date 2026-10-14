@@ -1,0 +1,15 @@
+RESULT: populated sha=0123456789012345678901234567890123456789 tier: flash
+REPO: repo
+BASE: base
+KIND: kind
+PRIORITY: critical
+PATHS: path/one, path/two
+NEW: new/path
+SHARED: shared/path
+DEPENDS-ON: need-one, need-two
+TEST: fixture test
+DONE-WHEN: done when
+DEADLINE: finish within 45 minutes.
+SOURCE: source résumé→世界
+body with multibyte →世界 and "escapes"
+and tabs	

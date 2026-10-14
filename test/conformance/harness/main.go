@@ -111,6 +111,9 @@ func main() {
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
+	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
+	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
+	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -121,6 +124,21 @@ func main() {
 			fatalf("%v", err)
 		}
 		fmt.Println(string(out))
+		return
+	}
+
+	if command == "cards" {
+		exp := *expected
+		if exp == "" {
+			exp = filepath.Join(*corpus, "expected")
+		}
+		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, "build/cards-conformance", nil)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if !ok {
+			os.Exit(1)
+		}
 		return
 	}
 

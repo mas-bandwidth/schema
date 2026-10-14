@@ -1,0 +1,12 @@
+RESULT: consumers-card sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb tier: pro
+REPO: mas-bandwidth/schema
+BASE: sprint/schema-finish
+KIND: feature
+PRIORITY: critical
+PATHS: tables/cards/Card.schema
+TEST: TestUpgradeKeepsEveryField
+DONE-WHEN: make cards-test
+DEADLINE: finish within 45 minutes.
+SOURCE: source →世界
+compatibility body →世界 with "quotes" and	tabs
+and lines🚀—exact

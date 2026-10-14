@@ -1,0 +1,54 @@
+{
+  "id": "consumers-card",
+  "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "tier": "pro",
+  "repo": "mas-bandwidth/schema",
+  "_base": "sprint/schema-finish",
+  "kind": "feature",
+  "priority": "critical",
+  "stream": "schema-cards",
+  "paths": [
+    {
+      "s": "tables/cards/Card.schema"
+    }
+  ],
+  "_new": [],
+  "shared": [],
+  "needs": [],
+  "test": "TestUpgradeKeepsEveryField",
+  "done_when": "make cards-test",
+  "deadline_minutes": 45,
+  "source": "source →世界",
+  "epoch": 19,
+  "column": "plan",
+  "holder": "bench",
+  "attempt": 2,
+  "head": "cccccccccccccccccccccccccccccccccccccccc",
+  "branch": "sprint/schema-cards-c03-versioning",
+  "body": "compatibility body →世界 with \"quotes\" and\ttabs\nand lines🚀—exact",
+  "extra": [],
+  "consumers": [
+    {
+      "kind": "worker",
+      "who": "nova",
+      "route": "route/one",
+      "model": "model-A",
+      "started": 100,
+      "ended": 200,
+      "outcome": "ok",
+      "line": "line one",
+      "cost_micro_usd": 7
+    },
+    {
+      "kind": "worker",
+      "who": "nova",
+      "route": "route/two",
+      "model": "model-B",
+      "started": 300,
+      "ended": 400,
+      "outcome": "ok",
+      "line": "line two",
+      "cost_micro_usd": 11
+    }
+  ]
+}
